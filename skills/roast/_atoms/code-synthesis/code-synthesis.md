@@ -196,9 +196,19 @@ findings, or introduce claims.
 
 Before freezing:
 
-1. Validate every required field for every accepted finding.
+1. Validate every required field for every accepted finding. `Recommendation`
+   and `Validation` are mandatory and non-empty on every accepted finding, with
+   no exception. A missing field, a bare label with nothing after it, and a
+   label whose only content sits inside a fenced block each fail this gate.
+   Check it with the shared accepted-finding schema checker at
+   `skills/roast/_atoms/roast-contract/roast-contract.mjs`, so this branch and
+   the artifact branch enforce one requirement rather than two similar ones.
+   A finding with no bounded fix belongs under open risks, not under an
+   accepted finding.
 2. Verify priorities and confidence remain independent.
-3. Verify recommendations are bounded and validation is observable.
+3. Verify recommendations are bounded and validation is observable. A
+   recommendation is advice on how to resolve, addressed to a human. It is
+   never an instruction this roast executes and never an approval.
 4. Verify unresolved premises have `Do not implement until resolved`
    conditions.
 5. Verify implementation order respects dependencies.

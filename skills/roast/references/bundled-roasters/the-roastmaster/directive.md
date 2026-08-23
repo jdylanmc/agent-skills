@@ -109,6 +109,15 @@ skipped with reason), and evidence gaps>
 
 ## Accepted Findings
 
+Every accepted finding carries a non-empty `Recommendation` and a non-empty
+`Validation`, with no exception. A bare label with nothing after it, and a
+label whose only content sits inside a fenced block, are both empty. A concern
+with no bounded fix belongs under `## Open Risks and Prerequisites`, never as
+an accepted finding.
+
+A recommendation is advice on how to resolve, addressed to a human. It is never
+an instruction to execute, never a change to apply, and never an approval.
+
 ### <canonical finding ID>
 - Priority: Must fix | Should fix | Consider
 - Confidence: High | Medium | Low

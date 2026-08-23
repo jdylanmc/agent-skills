@@ -146,3 +146,23 @@ test('the skill states that severity is a category and not a gate', () => {
   assert.match(entry, /approves nothing, blocks nothing/);
   assert.doesNotMatch(entry, /pass\/fail verdict is returned/);
 });
+
+test('every line item the skill promises carries a way to resolve it', () => {
+  // The operator's requirement, held at the entry point as well as in each
+  // branch, so the promise a reader sees first is the promise both branches
+  // enforce.
+  const entry = read(ENTRY);
+  assert.match(entry, /Mandatory and non-empty on every line item, with no exception/);
+  assert.match(entry, /Validation \| How a reader confirms the fix worked/);
+  assert.match(entry, /a concern with no bounded fix is recorded as an open risk/);
+
+  for (const branch of [
+    'roast/_molecules/roast-artifact-branch/roast-artifact-branch.md',
+    'roast/_molecules/roast-code-branch/roast-code-branch.md',
+  ]) {
+    const document = read(branch);
+    assert.match(document, /non-empty `Recommendation`/, `${branch} omits the requirement`);
+    assert.match(document, /non-empty `Validation`/, `${branch} omits Validation`);
+    assert.match(document, /executes no recommendation/, `${branch} omits the read-only boundary`);
+  }
+});

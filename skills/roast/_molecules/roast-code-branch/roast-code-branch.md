@@ -100,8 +100,14 @@ Read and follow these in order:
 
 A ranked list of recommendations to fix, each traceable to the evidence packet
 and, where doctrine applied, to the exact cited rule, with a severity category
-and a confidence. Severity is a category only. This branch approves nothing and
-blocks nothing.
+and a confidence. Every accepted finding carries a non-empty `Recommendation`
+and a non-empty `Validation`, enforced by the same accepted-finding schema
+checker the artifact branch uses, so both branches guarantee one requirement
+rather than two similar ones.
+
+Severity is a category only. A recommendation is advice on how to resolve,
+addressed to a human. This branch approves nothing, blocks nothing, and
+executes no recommendation.
 
 ## Boundaries
 

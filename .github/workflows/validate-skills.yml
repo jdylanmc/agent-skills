@@ -54,6 +54,7 @@ jobs:
           skills/roast/_atoms/artifact-profile/artifact-profile.test.mjs
           skills/roast/_atoms/doctrine-select/doctrine-select.test.mjs
           skills/roast/_atoms/doctrine-select/doctrine-select.adversarial.test.mjs
+          skills/roast/_atoms/roast-contract/roast-contract.test.mjs
           skills/roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-detect/cmux-detect.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-dispatch/cmux-dispatch.test.mjs

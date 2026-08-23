@@ -1,9 +1,9 @@
 ---
 name: roast-contract
-description: The artifact roast contract shared by the agent, prompt, and skill branches, authored once and resolved for one artifact type through the artifact profile.
+description: The artifact roast contract shared by the agent, prompt, and skill branches, including the accepted-finding schema that makes a bounded Recommendation and a Validation mandatory on every finding, authored once and resolved for one artifact type through the artifact profile.
 level: atom
-allowed-tools: []
-includes: []
+allowed-tools: ["execute"]
+includes: ["roast/_atoms/roast-contract/roast-contract.mjs"]
 composes: []
 used-by: ["roast/_molecules/roast-artifact-branch/roast-artifact-branch.md"]
 ---
@@ -17,6 +17,10 @@ before the contract is supplied to a coordinator.
 
 Read a double-brace token as "the value the resolved profile supplies here".
 Never supply this document to a roaster with placeholders unresolved.
+
+## Required References
+
+1. [Accepted-finding schema checker](./roast-contract.mjs)
 
 ## Scope
 
@@ -49,6 +53,55 @@ Map it as follows, then let the Artifact Roastmaster calibrate independently.
 `Must fix` is a severity category and nothing more. This contract produces a
 ranked list of recommendations for a human to act on. It is not a gate, it
 returns no pass or fail verdict, and it approves and blocks nothing.
+
+## Accepted Finding Schema
+
+Every accepted finding carries these fields, in this order, each on its own
+line outside every fenced block. The shape matches the Artifact Roastmaster's
+own roaster-report and final-output templates, so the artifact branch and the
+code branch state the same requirement rather than two similar ones.
+
+```text
+### <canonical finding ID>
+- Priority: Must fix | Should fix | Consider
+- Confidence: High | Medium | Low
+- Location:
+- Evidence:
+- Consequence:
+- Recommendation:
+- Validation:
+- Doctrine references: <doctrine ID, section, and rule label or opening phrase>
+- Roast line (non-evidentiary): <optional>
+```
+
+| Field | Requirement |
+| --- | --- |
+| Canonical finding ID | Present, unique within the report, and matching the coordinator's declared identifier form. |
+| Priority | Exactly one of `Must fix`, `Should fix`, `Consider`. |
+| Confidence | Exactly one of `High`, `Medium`, `Low`. |
+| Location | Non-empty, and resolving to an entry the evidence manifest supplied. |
+| Evidence | Non-empty. |
+| Consequence | Non-empty. |
+| **Recommendation** | **Non-empty and mandatory, with no exception.** A bounded, actionable way to fix or resolve this specific finding. |
+| **Validation** | **Non-empty and mandatory.** How a reader confirms the fix worked. |
+| Doctrine references | Present whenever the finding came from doctrine, naming the doctrine identifier, section, and rule. Omitted otherwise. |
+| Roast line | Optional and never evidentiary. |
+
+{{findingRequirement}} That type-specific rule narrows what `Location` and
+`Evidence` must contain; it never relaxes the Recommendation requirement.
+
+A finding with no recommendation is not a finding; it is an observation the
+reader cannot act on. Reporting one would leave the reader with a ranked list
+of problems and no route out of any of them, so this contract does not permit
+it. Where a bounded fix genuinely is not known, the honest result is to record
+the concern under `## Open Risks and Evidence Gaps`, which carries no
+recommendation requirement, rather than to raise a finding that withholds one.
+
+A recommendation is **advice on how to resolve**, addressed to a human. It is
+never an instruction this roast executes, never a change this roast applies,
+and never an approval. Adding a mandatory recommendation gives the roast no
+authority it did not have: the review stays read-only, severity stays a
+category, and a human still decides what to act on and signs off.
 
 ## Report Contract Precedence
 
@@ -136,9 +189,30 @@ heading, a field name, or a terminator.
    `END ARTIFACT ROASTER REPORT` on its own line outside every fenced block.
 9. Every roster entry appears in either `## Contract-Valid Reports` or
    `## Failed or Excluded Roasters`, and never in both.
+10. Every accepted finding in every contract-valid report carries a non-empty
+    `Recommendation` and a non-empty `Validation`. A field counts only when its
+    label starts at the beginning of a line outside every fenced block and is
+    followed by content outside every fenced block, on the same line or on the
+    lines that follow it before the next field, finding, or heading. A missing
+    field, a bare label with nothing after it, and a label whose only content
+    sits inside a fenced block each fail this item. A section whose whole body
+    is `none` declares no findings and satisfies this item: the requirement is
+    per finding, not a demand that findings exist.
 {{envelopeExtraRules}}
 99. The final line is `END ARTIFACT ROAST ENVELOPE`, outside every fenced
     block.
+
+Check item 10 with the accepted-finding schema checker:
+
+```text
+node <atoms>/roast-contract/roast-contract.mjs --report "$absolute_report_path"
+```
+
+Exit `0` is a valid report, `2` names each finding and the field it is missing,
+and `1` is a usage or path failure. A failure of item 10 is an ordinary schema
+failure and takes the ordinary route: the coordinate step is retried once with
+the exact defects, and a second failure returns `Status: Unsynthesized`. It is
+not a new failure mode and it is not a gate.
 
 Renumber the final item to follow the last preceding item after the profile
 resolves. The list order is fixed; only its numbering depends on whether the

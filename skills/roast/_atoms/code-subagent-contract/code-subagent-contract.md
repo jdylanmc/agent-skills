@@ -158,7 +158,11 @@ For each finding:
 - `Assumptions`
 - `Failure or maintenance scenario`
 - `Why current guards or tests are insufficient`
-- `Recommendation`
+- `Recommendation`: mandatory and non-empty on every finding, with no
+  exception. A bounded, actionable way to fix or resolve this specific finding.
+  A bare label with nothing after it is empty. A concern with no bounded fix
+  belongs under `## Dismissed Suspicions` or as an evidence gap, never as a
+  finding that withholds a recommendation.
 - `Roast line`
 - `Related finding IDs`, when known within the report
 
@@ -193,6 +197,8 @@ Reject a report that:
 - lacks `END REVIEW`;
 - returns findings with `Status: Insufficient evidence`;
 - omits required fields or duplicates finding IDs;
+- returns a finding whose `Recommendation` is missing, is a bare label with
+  nothing after it, or has content only inside a fenced block;
 - lacks locations or evidence;
 - cites material absent from the packet;
 - cites doctrine as evidence or returns a doctrine-only finding;

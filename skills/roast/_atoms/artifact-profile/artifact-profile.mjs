@@ -516,7 +516,9 @@ export function renderField(profile, field) {
     case 'dynamicSpecialists':
       return renderOrdered(value);
     case 'envelopeExtraRules':
-      return value.length ? renderOrdered(value, 10) : '';
+      // Item 10 of the envelope checklist is fixed, so a profile's extra rules
+      // begin at 11.
+      return value.length ? renderOrdered(value, 11) : '';
     case 'evidenceSafety':
       return renderBullets(value);
     case 'supplementalSections':

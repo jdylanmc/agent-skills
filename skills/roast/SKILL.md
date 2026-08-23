@@ -67,7 +67,19 @@ A **formalised list of recommendations to fix**. Each recommendation carries:
 | Cited rule | The doctrine rule, by stable reference, that the finding rests on, when doctrine applied. |
 | Severity | `blocker`, `major`, `minor`, or `advisory`. |
 | Confidence | `high`, `medium`, or `low`. |
-| Recommendation | The bounded fix, and how to validate it. |
+| Recommendation | The bounded, actionable fix. **Mandatory and non-empty on every line item, with no exception.** |
+| Validation | How a reader confirms the fix worked. Mandatory and non-empty. |
+
+Every line item carries a way to resolve it. A finding with no recommendation
+is an observation the reader cannot act on, so the contract does not permit
+one: a concern with no bounded fix is recorded as an open risk instead. Both
+branches enforce this, and a report that breaks it is an ordinary schema
+failure handled by the existing retry-once-then-report path.
+
+A recommendation is **advice on how to resolve**, addressed to a human. It is
+never an instruction this skill executes, never a change this skill applies,
+and never an approval. Requiring one gives the roast no authority it did not
+have.
 
 Severity is a **category only**. This skill is not a gate. It emits no pass or
 fail verdict, approves nothing, blocks nothing, and has no approval mechanism.

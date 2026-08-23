@@ -94,9 +94,15 @@ this branch resolves it once per run. Nothing here forks by type.
 ## Output
 
 One Artifact Roast, returned unchanged from synthesis, whose findings are a
-severity-ranked list of recommendations. `blocker`, `major`, `minor`, and
-`advisory` are severity categories only. This branch approves nothing, blocks
-nothing, and returns no pass or fail verdict; a human decides what to act on.
+severity-ranked list of recommendations. Every accepted finding carries a
+non-empty `Recommendation` and a non-empty `Validation`; item 10 of the
+Envelope Schema 1 Checklist enforces it, and a report that breaks it is an
+ordinary schema failure that takes the ordinary retry-once-then-report route.
+
+`blocker`, `major`, `minor`, and `advisory` are severity categories only. A
+recommendation is advice on how to resolve, addressed to a human. This branch
+approves nothing, blocks nothing, executes no recommendation, and returns no
+pass or fail verdict; a human decides what to act on.
 
 ## Guarantees
 
