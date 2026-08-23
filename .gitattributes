@@ -1,0 +1,26 @@
+# Check every text file out with the same bytes on every platform.
+#
+# Two things in this repository depend on byte-for-byte identity across
+# operating systems:
+#
+#   1. doctrine/manifest.md records a SHA-256 for each doctrine file, and the
+#      roast lenses verify that digest before loading any guidance. Under a
+#      CRLF checkout the bytes on disk differ from the bytes that were hashed,
+#      every digest mismatches, and doctrine cannot load at all on Windows.
+#
+#   2. Tests that assert on file content match text that a CRLF checkout
+#      rewrites, so assertions pass on Linux and macOS and fail on Windows for
+#      a reason unrelated to what they are testing.
+#
+# Normalising to LF removes both problems at the source rather than teaching
+# every reader and every assertion to tolerate two encodings.
+* text=auto eol=lf
+
+# Binary files must never be normalised.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
