@@ -58,6 +58,11 @@ jobs:
           skills/roast/_atoms/roast-contract/roast-contract.drift.test.mjs
           skills/roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.test.mjs
           skills/create-skill/create-skill.conformance.test.mjs
+          skills/create-skill/_atoms/intent-elicitation/intent-elicitation.test.mjs
+          skills/create-skill/_atoms/intent-elicitation/intent-elicitation.drift.test.mjs
+          skills/create-skill/_atoms/intent-storage-gate/intent-storage-gate.test.mjs
+          skills/create-skill/_atoms/intent-synthesis/intent-synthesis.test.mjs
+          skills/create-skill/_atoms/intent-synthesis/intent-synthesis.drift.test.mjs
           skills/create-skill/_atoms/roast-round-ledger/roast-round-ledger.test.mjs
           skills/create-skill/_atoms/roast-round-ledger/roast-round-ledger.drift.test.mjs
           skills/create-skill/_atoms/rubber-duck-brief/rubber-duck-brief.test.mjs

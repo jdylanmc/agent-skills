@@ -20,6 +20,7 @@ allowed-tools: ["edit","read","search"]
 | Input | Required | Meaning |
 | --- | --- | --- |
 | `request` | yes | The operator's desired new skill and constraints. |
+| `intent` | yes | The stored, operator-confirmed intent this design must satisfy. |
 | `repository-conventions` | yes | Current repository instructions, examples, and validator behavior. |
 
 ## Operation
@@ -29,9 +30,10 @@ allowed-tools: ["edit","read","search"]
 2. Decompose that job with
    [Unit decomposition](../../_atoms/unit-decomposition/unit-decomposition.md),
    keeping first-consumer units local and leaving the wrapper thin.
-3. Reconcile the two outputs. If a proposed unit implies a second job or a
-   broader trigger than the scope contract allows, narrow or split it before
-   writing files.
+3. Reconcile the two outputs against the stored intent. If a proposed unit
+   implies a second job or a broader trigger than the scope contract allows,
+   narrow or split it before writing files. If either output asserts something
+   the intent does not support, the design is what changes.
 
 ## Output
 
