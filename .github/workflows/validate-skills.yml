@@ -46,3 +46,5 @@ jobs:
           skills/_base/_atoms/chronicle-replay/chronicle-replay.test.mjs
           skills/_base/_molecules/chronicler/chronicler.test.mjs
           skills/_base/_molecules/chronicler/chronicler.adversarial.test.mjs
+          skills/_base/_atoms/artifact-classify/artifact-classify.test.mjs
+          skills/_base/_molecules/roast-coordinate-review/roast-coordinate-review.adversarial.test.mjs
