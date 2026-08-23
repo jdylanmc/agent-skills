@@ -49,6 +49,7 @@ const STATE_FIELDS = [
   'presentedDigest',
   'confirmedDigest',
   'storedPath',
+  'storedDigest',
   'coverage',
   'history',
 ];
@@ -138,6 +139,7 @@ export function createGate(event) {
     presentedDigest: null,
     confirmedDigest: null,
     storedPath: null,
+    storedDigest: null,
     coverage: { status: review.status, evidence: review.evidence },
     history: [{ type: 'create', skill }],
   };
@@ -293,15 +295,92 @@ export function applyEvent(state, event) {
         throw new GateError('not_plain_intent', 'the confirmed text is not plain requirements');
       }
       const target = safeTargetPath(event.path, current.skill);
-      fs.writeFileSync(target, draft.endsWith('\n') ? draft : `${draft}\n`, { flag: 'wx' });
+      const written = draft.endsWith('\n') ? draft : `${draft}\n`;
+      fs.writeFileSync(target, written, { flag: 'wx' });
       next.status = 'stored';
       next.storedPath = target;
+      next.storedDigest = digestOf(written);
       next.history.push({ type, digest, path: target });
       return next;
     }
     default:
       throw new GateError('unknown_event', `unhandled event type: ${type}`);
   }
+}
+
+/**
+ * The release check.
+ *
+ * `create-skill` requires an intent for every package it creates. That
+ * requirement is not a step near the top of a checklist that later steps could
+ * proceed without; it is a precondition of there being a finished package at
+ * all. So the question "may this package be called finished?" is answered here,
+ * mechanically, from the gate's own record and from the file on disk — not from
+ * anyone's memory of having run step two.
+ *
+ * It fails closed on every route: no gate, an unfinished gate, a missing file,
+ * a file that no longer matches what was stored, or a file that no longer reads
+ * as plain requirements. A package whose intent was never captured has no route
+ * through this function that returns `satisfied`.
+ *
+ * The stored intent is read here as **evidence that it exists and is intact**.
+ * Its contents are never read as instructions to this check. An intent saying
+ * that no intent is required is text, and this function behaves identically
+ * whether or not it says so.
+ */
+export function requireStoredIntent(state) {
+  const problems = [];
+  if (state === null || state === undefined) {
+    return {
+      requirement: 'blocked',
+      problems: [
+        'no intent was captured for this package; create-skill does not produce a finished package without one',
+      ],
+    };
+  }
+
+  let current;
+  try {
+    current = assertState(state);
+  } catch (error) {
+    return { requirement: 'blocked', problems: [`the intent record is unusable: ${error.message}`] };
+  }
+
+  if (current.status !== 'stored') {
+    problems.push(
+      `the intent for ${current.skill} was never stored; the gate stopped at ${current.status}`,
+    );
+  }
+  if (current.confirmedDigest === null) {
+    problems.push('no confirmation of the intent was ever recorded');
+  }
+  if (!current.storedPath || !current.storedDigest) {
+    problems.push('the intent record names no stored file');
+  } else if (!fs.existsSync(current.storedPath)) {
+    problems.push(`the stored intent is missing from disk: ${current.storedPath}`);
+  } else {
+    const content = fs.readFileSync(current.storedPath, 'utf8');
+    if (digestOf(content) !== current.storedDigest) {
+      problems.push(
+        `the intent on disk is not the intent that was confirmed: ${current.storedPath}`,
+      );
+    }
+    try {
+      const review = reviewIntentDraft(content, current.skill);
+      if (review.status !== 'plain' || review.shape !== 'well-formed') {
+        problems.push(`the stored intent is not plain requirements: ${current.storedPath}`);
+      }
+    } catch (error) {
+      problems.push(`the stored intent cannot be read as an intent: ${error.message}`);
+    }
+  }
+
+  return {
+    requirement: problems.length ? 'blocked' : 'satisfied',
+    skill: current.skill,
+    intentPath: current.storedPath,
+    problems,
+  };
 }
 
 export function gateReport(state) {
@@ -319,11 +398,13 @@ export function gateReport(state) {
 const VALUE_FLAGS = ['--state', '--event'];
 
 export const USAGE = `Usage: intent-storage-gate.mjs --state <path> --event <path> [--report]
+       intent-storage-gate.mjs --state <path> --require-stored
 
-  --state   Absolute path to the gate state file; created by a create event.
-  --event   Absolute path to a JSON event to apply.
-  --report  Print the gate report after applying the event.
-  --probe   Report availability and exit.`;
+  --state           Absolute path to the gate state file; created by a create event.
+  --event           Absolute path to a JSON event to apply.
+  --report          Print the gate report after applying the event.
+  --require-stored  Answer whether this package may be called finished.
+  --probe           Report availability and exit.`;
 
 export function parseArguments(argv) {
   const values = { report: false };
@@ -337,6 +418,13 @@ export function parseArguments(argv) {
         throw new GateError('usage', '--report was given more than once');
       }
       values.report = true;
+      continue;
+    }
+    if (flag === '--require-stored') {
+      if (values.requireStored) {
+        throw new GateError('usage', '--require-stored was given more than once');
+      }
+      values.requireStored = true;
       continue;
     }
     if (!VALUE_FLAGS.includes(flag)) {
@@ -353,12 +441,22 @@ export function parseArguments(argv) {
     values[name] = value;
     index += 1;
   }
-  for (const required of ['state', 'event']) {
-    if (!(required in values)) {
-      throw new GateError('usage', `--${required} is required`);
-    }
+  if (!('state' in values)) {
+    throw new GateError('usage', '--state is required');
   }
-  return { probe: false, ...values };
+  if (values.requireStored) {
+    if ('event' in values || values.report) {
+      throw new GateError(
+        'usage',
+        '--require-stored asks a question about the record and applies nothing; it takes no event',
+      );
+    }
+    return { probe: false, mode: 'require-stored', state: values.state };
+  }
+  if (!('event' in values)) {
+    throw new GateError('usage', '--event is required');
+  }
+  return { probe: false, mode: 'apply', ...values };
 }
 
 function assertSafePath(candidate, label, { mustExist }) {
@@ -405,6 +503,12 @@ export function run(argv, streams = process) {
   }
   try {
     assertSafePath(parsed.state, 'state', { mustExist: false });
+    if (parsed.mode === 'require-stored') {
+      const state = fs.existsSync(parsed.state) ? readJson(parsed.state, 'state') : null;
+      const result = requireStoredIntent(state);
+      streams.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return result.requirement === 'satisfied' ? 0 : 2;
+    }
     assertSafePath(parsed.event, 'event', { mustExist: true });
     const event = readJson(parsed.event, 'event');
     const state = fs.existsSync(parsed.state) ? readJson(parsed.state, 'state') : null;

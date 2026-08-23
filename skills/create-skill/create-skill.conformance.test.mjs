@@ -181,6 +181,68 @@ test('the wrapper refuses to store an intent the operator has not confirmed', ()
   assert.match(molecule, /Store only on confirmation/);
 });
 
+test('every package the skill creates must end up with an intent', () => {
+  const entry = flat(ENTRY);
+  assert.match(entry, /\*\*Every package this skill creates has an intent\.\*\*/);
+  assert.match(entry, /precondition of there being a package, not the first item on a list/);
+  assert.match(entry, /A run that captures no intent produces no finished\s+package/);
+  assert.match(
+    entry,
+    /Do not create a package and note the intent as\s+outstanding/,
+    'the wrapper must close the route where a package ships with the intent outstanding',
+  );
+  assert.match(entry, /Produces no finished package without a stored intent/);
+
+  const molecule = flat('create-skill/_molecules/intent-capture/intent-capture.md');
+  assert.match(molecule, /\*\*This is a precondition, not a first step\.\*\*/);
+  assert.match(molecule, /There is no route where the capture is skipped,\s+deferred, or declined/);
+  assert.match(molecule, /## When It Cannot Be Captured/);
+});
+
+test('a package with no stored intent cannot be reported ready', () => {
+  assert.match(
+    flat('create-skill/_atoms/validation-release-gate/validation-release-gate.md'),
+    /A package with no stored intent is never reported as ready/,
+  );
+  assert.match(
+    flat('create-skill/_atoms/validation-release-gate/validation-release-gate.md'),
+    /Verify the package has a stored intent before anything is called ready/,
+  );
+  assert.match(
+    flat('create-skill/_molecules/skill-package-conformance/skill-package-conformance.md'),
+    /A package with no stored intent never reaches `ready`/,
+  );
+  assert.match(
+    flat('create-skill/_atoms/intent-storage-gate/intent-storage-gate.md'),
+    /There is no route through it that reports\s+`satisfied` for a package whose intent was never captured/,
+  );
+});
+
+test('a skill created by other means legitimately has no intent', () => {
+  assert.match(
+    flat(ENTRY),
+    /A skill authored by some other means may\s+legitimately have none, which is not this skill's concern/,
+  );
+});
+
+test('a stored intent is authoritative about its subject and inert as instruction', () => {
+  for (const unit of [
+    ENTRY,
+    'create-skill/_molecules/intent-capture/intent-capture.md',
+    'create-skill/_atoms/intent-storage-gate/intent-storage-gate.md',
+  ]) {
+    assert.match(
+      flat(unit),
+      /inert|never as instruction|not an instruction/,
+      `${unit} must state that a stored intent does not direct what reads it`,
+    );
+  }
+  assert.match(
+    flat('create-skill/_atoms/intent-storage-gate/intent-storage-gate.md'),
+    /## The Stored Intent Is Inert/,
+  );
+});
+
 test('the stored intent is what the build answers to', () => {
   assert.match(
     flat(ENTRY),
