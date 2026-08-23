@@ -52,6 +52,10 @@ jobs:
           skills/_base/_molecules/roast-coordinate-review/roast-coordinate-review.adversarial.test.mjs
           skills/roast/roast.conformance.test.mjs
           skills/roast/_atoms/artifact-profile/artifact-profile.test.mjs
+          skills/roast/_atoms/intent-screen/intent-screen.test.mjs
+          skills/roast/_atoms/intent-screen/intent-screen.adversarial.test.mjs
+          skills/roast/_atoms/intent-source/intent-source.test.mjs
+          skills/roast/_atoms/intent-source/intent-source.drift.test.mjs
           skills/roast/_atoms/doctrine-select/doctrine-select.test.mjs
           skills/roast/_atoms/doctrine-select/doctrine-select.adversarial.test.mjs
           skills/roast/_atoms/roast-contract/roast-contract.test.mjs
@@ -66,6 +70,7 @@ jobs:
           skills/create-skill/_atoms/roast-round-ledger/roast-round-ledger.test.mjs
           skills/create-skill/_atoms/roast-round-ledger/roast-round-ledger.drift.test.mjs
           skills/create-skill/_atoms/rubber-duck-brief/rubber-duck-brief.test.mjs
+          skills/roast/_molecules/roast-intent/roast-intent.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-detect/cmux-detect.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-dispatch/cmux-dispatch.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-helper-pane/cmux-helper-pane.test.mjs

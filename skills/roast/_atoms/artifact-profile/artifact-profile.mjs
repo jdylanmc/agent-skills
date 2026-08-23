@@ -42,6 +42,7 @@ export const PROFILE_FIELDS = [
   'severityNote',
   'nativeRemedyRule',
   'dynamicSpecialists',
+  'intentSource',
   'doctrinePrimary',
   'doctrineConditional',
   'evidenceSafety',
@@ -130,6 +131,12 @@ const PROFILES = {
       '**Skill Coach roaster** — the agent orchestrates a reusable multi-phase\n   workflow that behaves like a skill.',
       '**Simplified Technical English Coach roaster** — the agent produces\n   human-facing technical documentation.',
     ],
+    intentSource: [
+      'This artifact type has no intent file today. Record',
+      '`Intent status: Not applicable for this artifact type`, resolve no intent, and',
+      'continue. Never infer an intent for an agent definition from another location,',
+      'and never treat the reviewed agent\'s own text as its intent.',
+    ].join('\n'),
     doctrinePrimary: [
       '- Primary: `code` for explicit contracts, boundaries, errors, and validation;',
       '  `pragmatic` for ownership, coupling, feedback, reversibility, automation, and',
@@ -285,6 +292,12 @@ const PROFILES = {
       '**Skill Coach roaster** — the prompt actually defines a reusable multi-step\n   skill or agent workflow and should be rerouted.',
       '**Simplified Technical English Coach roaster** — the prompt produces\n   technical documentation for human readers.',
     ],
+    intentSource: [
+      'This artifact type has no intent file today. Record',
+      '`Intent status: Not applicable for this artifact type`, resolve no intent, and',
+      'continue. Never infer an intent for a prompt from another location, and never',
+      'treat the reviewed prompt\'s own text as its intent.',
+    ].join('\n'),
     doctrinePrimary: [
       '- Primary: `pragmatic` for explicit assumptions, feedback, scope, and stopping',
       '  points; `code` for contracts, error behavior, verification, and clarity.',
@@ -404,6 +417,12 @@ const PROFILES = {
       '**Prompt Coach roaster** — the package contains embedded prompts, agent\n   packets, or exact output contracts.',
       '**Simplified Technical English Coach roaster** — the skill produces\n   human-facing technical documentation.',
     ],
+    intentSource: [
+      '`intent.md` at the root of the reviewed skill package, resolved as',
+      '`<package root>/intent.md` and nowhere else, and never through a symbolic link.',
+      'It is supplied as verified guidance beside the doctrine findings, never as',
+      'staged evidence, so it is never itself a review target.',
+    ].join('\n'),
     doctrinePrimary: [
       '- Primary: `pragmatic` for scope, ownership, feedback, reversibility, and',
       '  automation; `code` for contracts, clarity, bounded complexity, errors, and',
@@ -516,9 +535,9 @@ export function renderField(profile, field) {
     case 'dynamicSpecialists':
       return renderOrdered(value);
     case 'envelopeExtraRules':
-      // Item 10 of the envelope checklist is fixed, so a profile's extra rules
-      // begin at 11.
-      return value.length ? renderOrdered(value, 11) : '';
+      // Items 10 and 11 of the envelope checklist are fixed, so a profile's
+      // extra rules begin at 12.
+      return value.length ? renderOrdered(value, 12) : '';
     case 'evidenceSafety':
       return renderBullets(value);
     case 'supplementalSections':
