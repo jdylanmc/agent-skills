@@ -305,12 +305,20 @@ test('the envelope checklist enforces the requirement for every artifact type', 
   }
 });
 
-test("a profile's extra envelope rules are numbered after the fixed item 10", () => {
+test("a profile's extra envelope rules are numbered after the fixed items", () => {
+  // Items 10 and 11 are fixed for every artifact type: the accepted-finding
+  // schema and the intent rules. A profile's own extra rules follow them, so a
+  // new fixed item must push the profile rules down rather than collide.
   const template = readShared('roast/_atoms/roast-contract/roast-contract.md');
+  for (const artifactType of ARTIFACT_TYPES) {
+    const contract = render(template, artifactType);
+    assert.match(contract, /^11\. No entry in any section names the intent as the artifact to change, by$/m);
+  }
+
   const prompt = render(template, 'prompt');
-  assert.match(prompt, /^11\. No section contains the full supplied prompt body\.$/m);
+  assert.match(prompt, /^12\. No section contains the full supplied prompt body\.$/m);
   for (const artifactType of ['agent', 'skill']) {
-    assert.doesNotMatch(render(template, artifactType), /^11\. /m);
+    assert.doesNotMatch(render(template, artifactType), /^12\. /m);
   }
 });
 
