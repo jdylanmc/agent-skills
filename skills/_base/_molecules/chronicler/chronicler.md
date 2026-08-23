@@ -4,7 +4,7 @@ description: Keep one bounded running log of skill operations across a long-runn
 level: molecule
 includes: ["_base/_atoms/chronicle-append/chronicle-append.md","_base/_atoms/chronicle-replay/chronicle-replay.md","_base/_molecules/chronicler/chronicler.mjs"]
 composes: ["_base/_atoms/chronicle-append/chronicle-append.md","_base/_atoms/chronicle-replay/chronicle-replay.md"]
-used-by: []
+used-by: ["create-skill/SKILL.md"]
 allowed-tools: ["execute"]
 ---
 
