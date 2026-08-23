@@ -156,10 +156,42 @@ test('each type declares exactly five ordered dynamic specialists', () => {
 });
 
 test('an undeclared placeholder refuses instead of resolving to nothing', () => {
+  // The refusal is the point. A silent empty substitution would drop a whole
+  // section from a contract and still look like a valid document, which is how
+  // the three original copies diverged without anyone noticing.
   assert.throws(() => render('before {{notAField}} after', 'agent'), (error) => {
+    assert.ok(error instanceof ArtifactProfileError);
     assert.equal(error.code, 'unknown_field');
+    assert.match(error.message, /undeclared profile field\(s\): notAField/);
     return true;
   });
+
+  // Nothing partial is returned alongside the refusal.
+  let output = 'untouched';
+  try {
+    output = render('kept {{artifactNoun}} then {{notAField}}', 'agent');
+  } catch {
+    // expected
+  }
+  assert.equal(output, 'untouched');
+});
+
+test('no declared profile field is orphaned from every shared document', () => {
+  // The reverse of the placeholder check. A field declared for all three types
+  // but used nowhere is dead weight that still has to be kept in sync, and it
+  // reads as coverage while parameterising nothing.
+  const used = new Set();
+  for (const document of SHARED_DOCUMENTS) {
+    for (const field of placeholdersIn(readShared(document))) {
+      used.add(field);
+    }
+  }
+  const orphaned = PROFILE_FIELDS.filter((field) => !used.has(field));
+  assert.deepEqual(
+    orphaned,
+    [],
+    `declared but used by no shared document: ${orphaned.join(', ')}`,
+  );
 });
 
 test('an unknown field refuses rather than returning undefined', () => {

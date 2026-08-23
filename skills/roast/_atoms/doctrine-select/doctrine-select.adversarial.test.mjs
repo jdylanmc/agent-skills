@@ -12,7 +12,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { DoctrineSelectionError, manifestIds, run as runSelect, selectDoctrine } from './doctrine-select.mjs';
+import { DoctrineSelectionError, USAGE, manifestIds, parseArguments, run as runSelect, selectDoctrine } from './doctrine-select.mjs';
 
 const REPOSITORY_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -186,15 +186,114 @@ test('a malformed or duplicated manifest refuses rather than selecting from a gu
 test('the command line refuses more than one manifest or artifact type', () => {
   const manifests = captureStreams();
   assert.equal(runSelect(['--manifest', MANIFEST, '--manifest', MANIFEST, '--type', 'agent'], manifests), 1);
-  assert.match(manifests.errors(), /usage/);
+  assert.match(manifests.errors(), /--manifest was given more than once/);
 
   const types = captureStreams();
   assert.equal(runSelect(['--manifest', MANIFEST, '--type', 'agent', '--type', 'skill'], types), 1);
-  assert.match(types.errors(), /usage/);
+  assert.match(types.errors(), /--type was given more than once/);
+});
+
+test('an unknown argument is rejected rather than ignored', () => {
+  const streams = captureStreams();
+  assert.equal(
+    runSelect(['--manifest', MANIFEST, '--type', 'skill', '--bogus-flag', 'hello'], streams),
+    1,
+  );
+  assert.match(streams.errors(), /usage: unknown argument: --bogus-flag/);
+  assert.equal(streams.output(), '', 'a rejected command line must produce no selection');
+});
+
+/**
+ * The defect this file exists to prevent. A discarded override does not fail
+ * loudly: it falls through to inference and still reports `source: inferred`,
+ * so the caller believes the doctrine they named was used. A roast produced
+ * that way cannot be traced back to the guidance that produced it.
+ */
+test("a typo'd override fails instead of silently falling back to inference", () => {
+  for (const typo of ['--slect', '--doctrine', '--selection', '--Select']) {
+    const streams = captureStreams();
+    assert.equal(runSelect(['--manifest', MANIFEST, '--type', 'skill', typo, 'testing'], streams), 1);
+    assert.match(streams.errors(), new RegExp(`unknown argument: \\${typo}`));
+    assert.equal(streams.output(), '', `${typo} produced a selection the caller did not ask for`);
+  }
+
+  // The correctly spelled flag is the only thing that overrides.
+  const correct = captureStreams();
+  assert.equal(runSelect(['--manifest', MANIFEST, '--type', 'skill', '--select', 'testing'], correct), 0);
+  const parsed = JSON.parse(correct.output());
+  assert.equal(parsed.source, 'caller-override');
+  assert.deepEqual(parsed.selection.map((entry) => entry.id), ['testing']);
+});
+
+test('a flag given without a value is rejected rather than reading the next flag', () => {
+  for (const argv of [
+    ['--manifest', MANIFEST, '--type'],
+    ['--manifest', MANIFEST, '--type', '--select', 'code'],
+    ['--manifest', MANIFEST, '--select'],
+    ['--manifest', MANIFEST, '--trigger', '--type', 'skill'],
+    ['--manifest'],
+  ]) {
+    const streams = captureStreams();
+    assert.equal(runSelect(argv, streams), 1, `accepted ${argv.join(' ')}`);
+    assert.match(streams.errors(), /requires a value|missing required argument/);
+  }
+});
+
+test('a missing manifest is a usage failure, not an unverified selection', () => {
+  const streams = captureStreams();
+  assert.equal(runSelect(['--type', 'agent'], streams), 1);
+  assert.match(streams.errors(), /missing required argument for --manifest/);
+});
+
+test('every usage failure prints the full flag list', () => {
+  for (const argv of [['--bogus'], ['--type', 'agent'], ['--manifest', MANIFEST, '--type']]) {
+    const streams = captureStreams();
+    assert.equal(runSelect(argv, streams), 1);
+    for (const flag of ['--manifest', '--type', '--select', '--trigger', '--probe']) {
+      assert.match(streams.errors(), new RegExp(`\\${flag}`), `usage omits ${flag}`);
+    }
+  }
+  assert.match(USAGE, /^Usage: doctrine-select\.mjs/);
+});
+
+test('probe short-circuits before any other argument is validated', () => {
+  assert.deepEqual(parseArguments(['--probe']), { probe: true });
+  assert.deepEqual(parseArguments(['--manifest', MANIFEST, '--probe']), { probe: true });
+
+  const streams = captureStreams();
+  assert.equal(runSelect(['--probe'], streams), 0);
+  assert.match(streams.output(), /doctrine-select: available/);
+});
+
+test('parseArguments matches the sibling atom shape for repeats and singles', () => {
+  const parsed = parseArguments([
+    '--manifest', MANIFEST,
+    '--type', 'skill',
+    '--select', 'code',
+    '--select', 'testing',
+    '--trigger', 'validation',
+    '--trigger', 'data-contract',
+  ]);
+  assert.equal(parsed.probe, false);
+  assert.equal(parsed.manifest, MANIFEST);
+  assert.equal(parsed.type, 'skill');
+  assert.deepEqual(parsed.selectors, ['code', 'testing']);
+  assert.deepEqual(parsed.triggers, ['validation', 'data-contract']);
+
+  assert.throws(() => parseArguments(['--manifest', MANIFEST, '--packet', 'x']), (error) => {
+    assert.ok(error instanceof DoctrineSelectionError);
+    assert.equal(error.code, 'usage');
+    assert.match(error.message, /unknown argument: --packet/);
+    return true;
+  });
 });
 
 test('a refusal exits 2 so a caller cannot mistake it for a selection', () => {
-  const streams = captureStreams();
-  assert.equal(runSelect(['--manifest', MANIFEST], streams), 2);
-  assert.equal(JSON.parse(streams.output()).category, 'Ambiguous artifact type');
+  const ambiguous = captureStreams();
+  assert.equal(runSelect(['--manifest', MANIFEST], ambiguous), 2);
+  assert.equal(JSON.parse(ambiguous.output()).category, 'Ambiguous artifact type');
+
+  const unknown = captureStreams();
+  assert.equal(runSelect(['--manifest', MANIFEST, '--select', 'invented'], unknown), 2);
+  assert.equal(JSON.parse(unknown.output()).category, 'Unknown doctrine identifier');
 });

@@ -347,35 +347,112 @@ function readOption(argv, name) {
   return values;
 }
 
+/**
+ * Argument handling deliberately mirrors `doctrine-evaluate`'s
+ * `parseArguments`. The two atoms sit next to each other in one pipeline and a
+ * caller uses them together, so a flag that is rejected by one and silently
+ * discarded by the other is a trap.
+ *
+ * The consequence of discarding is specific and bad here: a typo'd override
+ * such as `--slect testing` would be dropped, the atom would quietly fall back
+ * to inference, and it would still report `"source": "inferred"` as though that
+ * had been intended. A caller could then not trace a surprising roast to the
+ * doctrine that produced it, which is the one thing this atom exists to make
+ * possible.
+ *
+ * The only intentional divergence is which flags repeat. `doctrine-evaluate`
+ * repeats `--select` alone; here `--select` and `--trigger` both repeat,
+ * because a caller genuinely names several doctrine identifiers and several
+ * observed triggers. `--manifest` and `--type` are single-valued, as they are
+ * there.
+ */
+const VALUE_FLAGS = ['--manifest', '--type', '--select', '--trigger'];
+const REPEATABLE_FLAGS = ['--select', '--trigger'];
+
+export const USAGE = `Usage: doctrine-select.mjs --manifest <path> \\
+  [--type <agent|prompt|skill|code>] [--select <id>]... [--trigger <name>]...
+
+  --manifest  Absolute path to doctrine/manifest.md. Required. Read for
+              canonical identifiers only; no doctrine file is opened.
+  --type      The classified artifact type. Supply this, --select, or both;
+              supplying neither is a refusal, not a default.
+  --select    An explicit doctrine identifier. Repeatable. Overrides inference.
+  --trigger   A trigger observed in the packet. Repeatable. Enables a
+              conditional doctrine.
+  --probe     Report availability and exit.`;
+
+function failUsage(message) {
+  throw new DoctrineSelectionError('usage', message);
+}
+
+export function parseArguments(argv) {
+  const values = {};
+  const selectors = [];
+  const triggers = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const flag = argv[index];
+    if (flag === '--probe') {
+      return { probe: true };
+    }
+    if (!VALUE_FLAGS.includes(flag)) {
+      failUsage(`unknown argument: ${flag}`);
+    }
+    const value = argv[index + 1];
+    if (value === undefined || value.startsWith('--')) {
+      failUsage(`${flag} requires a value`);
+    }
+    if (flag === '--select') {
+      selectors.push(value);
+    } else if (flag === '--trigger') {
+      triggers.push(value);
+    } else {
+      const field = flag.slice(2);
+      if (field in values) {
+        failUsage(`${flag} was given more than once`);
+      }
+      values[field] = value;
+    }
+    index += 1;
+  }
+
+  if (!('manifest' in values)) {
+    failUsage('missing required argument for --manifest');
+  }
+
+  return { probe: false, ...values, selectors, triggers };
+}
+
 export function run(argv, streams = process) {
-  if (argv.includes('--probe')) {
+  let parsed;
+  try {
+    parsed = parseArguments(argv);
+  } catch (error) {
+    streams.stderr.write(`${error.code ?? 'usage'}: ${error.message}\n${USAGE}\n`);
+    return 1;
+  }
+
+  if (parsed.probe) {
     streams.stdout.write('doctrine-select: available\n');
     return 0;
   }
+
+  let result;
   try {
-    const manifest = readOption(argv, '--manifest');
-    if (manifest.length !== 1) {
-      throw new DoctrineSelectionError('usage', 'supply exactly one --manifest path');
-    }
-    const type = readOption(argv, '--type');
-    if (type.length > 1) {
-      throw new DoctrineSelectionError('usage', 'supply at most one --type');
-    }
-    const explicit = readOption(argv, '--select');
-    const triggers = readOption(argv, '--trigger');
-    const result = selectDoctrine({
-      artifactType: type[0],
-      explicitSelection: explicit.length ? explicit : undefined,
-      triggers,
-      availableIds: manifestIds(manifest[0]),
+    result = selectDoctrine({
+      artifactType: parsed.type,
+      explicitSelection: parsed.selectors.length ? parsed.selectors : undefined,
+      triggers: parsed.triggers,
+      availableIds: manifestIds(parsed.manifest),
     });
-    streams.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return result.status === 'Selected' ? 0 : 2;
   } catch (error) {
     const code = error instanceof DoctrineSelectionError ? error.code : 'usage';
     streams.stderr.write(`${code}: ${error.message}\n`);
     return 1;
   }
+
+  streams.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  return result.status === 'Selected' ? 0 : 2;
 }
 
 function isDirectInvocation() {

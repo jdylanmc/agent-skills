@@ -71,11 +71,27 @@ node <atoms>/doctrine-select/doctrine-select.mjs \
 ```
 
 Exit `0` is a selection, `2` is a refusal, and `1` is a usage or input failure.
-Check availability with `--probe`.
+Check availability with `--probe`. Any usage failure prints the full flag list.
+
+Argument handling deliberately mirrors `doctrine-evaluate`'s `parseArguments`,
+because the two atoms sit next to each other in one pipeline and a caller uses
+them together. An unknown flag, a repeated single-valued flag, and a flag given
+without a value are each rejected rather than ignored. `--select` and
+`--trigger` repeat; `--manifest` and `--type` do not.
+
+The only intentional divergence is which flags repeat: `doctrine-evaluate`
+repeats `--select` alone, while this atom also repeats `--trigger`, because a
+caller genuinely names several observed triggers.
+
+Silent argument loss would be worse here than a wrong answer. A typo'd override
+such as `--slect testing` would be discarded, the atom would fall back to
+inference, and it would still report `source: inferred` as though that had been
+intended — leaving a surprising roast untraceable to the doctrine that produced
+it, which is the one thing this atom exists to make possible.
 
 | Category | Meaning |
 | --- | --- |
-| `usage` | The command line is malformed. |
+| `usage` | The command line is malformed: an unknown argument, a repeated single-valued flag, a flag without a value, or a missing `--manifest`. |
 | `unsafe_path` | The manifest path was relative, traversed upward, was a symbolic link, or was not a regular file. |
 | `invalid_manifest` | The manifest has no parsable frontmatter, declares no identifier, or repeats one. |
 
@@ -136,4 +152,5 @@ node --test skills/roast/_atoms/doctrine-select/doctrine-select.test.mjs \
 
 The adversarial suite covers defaulting under ambiguity, override smuggling,
 unknown identifiers, trigger-free widening, symbolic-link and traversal
-manifest paths, and the boundary that no doctrine file is ever opened.
+manifest paths, silent argument loss from a typo'd flag, and the boundary that
+no doctrine file is ever opened.

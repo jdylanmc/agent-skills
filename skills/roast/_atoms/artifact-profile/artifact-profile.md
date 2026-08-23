@@ -86,9 +86,9 @@ error: `usage`, `unknown_artifact_type`, `unknown_field`, or `unsafe_path`.
 3. **Every declared type carries every declared field.** The regression suite
    asserts this, so adding a field to one type without the others fails the
    build rather than producing a document with a hole in it.
-4. **Every placeholder used in a shared document is a declared field.** The
-   suite scans the shared documents themselves, so drift is mechanical to
-   detect rather than a review responsibility.
+4. **Every placeholder used in a shared document is a declared field, and every
+   declared field is used by a shared document.** The suite checks both
+   directions, so neither a hole nor an orphan survives review.
 
 ## Boundaries
 

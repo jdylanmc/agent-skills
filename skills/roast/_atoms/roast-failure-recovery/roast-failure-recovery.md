@@ -10,10 +10,10 @@ used-by: ["roast/_molecules/roast-artifact-branch/roast-artifact-branch.md"]
 
 # Failure Reporting and Recovery
 
-Every artifact-branch run returns the Artifact Roast shape defined in
-`agents/artifact-roastmaster.agent.md`, including every failure. Never return a
-raw Artifact Roast Envelope, a bare status token, or an unlabeled partial
-review.
+Every artifact-branch run over one {{artifactNoun}} returns the Artifact Roast
+shape defined in `agents/artifact-roastmaster.agent.md`, including every
+failure. Never return a raw Artifact Roast Envelope, a bare status token, or an
+unlabeled partial review.
 
 This reference is authored once for all three artifact types. Every span that
 genuinely varies by type is a double-brace placeholder resolved by the
