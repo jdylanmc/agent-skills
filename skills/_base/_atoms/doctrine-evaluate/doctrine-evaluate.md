@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["execute"]
 includes: ["_base/_atoms/doctrine-evaluate/doctrine-evaluate.mjs"]
 composes: []
-used-by: []
+used-by: ["roast/_molecules/roast-artifact-branch/roast-artifact-branch.md","roast/_molecules/roast-code-branch/roast-code-branch.md"]
 ---
 
 # Doctrine Evaluate

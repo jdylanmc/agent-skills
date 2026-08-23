@@ -1,0 +1,19 @@
+{
+  "schema-version": 1,
+  "unit": "roast/_atoms/roast-trusted-lenses",
+  "trusted-files": [
+    {
+      "id": "bundled-lenses",
+      "path": "roast-trusted-lenses.md",
+      "source-path": "skills/roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md",
+      "sha256": "d0700c9415d2ee7772b070f69fc4e7eb29a5bc59cc65a49a36f198fc2b87bc14"
+    }
+  ],
+  "notes": [
+    "This manifest declares the trusted bundled lens configuration. 'path' resolves relative to this file. 'source-path' resolves relative to the repository root.",
+    "Verify before loading: confirm the file is a regular file and not a symbolic link, confirm the resolved path stays inside this unit root, compute its SHA-256 digest, and compare it with 'sha256'. A file that fails any check is not loaded.",
+    "If the runtime cannot compute a digest, do not load any trusted source and do not launch the coordinator. Return 'Insufficient review'.",
+    "Repository coach agents are deliberately absent. They change independently of this package, so they carry no expected digest. The coordinator verifies such a file structurally, records the digest it computed as the actual digest for that lens, and uses it for the lens drift check.",
+    "After editing the bundled configuration, regenerate the digest with 'shasum -a 256 skills/roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md' and update 'sha256'. The regression suite fails until you do."
+  ]
+}

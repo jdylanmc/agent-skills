@@ -42,12 +42,19 @@ jobs:
           scripts/validate-skill-graph.test.mjs
           scripts/derive-skill-graph.test.mjs
           scripts/workflow-registration.test.mjs
+          skills/_base/_atoms/artifact-classify/artifact-classify.test.mjs
           skills/_base/_atoms/chronicle-append/chronicle-append.test.mjs
           skills/_base/_atoms/chronicle-replay/chronicle-replay.test.mjs
           skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.test.mjs
           skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.adversarial.test.mjs
           skills/_base/_molecules/chronicler/chronicler.test.mjs
           skills/_base/_molecules/chronicler/chronicler.adversarial.test.mjs
+          skills/_base/_molecules/roast-coordinate-review/roast-coordinate-review.adversarial.test.mjs
+          skills/roast/roast.conformance.test.mjs
+          skills/roast/_atoms/artifact-profile/artifact-profile.test.mjs
+          skills/roast/_atoms/doctrine-select/doctrine-select.test.mjs
+          skills/roast/_atoms/doctrine-select/doctrine-select.adversarial.test.mjs
+          skills/roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-detect/cmux-detect.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-dispatch/cmux-dispatch.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-helper-pane/cmux-helper-pane.test.mjs
