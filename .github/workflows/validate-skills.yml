@@ -42,3 +42,7 @@ jobs:
           scripts/validate-skill-graph.test.mjs
           scripts/derive-skill-graph.test.mjs
           scripts/workflow-registration.test.mjs
+          skills/_base/_atoms/chronicle-append/chronicle-append.test.mjs
+          skills/_base/_atoms/chronicle-replay/chronicle-replay.test.mjs
+          skills/_base/_molecules/chronicler/chronicler.test.mjs
+          skills/_base/_molecules/chronicler/chronicler.adversarial.test.mjs
