@@ -26,18 +26,32 @@ This repository is Dylan's common library of reusable GitHub Copilot skills and 
 
 ## Doctrine
 
-- Doctrine files contain canonical shared software-engineering industry best
-  practices.
+- Doctrine files are the repository's source of truth for how software should
+  be shaped. They state reasoned engineering positions, such as that a unit
+  test asserts behavior rather than implementation.
+- Doctrine is **human-authored**. An agent must not create, edit, reword, or
+  delete a doctrine file, or change a `doctrine/manifest.md` entry, unless the
+  operator explicitly asks for that specific change. Proposing a doctrine
+  change in prose is always allowed; editing the file without being asked is
+  not.
+- Git history is the doctrine changelog. Do not add version fields, changelog
+  files, or per-rule revision metadata.
 - `doctrine/manifest.md` defines canonical doctrine IDs, paths, and integrity
   hashes.
 - Keep doctrine source-neutral.
-- After editing doctrine, regenerate its SHA-256 digest with
+- After a human edits doctrine, regenerate its SHA-256 digest with
   `shasum -a 256 doctrine/<id>.doctrine.md` and update the matching manifest
-  entry.
+  entry. The digest proves a file was not altered in transit. It does not
+  review the change, so re-hashing an edit is not approval of it.
 - Skills and agents may reference doctrine selectively by canonical ID,
   section, and rule label or opening phrase.
-- Doctrine guides decisions but never replaces repository evidence,
-  requirements, or task-specific instructions.
+- Applying doctrine produces **recommendations**, each citing the exact rule it
+  came from. Doctrine informs a decision; it never replaces repository
+  evidence, requirements, or task-specific instructions, and no tool converts a
+  doctrine finding into an automatic pass or block. A human signs off.
+- Doctrine positions are deliberately opinionated and not always decidable by
+  inspection. Report a violation only when the supplied evidence grounds it,
+  and carry a confidence rather than asserting certainty.
 - Resolve overlap explicitly. Do not load multiple doctrine files merely
   because they are available.
 
