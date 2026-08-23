@@ -44,6 +44,8 @@ jobs:
           scripts/workflow-registration.test.mjs
           skills/_base/_atoms/chronicle-append/chronicle-append.test.mjs
           skills/_base/_atoms/chronicle-replay/chronicle-replay.test.mjs
+          skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.test.mjs
+          skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.adversarial.test.mjs
           skills/_base/_molecules/chronicler/chronicler.test.mjs
           skills/_base/_molecules/chronicler/chronicler.adversarial.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-detect/cmux-detect.test.mjs
