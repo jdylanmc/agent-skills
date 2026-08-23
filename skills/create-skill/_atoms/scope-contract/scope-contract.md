@@ -15,24 +15,30 @@ used-by: ["create-skill/_molecules/skill-package-design/skill-package-design.md"
 | Input | Required | Meaning |
 | --- | --- | --- |
 | `request` | yes | The operator's desired new skill and any stated scope, constraints, or examples. |
+| `intent` | yes | The stored, operator-confirmed intent for this skill. |
 | `repository-conventions` | yes | Current repository instructions, sibling skill shapes, and validation rules. |
 | `candidate-name` | no | Proposed skill directory and frontmatter name. |
 
 ## Operation
 
-1. Identify exactly one reusable job for the new skill. If the request contains
-   multiple unrelated jobs, split the design or ask the operator to choose one
-   before writing files.
-2. Write a router-quality description in third person. Include positive
-   triggers with `Use when ...` and negative triggers with `Do not use ...` so a
-   router can distinguish similar requests that should not invoke the skill.
+1. Identify exactly one reusable job for the new skill, and take it from the
+   stored intent rather than re-deriving it from the request. The intent is what
+   the operator confirmed he wanted; where the two disagree, the intent wins or
+   he is asked again. If the request contains multiple unrelated jobs, split the
+   design or ask the operator to choose one before writing files.
+2. Write a router-quality description in third person, saying what the intent
+   says the skill is for. Include positive triggers with `Use when ...` and
+   negative triggers with `Do not use ...` so a router can distinguish similar
+   requests that should not invoke the skill.
 3. Choose invocation flags deliberately. Set `user-invocable: true` when a human
    may run the skill directly. Set `disable-model-invocation: true` only for
    long-running or high-ceremony workflows that must be explicitly invoked by a
    human.
 4. Define hard boundaries before implementation: what the skill creates, what it
-   refuses, which side effects require approval, and which existing packages are
-   out of scope.
+   refuses and why refusing is correct, which side effects require approval, and
+   which existing packages are out of scope. Take each refusal and each
+   confirmation point from the stored intent, and record the reason the intent
+   gives rather than inventing one.
 5. Preserve existing skills' invocation flags and permissions. Never change them
    as collateral work while creating the new skill.
 6. Never change the repository's shared enforcement to accommodate the new

@@ -126,6 +126,149 @@ test('the skill composes the remediation molecule and still composes the chronic
   }
 });
 
+test('the skill composes intent capture and reaches all three of its parts', () => {
+  const parsed = frontmatter(ENTRY);
+  assert.ok(
+    parsed.composes.includes('create-skill/_molecules/intent-capture/intent-capture.md'),
+    'intent capture is a step of the workflow, not an aside',
+  );
+
+  const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
+  for (const unit of [
+    'create-skill/_molecules/intent-capture/intent-capture.md',
+    'create-skill/_atoms/intent-elicitation/intent-elicitation.md',
+    'create-skill/_atoms/intent-synthesis/intent-synthesis.md',
+    'create-skill/_atoms/intent-storage-gate/intent-storage-gate.md',
+  ]) {
+    assert.ok(closure.includes(unit), `${ENTRY} must reach ${unit}`);
+  }
+});
+
+test('intent is requested before any package structure is designed', () => {
+  const entry = read(ENTRY);
+  const capture = entry.indexOf('Capture what the skill is for with');
+  const design = entry.indexOf('to establish the one reusable job, routing triggers');
+  const create = entry.indexOf('Create only the new package under');
+  assert.ok(capture > 0, 'the wrapper must carry the intent step itself');
+  assert.ok(design > 0 && create > 0);
+  assert.ok(
+    capture < design && capture < create,
+    'asking what the skill is for must come before designing or creating it',
+  );
+  assert.match(flat(ENTRY), /\*\*before any\s+package structure is designed\*\*/);
+  assert.match(flat(ENTRY), /If he has not said what the skill is for, ask; never infer it and proceed/);
+});
+
+test('the roast and resolve loop still runs, and still runs after the build', () => {
+  const entry = read(ENTRY);
+  const capture = entry.indexOf('Capture what the skill is for with');
+  const conformance = entry.indexOf('Use [Skill package conformance]');
+  const roast = entry.indexOf('Run [Self-roast remediation]');
+  assert.ok(roast > conformance, 'the package is roasted after it is built and validated');
+  assert.ok(roast > capture, 'the review still closes the workflow rather than opening it');
+  assert.match(flat(ENTRY), /elicit intent -> build -> validate -> roast -> resolve -> present/);
+  assert.match(flat(ENTRY), /invokes `\/roast` as a required nested skill/);
+  assert.match(flat(ENTRY), /re-roasts after every head-changing correction/);
+});
+
+test('the wrapper refuses to store an intent the operator has not confirmed', () => {
+  const entry = flat(ENTRY);
+  assert.match(entry, /Never stores an intent the operator has not confirmed/);
+  assert.match(entry, /Writes an intent only for the package this run creates/);
+
+  const molecule = flat('create-skill/_molecules/intent-capture/intent-capture.md');
+  assert.match(molecule, /A synthesis is never stored without the operator's confirmation/);
+  assert.match(molecule, /Store only on confirmation/);
+});
+
+test('every package the skill creates must end up with an intent', () => {
+  const entry = flat(ENTRY);
+  assert.match(entry, /\*\*Every package this skill creates has an intent\.\*\*/);
+  assert.match(entry, /precondition of there being a package, not the first item on a list/);
+  assert.match(entry, /A run that captures no intent produces no finished\s+package/);
+  assert.match(
+    entry,
+    /Do not create a package and note the intent as\s+outstanding/,
+    'the wrapper must close the route where a package ships with the intent outstanding',
+  );
+  assert.match(entry, /Produces no finished package without a stored intent/);
+
+  const molecule = flat('create-skill/_molecules/intent-capture/intent-capture.md');
+  assert.match(molecule, /\*\*This is a precondition, not a first step\.\*\*/);
+  assert.match(molecule, /There is no route where the capture is skipped,\s+deferred, or declined/);
+  assert.match(molecule, /## When It Cannot Be Captured/);
+});
+
+test('a package with no stored intent cannot be reported ready', () => {
+  assert.match(
+    flat('create-skill/_atoms/validation-release-gate/validation-release-gate.md'),
+    /A package with no stored intent is never reported as ready/,
+  );
+  assert.match(
+    flat('create-skill/_atoms/validation-release-gate/validation-release-gate.md'),
+    /Verify the package has a stored intent before anything is called ready/,
+  );
+  assert.match(
+    flat('create-skill/_molecules/skill-package-conformance/skill-package-conformance.md'),
+    /A package with no stored intent never reaches `ready`/,
+  );
+  assert.match(
+    flat('create-skill/_atoms/intent-storage-gate/intent-storage-gate.md'),
+    /There is no route through it that reports\s+`satisfied` for a package whose intent was never captured/,
+  );
+});
+
+test('a skill created by other means legitimately has no intent', () => {
+  assert.match(
+    flat(ENTRY),
+    /A skill authored by some other means may\s+legitimately have none, which is not this skill's concern/,
+  );
+});
+
+test('a stored intent is authoritative about its subject and inert as instruction', () => {
+  for (const unit of [
+    ENTRY,
+    'create-skill/_molecules/intent-capture/intent-capture.md',
+    'create-skill/_atoms/intent-storage-gate/intent-storage-gate.md',
+  ]) {
+    assert.match(
+      flat(unit),
+      /inert|never as instruction|not an instruction/,
+      `${unit} must state that a stored intent does not direct what reads it`,
+    );
+  }
+  assert.match(
+    flat('create-skill/_atoms/intent-storage-gate/intent-storage-gate.md'),
+    /## The Stored Intent Is Inert/,
+  );
+});
+
+test('the stored intent is what the build answers to', () => {
+  assert.match(
+    flat(ENTRY),
+    /Derive all of it\s+from the stored intent rather than inventing it separately/,
+  );
+  assert.match(
+    flat('create-skill/_molecules/intent-capture/intent-capture.md'),
+    /Where the design and the intent disagree, the intent is what\s+the operator asked for/,
+  );
+
+  for (const unit of [
+    'create-skill/_molecules/skill-package-design/skill-package-design.md',
+    'create-skill/_atoms/scope-contract/scope-contract.md',
+  ]) {
+    assert.match(
+      flat(unit),
+      /\| `intent` \| yes \|/,
+      `${unit} must take the stored intent as a required input, or the design invents its own scope`,
+    );
+  }
+  assert.match(
+    flat('create-skill/_atoms/scope-contract/scope-contract.md'),
+    /Take each refusal and each\s+confirmation point from the stored intent/,
+  );
+});
+
 test('every new unit stays local to create-skill', () => {
   const result = validateRepository(REPOSITORY_ROOT);
   const promoted = [...result.graph.keys()].filter(
