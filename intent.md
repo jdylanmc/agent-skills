@@ -2,21 +2,26 @@
 
 ## What this is
 
-A formalization of the software engineering practice I have used across the
-first decade of my career, working at small businesses and at large technology
-companies alike.
+Back in my day, we wrote the code by hand. Uphill. Both directions.
 
-These are not aspirations or collected industry advice. They are the practices I
-actually follow. They have been stable for years. What is new is not the
-practice - it is writing it down so agents can follow it and assist with it.
+This is that practice, written down. The way I have actually built software over
+a decade of doing it - at small places and large ones, which turn out to differ
+less than either likes to think. Not aspirations, not a reading list, not the
+tasteful opinions I would express at a conference. The things I do on a Tuesday.
+
+None of it is new. Most of it is not even clever. What is new is that I no
+longer have to type all of it myself, which is the part I would like to keep.
 
 ## Why it exists
 
-An agent that does not know how I work will do the work its own way, competently
-and wrongly. Every correction I give it is a rule I already hold but never
-articulated, spent one interaction at a time and forgotten immediately after.
+An agent that does not know how I work will do the work its own way -
+competently, confidently, and wrong. Every correction I give it is a rule I have
+held for years and never once said out loud, spent one interaction at a time and
+forgotten immediately afterwards.
 
-This repository is that articulation, done once and kept.
+I have explained the same preference enough times to notice the pattern. This
+repository is that explanation, given once and kept, so I can stop being the
+documentation.
 
 ## The shape of it
 
