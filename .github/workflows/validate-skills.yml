@@ -1,0 +1,62 @@
+name: Validate skills
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-skills-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate and conform (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate the skill dependency graph
+        run: node scripts/validate-skill-graph.mjs
+
+      - name: Verify derived frontmatter is regenerated and committed
+        run: node scripts/derive-skill-graph.mjs
+
+      - name: Run validator, Chronicle, and conformance tests
+        run: >-
+          node --test
+          scripts/validate-skill-graph.test.mjs
+          scripts/derive-skill-graph.test.mjs
+          scripts/conformance.test.mjs
+          skills/_base/_molecules/chronicler/chronicler.test.mjs
+          skills/_base/_molecules/chronicler/chronicler.adversarial.test.mjs
+          skills/_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.test.mjs
+          skills/_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.adversarial.test.mjs
+          skills/handoff/handoff.test.mjs
+          skills/_base/_molecules/roast-coordinate-review/roast-coordinate-review.adversarial.test.mjs
+          skills/_base/_atoms/artifact-classify/artifact-classify.test.mjs
+          skills/_base/_atoms/chronicle-append/chronicle-append.test.mjs
+          skills/_base/_atoms/chronicle-replay/chronicle-replay.test.mjs
+          skills/_base/_atoms/condition-poll/condition-poll.test.mjs
+          skills/_base/_atoms/placeholder-scan/placeholder-scan.test.mjs
+          skills/_base/_atoms/task-contract-validate/task-contract-validate.test.mjs
+          skills/_base/_atoms/type-consistency-check/type-consistency-check.test.mjs
+          skills/_base/_atoms/evidence-gate/evidence-gate.test.mjs
+          skills/cmux-orchestrate/_atoms/cmux-detect/cmux-detect.test.mjs
+          skills/cmux-orchestrate/_atoms/cmux-invoke/cmux-invoke.test.mjs
+          skills/cmux-orchestrate/_atoms/cmux-helper-pane/cmux-helper-pane.test.mjs
+          skills/cmux-orchestrate/_atoms/cmux-dispatch/cmux-dispatch.test.mjs
+          skills/cmux-orchestrate/_atoms/cmux-signal/cmux-signal.test.mjs

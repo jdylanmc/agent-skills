@@ -1,0 +1,13 @@
+# .user/ holds machine-local agent instructions that are never committed.
+.user/
+
+# Skill Run Logs are machine-local evidence and are never committed.
+.skill-log/
+
+# macOS finder metadata
+.DS_Store
+
+# Test sandboxes hold the scratch temporary roots that repository-local tests
+# point the runtime at instead of the real operating-system temporary
+# directory. They are machine-local and are never committed.
+.test-sandbox/
