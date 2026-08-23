@@ -214,6 +214,39 @@ failure and takes the ordinary route: the coordinate step is retried once with
 the exact defects, and a second failure returns `Status: Unsynthesized`. It is
 not a new failure mode and it is not a gate.
 
+### Which Sections Item 10 Checks
+
+Checked, because their entries are accepted findings: `Accepted Findings`,
+`Findings`, `Must Fix`, `Should Fix`, `Consider`.
+
+Exempt, because their entries are dispositions rather than accepted findings:
+`Rejected, Merged, or Downgraded Findings`, `Rejected, Merged, or Downgraded`,
+`Dismissed Suspicions`, `Open Risks and Evidence Gaps`,
+`Open Risks and Prerequisites`, `Evidence Gaps`, `Doctrine Uncertainties`,
+`Residual Uncertainties`.
+
+**A rejected, merged, or downgraded finding is exempt, deliberately.** It is by
+definition not an accepted finding: its content is why the council declined it.
+Requiring a fix for a problem the council decided is not a problem would
+manufacture advice, which is the opposite of what this requirement is for. Open
+risks are exempt for the matching reason: an open risk with no bounded fix is
+exactly where this contract sends a concern that cannot be resolved yet.
+
+**Item 10 fails closed.** An entry carrying schema fields that sits under a
+heading the checker does not recognise, or under no heading at all, is an
+`Unrecognised findings section` defect. It is never a silent skip. A checker
+that sees nothing and reports success is worse than no checker, because this
+item points at it and a reader will trust the answer. Reporting zero findings
+for a report that visibly contains findings is the one outcome this check must
+never produce.
+
+The recognised set is not maintained by hand against these documents. The
+regression suite derives every findings-bearing heading from the coordinator
+and the bundled roaster directive — a section is findings-bearing when its
+entries carry a `Recommendation` field — and fails when the checker does not
+recognise one. Adding a findings section to either document therefore fails the
+build until the checker knows about it.
+
 Renumber the final item to follow the last preceding item after the profile
 resolves. The list order is fixed; only its numbering depends on whether the
 profile added an extra rule.

@@ -38,8 +38,62 @@ const SECTION = /^##\s+(.+?)\s*$/;
 const FINDING = /^###\s+(.+?)\s*$/;
 const FIELD = /^\s*-\s+([A-Z][A-Za-z ]*?)\s*(?:\(([^)]*)\))?\s*:\s*(.*)$/;
 
-/** Sections that hold accepted findings in a roaster report and a final roast. */
-export const DEFAULT_FINDING_SECTIONS = ['Findings', 'Must Fix', 'Should Fix', 'Consider'];
+/** Sections that hold accepted findings and are therefore checked. */
+export const ACCEPTED_FINDING_SECTIONS = [
+  'Accepted Findings',
+  'Findings',
+  'Must Fix',
+  'Should Fix',
+  'Consider',
+];
+
+/**
+ * Sections that legitimately hold entries carrying no recommendation.
+ *
+ * The decision on rejected and downgraded findings, stated rather than left
+ * implicit: they are **exempt**. A rejected, merged, or downgraded finding is
+ * by definition not an accepted finding. Its content is a disposition — why the
+ * council declined it — and demanding a fix for a problem the council decided
+ * is not a problem would manufacture advice, which is the opposite of what the
+ * requirement is for. The same reasoning covers dismissed suspicions and open
+ * risks: an open risk with no bounded fix is precisely where the contract sends
+ * a concern that cannot be resolved yet.
+ *
+ * This is a structural distinction, not a naming one. Neither emitting document
+ * gives a disposition entry a `Recommendation` field, which is what the drift
+ * test keys on.
+ */
+export const EXEMPT_FINDING_SECTIONS = [
+  'Rejected, Merged, or Downgraded Findings',
+  'Rejected, Merged, or Downgraded',
+  'Dismissed Suspicions',
+  'Open Risks and Evidence Gaps',
+  'Open Risks and Prerequisites',
+  'Evidence Gaps',
+  'Doctrine Uncertainties',
+  'Residual Uncertainties',
+];
+
+/** Retained name for the checked set. */
+export const DEFAULT_FINDING_SECTIONS = ACCEPTED_FINDING_SECTIONS;
+
+/**
+ * Field labels that identify an entry as a finding wherever it sits. An entry
+ * carrying any of these under an unrecognised heading is a finding in the wrong
+ * place, not an unrelated subheading, and the checker fails closed on it.
+ */
+export const FINDING_FIELD_LABELS = [
+  'Priority',
+  'Proposed priority',
+  'Proposed severity',
+  'Confidence',
+  'Location',
+  'Evidence',
+  'Consequence',
+  'Root cause',
+  'Recommendation',
+  'Validation',
+];
 
 /** Fields every accepted finding must carry with content, outside fences. */
 export const REQUIRED_FINDING_FIELDS = ['Recommendation', 'Validation'];
@@ -53,27 +107,34 @@ function isNone(body) {
 }
 
 /**
- * Splits a report into findings, tracking fenced blocks so quoted material is
- * inert. Returns one entry per `###` heading inside a findings section.
+ * Splits a report into entries, tracking fenced blocks so quoted material is
+ * inert.
+ *
+ * Every `###` heading is collected, not only those under a recognised section.
+ * The earlier version tracked only recognised sections, so a report written
+ * under a heading the list did not name produced `findings: 0` and a `Valid`
+ * status — a checker that saw nothing and called it success. Collecting
+ * everything is what makes failing closed possible.
  */
-export function parseFindings(report, sections = DEFAULT_FINDING_SECTIONS) {
+export function parseFindings(report, sections = ACCEPTED_FINDING_SECTIONS) {
   if (typeof report !== 'string') {
     throw new FindingSchemaError('invalid_report', 'report must be a string');
   }
-  const wanted = new Set(sections);
-  const findings = [];
+  const checked = new Set(sections);
+  const exempt = new Set(EXEMPT_FINDING_SECTIONS);
+  const entries = [];
   const sectionBodies = new Map();
 
   let fence = null;
   let section = null;
-  let finding = null;
+  let entry = null;
   let field = null;
 
-  const closeFinding = () => {
-    if (finding) {
-      findings.push(finding);
+  const closeEntry = () => {
+    if (entry) {
+      entries.push(entry);
     }
-    finding = null;
+    entry = null;
     field = null;
   };
 
@@ -95,57 +156,79 @@ export function parseFindings(report, sections = DEFAULT_FINDING_SECTIONS) {
       continue;
     }
 
-    const sectionMatch = SECTION.exec(line);
-    if (sectionMatch) {
-      closeFinding();
-      section = wanted.has(sectionMatch[1]) ? sectionMatch[1] : null;
-      if (section && !sectionBodies.has(section)) {
-        sectionBodies.set(section, []);
-      }
-      continue;
-    }
-    if (!section) {
-      continue;
-    }
-    sectionBodies.get(section).push(line);
-
     const findingMatch = FINDING.exec(line);
     if (findingMatch) {
-      closeFinding();
-      finding = {
+      closeEntry();
+      entry = {
         id: findingMatch[1],
         section,
         line: index + 1,
         fields: new Map(),
         order: [],
       };
+      if (section !== null) {
+        sectionBodies.get(section).push(line);
+      }
       continue;
     }
-    if (!finding) {
+
+    const sectionMatch = SECTION.exec(line);
+    if (sectionMatch) {
+      closeEntry();
+      section = sectionMatch[1];
+      if (!sectionBodies.has(section)) {
+        sectionBodies.set(section, []);
+      }
+      continue;
+    }
+    if (section !== null) {
+      sectionBodies.get(section).push(line);
+    }
+    if (!entry) {
       continue;
     }
 
     const fieldMatch = FIELD.exec(line);
     if (fieldMatch) {
       field = fieldMatch[1].trim();
-      if (!finding.fields.has(field)) {
-        finding.order.push(field);
-        finding.fields.set(field, { value: fieldMatch[3].trim(), line: index + 1 });
+      if (!entry.fields.has(field)) {
+        entry.order.push(field);
+        entry.fields.set(field, { value: fieldMatch[3].trim(), line: index + 1 });
       }
       continue;
     }
     if (field && line.trim() !== '') {
-      const entry = finding.fields.get(field);
-      entry.value = entry.value ? `${entry.value} ${line.trim()}` : line.trim();
+      const stored = entry.fields.get(field);
+      stored.value = stored.value ? `${stored.value} ${line.trim()}` : line.trim();
     }
   }
-  closeFinding();
+  closeEntry();
+
+  const classified = { findings: [], exempt: [], unrecognised: [] };
+  for (const candidate of entries) {
+    if (candidate.section !== null && checked.has(candidate.section)) {
+      classified.findings.push(candidate);
+    } else if (candidate.section !== null && exempt.has(candidate.section)) {
+      classified.exempt.push(candidate);
+    } else if (looksLikeFinding(candidate)) {
+      classified.unrecognised.push(candidate);
+    }
+  }
 
   const emptySections = [...sectionBodies.entries()]
     .filter(([, body]) => isNone(body))
     .map(([name]) => name);
 
-  return { findings, emptySections };
+  return { ...classified, entries, emptySections };
+}
+
+/**
+ * An entry is a finding wherever it sits when it carries any schema field. This
+ * is how a finding under a heading nobody recognised is told apart from an
+ * ordinary subheading in a document that happens to be passed in.
+ */
+export function looksLikeFinding(entry) {
+  return FINDING_FIELD_LABELS.some((label) => entry.fields.has(label));
 }
 
 /**
@@ -168,13 +251,20 @@ export function fieldContent(finding, name) {
  * Returns `Valid` with an empty defect list, or `Invalid` naming each finding
  * and the specific field it is missing. A report with no findings at all is
  * valid: the requirement is per finding, not a demand that findings exist.
+ *
+ * It fails **closed**. A `###` entry that carries schema fields but sits under
+ * a heading this checker does not recognise, or under no heading at all, is an
+ * `Unrecognised findings section` defect rather than a silent skip. Returning
+ * `findings: 0` for a report that visibly contains findings is the one outcome
+ * this unit must never produce, because item 10 of the envelope checklist
+ * points at it and a reviewer will trust the answer.
  */
 export function validateFindingSchema(report, options = {}) {
   const required = options.requiredFields ?? REQUIRED_FINDING_FIELDS;
-  const { findings } = parseFindings(report, options.sections);
+  const parsed = parseFindings(report, options.sections);
   const defects = [];
 
-  for (const finding of findings) {
+  for (const finding of parsed.findings) {
     for (const name of required) {
       const content = fieldContent(finding, name);
       if (content === null) {
@@ -192,10 +282,26 @@ export function validateFindingSchema(report, options = {}) {
     }
   }
 
+  for (const stray of parsed.unrecognised) {
+    defects.push({
+      category: 'Unrecognised findings section',
+      finding: stray.id,
+      section: stray.section,
+      field: null,
+      line: stray.line,
+      message: stray.section === null
+        ? `finding ${stray.id} appears before any heading, so no section governs it`
+        : `finding ${stray.id} sits under the unrecognised heading "${stray.section}", so it was never checked`,
+    });
+  }
+
   return {
     status: defects.length ? 'Invalid' : 'Valid',
-    findings: findings.length,
+    findings: parsed.findings.length,
+    unrecognised: parsed.unrecognised.length,
+    exempt: parsed.exempt.length,
     checked: [...required],
+    sections: [...(options.sections ?? ACCEPTED_FINDING_SECTIONS)],
     defects,
   };
 }

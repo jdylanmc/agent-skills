@@ -240,7 +240,13 @@ test('a roaster report Findings section is checked with the same rule', () => {
 
   const invalid = ['## Findings', '', finding({ Recommendation: null })].join('\n');
   assert.equal(validateFindingSchema(invalid).status, 'Invalid');
-  assert.deepEqual(DEFAULT_FINDING_SECTIONS, ['Findings', 'Must Fix', 'Should Fix', 'Consider']);
+  assert.deepEqual(DEFAULT_FINDING_SECTIONS, [
+    'Accepted Findings',
+    'Findings',
+    'Must Fix',
+    'Should Fix',
+    'Consider',
+  ]);
 });
 
 test('material outside a findings section is never treated as a finding', () => {
