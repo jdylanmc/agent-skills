@@ -77,6 +77,9 @@ test('pull-request scans rerun after title or body edits without target-context 
     workflow,
     /pull_request:\s*\n\s+types: \[opened, synchronize, reopened, edited\]/,
   );
-  assert.match(workflow, /REDACT_SENSITIVE_CONFIG_REQUIRED: 'true'/);
+  assert.match(
+    workflow,
+    /REDACT_SENSITIVE_CONFIG_REQUIRED: \$\{\{ vars\.REDACT_SENSITIVE_CONFIG_REQUIRED \}\}/,
+  );
   assert.doesNotMatch(workflow, /pull_request_target:/);
 });

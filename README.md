@@ -192,15 +192,17 @@ Supply them as a version 1 JSON document through the
 }
 ```
 
-The validation workflow sets `REDACT_SENSITIVE_CONFIG_REQUIRED: 'true'`. A
-same-repository pull request or push with no configuration exits non-zero and
-returns a machine-checkable configuration object with
-`"state": "degraded"` and `"blocking": true`. A fork pull request cannot
-receive Actions secrets, so it remains safe under `pull_request` (never
-`pull_request_target`): it runs the high-precision gate, reports
-`"state": "degraded"`, the static
+To require repository-specific identifiers, add the Actions variable
+`REDACT_SENSITIVE_CONFIG_REQUIRED` with the exact value `true` alongside the
+secret. A same-repository pull request or push then exits non-zero when the
+configuration is absent and returns a machine-checkable configuration object
+with `"state": "degraded"` and `"blocking": true`. Without that explicit
+variable, a repository remains non-blocking degraded until its owner installs
+the private identifier set. A fork pull request cannot receive Actions secrets,
+so it remains safe under `pull_request` (never `pull_request_target`): it runs
+the high-precision gate, reports `"state": "degraded"`, the static
 `"fork-pull-request-identifier-configuration-unavailable"` reason, and
-`"blocking": false`. An active configuration reports
+`"blocking": false` even when the requirement variable is enabled. An active configuration reports
 `"state": "active"` and its identifier count only. Neither state includes
 configured values.
 

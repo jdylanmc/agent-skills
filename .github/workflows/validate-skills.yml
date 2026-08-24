@@ -41,7 +41,7 @@ jobs:
       - name: Reject newly introduced sensitive content
         env:
           REDACT_SENSITIVE_CONFIG_JSON: ${{ secrets.REDACT_SENSITIVE_CONFIG_JSON }}
-          REDACT_SENSITIVE_CONFIG_REQUIRED: 'true'
+          REDACT_SENSITIVE_CONFIG_REQUIRED: ${{ vars.REDACT_SENSITIVE_CONFIG_REQUIRED }}
         run: node scripts/scan-sensitive.mjs
 
       - name: Run validator and conformance tests
