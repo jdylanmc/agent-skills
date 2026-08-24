@@ -4,7 +4,7 @@ description: Run the read-only body of a discovery cycle by reconciling evidence
 level: molecule
 includes: ["discovery/_atoms/evidence-reconcile/evidence-reconcile.md","discovery/_atoms/frontier-ledger/frontier-ledger.md"]
 composes: ["discovery/_atoms/evidence-reconcile/evidence-reconcile.md","discovery/_atoms/frontier-ledger/frontier-ledger.md"]
-used-by: ["discovery/SKILL.md"]
+used-by: ["discovery/_molecules/cycle-controller/cycle-controller.md"]
 allowed-tools: ["read","search"]
 ---
 

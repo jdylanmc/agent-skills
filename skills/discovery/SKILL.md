@@ -1,9 +1,9 @@
 ---
 name: discovery
-description: Run one evidence-preserving discovery loop for an unclear product, engineering, or workflow question until the known facts, open questions, decisions, blockers, and next action are clear. Use when the operator asks to run discovery, start a discovery loop, investigate requirements, clarify an unsettled problem, or maintain discovery state. Do not use to interrogate a single rough idea, map a domain, write a spec, create tickets, implement code, or mutate trackers without explicit approval.
+description: Run a human-aligned, evidence-preserving discovery loop for an unclear product, engineering, or workflow question until the known facts, open questions, decisions, blockers, and next action are clear. Use when the operator asks to run discovery, start a discovery loop, investigate requirements, clarify an unsettled problem, or maintain discovery state. Do not use to interrogate a single rough idea, map a domain, write a spec, create tickets, implement code, or mutate trackers without explicit approval.
 allowed-tools: ["execute","read","search"]
-includes: ["_base/_molecules/chronicler/chronicler.md","discovery/_molecules/discovery-loop/discovery-loop.md","discovery/_atoms/tracker-update-gate/tracker-update-gate.md"]
-composes: ["_base/_molecules/chronicler/chronicler.md","discovery/_molecules/discovery-loop/discovery-loop.md","discovery/_atoms/tracker-update-gate/tracker-update-gate.md"]
+includes: ["_base/_molecules/chronicler/chronicler.md","discovery/_molecules/cycle-controller/cycle-controller.md","discovery/_atoms/tracker-update-gate/tracker-update-gate.md"]
+composes: ["_base/_molecules/chronicler/chronicler.md","discovery/_molecules/cycle-controller/cycle-controller.md","discovery/_atoms/tracker-update-gate/tracker-update-gate.md"]
 disable-model-invocation: false
 user-invocable: true
 requires-skills: []
@@ -11,10 +11,11 @@ requires-skills: []
 
 # Discovery
 
-Run one bounded discovery loop and keep the evidence trail intact.
+Run a bounded discovery loop, align with the human, and keep the evidence trail
+intact.
 
 ```text
-record -> scope -> gather evidence -> reconcile -> update frontier -> optionally approve tracker update
+record -> cycle -> align -> write handoff -> read handoff -> choose next cycle
 ```
 
 Discovery is for unsettled work that needs evidence before it can become a
@@ -26,7 +27,7 @@ and one boundary.
 ## Required References
 
 1. [Chronicler recording molecule](../_base/_molecules/chronicler/chronicler.md)
-2. [Discovery loop](./_molecules/discovery-loop/discovery-loop.md)
+2. [Cycle controller](./_molecules/cycle-controller/cycle-controller.md)
 3. [Tracker update gate](./_atoms/tracker-update-gate/tracker-update-gate.md)
 
 ## Core Workflow
@@ -35,14 +36,17 @@ and one boundary.
    the root. Record the discovery subject, evidence sources, frontier status,
    approved tracker action when any, and final status. Continue when recording
    is unavailable; recording is best effort and weakens no boundary below.
-2. Run [Discovery loop](./_molecules/discovery-loop/discovery-loop.md). It
-   scopes the question, gathers source evidence, reconciles facts and tensions,
-   updates the frontier, and recommends the next action.
+2. Run [Cycle controller](./_molecules/cycle-controller/cycle-controller.md).
+   It runs the read-only discovery cycle, routes to `interrogate` or
+   `domain-mapping` when those jobs own the next question, incorporates the
+   returned answers or map, performs the human alignment check, writes the
+   aligned handoff, reads it back, and chooses the next cycle.
 3. If and only if the operator explicitly approves a tracker update, run
    [Tracker update gate](./_atoms/tracker-update-gate/tracker-update-gate.md).
    The discovery cycle body never mutates tracker state.
-4. Return the discovery packet and next recommended action. Keep source claims,
-   confirmed facts, decisions, assumptions, and unanswered questions separate.
+4. Return the discovery packet, handoff path, read-back status, and next
+   recommended action. Keep source claims, confirmed facts, decisions,
+   assumptions, and unanswered questions separate.
 
 ## Output Contract
 
@@ -56,6 +60,8 @@ Return:
 - open questions, each with owner or next workflow;
 - frontier classification: `ready`, `needs-interrogate`,
   `needs-domain-mapping`, `needs-more-evidence`, `blocked`, or `stop`;
+- alignment status: `aligned`, `corrected`, or `not-aligned`;
+- handoff path and read-back status for every aligned cycle handoff;
 - recommended next action and why;
 - any approved tracker update result, or `no tracker update requested`;
 - any Chronicler log path or recording defect.
@@ -65,6 +71,12 @@ Return:
 - The cycle body is read-only. It reads and searches evidence, records through
   Chronicler, and reports; it does not mutate trackers, files, branches, or
   issues.
+- No handoff is written before the alignment check. The agent must summarize
+  what was found and uncovered, the current discovery state, and the proposed
+  next cycle, then let the human correct it before persistence.
+- Every cycle handoff is read back before it becomes the input to the next
+  cycle. If read-back fails, stop with an incomplete handoff instead of
+  continuing from memory.
 - Tracker mutation is isolated to the tracker update gate and requires explicit
   operator approval for the exact update.
 - Not interrogate. Use `interrogate` when one rough idea needs pointed
