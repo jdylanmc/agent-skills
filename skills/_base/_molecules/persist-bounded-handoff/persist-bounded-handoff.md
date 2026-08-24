@@ -51,7 +51,7 @@ The caller supplies one bounded JSON payload of **confirmed** context.
 | `what_did_not_work` | yes | Approaches that failed, and why. |
 | `next_steps` | yes | What the next agent should do. |
 | `suggested_skills` | no | Exact skill identifiers and the reason for each. Omitted when no skill usefully follows. |
-| `available_skills` | no | The caller's real skill identifiers. When supplied, a suggestion outside the set is refused. |
+| `available_skills` | required when `suggested_skills` is present | The caller's real skill identifiers. A suggestion outside the set, or a non-empty `suggested_skills` with this field absent or empty, is refused. |
 | `title` | no | The document heading. Defaults to `Handoff`. |
 | `schema_version` | no | The payload contract the caller was written against. Must be `1` when present, and is echoed in the normalized payload so a caller can assert what it got. |
 
@@ -189,7 +189,7 @@ left behind.
 | `usage` | yes | The arguments were not understood, or neither or both payload sources were supplied. Fix the invocation. |
 | `malformed_payload` | yes | The payload broke a shape, bound, or constraint: an unknown field, a missing or malformed slug, an over-long section, a control character, an unpaired UTF-16 surrogate, an unterminated fence, a locator carrying prose or ending in `:` or `=`, a suggestion with no reason, or a document that outgrew its bound. The message names the field. |
 | `inlined_artifact_body` | yes | A section body reproduced an artifact instead of referencing it. Replace the block with a locator in `artifacts_and_references`. |
-| `unknown_skill` | yes | A suggestion named a skill outside `available_skills`. Suggest a real skill or omit the section. |
+| `unknown_skill` | yes | A suggestion named a skill outside `available_skills`, or `suggested_skills` was non-empty while `available_skills` was absent or empty. Suggest a real skill, supply the caller's available skills, or omit the section. |
 | `redaction_incomplete` | no | The rendered document still matched a redaction rule after redaction. Redaction is idempotent and complete in one pass, and the one seam a caller could reach - a locator ending in a separator - is refused during validation instead, so this is a defect in this core rather than in the caller's content. Report it with the payload; do not retry. |
 | `temp_unavailable` | no | The runtime reported a temporary directory that does not resolve or is not a directory. An environment fault. |
 | `unsafe_temp_root` | partly | The `handoffs` child exists with a shape this core refuses: a symbolic link, a non-directory, or a directory owned by another user or writable by group or others. See [Recovering from `unsafe_temp_root`](../../_atoms/temp-path-resolve/temp-path-resolve.md#recovering-from-unsafe_temp_root). |

@@ -768,7 +768,17 @@ function normalizeSuggestedSkill(entry, index, availableSkills) {
     );
   }
   const reason = normalizeLine(entry.reason ?? '', `${field}.reason`, MAX_REASON_BYTES);
-  if (availableSkills && !availableSkills.includes(skill)) {
+  // A suggestion can only be checked against the caller's real skill set, so
+  // a non-empty suggested_skills always requires a populated available_skills
+  // to validate against. Absence is refused rather than treated as consent -
+  // an unset guard here would let an invented skill reach the next agent.
+  if (!Array.isArray(availableSkills) || availableSkills.length === 0) {
+    fail(
+      'unknown_skill',
+      `${field}.skill names ${skill}, but available_skills was not supplied so no suggestion can be validated`,
+    );
+  }
+  if (!availableSkills.includes(skill)) {
     fail(
       'unknown_skill',
       `${field}.skill names ${skill}, which is not in the caller's available skills`,

@@ -186,6 +186,56 @@ test('a suggested skill without a reason, or outside the caller\'s skills, never
   })));
 });
 
+test('a non-empty suggested_skills never reaches the document when available_skills is omitted, null, or empty', (t) => {
+  const root = sandbox(t, 'handoff-no-available-skills');
+  const suggestion = { skill: 'shepherd', reason: 'monitor the pull request' };
+
+  // Absence must never be read as consent: each of these carries a real
+  // suggestion with no populated set to check it against.
+  assert.throws(
+    () => normalizePayload(completePayload({ suggested_skills: [suggestion] })),
+    failureOf('unknown_skill'),
+    'an omitted available_skills let an unvalidated suggestion through',
+  );
+  assert.throws(
+    () => normalizePayload(completePayload({
+      suggested_skills: [suggestion],
+      available_skills: null,
+    })),
+    failureOf('unknown_skill'),
+    'an explicit null available_skills let an unvalidated suggestion through',
+  );
+  assert.throws(
+    () => normalizePayload(completePayload({
+      suggested_skills: [suggestion],
+      available_skills: [],
+    })),
+    failureOf('unknown_skill'),
+    'an empty available_skills let an unvalidated suggestion through',
+  );
+
+  // The same three cases must fail before any write, not merely at the
+  // normalization boundary a caller could bypass.
+  for (const overrides of [
+    { suggested_skills: [suggestion] },
+    { suggested_skills: [suggestion], available_skills: null },
+    { suggested_skills: [suggestion], available_skills: [] },
+  ]) {
+    assert.throws(
+      () => persistBoundedHandoff(completePayload(overrides)),
+      failureOf('unknown_skill'),
+    );
+  }
+  assert.ok(!fs.existsSync(path.join(root, 'handoffs')) || fs.readdirSync(path.join(root, 'handoffs')).length === 0);
+
+  // The valid case survives: a populated available_skills containing every
+  // suggestion still renders.
+  assert.doesNotThrow(() => normalizePayload(completePayload({
+    suggested_skills: [suggestion],
+    available_skills: ['shepherd'],
+  })));
+});
+
 test('a title or skill identifier that trips a redaction rule is handled, not left to fail late', (t) => {
   sandbox(t, 'handoff-title');
   const titled = persistBoundedHandoff(completePayload({ title: 'Fix 415 555 1234 rollout' }));

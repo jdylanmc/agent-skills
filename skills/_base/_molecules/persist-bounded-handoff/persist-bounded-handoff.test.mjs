@@ -62,6 +62,7 @@ test('Suggested Skills is omitted when no skill follows and placed before Next S
 
   const withSkills = renderHandoff(normalizePayload(completePayload({
     suggested_skills: [{ skill: 'shepherd', reason: 'The pull request still needs monitoring.' }],
+    available_skills: ['shepherd'],
   })));
   assert.deepEqual(withSkills.headings, HEADING_ORDER);
   assert.ok(withSkills.document.includes('- shepherd - The pull request still needs monitoring.'));

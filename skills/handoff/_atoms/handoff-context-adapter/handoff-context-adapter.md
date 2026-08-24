@@ -70,9 +70,11 @@ boundaries.
    Whenever `suggested_skills` is populated, populate `available_skills` in the
    same payload with the real routable skill identifiers resolved from the
    current repository or runtime. That set is what makes an invented suggestion
-   refusable: `persist-bounded-handoff` rejects a suggestion outside it with
-   `unknown_skill`. Leaving it unset disarms the only deterministic guard
-   against naming a skill the next agent cannot call.
+   refusable: `persist-bounded-handoff` rejects a suggestion outside it, and
+   rejects `suggested_skills` outright when `available_skills` is left absent
+   or empty, both with `unknown_skill`. There is no way to populate
+   `suggested_skills` without also supplying the real skill set it is checked
+   against.
 7. Before calling the persistence molecule, remove sensitive material that the
    shared redaction floor cannot reliably recognize, including customer names,
    internal hostnames, private paths that are not necessary to resume, and any
