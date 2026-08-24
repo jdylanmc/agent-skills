@@ -37,8 +37,9 @@ jobs:
 
       - name: Run validator and conformance tests
         run: >-
-          node --test
+          node scripts/run-registered-tests.mjs
           scripts/doctrine-manifest.test.mjs
+          scripts/run-registered-tests.test.mjs
           scripts/validate-skill-graph.test.mjs
           scripts/derive-skill-graph.test.mjs
           scripts/workflow-registration.test.mjs
