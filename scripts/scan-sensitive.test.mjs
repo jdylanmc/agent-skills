@@ -29,7 +29,7 @@ function identifierConfig() {
 }
 
 test('text findings contain anchors and evidence types but not values', () => {
-  const fixtureLine = ['api', '_key=', 'not-a-real-secret-value'].join('');
+  const fixtureLine = ['api', '_', 'key', '=', 'not-a-real-secret-value'].join('');
   const result = scanText(
     `safe\n${fixtureLine}\n`,
     { source: 'tracked-content', path: 'sample.txt' },
