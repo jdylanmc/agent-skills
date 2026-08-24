@@ -50,6 +50,7 @@ Every replacement is `[REDACTED:<category>]`:
 | `private-key` | A PEM private-key block, header and body and footer. |
 | `credential` | A `Bearer` or `Basic` authorization value, and a cloud access-key identifier. |
 | `token` | A recognizable provider token or a JSON Web Token. |
+| `connection-string` | A credential-bearing database, cache, or message-broker connection URI. |
 | `secret` | The value of an assignment whose key names a secret. |
 | `email` | An electronic mail address. |
 | `phone` | A telephone number written with separators or a country code. |

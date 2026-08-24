@@ -158,11 +158,23 @@ repository ships `skills/handoff/`; install it together with the shared
 
 ## Sensitive-content safeguard
 
-Pull requests and pushes run `node scripts/scan-sensitive.mjs`. The scan checks
-new tracked content and filenames, pull-request title and body, commit messages,
-and configured identifiers in commit-author identities. Findings contain only
-a source anchor, evidence type, and count; the sensitive value is never echoed.
-Binary additions fail closed for explicit human review.
+Pull requests and pushes run `node scripts/scan-sensitive.mjs`. This is a
+repository leak gate, not the handoff redaction floor: it reports only
+high-precision credential, token, private-key, connection-string, email, and
+phone evidence, plus configured identifiers. The handoff floor remains
+intentionally broader and may visibly redact ordinary prose that names a
+secret-shaped assignment. This split lets ordinary source such as
+`const key = value` pass the repository gate without weakening handoff
+redaction.
+
+The gate scans the net current tree change, filenames, pull-request title and
+body, and metadata for commits whose patch is not already represented by the
+base. That remains correct when a stacked base is integrated with either a
+merge commit or a squash merge. Findings contain only a source anchor, evidence
+type, and count; a matching path is replaced by a stable `sha256:<digest>`
+locator, so reports and errors never echo its matched value. Added, copied,
+modified, and renamed binary files fail closed for explicit human review;
+deleted binaries do not.
 
 Employer, product, customer, and internal-system names are deployment-specific.
 Supply them as a version 1 JSON document through the
@@ -179,6 +191,21 @@ Supply them as a version 1 JSON document through the
   ]
 }
 ```
+
+The validation workflow sets `REDACT_SENSITIVE_CONFIG_REQUIRED: 'true'`. A
+same-repository pull request or push with no configuration exits non-zero and
+returns a machine-checkable configuration object with
+`"state": "degraded"` and `"blocking": true`. A fork pull request cannot
+receive Actions secrets, so it remains safe under `pull_request` (never
+`pull_request_target`): it runs the high-precision gate, reports
+`"state": "degraded"`, the static
+`"fork-pull-request-identifier-configuration-unavailable"` reason, and
+`"blocking": false`. An active configuration reports
+`"state": "active"` and its identifier count only. Neither state includes
+configured values.
+
+The workflow registers `opened`, `synchronize`, `reopened`, and `edited`
+pull-request events so a changed title or body is rescanned.
 
 Use `node scripts/scan-sensitive.mjs --all --config <path>` for a full audit of
 the tracked tree. A full audit reports binary files it cannot classify instead

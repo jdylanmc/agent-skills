@@ -78,6 +78,19 @@ test('malformed JSON never appears in its own error', () => {
   );
 });
 
+test('an unreadable configuration path never appears in its own error', () => {
+  const privateFragment = ['Private', 'System'].join(' ');
+
+  assert.throws(
+    () => loadIdentifierConfig({ file: `${privateFragment}.json` }),
+    (error) => (
+      error.code === 'malformed_config'
+      && error.message === 'identifier configuration could not be read'
+      && !error.message.includes(privateFragment)
+    ),
+  );
+});
+
 test('configuration rejects weak or malformed identifiers', () => {
   assert.throws(
     () => loadIdentifierConfig({

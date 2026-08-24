@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
 
 permissions:
@@ -40,6 +41,7 @@ jobs:
       - name: Reject newly introduced sensitive content
         env:
           REDACT_SENSITIVE_CONFIG_JSON: ${{ secrets.REDACT_SENSITIVE_CONFIG_JSON }}
+          REDACT_SENSITIVE_CONFIG_REQUIRED: 'true'
         run: node scripts/scan-sensitive.mjs
 
       - name: Run validator and conformance tests

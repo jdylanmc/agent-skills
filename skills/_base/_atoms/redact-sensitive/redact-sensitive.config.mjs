@@ -58,7 +58,13 @@ function parseConfig(raw, source) {
 
 export function loadIdentifierConfig({ file, json } = {}) {
   if (file) {
-    return parseConfig(fs.readFileSync(file, 'utf8'), file);
+    let raw;
+    try {
+      raw = fs.readFileSync(file, 'utf8');
+    } catch {
+      failConfig('identifier configuration could not be read');
+    }
+    return parseConfig(raw, 'identifier configuration');
   }
   if (json) {
     return parseConfig(json, 'REDACT_SENSITIVE_CONFIG_JSON');

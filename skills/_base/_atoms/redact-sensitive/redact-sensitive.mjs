@@ -11,12 +11,11 @@ import {
   isDirectInvocation,
   parseFlags,
   readTextSource,
-  redactText,
+  redactTextWithConfiguredIdentifiers,
   runEntryPoint,
 } from '../../_molecules/persist-bounded-handoff/persist-bounded-handoff.mjs';
 import {
   loadIdentifierConfig,
-  redactConfiguredIdentifiers,
 } from './redact-sensitive.config.mjs';
 
 const USAGE = 'Usage: redact-sensitive.mjs (--file <path> | --stdin) [--config <path>] [--probe]';
@@ -31,7 +30,6 @@ export function run(argv) {
     USAGE,
   );
   const source = readTextSource(parsed, USAGE, 'text');
-  const floor = redactText(source);
   let configured;
   try {
     configured = loadIdentifierConfig({
@@ -44,15 +42,8 @@ export function run(argv) {
     }
     throw error;
   }
-  const identifiers = redactConfiguredIdentifiers(floor.text, configured.identifiers);
-  const counts = new Map();
-  for (const entry of [...floor.redactions, ...identifiers.redactions]) {
-    counts.set(entry.category, (counts.get(entry.category) ?? 0) + entry.count);
-  }
-  const redactions = [...counts.entries()]
-    .map(([category, count]) => ({ category, count }))
-    .sort((left, right) => left.category.localeCompare(right.category));
-  return `${JSON.stringify({ text: identifiers.text, redactions }, null, 2)}\n`;
+  const result = redactTextWithConfiguredIdentifiers(source, configured.identifiers);
+  return `${JSON.stringify(result, null, 2)}\n`;
 }
 
 if (isDirectInvocation(import.meta.url)) {

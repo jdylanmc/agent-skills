@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +16,14 @@ import {
 
 const MAX_REDACTION_CHUNK_BYTES = 60_000;
 const ZERO_SHA = /^0+$/;
+const HIGH_PRECISION_FLOOR_CATEGORIES = new Set([
+  'private-key',
+  'credential',
+  'token',
+  'connection-string',
+  'email',
+  'phone',
+]);
 
 function toPosix(value) {
   return value.split(path.sep).join('/');
@@ -40,6 +49,32 @@ function lineAt(text, offset, firstLine = 1) {
 
 function finding(anchor, evidenceType, count = 1) {
   return { anchor, evidenceType, count };
+}
+
+/**
+ * The repository gate deliberately accepts only evidence with a precise shape.
+ * The handoff floor remains broader because preserving a handoff safely is
+ * more important than avoiding a visible marker in prose.
+ */
+function highPrecisionRedactions(text) {
+  return redactText(text).redactions
+    .filter((entry) => HIGH_PRECISION_FLOOR_CATEGORIES.has(entry.category));
+}
+
+function safePath(pathValue, identifiers) {
+  const configured = findConfiguredIdentifiers(pathValue, identifiers);
+  const floor = redactText(pathValue);
+  if (configured.length === 0 && floor.redactions.length === 0) {
+    return pathValue;
+  }
+  return `sha256:${createHash('sha256').update(pathValue, 'utf8').digest('hex')}`;
+}
+
+function sanitizeAnchor(anchor, identifiers) {
+  if (typeof anchor.path !== 'string') {
+    return anchor;
+  }
+  return { ...anchor, path: safePath(anchor.path, identifiers) };
 }
 
 function chunksByLine(text, firstLine) {
@@ -72,9 +107,10 @@ function chunksByLine(text, firstLine) {
   return chunks;
 }
 
-export function scanText(text, baseAnchor, identifiers, firstLine = 1) {
+export function scanText(text, baseAnchor, identifiers = [], firstLine = 1) {
   const findings = [];
   const unscanned = [];
+  const anchor = sanitizeAnchor(baseAnchor, identifiers);
 
   const lines = text.split(/(?<=\n)/);
   let nextLine = firstLine;
@@ -83,15 +119,14 @@ export function scanText(text, baseAnchor, identifiers, firstLine = 1) {
     nextLine += (line.match(/\n/g) ?? []).length;
     if (Buffer.byteLength(line, 'utf8') > MAX_REDACTION_CHUNK_BYTES) {
       unscanned.push({
-        anchor: { ...baseAnchor, lineStart: lineNumber, lineEnd: lineNumber },
+        anchor: { ...anchor, lineStart: lineNumber, lineEnd: lineNumber },
         reason: 'line exceeds the bounded redaction input',
       });
       continue;
     }
-    const result = redactText(line);
-    for (const entry of result.redactions.filter(({ category }) => category !== 'private-key')) {
+    for (const entry of highPrecisionRedactions(line).filter(({ category }) => category !== 'private-key')) {
       findings.push(finding(
-        { ...baseAnchor, lineStart: lineNumber, lineEnd: lineNumber },
+        { ...anchor, lineStart: lineNumber, lineEnd: lineNumber },
         entry.category,
         entry.count,
       ));
@@ -102,11 +137,10 @@ export function scanText(text, baseAnchor, identifiers, firstLine = 1) {
     if (chunk.text === null) {
       continue;
     }
-    const result = redactText(chunk.text);
     const lineEnd = lineAt(chunk.text, chunk.text.length, chunk.firstLine);
-    for (const entry of result.redactions.filter(({ category }) => category === 'private-key')) {
+    for (const entry of highPrecisionRedactions(chunk.text).filter(({ category }) => category === 'private-key')) {
       findings.push(finding(
-        { ...baseAnchor, lineStart: chunk.firstLine, lineEnd },
+        { ...anchor, lineStart: chunk.firstLine, lineEnd },
         entry.category,
         entry.count,
       ));
@@ -116,7 +150,7 @@ export function scanText(text, baseAnchor, identifiers, firstLine = 1) {
   for (const match of findConfiguredIdentifiers(text, identifiers)) {
     findings.push(finding(
       {
-        ...baseAnchor,
+        ...anchor,
         lineStart: lineAt(text, match.start, firstLine),
         lineEnd: lineAt(text, match.end, firstLine),
       },
@@ -208,8 +242,10 @@ function changedPaths(repository, range) {
     'diff',
     '--name-only',
     '--diff-filter=ACMR',
+    '--find-renames',
     '-z',
-    `${range.base}...${range.head}`,
+    range.base,
+    range.head,
     '--',
   ])
     .split('\0')
@@ -218,23 +254,26 @@ function changedPaths(repository, range) {
 }
 
 function binaryPaths(repository, range) {
-  return git(repository, [
-    'diff',
-    '--numstat',
-    '--no-renames',
-    '-z',
-    `${range.base}...${range.head}`,
-    '--',
-  ])
-    .split('\0')
-    .filter(Boolean)
-    .flatMap((record) => {
-      const match = /^-\t-\t(.+)$/.exec(record);
-      return match ? [toPosix(match[1])] : [];
-    });
+  return changedPaths(repository, range).filter((file) => {
+    let content;
+    try {
+      content = execFileSync('git', [
+        '-C',
+        repository,
+        'cat-file',
+        '-p',
+        `${range.head}:${file}`,
+      ], {
+        maxBuffer: 64 * 1024 * 1024,
+      });
+    } catch {
+      throw new Error('changed binary content could not be read');
+    }
+    return content.includes(0);
+  });
 }
 
-function scanSource(text, anchor, identifiers, firstLine = 1, configuredOnly = false) {
+function scanSource(text, anchor, identifiers = [], firstLine = 1, configuredOnly = false) {
   if (configuredOnly) {
     return {
       findings: findConfiguredIdentifiers(text, identifiers).map((match) => finding(
@@ -275,7 +314,9 @@ function scanChangedContent(repository, range, identifiers, result) {
     '--unified=0',
     '--no-color',
     '--no-renames',
-    `${range.base}...${range.head}`,
+    '--diff-filter=ACMR',
+    range.base,
+    range.head,
     '--',
   ]);
   for (const hunk of parseAddedHunks(diff)) {
@@ -288,7 +329,7 @@ function scanChangedContent(repository, range, identifiers, result) {
   }
   for (const file of binaryPaths(repository, range)) {
     result.unscanned.push({
-      anchor: { source: 'added-binary', path: file },
+      anchor: sanitizeAnchor({ source: 'added-binary', path: file }, identifiers),
       reason: 'binary content requires an explicit human review',
     });
   }
@@ -306,7 +347,7 @@ function scanTrackedTree(repository, identifiers, result) {
     const content = fs.readFileSync(absolute);
     if (content.includes(0)) {
       result.unscanned.push({
-        anchor: { source: 'tracked-binary', path: file },
+        anchor: sanitizeAnchor({ source: 'tracked-binary', path: file }, identifiers),
         reason: 'binary content requires an explicit human review',
       });
       continue;
@@ -334,15 +375,35 @@ function scanEventMetadata(event, identifiers, result) {
   }
 }
 
-function scanCommitMetadata(repository, range, identifiers, result) {
-  const records = git(repository, [
-    'log',
-    '--format=%H%x1f%an%x1f%ae%x1f%B%x1e',
+function currentChangeCommits(repository, range) {
+  const commits = new Set(git(repository, ['cherry', '-v', range.base, range.head])
+    .split('\n')
+    .filter((line) => line.startsWith('+ '))
+    .map((line) => line.split(/\s+/, 3)[1])
+    .filter(Boolean));
+  // `git cherry` compares patch IDs and intentionally omits merge commits.
+  // A merge message and its trailers are independently publishable metadata,
+  // so any merge reachable only from the current head must still be scanned.
+  for (const sha of git(repository, [
+    'rev-list',
+    '--merges',
     `${range.base}..${range.head}`,
-  ]).split('\x1e').filter((record) => record.trim());
+  ]).split('\n').filter(Boolean)) {
+    commits.add(sha);
+  }
+  return [...commits].sort();
+}
+
+function scanCommitMetadata(repository, range, identifiers, result) {
+  const records = currentChangeCommits(repository, range).map((sha) => git(repository, [
+    'show',
+    '-s',
+    '--format=%H%x1f%an%x1f%ae%x1f%B',
+    sha,
+  ]));
 
   for (const record of records) {
-    const [sha, authorName, authorEmail, ...messageParts] = record.split('\x1f');
+    const [sha, authorName, authorEmail, ...messageParts] = record.trim().split('\x1f');
     const shortSha = sha.trim().slice(0, 12);
     const message = messageParts.join('\x1f');
     const trailerLines = [];
@@ -376,6 +437,32 @@ function scanCommitMetadata(repository, range, identifiers, result) {
   }
 }
 
+export function identifierConfigurationStatus({
+  identifiers = [],
+  event = null,
+  required = false,
+} = {}) {
+  if (identifiers.length > 0) {
+    return {
+      state: 'active',
+      reason: null,
+      required,
+      blocking: false,
+      identifierCount: identifiers.length,
+    };
+  }
+  const fork = event?.pull_request?.head?.repo?.fork === true;
+  return {
+    state: 'degraded',
+    reason: fork
+      ? 'fork-pull-request-identifier-configuration-unavailable'
+      : 'identifier-configuration-missing',
+    required,
+    blocking: required && !fork,
+    identifierCount: 0,
+  };
+}
+
 function parseArguments(argv) {
   const parsed = {
     repository: process.cwd(),
@@ -405,11 +492,20 @@ function parseArguments(argv) {
 
 export function scanRepository({
   repository,
-  identifiers,
+  identifiers = [],
   event = null,
   all = false,
+  requireIdentifiers = false,
 }) {
-  const result = { findings: [], unscanned: [] };
+  const result = {
+    findings: [],
+    unscanned: [],
+    configuration: identifierConfigurationStatus({
+      identifiers,
+      event,
+      required: requireIdentifiers,
+    }),
+  };
   let range = eventRange(event);
 
   if (all) {
@@ -462,27 +558,30 @@ if (isDirectInvocation()) {
       identifiers: config.identifiers,
       event,
       all: args.all,
+      requireIdentifiers: process.env.REDACT_SENSITIVE_CONFIG_REQUIRED === 'true',
     });
     result.configuration = {
-      identifierCount: config.identifiers.length,
+      ...result.configuration,
       source: args.config
         ? 'file'
         : (process.env.REDACT_SENSITIVE_CONFIG_JSON ? 'environment' : 'none'),
     };
-    result.warnings = config.identifiers.length === 0
-      ? ['repository-specific identifier configuration is not present']
+    result.warnings = result.configuration.state === 'degraded'
+      ? [`repository-specific identifier gate is degraded: ${result.configuration.reason}`]
       : [];
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    if (
-      config.identifiers.length === 0
-      && process.env.GITHUB_ACTIONS === 'true'
-    ) {
+    if (result.configuration.blocking) {
       process.stderr.write(
-        '::warning title=Sensitive identifier configuration missing::'
-          + 'Only the deterministic secret and personal-data floor ran.\n',
+        '::error title=Sensitive identifier configuration missing::'
+          + 'A same-repository run requires the private identifier configuration.\n',
+      );
+    } else if (result.configuration.state === 'degraded') {
+      process.stderr.write(
+        '::warning title=Sensitive identifier gate degraded::'
+          + 'Only high-precision credential and personal-data detection ran.\n',
       );
     }
-    if (result.findings.length || result.unscanned.length) {
+    if (result.findings.length || result.unscanned.length || result.configuration.blocking) {
       process.exitCode = 1;
     }
   } catch (error) {

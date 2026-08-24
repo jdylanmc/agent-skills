@@ -69,3 +69,14 @@ test('the workflow lists each test file exactly once', () => {
 
   assert.deepEqual(duplicates, [], `listed more than once: ${duplicates.join(', ')}`);
 });
+
+test('pull-request scans rerun after title or body edits without target-context execution', () => {
+  const workflow = fs.readFileSync(VALIDATE_WORKFLOW, 'utf8');
+
+  assert.match(
+    workflow,
+    /pull_request:\s*\n\s+types: \[opened, synchronize, reopened, edited\]/,
+  );
+  assert.match(workflow, /REDACT_SENSITIVE_CONFIG_REQUIRED: 'true'/);
+  assert.doesNotMatch(workflow, /pull_request_target:/);
+});
