@@ -90,7 +90,7 @@ skill dependencies, each `{"id": "<skill-name>", "source": "local" | "external",
 ```yaml
 ---
 includes: ["_base/common/BASE.md", "example/references/a.md", "example/scripts/run.mjs"]
-requires-skills: [{"id": "handoff", "source": "external", "required": true}]
+requires-skills: [{"id": "handoff", "source": "local", "required": true}]
 ---
 ```
 
@@ -152,8 +152,9 @@ For a repository installation, copy doctrine to `.github/doctrine/` beside
 `.github/skills/`. For a personal installation, copy it to
 `~/.agents/doctrine/` beside `~/.agents/skills/`.
 
-`ship-with-squadron` also requires the separately installed `/handoff` skill.
-This repository does not currently ship that external prerequisite.
+`ship-with-squadron` requires `/handoff` as a local skill dependency. This
+repository ships `skills/handoff/`; install it together with the shared
+`_base/` directory required by its composition graph.
 
 ## Adding Skills
 
