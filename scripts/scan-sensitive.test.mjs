@@ -29,9 +29,9 @@ function identifierConfig() {
 }
 
 test('text findings contain anchors and evidence types but not values', () => {
-  const secretLine = ['api', '_key=', 'not-a-real-secret-value'].join('');
+  const fixtureLine = ['api', '_key=', 'not-a-real-secret-value'].join('');
   const result = scanText(
-    `safe\n${secretLine}\n`,
+    `safe\n${fixtureLine}\n`,
     { source: 'tracked-content', path: 'sample.txt' },
     [],
   );
