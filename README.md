@@ -156,6 +156,34 @@ For a repository installation, copy doctrine to `.github/doctrine/` beside
 repository ships `skills/handoff/`; install it together with the shared
 `_base/` directory required by its composition graph.
 
+## Sensitive-content safeguard
+
+Pull requests and pushes run `node scripts/scan-sensitive.mjs`. The scan checks
+new tracked content and filenames, pull-request title and body, commit messages,
+and configured identifiers in commit-author identities. Findings contain only
+a source anchor, evidence type, and count; the sensitive value is never echoed.
+Binary additions fail closed for explicit human review.
+
+Employer, product, customer, and internal-system names are deployment-specific.
+Supply them as a version 1 JSON document through the
+`REDACT_SENSITIVE_CONFIG_JSON` Actions secret:
+
+```json
+{
+  "version": 1,
+  "identifiers": [
+    {
+      "value": "<repository-specific identifier>",
+      "evidenceType": "internal-system"
+    }
+  ]
+}
+```
+
+Use `node scripts/scan-sensitive.mjs --all --config <path>` for a full audit of
+the tracked tree. A full audit reports binary files it cannot classify instead
+of silently treating them as clean.
+
 ## Adding Skills
 
 1. Add `skills/<skill-name>/SKILL.md`.

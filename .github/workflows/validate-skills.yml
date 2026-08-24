@@ -24,6 +24,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -35,12 +37,18 @@ jobs:
       - name: Verify derived frontmatter is regenerated and committed
         run: node scripts/derive-skill-graph.mjs
 
+      - name: Reject newly introduced sensitive content
+        env:
+          REDACT_SENSITIVE_CONFIG_JSON: ${{ secrets.REDACT_SENSITIVE_CONFIG_JSON }}
+        run: node scripts/scan-sensitive.mjs
+
       - name: Run validator and conformance tests
         run: >-
           node scripts/run-registered-tests.mjs
           scripts/doctrine-manifest.test.mjs
           scripts/run-registered-tests.test.mjs
           scripts/skill-intent.test.mjs
+          scripts/scan-sensitive.test.mjs
           scripts/validate-skill-graph.test.mjs
           scripts/derive-skill-graph.test.mjs
           scripts/workflow-registration.test.mjs
@@ -49,6 +57,7 @@ jobs:
           skills/_base/_atoms/chronicle-replay/chronicle-replay.test.mjs
           skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.test.mjs
           skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.adversarial.test.mjs
+          skills/_base/_atoms/redact-sensitive/redact-sensitive.config.test.mjs
           skills/_base/_molecules/chronicler/chronicler.test.mjs
           skills/_base/_molecules/chronicler/chronicler.adversarial.test.mjs
           skills/_base/_molecules/roast-coordinate-review/roast-coordinate-review.adversarial.test.mjs
