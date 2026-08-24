@@ -40,7 +40,11 @@ for a summary, plan, note, memory, or export.
 4. Use the human handoff context adapter to build a `schema_version: 1` payload
    for `persist-bounded-handoff`. Include required sections even when a section
    has no confirmed information. Keep `Suggested Skills` absent unless an exact
-   available skill is useful next, and then include the skill name and reason.
+   available skill is useful next, and then include the skill name and reason,
+   and populate `available_skills` with the real routable skill identifiers so a
+   suggestion outside that set is refused rather than written. Mark a
+   recommended next move as a judgement rather than stating it as established
+   fact.
 5. Link existing specifications, plans, Architecture Decision Records (ADRs),
    issues, commits, diffs, logs, and generated artifacts in
    `artifacts_and_references`. Do not paste their bodies into the handoff.
@@ -69,7 +73,12 @@ Do not include the full handoff body in the response.
 - No filename, destination, visibility, or placement questions.
 - No workspace handoff file, duplicate export, commit, pull request, issue, or
   external publication.
-- No invented progress, validation result, decision, owner, or next step.
+- No invented progress, validation result, decision, or owner. A next step
+  presented as established fact must be backed by evidence; a recommended move
+  is permitted only when it is labelled as a judgement, so the next agent can
+  disagree with it knowingly.
+- No `Suggested Skills` entry without `available_skills` populated, so an
+  invented skill name is refused rather than handed to the next agent.
 - No copied bodies from existing specifications, plans, ADRs, issues, commits,
   diffs, logs, or generated artifacts.
 - Redaction by the shared core is a floor. Remove sensitive context the core

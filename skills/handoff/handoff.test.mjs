@@ -136,3 +136,44 @@ test('suggested skills section is omitted when no next skill is useful', () => {
   assert.ok(!result.headings.includes('Suggested Skills'));
   assert.doesNotMatch(result.document, /^## Suggested Skills$/m);
 });
+
+test('an invented skill suggestion is refused rather than handed to the next agent', () => {
+  const payload = representativePayload({
+    suggested_skills: [{ skill: 'not-a-real-skill', reason: 'sounds plausible' }],
+    available_skills: ['handoff', 'roast'],
+  });
+
+  assert.throws(
+    () => persist(payload),
+    /unknown_skill/,
+    'a suggestion outside available_skills must be refused',
+  );
+});
+
+test('the guard is armed by the package, not merely available in the core', () => {
+  const adapter = fs.readFileSync(ADAPTER, 'utf8');
+  const skill = fs.readFileSync(SKILL, 'utf8');
+
+  assert.match(adapter, /available_skills/, 'the adapter must instruct that available_skills is populated');
+  assert.match(skill, /available_skills/, 'the wrapper must state the same requirement');
+});
+
+test('a recommended next move is marked as judgement rather than stated as fact', () => {
+  const adapter = fs.readFileSync(ADAPTER, 'utf8');
+
+  assert.match(
+    adapter,
+    /Recommendation:/,
+    'next_steps must require explicit judgement language for a recommended move',
+  );
+});
+
+test('open problems have one named home so a broken session cannot read as finished', () => {
+  const adapter = fs.readFileSync(ADAPTER, 'utf8');
+
+  assert.match(
+    adapter,
+    /problems still open when the session stopped/,
+    'what_did_not_work must carry currently open problems, not only past attempts',
+  );
+});
