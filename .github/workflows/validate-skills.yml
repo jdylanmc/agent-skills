@@ -76,6 +76,7 @@ jobs:
           skills/skill-coach/_atoms/definition-packet/definition-packet.test.mjs
           skills/skill-coach/_atoms/definition-packet/definition-packet.adversarial.test.mjs
           skills/run-ci/_atoms/ci-runner/ci-runner.test.mjs
+          skills/domain-mapping/domain-mapping.conformance.test.mjs
           skills/roast/_molecules/roast-intent/roast-intent.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-detect/cmux-detect.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-dispatch/cmux-dispatch.test.mjs
