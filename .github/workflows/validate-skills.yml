@@ -72,6 +72,7 @@ jobs:
           skills/create-skill/_atoms/roast-round-ledger/roast-round-ledger.drift.test.mjs
           skills/create-skill/_atoms/rubber-duck-brief/rubber-duck-brief.test.mjs
           skills/skill-coach/skill-coach.conformance.test.mjs
+          skills/prompt-coach/prompt-coach.conformance.test.mjs
           skills/skill-coach/_atoms/coach-persona/coach-persona.drift.test.mjs
           skills/skill-coach/_atoms/definition-packet/definition-packet.test.mjs
           skills/skill-coach/_atoms/definition-packet/definition-packet.adversarial.test.mjs
