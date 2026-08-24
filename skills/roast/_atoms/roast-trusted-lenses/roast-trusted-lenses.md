@@ -60,7 +60,7 @@ Resolve each lens document in this order and use the first match:
 
 | Lens | Repository file | Bundled configuration |
 | --- | --- | --- |
-| Skill Coach | `skill-coach.agent.md` | `## Skill Coach Lens` |
+| Skill Reviewer | `skill-reviewer.agent.md` | `## Skill Reviewer Lens` |
 | Prompt Coach | `prompt-coach.agent.md` | `## Prompt Coach Lens` |
 | Simplified Technical English Coach | `ste-coach.agent.md` | `## Simplified Technical English Coach Lens` |
 
@@ -142,9 +142,9 @@ records one model status: `Requested`, `Fallback: <model>`, or
 
 After changing the coordinator's model routing, update this table.
 
-## Skill Coach Lens
+## Skill Reviewer Lens
 
-{{skillCoachScope}}
+{{skillReviewerScope}}
 
 Artifact scope is set by the `roast-contract` atom, which supersedes this
 lens's own artifact-scope and reroute statements. Every safety boundary below

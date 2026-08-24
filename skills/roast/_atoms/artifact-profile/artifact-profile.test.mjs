@@ -135,7 +135,7 @@ test('each type resolves both of its mandatory roasters with their identifiers',
   const expected = {
     agent: ['prompt-coach-roaster', 'agent-contract-roaster'],
     prompt: ['prompt-coach-roaster', 'responsible-ai-roaster'],
-    skill: ['skill-coach-roaster', 'contract-safety-roaster'],
+    skill: ['skill-reviewer-roaster', 'contract-safety-roaster'],
   };
   for (const [type, ids] of Object.entries(expected)) {
     const rendered = renderField(profileFor(type), 'mandatoryRoasters');

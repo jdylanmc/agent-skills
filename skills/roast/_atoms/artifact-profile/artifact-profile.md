@@ -57,7 +57,7 @@ its own units.
 | `evidenceManifestNote`, `envelopeExtraRules` | Type-specific envelope checks. |
 | `staleEvidenceMeaning`, `awaitingArtifactMeaning`, `unsupportedTypeMeaning` | Status meanings. |
 | `staleRecovery`, `awaitingRecovery`, `rerouteGuidance` | Recovery actions. |
-| `skillCoachScope`, `promptCoachScope`, `steCoachScope`, `lensRerouteNote` | Per-lens scope statements. |
+| `skillReviewerScope`, `promptCoachScope`, `steCoachScope`, `lensRerouteNote` | Per-lens scope statements. |
 
 ## Operation
 

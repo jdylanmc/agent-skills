@@ -27,8 +27,8 @@ cannot be traced back to the guidance that produced it.
 This unit is **local to `/roast`**, not shared.
 
 ADR 0001 keeps a unit local until a second consumer exists. `/roast` is the
-only consumer today. `skill-coach` and `agent-whisperer` will plausibly want the
-same selection step, and when one of them actually composes it the unit earns
+only consumer today. `skill-reviewer` and `agent-whisperer` will plausibly want
+the same selection step, and when one of them actually composes it the unit earns
 promotion to `_base`. Moving it there now, on the strength of that expectation,
 is precisely the premature abstraction the rule exists to prevent: the second
 consumer is the evidence, and it does not exist yet.

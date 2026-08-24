@@ -6,7 +6,7 @@ includes: ["_base/_molecules/chronicler/chronicler.md","create-skill/_molecules/
 composes: ["_base/_molecules/chronicler/chronicler.md","create-skill/_molecules/intent-capture/intent-capture.md","create-skill/_molecules/skill-package-design/skill-package-design.md","create-skill/_molecules/skill-package-conformance/skill-package-conformance.md","create-skill/_molecules/self-roast-remediation/self-roast-remediation.md"]
 disable-model-invocation: false
 user-invocable: true
-requires-skills: [{"id": "roast", "source": "local", "required": true}]
+requires-skills: [{"id": "roast", "source": "local", "required": true}, {"id": "skill-coach", "source": "local", "required": false}]
 ---
 
 # Create Skill
@@ -18,7 +18,7 @@ created under the new skill unless a reviewed design names at least two current
 or explicitly approved consumers.
 
 ```text
-elicit intent -> build -> validate -> roast -> resolve -> present
+coach -> elicit intent -> build -> validate -> roast -> resolve -> present
 ```
 
 **Every package this skill creates has an intent.** Capturing it is a
@@ -40,7 +40,25 @@ legitimately have none, which is not this skill's concern.
 1. Start or reuse the Chronicler run context. Record the requested skill name,
    purpose, constraints, and final outcome. Continue when recording is
    unavailable.
-2. Capture what the skill is for with
+2. Coach the idea before anything is captured. Invoke `skill-coach` as an
+   optional nested skill, passing the run context and whatever the operator has
+   said so far. It talks the idea into shape with him and returns one definition
+   packet: what he agreed the interaction and outcome are, the behaviour the
+   conversation explored, his decisions and reasoning, the coach's
+   recommendations with what he accepted or rejected, examples, and everything
+   still unsettled. Carry the packet into step 3 as what he has already said, so
+   he is not made to say it twice.
+
+   **Coaching is best effort.** When the coach is unavailable, returns a
+   degraded result, or returns a packet its own contract refuses, run step 3
+   unaided and report `Coaching: degraded` with the reason. Degraded coaching
+   lowers nothing: the intent requirement, the confirmation, and the storage
+   gate below are unchanged by it.
+
+   The coach writes nothing and confirms nothing on the operator's behalf.
+   Agreement it records is conversational agreement, and it never satisfies the
+   confirmation in step 3.
+3. Capture what the skill is for with
    [Intent capture](./_molecules/intent-capture/intent-capture.md), **before any
    package structure is designed**. Ask the operator, take his answer in
    whatever shape it arrives, synthesize it into plain requirements, have him
@@ -49,37 +67,43 @@ legitimately have none, which is not this skill's concern.
    If it cannot be captured, stop here and report that no package was created
    and what remains unanswered. Do not create a package and note the intent as
    outstanding.
-3. Use [Skill package design](./_molecules/skill-package-design/skill-package-design.md)
+
+   There is exactly one confirmation, and it is this one. It is bound to the
+   exact bytes of the draft shown to him here, whether or not a coaching packet
+   fed the draft.
+4. Use [Skill package design](./_molecules/skill-package-design/skill-package-design.md)
    to establish the one reusable job, routing triggers, refusals, boundaries,
    invocation flags, and the local atom/molecule decomposition. Derive all of it
    from the stored intent rather than inventing it separately.
-4. Create only the new package under `skills/<new-skill>/`. If that package
+5. Create only the new package under `skills/<new-skill>/`. If that package
    already exists, stop rather than overwriting or converting it. Do not edit an
    existing skill as a side effect, do not create units in `skills/_base/`, and
    do not copy or adapt external skill packages.
-5. Use [Skill package conformance](./_molecules/skill-package-conformance/skill-package-conformance.md)
+6. Use [Skill package conformance](./_molecules/skill-package-conformance/skill-package-conformance.md)
    while writing every file so frontmatter, required-reference mirrors,
    generated fields, permission grants, validation commands, test registration,
    and self-review stay aligned with the repository gates. It refuses to report
    a package ready while the intent requirement is unmet.
-6. Run [Self-roast remediation](./_molecules/self-roast-remediation/self-roast-remediation.md)
+7. Run [Self-roast remediation](./_molecules/self-roast-remediation/self-roast-remediation.md)
    on the validated package. It invokes `/roast` as a required nested skill,
    resolves every `Must fix` finding, has every `Should fix` and `Consider`
    finding judged by a fresh-context rubber duck rather than auto-applied,
    re-roasts after every head-changing correction, and stops for operator
    reconfirmation every three rounds. The package arrives already reviewed
    instead of carrying a reminder to review it.
-7. Report the created package, the stored intent, the chosen decomposition
-   seams, validation output including `cancelled`, the full remediation account
-   — what was found, what was fixed, what was declined with the duck's
-   reasoning, and what remains unresolved with its ways forward — and any
-   requirement that could not be satisfied.
+8. Report the created package, the stored intent, the coaching status, the
+   chosen decomposition seams, validation output including `cancelled`, the
+   full remediation account — what was found, what was fixed, what was declined
+   with the duck's reasoning, and what remains unresolved with its ways forward
+   — and any requirement that could not be satisfied.
 
 ## Output Contract
 
 Return:
 
 - the package path and the created local units;
+- `Coaching: coached` or `Coaching: degraded` with the reason, and the coach's
+  unsettled questions when there are any;
 - the stored intent, and any question about it the operator left unsettled;
 - when no intent could be captured: that no package was created, what was asked,
   and what remains unanswered;
@@ -95,6 +119,12 @@ Return:
 - Creates new skill packages only.
 - Asks for the new skill's intent before designing its structure, and never
   infers it in order to keep moving.
+- Treats coaching as best effort and its absence as visible degradation. A
+  degraded coach never lowers the intent requirement, softens the confirmation,
+  or excuses a missing intent.
+- Never lets the coach write a file or stand in for the operator's
+  confirmation. The storage gate binds a confirmation to the exact bytes it
+  presented, and a coaching packet is not one.
 - Produces no finished package without a stored intent. If intent cannot be
   captured, the run stops and reports why rather than shipping a package with
   the intent noted as outstanding.
@@ -115,6 +145,8 @@ Return:
   to silence a roast finding. A package that cannot satisfy them is the thing to
   fix.
 - Does not change `/roast`, including its `disable-model-invocation` flag.
+- Does not change `skill-coach`, including its invocation flags or its grant. A
+  coach that could be edited by the skill it advises is not a second opinion.
 - Treats roast severity as a category. Roasting its own output automates the
   review, never the approval; a human still signs off.
 - Does not let the rubber duck edit the package. It advises, and its verdict is

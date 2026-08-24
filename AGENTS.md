@@ -90,11 +90,13 @@ This repository is Dylan's common library of reusable GitHub Copilot skills and 
 
 ## Review
 
-Use `agents/skill-coach.agent.md` to review new or revised skill packages for discoverability, scope, composition, permissions, workflow clarity, determinism, safety, validation, and maintainability.
+Use `agents/skill-coach.agent.md` **before** a skill exists, to talk a rough idea into a definition somebody can build from. It is the persona the `skill-coach` skill adopts; it coaches, and it never builds, reviews, or approves.
+
+Use `agents/skill-reviewer.agent.md` **after** a package exists, to review new or revised skill packages for discoverability, scope, composition, permissions, workflow clarity, determinism, safety, validation, and maintainability.
 
 Use `agents/prompt-coach.agent.md` to review individual prompts for unclear goals, missing context, weak output contracts, constraints, source requirements, safety concerns, and unnecessary complexity.
 
-Use `agents/ste-coach.agent.md` after Skill Coach when a skill can produce human-facing technical documentation. It checks that the skill workflow explicitly defines audience, controlled terminology, sentence and procedure constraints, acronym handling, warning order, ambiguity checks, and a content-quality gate.
+Use `agents/ste-coach.agent.md` after Skill Reviewer when a skill can produce human-facing technical documentation. It checks that the skill workflow explicitly defines audience, controlled terminology, sentence and procedure constraints, acronym handling, warning order, ambiguity checks, and a content-quality gate.
 
 When importing material from elsewhere, adapt it into this repository's conventions and preserve any required license or attribution.
 

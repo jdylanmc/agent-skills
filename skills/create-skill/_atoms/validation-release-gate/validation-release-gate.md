@@ -1,6 +1,6 @@
 ---
 name: validation-release-gate
-description: Verify a new skill package with the repository validator, deriver, explicit CI test list, diff hygiene, and Skill Coach review before shipping.
+description: Verify a new skill package with the repository validator, deriver, explicit CI test list, diff hygiene, and Skill Reviewer review before shipping.
 level: atom
 allowed-tools: ["read","search","edit","execute","task"]
 includes: []
@@ -17,7 +17,7 @@ used-by: ["create-skill/_molecules/skill-package-conformance/skill-package-confo
 | `package-path` | yes | The new `skills/<skill>/` package path. |
 | `changed-files` | yes | The complete diff for the package and any CI registration change. |
 | `test-files` | no | Any new or changed `*.test.mjs` files. |
-| `review-agent` | no | `agents/skill-coach.agent.md` when available for package review. |
+| `review-agent` | no | `agents/skill-reviewer.agent.md` when available for package review. |
 
 ## Operation
 
@@ -53,7 +53,7 @@ used-by: ["create-skill/_molecules/skill-package-conformance/skill-package-confo
 7. If the combined test run reports one intermittent failure, rerun once before
    assigning blame. Report both outputs honestly. Any persistent failure or any
    `cancelled` test is blocking.
-8. Review the package against `agents/skill-coach.agent.md`. Fix every finding
+8. Review the package against `agents/skill-reviewer.agent.md`. Fix every finding
    that shows the package fails repository conventions, its own scope, or its
    safety boundaries. Record non-blocking improvements separately.
 9. Before shipping, verify no signature footer was added and no external skill
@@ -67,7 +67,7 @@ used-by: ["create-skill/_molecules/skill-package-conformance/skill-package-confo
 | `validation_output` | Verbatim summaries from each command, including `cancelled`. |
 | `derived_updates` | Files changed by the deriver. |
 | `ci_registration` | Whether every new test is listed in the workflow. |
-| `skill_coach_result` | Blocking findings, improvements, and what was fixed. |
+| `skill_reviewer_result` | Blocking findings, improvements, and what was fixed. |
 | `ship_readiness` | `ready`, `blocked`, or `degraded`, with reason. |
 
 ## Guarantees
@@ -76,7 +76,7 @@ used-by: ["create-skill/_molecules/skill-package-conformance/skill-package-confo
 - Local validation matches the Continuous Integration (CI) test list.
 - Generated graph fields are current after derivation.
 - Test cancellations cannot be hidden by a zero-failure count.
-- Skill Coach review happens before the package is called ready.
+- Skill Reviewer review happens before the package is called ready.
 
 ## Boundaries
 
