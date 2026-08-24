@@ -106,7 +106,7 @@ test('artifact references are retained, with and without a note', () => {
 
 test('redaction replaces each category with a visible marker and is idempotent', () => {
   const cases = [
-    [['postgres', '://user:password@database.example/app'].join(''), 'connection-string'],
+    [['postgres', '://user:password', '@database.example/app'].join(''), 'connection-string'],
     ['-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIB\n-----END RSA PRIVATE KEY-----', 'private-key'],
     ['Authorization: Bearer abcdefghijklmnop', 'credential'],
     ['token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345', 'token'],
