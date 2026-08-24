@@ -9,6 +9,7 @@ agents/
   artifact-roastmaster.agent.md
   prompt-coach.agent.md
   skill-coach.agent.md
+  skill-reviewer.agent.md
   ste-coach.agent.md
 doctrine/
   <id>.doctrine.md
@@ -115,7 +116,8 @@ closure at a time. Run `node scripts/validate-skill-graph.mjs` to check every
 opted-in file.
 
 Agents are standalone `.agent.md` files. Prompt Coach reviews single-prompt
-quality; Skill Coach reviews skill package and workflow quality; Simplified
+quality; Skill Coach shapes a skill idea before the package exists; Skill
+Reviewer reviews skill package and workflow quality once it does; Simplified
 Technical English Coach reviews documentation-production guardrails. Artifact
 Roastmaster is a shared non-user-invocable coordinator that roast skills load
 as a document rather than invoke directly.
@@ -158,7 +160,7 @@ This repository does not currently ship that external prerequisite.
 1. Add `skills/<skill-name>/SKILL.md`.
 2. Split substantial instructions into focused files under `references/`.
 3. Keep the entry point concise and link every required reference.
-4. Run Skill Coach against the complete package; use Prompt Coach for any embedded prompt wording.
+4. Run Skill Reviewer against the complete package; use Prompt Coach for any embedded prompt wording.
 5. Preserve applicable licenses and attribution when adapting material from another source.
 6. Run `node scripts/validate-skill-graph.mjs` and `node --test scripts/validate-skill-graph.test.mjs`.
 

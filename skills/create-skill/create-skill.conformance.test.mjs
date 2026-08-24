@@ -14,6 +14,11 @@
  * 3. **The review is a step, not a reminder.** The old step 5 directed the
  *    operator to a review agent. Review that must be remembered is review that
  *    gets skipped, so the wrapper must carry the invocation itself.
+ *
+ * The coaching step added alongside these is pinned in
+ * `skills/skill-coach/skill-coach.conformance.test.mjs`, which owns that
+ * package. What this suite still owns is the direction of the dependency: the
+ * roast stays required, and the coach may only ever be optional.
  */
 
 import assert from 'node:assert/strict';
@@ -78,7 +83,14 @@ test('nothing the skill composes needs a tool outside the pinned grant', () => {
 
 test('the roast package is reached as a required nested skill and is otherwise untouched', () => {
   const parsed = frontmatter(ENTRY);
-  assert.deepEqual(parsed.requiresSkills, [{ id: 'roast', source: 'local', required: true }]);
+  assert.deepEqual(parsed.requiresSkills, [
+    { id: 'roast', source: 'local', required: true },
+    { id: 'skill-coach', source: 'local', required: false },
+  ]);
+  const roastEdge = parsed.requiresSkills.find((edge) => edge.id === 'roast');
+  const coachEdge = parsed.requiresSkills.find((edge) => edge.id === 'skill-coach');
+  assert.equal(roastEdge.required, true, 'adding a coach must not make the review optional');
+  assert.equal(coachEdge.required, false, 'a required coach would fail runs that used to work');
 
   const roast = frontmatter(ROAST_ENTRY);
   assert.equal(roast.disableModelInvocation, true, '/roast stays human-invoked');
@@ -101,7 +113,7 @@ test('the wrapper invokes the review instead of directing the operator to rememb
   assert.match(entry, /invokes `\/roast` as a required nested skill/);
   assert.doesNotMatch(
     entry,
-    /Direct the operator to `agents\/skill-coach\.agent\.md` for review/,
+    /Direct the operator to `agents\/skill-reviewer\.agent\.md` for review/,
     'the reminder that made review skippable must be gone',
   );
 });
@@ -166,7 +178,7 @@ test('the roast and resolve loop still runs, and still runs after the build', ()
   const roast = entry.indexOf('Run [Self-roast remediation]');
   assert.ok(roast > conformance, 'the package is roasted after it is built and validated');
   assert.ok(roast > capture, 'the review still closes the workflow rather than opening it');
-  assert.match(flat(ENTRY), /elicit intent -> build -> validate -> roast -> resolve -> present/);
+  assert.match(flat(ENTRY), /coach -> elicit intent -> build -> validate -> roast -> resolve -> present/);
   assert.match(flat(ENTRY), /invokes `\/roast` as a required nested skill/);
   assert.match(flat(ENTRY), /re-roasts after every head-changing correction/);
 });

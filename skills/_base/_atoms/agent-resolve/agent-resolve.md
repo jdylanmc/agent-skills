@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["read", "search", "execute"]
 includes: []
 composes: []
-used-by: ["roast/_molecules/roast-artifact-branch/roast-artifact-branch.md"]
+used-by: ["roast/_molecules/roast-artifact-branch/roast-artifact-branch.md","skill-coach/_molecules/coaching-session/coaching-session.md"]
 ---
 
 # Agent Resolve

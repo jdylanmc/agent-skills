@@ -56,7 +56,7 @@ export const PROFILE_FIELDS = [
   'staleRecovery',
   'awaitingRecovery',
   'rerouteGuidance',
-  'skillCoachScope',
+  'skillReviewerScope',
   'promptCoachScope',
   'steCoachScope',
   'lensRerouteNote',
@@ -128,7 +128,7 @@ const PROFILES = {
       '**Security-boundary roaster** — the agent can mutate systems, access\n   credentials, process untrusted input, invoke external services, or delegate\n   privileged work. An explicit request for exploit development or a security\n   audit routes to the dedicated security-review workflow instead.',
       '**Data-contract roaster** — state, persistence, retries, schemas, lineage,\n   or distributed behavior are central.',
       '**Domain-model roaster** — domain vocabulary, invariants, lifecycle, or\n   ownership are central.',
-      '**Skill Coach roaster** — the agent orchestrates a reusable multi-phase\n   workflow that behaves like a skill.',
+      '**Skill Reviewer roaster** — the agent orchestrates a reusable multi-phase\n   workflow that behaves like a skill.',
       '**Simplified Technical English Coach roaster** — the agent produces\n   human-facing technical documentation.',
     ],
     intentSource: [
@@ -173,7 +173,7 @@ const PROFILES = {
     ].join('\n'),
     rerouteGuidance:
       'a skill package or a single prompt to the artifact branch under its own type,\n  and source code or a diff to the code branch',
-    skillCoachScope: [
+    skillReviewerScope: [
       'Reviews a reusable multi-phase workflow and its package structure. For this',
       'artifact type it applies to a reviewed agent that orchestrates such a workflow.',
     ].join('\n'),
@@ -188,7 +188,7 @@ const PROFILES = {
     ].join('\n'),
     lensRerouteNote: [
       "Applying the lens to an agent definition is correct here, and the lens's own",
-      'advice to hand agent workflows to Skill Coach is never reported as a routing',
+      'advice to hand agent workflows to Skill Reviewer is never reported as a routing',
       'defect.',
     ].join('\n'),
   },
@@ -289,7 +289,7 @@ const PROFILES = {
       '**Security-boundary roaster** — the prompt handles authentication, secrets,\n   untrusted input, security testing, or privileged actions. An explicit\n   request for exploit development or a security audit routes to the dedicated\n   security-review workflow instead.',
       '**Data-contract roaster** — the requested output depends on lineage,\n   schemas, consistency, metrics, or temporal data.',
       '**Domain-model roaster** — exact domain language or invariants are central.',
-      '**Skill Coach roaster** — the prompt actually defines a reusable multi-step\n   skill or agent workflow and should be rerouted.',
+      '**Skill Reviewer roaster** — the prompt actually defines a reusable multi-step\n   skill or agent workflow and should be rerouted.',
       '**Simplified Technical English Coach roaster** — the prompt produces\n   technical documentation for human readers.',
     ],
     intentSource: [
@@ -335,7 +335,7 @@ const PROFILES = {
     ].join('\n'),
     rerouteGuidance:
       'a skill package or an agent definition to the artifact branch under its own\n  type, and source code or a diff to the code branch',
-    skillCoachScope: [
+    skillReviewerScope: [
       'Reviews a reusable multi-phase workflow and its package structure. For this',
       'artifact type it applies when the reviewed prompt actually defines such a',
       'workflow and should be rerouted.',
@@ -365,9 +365,9 @@ const PROFILES = {
     supplementalSections: [],
     mandatoryRoasters: [
       {
-        title: 'Skill Coach roaster',
-        id: 'skill-coach-roaster',
-        lens: 'Uses the Skill Coach lens document.',
+        title: 'Skill Reviewer roaster',
+        id: 'skill-reviewer-roaster',
+        lens: 'Uses the Skill Reviewer lens document.',
         dimensions: [
           'discoverability and triggering',
           'scope and composability',
@@ -459,7 +459,7 @@ const PROFILES = {
     ].join('\n'),
     rerouteGuidance:
       'a single agent file or a single prompt to the artifact branch under its own\n  type, and source code or a diff to the code branch',
-    skillCoachScope: 'Reviews the whole skill package and its workflow, never a single prompt.',
+    skillReviewerScope: 'Reviews the whole skill package and its workflow, never a single prompt.',
     promptCoachScope: [
       'Reviews the instruction text of one artifact. For this artifact type that is the',
       'embedded prompts, agent packets, and exact output contracts inside the reviewed',

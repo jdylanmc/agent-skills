@@ -33,7 +33,7 @@ allowed-tools: ["edit","execute","read","search","task"]
    [Validation and release gate](../../_atoms/validation-release-gate/validation-release-gate.md)
    after writing files and after every conformance fix.
 3. Treat a missing stored intent, derived-field drift, missing test
-   registration, stale tool grants, hidden cancellations, and Skill Coach
+   registration, stale tool grants, hidden cancellations, and Skill Reviewer
    convention failures as blockers.
 
 ## Output
@@ -50,7 +50,7 @@ allowed-tools: ["edit","execute","read","search","task"]
 - A package with no stored intent never reaches `ready`.
 - Continuous Integration (CI) runs the same explicitly listed test set used
   locally.
-- The final package has been reviewed against Skill Coach rules.
+- The final package has been reviewed against Skill Reviewer rules.
 
 ## Boundaries
 

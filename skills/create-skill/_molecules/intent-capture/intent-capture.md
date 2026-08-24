@@ -41,6 +41,27 @@ it makes are the ones that get an intent.
 | `request` | yes | The operator's request for a new skill, however it arrived. |
 | `skill-name` | yes | The package the intent belongs to. |
 | `workspace` | yes | Absolute paths for the elicitation record and the gate state. |
+| `coach-packet` | no | The definition packet a coaching session returned, when one is available. |
+
+## When a Coaching Packet Arrives
+
+A coaching session is a conversation with the operator, so its packet is *what
+he already said*, not a second source. Fold it into the transcript and assess
+coverage against it exactly as though he had said all of it here, quoting the
+same words. Making him repeat himself is how the next answer gets shorter.
+
+Read only what the packet attributes to him as his. His confirmed definition,
+his decisions, and his reasoning are evidence. A coach recommendation he
+rejected is not evidence of what he wants, and an unsettled question the coach
+carried forward is a gap, not an answer.
+
+A packet changes what is asked. It changes nothing about what is confirmed:
+the draft below is still presented in full and still confirmed by him against
+the exact bytes stored. The coach holds no confirmation and cannot supply one.
+
+When no packet arrives, or one arrives degraded or refused, run the elicitation
+below unaided and report the coaching as degraded. Coaching makes this cheaper;
+it was never what made it possible.
 
 ## Operation
 
@@ -48,7 +69,8 @@ it makes are the ones that get an intent.
    [Intent elicitation](../../_atoms/intent-elicitation/intent-elicitation.md).
    Show the opening ask verbatim and take the answer as it arrives. If the
    operator has already described the skill, treat what he said as the
-   transcript and do not make him say it again.
+   transcript and do not make him say it again. A coaching packet is one such
+   description.
 2. Assess coverage against his own words and ask a targeted follow-up only where
    something a regeneration needs is genuinely missing. Fold each answer into
    the transcript and reassess until the record is complete.
@@ -106,6 +128,8 @@ a regeneration would trust it.
 - Unstructured input is accepted; no template is demanded up front.
 - A synthesis is never stored without the operator's confirmation of those exact
   words.
+- A coaching packet supplies the operator's words, never his confirmation. It
+  can shorten the asking and can never shorten the gate.
 - A stored intent is plain requirements, with no frontmatter, no schema, and no
   structural implementation detail.
 - The build that follows is answerable to the stored intent.
@@ -118,6 +142,8 @@ a regeneration would trust it.
   for a skill this run did not create is a different job and is out of scope.
 - It never infers intent from the request and proceeds. An unanswered question
   is carried forward as unanswered.
+- It never treats a coach's recommendation, a rejected alternative, or an
+  unsettled question as something the operator said.
 - It does not design the package, choose a decomposition, select tools, author
   package files, or run validation.
 - It never overwrites an existing intent.

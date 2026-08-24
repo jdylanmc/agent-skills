@@ -24,7 +24,7 @@ atom deliberately gives it nothing that resembles authority.
 ## Placement
 
 This unit is shared rather than local because more than two consumers need the
-same evaluation: the roast group, `skill-coach`, `prompt-coach`, and
+same evaluation: the roast group, `skill-reviewer`, `prompt-coach`, and
 `create-skill`. Placement in `_base` is earned by those named consumers, not
 taken as an exception.
 

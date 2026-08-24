@@ -12,7 +12,7 @@ function reflowed(value) {
 }
 
 test('classifies an agent definition from path and frontmatter evidence', () => {
-  const result = classifyArtifact({ path: 'agents/skill-coach.agent.md', repositoryRoot: ROOT });
+  const result = classifyArtifact({ path: 'agents/skill-reviewer.agent.md', repositoryRoot: ROOT });
 
   assert.equal(result.status, 'Classified');
   assert.equal(result.type, 'agent');
