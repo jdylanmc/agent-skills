@@ -86,3 +86,6 @@ jobs:
           skills/cmux-orchestrate/_atoms/cmux-helper-pane/cmux-helper-pane.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-invoke/cmux-invoke.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-signal/cmux-signal.test.mjs
+          skills/_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.test.mjs
+          skills/_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.adversarial.test.mjs
+          skills/handoff/handoff.test.mjs
