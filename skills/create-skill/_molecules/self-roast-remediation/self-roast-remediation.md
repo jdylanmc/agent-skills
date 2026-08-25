@@ -41,7 +41,8 @@ roast the head -> route by priority -> resolve or duck -> re-roast the new head
    [Self-roast invocation](../../_atoms/self-roast-invocation/self-roast-invocation.md)
    on the current head and record the findings against that head. Stop and
    report when `/roast` refuses or returns an unsynthesized result; a review
-   that did not happen is reported as one that did not happen.
+   that did not happen is reported as one that did not happen, and the caller
+   must not report the package complete.
 
 3. Resolve every `Must fix` finding. There is no route that discusses one away:
    the ledger refuses a duck verdict, a decline, and a deferral on a `Must fix`
@@ -71,7 +72,10 @@ roast the head -> route by priority -> resolve or duck -> re-roast the new head
 
 7. Report the full account from the ledger: what was found, what was fixed, what
    was declined and why the duck declined it, what awaits a human, and what
-   remains unresolved with its ways forward.
+   remains unresolved with its ways forward. A `clean` result means every
+   finding from the current-head roast has an address: fixed, duck-declined,
+   human-deferred, or otherwise recorded as unresolved under a non-complete
+   status.
 
 ## Output
 
@@ -87,6 +91,9 @@ roast the head -> route by priority -> resolve or duck -> re-roast the new head
 ## Guarantees
 
 - The package is roasted before it is presented.
+- A missing, refused, unsynthesized, or stale roast never produces a
+  `complete` result.
+- A roast with unaddressed feedback never produces a `complete` result.
 - A `Must fix` finding is resolved and is never rubber-ducked away.
 - A `Should fix` or `Consider` finding is never applied or dismissed without a
   fresh-context verdict and its reasoning.
