@@ -119,3 +119,4 @@ jobs:
           skills/qa-design/_atoms/gherkin-design/gherkin-design.test.mjs
           skills/qa-design/_atoms/traceability-map/traceability-map.test.mjs
           skills/qa-design/_atoms/execution-constraints/execution-constraints.test.mjs
+          skills/qa-design/_molecules/qa-contract/qa-contract.test.mjs

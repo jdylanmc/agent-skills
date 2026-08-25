@@ -10,6 +10,11 @@ import { fileURLToPath } from 'node:url';
  * is linked to at least one planned proof, and whether every planned proof is
  * linked to a requirement. Whether the linked proof exists, runs, or passes is
  * not decidable from a map, so every report carries `proof.linkageOnly`.
+ *
+ * Coverage is deliberately three-valued. A requirement is rarely all proven or
+ * all unproven; the ordinary case is a rule whose success path is covered and
+ * whose recovery path is not. Forcing that into a binary either loses the
+ * residual gap or throws away the coverage that exists.
  */
 
 export class TraceabilityError extends Error {
@@ -26,6 +31,36 @@ export const EVIDENCE_KINDS = [
   'gherkin-scenario',
   'system-procedure',
 ];
+
+/** The aspect naming a gap that covers the whole requirement. */
+export const WHOLE_REQUIREMENT = 'whole-requirement';
+
+/**
+ * The preferred vocabulary for a scoped gap. A gap named after the example
+ * class it leaves unproven says which behavior is exposed; a gap named
+ * "performance stuff" says only that somebody stopped.
+ */
+export const EXAMPLE_CLASSES = [
+  'boundary',
+  'failure',
+  'permission',
+  'recovery',
+  'state-transition',
+  'success',
+];
+
+/**
+ * Uniform across every helper in this package: 0 when the input was accepted
+ * with nothing to resolve, 2 when it was accepted and raised findings, 1 when
+ * it was refused.
+ */
+export const EXIT_ACCEPTED = 0;
+export const EXIT_REFUSED = 1;
+export const EXIT_FINDINGS = 2;
+
+export function exitCodeFor(result) {
+  return result.findings.length ? EXIT_FINDINGS : EXIT_ACCEPTED;
+}
 
 /**
  * Findings that make the map itself untrustworthy, rather than incomplete.
@@ -44,6 +79,8 @@ const INTEGRITY_CODES = new Set([
   'orphan-evidence',
   'contradictory-gap',
   'gap-without-reason',
+  'gap-without-aspect',
+  'duplicate-gap',
 ]);
 
 function finding(code, severity, subject, detail) {
@@ -138,31 +175,79 @@ export function reconcileTraceability(input = {}) {
     }
   }
 
-  const declaredGaps = new Map();
+  const declaredGaps = [];
+  const gapsByRequirement = new Map();
+  const seenGaps = new Set();
   for (const [index, gap] of gaps.entries()) {
     const requirement = requireId(gap, 'requirement', `gap ${index + 1}`);
+    const aspect = typeof gap.aspect === 'string' ? gap.aspect.trim() : '';
+    if (aspect === '') {
+      findings.push(finding(
+        'gap-without-aspect',
+        'high',
+        requirement,
+        `a gap names what it leaves unproven: "${WHOLE_REQUIREMENT}", an example class such as ${EXAMPLE_CLASSES.join(', ')}, or another named aspect of the requirement`,
+      ));
+      continue;
+    }
     if (!requirementIds.has(requirement)) {
       findings.push(finding('unknown-gap-requirement', 'high', requirement, 'the declared gap points at a requirement that is not declared'));
       continue;
     }
-    if (typeof gap.reason !== 'string' || gap.reason.trim() === '') {
+    const signature = `${requirement}::${aspect}`;
+    if (seenGaps.has(signature)) {
+      findings.push(finding('duplicate-gap', 'high', requirement, `the aspect ${aspect} is declared as a gap twice`));
+      continue;
+    }
+    seenGaps.add(signature);
+
+    const reason = typeof gap.reason === 'string' ? gap.reason.trim() : '';
+    if (reason === '') {
       findings.push(finding('gap-without-reason', 'high', requirement, 'a known verification gap must say why no practical proof was designed'));
     }
-    declaredGaps.set(requirement, typeof gap.reason === 'string' ? gap.reason.trim() : null);
+    const entry = {
+      requirement,
+      aspect,
+      scope: aspect === WHOLE_REQUIREMENT ? 'whole-requirement' : 'aspect',
+      preferredVocabulary: aspect === WHOLE_REQUIREMENT || EXAMPLE_CLASSES.includes(aspect),
+      reason: reason === '' ? null : reason,
+    };
+    declaredGaps.push(entry);
+    if (!gapsByRequirement.has(requirement)) {
+      gapsByRequirement.set(requirement, []);
+    }
+    gapsByRequirement.get(requirement).push(entry);
   }
+  declaredGaps.sort((a, b) => `${a.requirement}${a.aspect}`.localeCompare(`${b.requirement}${b.aspect}`));
 
   const uncovered = [];
+  const partiallyCovered = [];
   for (const id of [...requirementIds].sort()) {
     const linked = coveredBy.get(id) ?? [];
+    const requirementGaps = gapsByRequirement.get(id) ?? [];
+    const wholeGaps = requirementGaps.filter((entry) => entry.scope === 'whole-requirement');
+    const scopedGaps = requirementGaps.filter((entry) => entry.scope === 'aspect');
+
     if (linked.length === 0) {
       uncovered.push(id);
-      if (!declaredGaps.has(id)) {
-        findings.push(finding('undeclared-gap', 'high', id, 'the requirement has no proving evidence and no declared verification gap'));
+      if (wholeGaps.length === 0) {
+        findings.push(finding(
+          'undeclared-gap',
+          'high',
+          id,
+          scopedGaps.length
+            ? `the requirement has no proving evidence at all, so the scoped gaps on ${scopedGaps.map((entry) => entry.aspect).join(', ')} do not account for it`
+            : 'the requirement has no proving evidence and no declared verification gap',
+        ));
       }
       continue;
     }
-    if (declaredGaps.has(id)) {
-      findings.push(finding('contradictory-gap', 'high', id, 'the requirement is declared as a verification gap and also traced to evidence'));
+    if (wholeGaps.length) {
+      findings.push(finding('contradictory-gap', 'high', id, 'the whole requirement is declared as a verification gap and is also traced to evidence'));
+      continue;
+    }
+    if (scopedGaps.length) {
+      partiallyCovered.push(id);
     }
   }
 
@@ -174,13 +259,14 @@ export function reconcileTraceability(input = {}) {
   const hasIntegrityFinding = findings.some((entry) => INTEGRITY_CODES.has(entry.code));
   const status = hasIntegrityFinding
     ? 'invalid'
-    : (uncovered.length || declaredGaps.size ? 'gaps' : 'complete');
+    : (uncovered.length || declaredGaps.length ? 'gaps' : 'complete');
 
   return {
     status,
     coverage: {
       requirements: requirementIds.size,
-      covered: requirementIds.size - uncovered.length,
+      covered: requirementIds.size - uncovered.length - partiallyCovered.length,
+      partiallyCovered,
       uncovered,
     },
     evidence: {
@@ -191,11 +277,9 @@ export function reconcileTraceability(input = {}) {
     rows: [...requirementIds].sort().map((id) => ({
       requirement: id,
       evidence: [...new Set(coveredBy.get(id) ?? [])].sort(),
-      declaredGap: declaredGaps.has(id) ? declaredGaps.get(id) : null,
+      gaps: (gapsByRequirement.get(id) ?? []).map((entry) => ({ aspect: entry.aspect, reason: entry.reason })),
     })),
-    declaredGaps: [...declaredGaps.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([requirement, reason]) => ({ requirement, reason })),
+    declaredGaps,
     findings,
     proof: {
       linkageOnly: true,
@@ -216,11 +300,11 @@ export function run(argv, streams = process) {
   try {
     const result = reconcileTraceability(JSON.parse(readStdin()));
     streams.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return result.status === 'complete' ? 0 : 2;
+    return exitCodeFor(result);
   } catch (error) {
     const code = error instanceof TraceabilityError ? error.code : 'invalid_input';
     streams.stderr.write(`${code}: ${error.message}\n`);
-    return 1;
+    return EXIT_REFUSED;
   }
 }
 

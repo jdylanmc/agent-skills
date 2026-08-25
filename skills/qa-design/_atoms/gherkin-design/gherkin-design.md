@@ -44,6 +44,32 @@ the domain would recognize.
 7. Name the outcome, not the mechanism. "Then the order is rejected" is a
    scenario; "Then the validation flag is false" is an assertion about the
    inside.
+8. Give every scenario a name and a durable identity.
+
+## Scenario Identity
+
+A scenario carries two labels, and they do different work. The **name** is prose
+for a person; the **identity** is the token every other artifact refers to.
+
+```text
+  @id:refund-inside-window
+  Scenario: A shopper refunds a delivered order inside the window
+```
+
+Declare the identity as an `@id:` tag matching `[A-Za-z0-9][A-Za-z0-9._-]*`. It
+is declared rather than derived from the name, because a name is edited for
+readability and an identity that moved every time somebody improved a sentence
+would be no identity at all. A traceability row, a later Cucumber result, and a
+QA analysis all key on it.
+
+A scenario with no name is reported. So is a scenario with no identity, more
+than one, a malformed one, or an identity another scenario already uses.
+
+Two scenarios may end up sharing a name. That is still reported, but the
+severity depends on whether the reference survives it: `medium` when both carry
+distinct identities, because everything downstream still points somewhere exact,
+and `high` when they do not, because the name is then the only handle and it
+names two things.
 
 ## Structural Review
 
@@ -61,13 +87,36 @@ decidable from feature text:
 
 | Concern | Codes |
 | --- | --- |
-| Shape | `empty-scenario`, `missing-when`, `missing-then`, `unanchored-continuation-step`, `out-of-order-steps`, `no-scenarios` |
+| Shape | `empty-scenario`, `missing-when`, `missing-then`, `unanchored-continuation-step`, `out-of-order-steps`, `no-scenarios`, `missing-scenario-name` |
+| Identity | `missing-scenario-id`, `duplicate-scenario-id`, `malformed-scenario-id` |
 | Breadth | `multiple-when` |
 | Duplication | `duplicate-scenario-name`, `duplicate-scenario-body` |
 | Contradiction | `contradictory-scenarios` |
 | Ambiguity | `ambiguous-language` |
 | Leakage | `implementation-leak`, `implementation-vocabulary` |
 | Data binding | `outline-without-examples`, `outline-placeholder-unbound`, `examples-column-unused`, `examples-row-width-mismatch`, `examples-without-header`, `examples-without-rows` |
+
+Vague and implementation-shaped terms are matched on word boundaries rather than
+surrounding spaces, so a term that ends a step is caught along with one in the
+middle of it. "Then the total is calculated correctly." is the ordinary shape of
+the defect, and a space-delimited search misses exactly that case.
+
+A doc string may declare a media type on its opening delimiter, as in `"""json`.
+The closing delimiter is bare, and a doc string left open is reported rather
+than swallowing the rest of the feature.
+
+## Exit Codes
+
+Every helper in this package uses the same three codes.
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The input was accepted and raised no finding. |
+| `2` | The input was accepted and raised findings. |
+| `1` | The input was refused and nothing was reviewed. |
+
+The code reports findings, not disposition. Read `status` for the review's
+disposition and the exit code for whether anything needs fixing.
 
 ## Parsing Is Not Coverage
 
@@ -88,9 +137,9 @@ example is the right example.
 
 ## Output
 
-Return the feature text, the scenario inventory with stable scenario identities,
-the structural review report, findings you resolved, findings you are handing
-on, and the explicit statement that executable coverage is unproven.
+Return the feature text, the scenario inventory with each scenario's declared
+identity, the structural review report, findings you resolved, findings you are
+handing on, and the explicit statement that executable coverage is unproven.
 
 ## Boundaries
 

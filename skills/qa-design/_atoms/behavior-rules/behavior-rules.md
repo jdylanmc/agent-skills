@@ -35,8 +35,12 @@ workflow.
    criterion that cannot be judged true or false by observing the system is not
    a criterion; report it as an unresolved specification question.
 4. Enumerate the **example classes** that apply to the rule.
-5. Choose the smallest verification level that produces meaningful evidence.
-6. Record any requirement the specification implies but never states, as a
+5. Work each applicable class into a concrete example, not a label.
+6. Choose the smallest verification level that produces meaningful evidence.
+7. Mark each rule `decidable` or not. A rule whose acceptance criteria cannot be
+   judged true or false by observing the system is not decidable, and the
+   contract built on it reports `underspecified` rather than proceeding.
+8. Record any requirement the specification implies but never states, as a
    question for the specification owner rather than an invented rule.
 
 ## Example Classes
@@ -53,6 +57,39 @@ workflow.
 A class that does not apply is recorded as `not-applicable` with a reason. It is
 never dropped silently, because a missing class and an inapplicable one look the
 same in a finished document.
+
+## Worked Examples
+
+A class name is not an example. "Boundary: applicable" says a boundary exists
+somewhere; it does not say which value sits on the edge, what happens there, or
+how anybody would know. An unworked class is the most common way a verification
+contract looks finished while proving nothing.
+
+So every applicable class is worked into a concrete example carrying:
+
+| Field | Contents |
+| --- | --- |
+| `identity` | `<rule-id>.<class>`, or `<rule-id>.<class>.<discriminator>` when one class needs several examples. |
+| `class` | The example class it works. |
+| `context` | The relevant starting state, in domain language. |
+| `action` | The single event or action taken. |
+| `expected` | The externally observable outcome, stated so that it can be judged true or false. |
+| `level` | The verification level this example is proven at. |
+
+## This Atom Owns example-rule Evidence
+
+A worked example whose level is `example-rule` is proven where it stands: it
+needs no scenario, no procedure, and no separately scheduled producer, because
+the outcome is decidable from inputs and outputs without assembling the system.
+
+That makes this atom the owner of `example-rule` evidence, and the example's
+identity is the evidence identity the traceability map links. An example
+promoted to `gherkin-scenario` or `system-procedure` is traced under the
+identity of the scenario or procedure that proves it instead, so exactly one
+artifact owns each example and no example is counted twice.
+
+A level with no owner is worse than a missing level: it appears in the map,
+satisfies the eye, and names nothing that anybody has agreed to write.
 
 ## Verification Levels
 
@@ -75,8 +112,10 @@ duplication with a maintenance bill.
 ## Output
 
 Return the rule set: for each rule, its identity, statement, acceptance
-criteria, applicable and inapplicable example classes, selected verification
-levels with rejection reasoning, and any unresolved specification question.
+criteria, decidability, applicable and inapplicable example classes, the worked
+example for each applicable class with its identity and level, selected
+verification levels with rejection reasoning, and any unresolved specification
+question.
 
 ## Boundaries
 

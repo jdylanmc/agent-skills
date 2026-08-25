@@ -11,6 +11,11 @@ import { fileURLToPath } from 'node:url';
  * schedule is an execution decision owned by whoever runs the evidence, and
  * emitting one here would let a design artifact quietly acquire orchestration
  * authority.
+ *
+ * `concurrencySafe` and `isolation` constrain different things and are not
+ * interchangeable. `concurrencySafe: false` means the producer runs alone,
+ * whatever else is going on. `isolation: exclusive` means it needs its own
+ * environment, and says nothing about work happening elsewhere.
  */
 
 export class ExecutionConstraintError extends Error {
@@ -23,6 +28,20 @@ export class ExecutionConstraintError extends Error {
 
 export const PRODUCER_KINDS = ['deterministic-check', 'gherkin-scenario', 'system-procedure'];
 export const ISOLATION_MODES = ['shared', 'isolated', 'exclusive'];
+
+/**
+ * Uniform across every helper in this package: 0 when the input was accepted
+ * with nothing to resolve, 2 when it was accepted and raised findings, 1 when
+ * it was refused. The code reports findings, not disposition; a constrained but
+ * correct declaration set exits 0 and says `constrained` in `status`.
+ */
+export const EXIT_ACCEPTED = 0;
+export const EXIT_REFUSED = 1;
+export const EXIT_FINDINGS = 2;
+
+export function exitCodeFor(result) {
+  return result.findings.length ? EXIT_FINDINGS : EXIT_ACCEPTED;
+}
 
 /**
  * Every field is required, including the empty-list cases. An absent
@@ -89,6 +108,12 @@ function sharedEntries(left, right) {
 
 function conflictReasons(a, b) {
   const reasons = [];
+  if (!a.concurrencySafe) {
+    reasons.push(`declared-not-concurrency-safe:${a.id}`);
+  }
+  if (!b.concurrencySafe) {
+    reasons.push(`declared-not-concurrency-safe:${b.id}`);
+  }
   if (a.environment === b.environment) {
     if (a.isolation === 'exclusive') {
       reasons.push(`exclusive-environment:${a.id}`);
@@ -184,9 +209,6 @@ export function reconcileExecutionConstraints(input = {}) {
     if (producer.traceabilityIds.length === 0) {
       findings.push(finding('missing-report-identity', 'high', id, 'declare the traceability identities the later report must carry'));
     }
-    if (producer.isolation === 'exclusive' && producer.concurrencySafe) {
-      findings.push(finding('exclusive-declared-concurrency-safe', 'high', id, 'a producer that needs exclusive access is not concurrency safe'));
-    }
     if (producer.runAfter.includes(id)) {
       findings.push(finding('self-ordering-dependency', 'high', id, 'a producer cannot run after itself'));
     }
@@ -247,15 +269,23 @@ export function reconcileExecutionConstraints(input = {}) {
   }
   mustNotRunConcurrently.sort((a, b) => a.producers.join().localeCompare(b.producers.join()));
 
+  const serialOnly = complete.filter((producer) => !producer.concurrencySafe).map((producer) => producer.id).sort();
+
   const hasBlockingFinding = findings.some((entry) => entry.severity === 'high');
-  const status = hasBlockingFinding
-    ? 'invalid'
-    : (mustNotRunConcurrently.length || orderingEdges.length ? 'constrained' : 'parallel-safe');
+  // A producer that declared itself serial constrains the run even when it is
+  // the only producer and therefore has no pair to conflict with. Reporting
+  // `parallel-safe` there would answer a question nobody asked and lose the one
+  // declaration that mattered.
+  const constrained = mustNotRunConcurrently.length > 0
+    || orderingEdges.length > 0
+    || serialOnly.length > 0;
+  const status = hasBlockingFinding ? 'invalid' : (constrained ? 'constrained' : 'parallel-safe');
 
   return {
     status,
     producers: complete,
     exclusiveAccess: complete.filter((producer) => producer.isolation === 'exclusive').map((producer) => producer.id).sort(),
+    serialOnly,
     mustNotRunConcurrently,
     orderingEdges: orderingEdges.sort((a, b) => `${a.producer}${a.runsAfter}`.localeCompare(`${b.producer}${b.runsAfter}`)),
     findings,
@@ -278,11 +308,11 @@ export function run(argv, streams = process) {
   try {
     const result = reconcileExecutionConstraints(JSON.parse(readStdin()));
     streams.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return result.status === 'invalid' ? 2 : 0;
+    return exitCodeFor(result);
   } catch (error) {
     const code = error instanceof ExecutionConstraintError ? error.code : 'invalid_input';
     streams.stderr.write(`${code}: ${error.message}\n`);
-    return 1;
+    return EXIT_REFUSED;
   }
 }
 

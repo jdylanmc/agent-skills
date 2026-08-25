@@ -24,7 +24,7 @@ proves.
 | `requirements` | yes | Every requirement and business rule, by stable identity. |
 | `evidence` | yes | Every designed proof, by stable identity and kind. |
 | `rows` | yes | The requirement-to-evidence links. |
-| `gaps` | no | Requirements with no practical proof, each with a reason. |
+| `gaps` | no | Aspects with no practical proof, each with the requirement, the aspect, and a reason. |
 
 Evidence kinds are `deterministic-check`, `example-rule`, `gherkin-scenario`,
 and `system-procedure`.
@@ -41,23 +41,68 @@ The helper returns `complete`, `gaps`, or `invalid`.
 | Status | Meaning |
 | --- | --- |
 | `complete` | Every requirement is linked to at least one proof, every proof is linked to a requirement, and no gap is declared. |
-| `gaps` | The map is internally consistent, and at least one requirement has no proof. |
+| `gaps` | The map is internally consistent, and something is left unproven: a whole requirement, or an aspect of one. |
 | `invalid` | The map cannot be trusted: duplicate identities, references to things that were never declared, empty or duplicated rows, evidence traced to nothing, or a gap that contradicts a link. |
 
 Findings are `duplicate-requirement-id`, `duplicate-evidence-id`,
 `unknown-requirement`, `unknown-evidence`, `unknown-evidence-kind`,
 `unknown-gap-requirement`, `duplicate-row`, `empty-row`, `orphan-evidence`,
-`contradictory-gap`, `gap-without-reason`, and `undeclared-gap`.
+`contradictory-gap`, `gap-without-reason`, `gap-without-aspect`,
+`duplicate-gap`, and `undeclared-gap`.
+
+## Coverage Is Three-Valued
+
+A requirement is rarely all proven or all unproven. The ordinary case is a rule
+whose success path has a scenario and whose recovery path has nothing, and a
+two-valued map has to lie about it in one direction or the other: call the
+requirement covered and the residual gap disappears, or call it uncovered and
+the scenario that does exist stops counting.
+
+| Coverage | Meaning |
+| --- | --- |
+| `covered` | Traced to evidence, with no gap declared against it. |
+| `partiallyCovered` | Traced to evidence, and carrying at least one scoped gap. |
+| `uncovered` | Traced to no evidence at all. |
 
 ## Known Verification Gaps
 
-A requirement with no practical proof is declared as a gap with a reason. An
-uncovered requirement with no declared gap raises `undeclared-gap`, because the
-difference between "we decided not to prove this and here is why" and "nobody
-noticed" is the whole value of the map.
+Every gap names three things: the requirement, the **aspect** it leaves
+unproven, and the reason.
+
+| Aspect | Use when |
+| --- | --- |
+| `whole-requirement` | Nothing about the requirement is proven. Contradicts any evidence traced to it. |
+| An example class such as `recovery` or `boundary` | One class of behavior is unproven while the rest is covered. Preferred. |
+| Another named aspect of the requirement | The unproven part is real but does not fall on a class boundary. Name the behavior, not the difficulty. |
+
+Prefer the scoped forms. `whole-requirement` is the blunt instrument, and a gap
+recorded at that granularity when only the recovery path is missing throws away
+the coverage that exists. The report marks whether each gap used the preferred
+vocabulary; it does not reject a named aspect, because real gaps do not always
+land on a class boundary.
+
+An uncovered requirement with no `whole-requirement` gap raises
+`undeclared-gap`, because the difference between "we decided not to prove this
+and here is why" and "nobody noticed" is the whole value of the map. Scoped gaps
+do not account for a requirement that nothing proves at all; they describe what
+is missing from coverage that exists.
 
 A gap is a statement of the current design, not a permanent one. Say what would
-have to change for the requirement to become provable.
+have to change for the aspect to become provable.
+
+## Exit Codes
+
+Every helper in this package uses the same three codes.
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The input was accepted and raised no finding. |
+| `2` | The input was accepted and raised findings. |
+| `1` | The input was refused and nothing was reconciled. |
+
+The code reports findings, not disposition. A map that is honest about a
+declared gap exits `0` and says `gaps` in `status`, so read `status` for
+coverage and the exit code for whether the map itself needs fixing.
 
 ## A Row Is Not Proof
 
@@ -72,9 +117,9 @@ exists to prevent.
 
 ## Output
 
-Return the reconciled map, coverage totals, uncovered requirements, declared
-gaps with reasons, orphaned proofs, every finding, and the statement that
-linkage is not evidence.
+Return the reconciled map, coverage totals, partially covered and uncovered
+requirements, declared gaps with their aspects and reasons, orphaned proofs,
+every finding, and the statement that linkage is not evidence.
 
 ## Boundaries
 

@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { TraceabilityError, reconcileTraceability } from './traceability-map.mjs';
+import {
+  EXIT_ACCEPTED,
+  EXIT_FINDINGS,
+  TraceabilityError,
+  exitCodeFor,
+  reconcileTraceability,
+} from './traceability-map.mjs';
 
 function codes(report) {
   return report.findings.map((entry) => entry.code).sort();
@@ -22,7 +28,12 @@ test('a map where every requirement and every proof is linked is complete', () =
 
   assert.equal(report.status, 'complete');
   assert.deepEqual(report.findings, []);
-  assert.deepEqual(report.coverage, { requirements: 2, covered: 2, uncovered: [] });
+  assert.deepEqual(report.coverage, {
+    requirements: 2,
+    covered: 2,
+    partiallyCovered: [],
+    uncovered: [],
+  });
   assert.deepEqual(report.evidence.byKind, {
     'deterministic-check': 0,
     'example-rule': 0,
@@ -55,14 +66,112 @@ test('a requirement declared as a known gap is carried with its reason', () => {
     requirements: [...REQUIREMENTS, { id: 'R3' }],
     evidence: EVIDENCE,
     rows: ROWS,
-    gaps: [{ requirement: 'R3', reason: 'the payment outage cannot be forced safely' }],
+    gaps: [{
+      requirement: 'R3',
+      aspect: 'whole-requirement',
+      reason: 'the payment outage cannot be forced safely',
+    }],
   });
 
   assert.equal(report.status, 'gaps');
   assert.deepEqual(report.findings, []);
   assert.deepEqual(report.declaredGaps, [
-    { requirement: 'R3', reason: 'the payment outage cannot be forced safely' },
+    {
+      requirement: 'R3',
+      aspect: 'whole-requirement',
+      scope: 'whole-requirement',
+      preferredVocabulary: true,
+      reason: 'the payment outage cannot be forced safely',
+    },
   ]);
+  assert.deepEqual(report.coverage.uncovered, ['R3']);
+  assert.deepEqual(report.coverage.partiallyCovered, []);
+});
+
+test('a requirement proven in part carries its residual gap without losing its coverage', () => {
+  const report = reconcileTraceability({
+    requirements: REQUIREMENTS,
+    evidence: EVIDENCE,
+    rows: ROWS,
+    gaps: [{
+      requirement: 'R1',
+      aspect: 'recovery',
+      reason: 'the refund service cannot be interrupted mid-flight in any reachable environment',
+    }],
+  });
+
+  assert.equal(report.status, 'gaps');
+  assert.deepEqual(report.findings, []);
+  assert.deepEqual(report.coverage, {
+    requirements: 2,
+    covered: 1,
+    partiallyCovered: ['R1'],
+    uncovered: [],
+  });
+  assert.deepEqual(report.rows[0], {
+    requirement: 'R1',
+    evidence: ['refund-granted'],
+    gaps: [{
+      aspect: 'recovery',
+      reason: 'the refund service cannot be interrupted mid-flight in any reachable environment',
+    }],
+  });
+});
+
+test('a scoped gap names an aspect, and an example class is the preferred vocabulary', () => {
+  const preferred = reconcileTraceability({
+    requirements: REQUIREMENTS,
+    evidence: EVIDENCE,
+    rows: ROWS,
+    gaps: [{ requirement: 'R1', aspect: 'boundary', reason: 'the window edge needs a clock nobody can move' }],
+  });
+  const named = reconcileTraceability({
+    requirements: REQUIREMENTS,
+    evidence: EVIDENCE,
+    rows: ROWS,
+    gaps: [{ requirement: 'R1', aspect: 'refunds above the manual-review limit', reason: 'no approver account exists outside production' }],
+  });
+  const unnamed = reconcileTraceability({
+    requirements: REQUIREMENTS,
+    evidence: EVIDENCE,
+    rows: ROWS,
+    gaps: [{ requirement: 'R1', reason: 'hard to test' }],
+  });
+
+  assert.equal(preferred.declaredGaps[0].preferredVocabulary, true);
+  assert.equal(named.declaredGaps[0].preferredVocabulary, false);
+  assert.equal(named.declaredGaps[0].scope, 'aspect');
+  assert.equal(unnamed.status, 'invalid');
+  assert.deepEqual(codes(unnamed), ['gap-without-aspect']);
+});
+
+test('the same aspect declared as a gap twice is reported', () => {
+  const report = reconcileTraceability({
+    requirements: REQUIREMENTS,
+    evidence: EVIDENCE,
+    rows: ROWS,
+    gaps: [
+      { requirement: 'R1', aspect: 'recovery', reason: 'no way to interrupt the refund' },
+      { requirement: 'R1', aspect: 'recovery', reason: 'still no way to interrupt the refund' },
+    ],
+  });
+
+  assert.equal(report.status, 'invalid');
+  assert.deepEqual(codes(report), ['duplicate-gap']);
+});
+
+test('a scoped gap does not account for a requirement nothing proves', () => {
+  const report = reconcileTraceability({
+    requirements: [...REQUIREMENTS, { id: 'R3' }],
+    evidence: EVIDENCE,
+    rows: ROWS,
+    gaps: [{ requirement: 'R3', aspect: 'recovery', reason: 'no way to interrupt the outage' }],
+  });
+
+  assert.equal(report.status, 'gaps');
+  assert.deepEqual(codes(report), ['undeclared-gap']);
+  assert.match(report.findings[0].detail, /no proving evidence at all/);
+  assert.deepEqual(report.coverage.uncovered, ['R3']);
 });
 
 test('a gap declared for a requirement that is already proven is contradictory', () => {
@@ -70,7 +179,7 @@ test('a gap declared for a requirement that is already proven is contradictory',
     requirements: REQUIREMENTS,
     evidence: EVIDENCE,
     rows: ROWS,
-    gaps: [{ requirement: 'R1', reason: 'not provable' }],
+    gaps: [{ requirement: 'R1', aspect: 'whole-requirement', reason: 'not provable' }],
   });
 
   assert.equal(report.status, 'invalid');
@@ -82,7 +191,7 @@ test('a gap without a reason is not a usable gap', () => {
     requirements: [...REQUIREMENTS, { id: 'R3' }],
     evidence: EVIDENCE,
     rows: ROWS,
-    gaps: [{ requirement: 'R3', reason: '  ' }],
+    gaps: [{ requirement: 'R3', aspect: 'whole-requirement', reason: '  ' }],
   });
 
   assert.equal(report.status, 'invalid');
@@ -152,11 +261,31 @@ test('every finding that invalidates the map is raised at high severity', () => 
     requirements: [...REQUIREMENTS, { id: 'R1' }],
     evidence: [...EVIDENCE, { id: 'complexity-budget', kind: 'deterministic-check' }],
     rows: [...ROWS, ROWS[0], { requirement: 'R9', evidence: ['ghost'] }],
-    gaps: [{ requirement: 'R1', reason: 'not provable' }],
+    gaps: [{ requirement: 'R1', aspect: 'whole-requirement', reason: 'not provable' }],
   });
 
   assert.equal(report.status, 'invalid');
   assert.deepEqual([...new Set(report.findings.map((entry) => entry.severity))], ['high']);
+});
+
+test('the exit code reports findings rather than disposition', () => {
+  const complete = reconcileTraceability({ requirements: REQUIREMENTS, evidence: EVIDENCE, rows: ROWS });
+  const declaredGap = reconcileTraceability({
+    requirements: REQUIREMENTS,
+    evidence: EVIDENCE,
+    rows: ROWS,
+    gaps: [{ requirement: 'R1', aspect: 'recovery', reason: 'no way to interrupt the refund' }],
+  });
+  const flagged = reconcileTraceability({
+    requirements: [...REQUIREMENTS, { id: 'R3' }],
+    evidence: EVIDENCE,
+    rows: ROWS,
+  });
+
+  assert.equal(exitCodeFor(complete), EXIT_ACCEPTED);
+  assert.equal(declaredGap.status, 'gaps');
+  assert.equal(exitCodeFor(declaredGap), EXIT_ACCEPTED);
+  assert.equal(exitCodeFor(flagged), EXIT_FINDINGS);
 });
 
 test('a malformed map is refused rather than reconciled', () => {

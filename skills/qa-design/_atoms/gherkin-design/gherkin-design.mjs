@@ -26,6 +26,29 @@ export class GherkinDesignError extends Error {
 const PRIMARY_STEPS = new Set(['Given', 'When', 'Then']);
 const CONTINUATION_STEPS = new Set(['And', 'But', '*']);
 const STEP_ORDER = new Map([['Given', 0], ['When', 1], ['Then', 2]]);
+const DOC_STRING_DELIMITERS = ['"""', '```'];
+
+/**
+ * A scenario's durable identity. A name is prose and gets edited; a traceability
+ * row, a Cucumber report, and a QA analysis all need something that survives
+ * rewording, so the identity is declared as a tag and never inferred from the
+ * name.
+ */
+export const IDENTITY_TAG = /^@id:(.*)$/;
+const IDENTITY_VALUE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Uniform across every helper in this package: 0 when the input was accepted
+ * with nothing to resolve, 2 when it was accepted and raised findings, 1 when
+ * it was refused.
+ */
+export const EXIT_ACCEPTED = 0;
+export const EXIT_REFUSED = 1;
+export const EXIT_FINDINGS = 2;
+
+export function exitCodeFor(result) {
+  return result.findings.length ? EXIT_FINDINGS : EXIT_ACCEPTED;
+}
 
 const LEAK_PATTERNS = [
   { rule: 'css-or-xpath-selector', pattern: /(?:css=|xpath=|\[data-test[^\]]*\]|(?:^|\s)\/\/[a-z]+\[)/i },
@@ -55,6 +78,20 @@ function normalizeText(value) {
   return value.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+function escapeTerm(term) {
+  return term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Matches a term as a whole word, tolerating the punctuation that ends a real
+ * sentence. Padding the haystack with spaces and testing for `" term "` looks
+ * equivalent and is not: it silently misses every term that ends a step, which
+ * is where a vague outcome most often sits.
+ */
+function containsTerm(text, term) {
+  return new RegExp(`(?:^|[^a-z0-9])${escapeTerm(term)}(?:s)?(?:[^a-z0-9]|$)`, 'i').test(text);
+}
+
 function splitRow(line) {
   const trimmed = line.trim();
   const body = trimmed.endsWith('|') ? trimmed.slice(1, -1) : trimmed.slice(1);
@@ -70,9 +107,19 @@ function parseFeature(text) {
   let current = null;
   let examples = null;
   let docString = null;
+  let pendingTags = [];
 
   const openScenario = (type, name, line) => {
-    current = { type, name, line, rule: rule?.name ?? null, steps: [], examples: [] };
+    current = {
+      type,
+      name,
+      line,
+      rule: rule?.name ?? null,
+      tags: pendingTags,
+      steps: [],
+      examples: [],
+    };
+    pendingTags = [];
     examples = null;
     scenarios.push(current);
   };
@@ -87,15 +134,31 @@ function parseFeature(text) {
       }
       return;
     }
-    if (trimmed === '"""' || trimmed === '```') {
+    const opening = DOC_STRING_DELIMITERS.find((delimiter) => trimmed.startsWith(delimiter));
+    if (opening && (trimmed === opening || /^[\w.+/-]+$/.test(trimmed.slice(opening.length)))) {
+      // Gherkin allows a media type after the opening delimiter, as in `"""json`.
+      // The closing delimiter is always bare.
       if (!current || current.steps.length === 0) {
         parseErrors.push(finding('doc-string-outside-step', 'high', `line ${line}`, 'a doc string must follow a step'));
         return;
       }
-      docString = trimmed;
+      docString = opening;
       return;
     }
-    if (trimmed === '' || trimmed.startsWith('#') || trimmed.startsWith('@')) {
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      return;
+    }
+    if (trimmed.startsWith('@')) {
+      const tokens = trimmed.split(/\s+/);
+      const stray = tokens.filter((token) => !token.startsWith('@'));
+      if (stray.length) {
+        // A tag carries no whitespace, so `@id:a shopper` is the tag `@id:a`
+        // beside a loose word. Dropping the word would silently truncate the
+        // identity into something that looks deliberate.
+        parseErrors.push(finding('malformed-tag-line', 'high', `line ${line}`, `a tag carries no whitespace; found loose text: ${stray.join(' ')}`));
+        return;
+      }
+      pendingTags.push(...tokens);
       return;
     }
 
@@ -118,6 +181,7 @@ function parseFeature(text) {
         rule = { name: value, line };
         current = null;
         examples = null;
+        pendingTags = [];
         return;
       }
       if (name === 'Background') {
@@ -184,6 +248,50 @@ function parseFeature(text) {
   }
 
   return { feature, scenarios, parseErrors };
+}
+
+/**
+ * Resolves the declared identity of every scenario, and reports the ones that
+ * cannot be referred to durably. `identity` is what every other report keys on,
+ * so a scenario without one is located by name and line and nothing else.
+ */
+function resolveIdentities(scenarios, findings) {
+  const seen = new Map();
+
+  for (const scenario of scenarios) {
+    scenario.identity = null;
+    if (scenario.type === 'background') {
+      continue;
+    }
+    const location = `${scenario.name || scenario.type} line ${scenario.line}`;
+    if (!scenario.name || scenario.name.trim() === '') {
+      findings.push(finding('missing-scenario-name', 'high', `line ${scenario.line}`, 'a scenario states the example it gives; an unnamed one cannot be read or referred to'));
+    }
+
+    const declared = scenario.tags
+      .map((tag) => IDENTITY_TAG.exec(tag))
+      .filter(Boolean)
+      .map((match) => match[1]);
+    if (declared.length === 0) {
+      findings.push(finding('missing-scenario-id', 'high', location, 'declare a durable identity as an @id: tag so traceability and later reports can name this scenario'));
+      continue;
+    }
+    if (declared.length > 1) {
+      findings.push(finding('malformed-scenario-id', 'high', location, `a scenario declares one identity; found ${declared.length}`));
+      continue;
+    }
+    const [identity] = declared;
+    if (!IDENTITY_VALUE.test(identity)) {
+      findings.push(finding('malformed-scenario-id', 'high', location, `an identity is a stable token matching ${IDENTITY_VALUE.source}; found "${identity}"`));
+      continue;
+    }
+    if (seen.has(identity)) {
+      findings.push(finding('duplicate-scenario-id', 'high', location, `the identity ${identity} already names ${seen.get(identity)}`));
+      continue;
+    }
+    seen.set(identity, location);
+    scenario.identity = identity;
+  }
 }
 
 function resolveStepKeywords(scenario, findings) {
@@ -315,14 +423,14 @@ function reviewLanguage(scenario, findings) {
         findings.push(finding('implementation-leak', 'high', location, `${rule}: keep implementation out of the specification`));
       }
     }
-    const lowered = ` ${normalizeText(step.text)} `;
+    const lowered = normalizeText(step.text);
     for (const term of IMPLEMENTATION_TERMS) {
-      if (lowered.includes(` ${term} `) || lowered.includes(` ${term}s `)) {
+      if (containsTerm(lowered, term)) {
         findings.push(finding('implementation-vocabulary', 'medium', location, `"${term}" is implementation terminology; express the example in domain language`));
       }
     }
     for (const term of AMBIGUOUS_TERMS) {
-      if (lowered.includes(` ${term} `)) {
+      if (containsTerm(lowered, term)) {
         findings.push(finding('ambiguous-language', 'medium', location, `"${term}" does not name a decidable outcome`));
       }
     }
@@ -341,10 +449,24 @@ function reviewDuplication(scenarios, findings) {
     const location = `${scenario.name || scenario.type} line ${scenario.line}`;
     const name = normalizeText(scenario.name ?? '');
     if (name) {
-      if (byName.has(name)) {
-        findings.push(finding('duplicate-scenario-name', 'high', location, `the name repeats ${byName.get(name)}`));
+      const previous = byName.get(name);
+      if (previous) {
+        // Two scenarios with the same name are still worth fixing, but when both
+        // carry distinct declared identities every downstream reference stays
+        // unambiguous, so the defect is readability rather than traceability.
+        const disambiguated = Boolean(scenario.identity)
+          && Boolean(previous.identity)
+          && scenario.identity !== previous.identity;
+        findings.push(finding(
+          'duplicate-scenario-name',
+          disambiguated ? 'medium' : 'high',
+          location,
+          disambiguated
+            ? `the name repeats ${previous.location}; the declared identities ${previous.identity} and ${scenario.identity} keep the reference unambiguous`
+            : `the name repeats ${previous.location}`,
+        ));
       } else {
-        byName.set(name, location);
+        byName.set(name, { location, identity: scenario.identity });
       }
     }
 
@@ -428,6 +550,7 @@ export function reviewGherkin(input = {}) {
   for (const scenario of parsed.scenarios) {
     resolveStepKeywords(scenario, findings);
   }
+  resolveIdentities(parsed.scenarios, findings);
   for (const scenario of parsed.scenarios) {
     reviewStepShape(scenario, findings);
     reviewOutline(scenario, findings);
@@ -446,6 +569,7 @@ export function reviewGherkin(input = {}) {
     feature: parsed.feature.name,
     scenarioCount: scenarios.length,
     scenarios: scenarios.map((scenario) => ({
+      identity: scenario.identity,
       name: scenario.name,
       type: scenario.type,
       rule: scenario.rule,
@@ -469,11 +593,11 @@ export function run(argv, streams = process) {
   try {
     const result = reviewGherkin(JSON.parse(readStdin()));
     streams.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return result.status === 'clean' ? 0 : 2;
+    return exitCodeFor(result);
   } catch (error) {
     const code = error instanceof GherkinDesignError ? error.code : 'invalid_input';
     streams.stderr.write(`${code}: ${error.message}\n`);
-    return 1;
+    return EXIT_REFUSED;
   }
 }
 

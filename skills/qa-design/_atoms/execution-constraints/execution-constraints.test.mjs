@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ExecutionConstraintError, reconcileExecutionConstraints } from './execution-constraints.mjs';
+import {
+  EXIT_ACCEPTED,
+  EXIT_FINDINGS,
+  ExecutionConstraintError,
+  exitCodeFor,
+  reconcileExecutionConstraints,
+} from './execution-constraints.mjs';
 
 function producer(overrides = {}) {
   return {
@@ -34,12 +40,56 @@ test('independent producers that disturb nothing are parallel safe', () => {
   assert.deepEqual(report.findings, []);
   assert.deepEqual(report.mustNotRunConcurrently, []);
   assert.deepEqual(report.exclusiveAccess, []);
+  assert.deepEqual(report.serialOnly, []);
+});
+
+test('a lone producer that declared itself serial is never reported parallel safe', () => {
+  const report = reconcileExecutionConstraints({
+    producers: [producer({ id: 'nightly-migration-check', concurrencySafe: false })],
+  });
+
+  assert.equal(report.status, 'constrained');
+  assert.deepEqual(report.findings, []);
+  assert.deepEqual(report.serialOnly, ['nightly-migration-check']);
+  assert.deepEqual(report.mustNotRunConcurrently, []);
+});
+
+test('a producer that runs alone conflicts with every other producer, in any environment', () => {
+  const report = reconcileExecutionConstraints({
+    producers: [
+      producer({ id: 'A', concurrencySafe: false }),
+      producer({ id: 'B', environment: 'preview' }),
+      producer({ id: 'C', environment: 'sandbox' }),
+    ],
+  });
+
+  assert.equal(report.status, 'constrained');
+  assert.deepEqual(report.findings, []);
+  assert.deepEqual(report.serialOnly, ['A']);
+  assert.deepEqual(report.mustNotRunConcurrently, [
+    { producers: ['A', 'B'], reasons: ['declared-not-concurrency-safe:A'] },
+    { producers: ['A', 'C'], reasons: ['declared-not-concurrency-safe:A'] },
+  ]);
+});
+
+test('needing an environment alone and running alone are different declarations', () => {
+  const report = reconcileExecutionConstraints({
+    producers: [
+      producer({ id: 'exclusive-in-staging', isolation: 'exclusive' }),
+      producer({ id: 'elsewhere', environment: 'preview' }),
+    ],
+  });
+
+  assert.deepEqual(report.findings, []);
+  assert.deepEqual(report.exclusiveAccess, ['exclusive-in-staging']);
+  assert.deepEqual(report.serialOnly, []);
+  assert.deepEqual(report.mustNotRunConcurrently, []);
 });
 
 test('producers sharing a mutable resource may never run at the same time', () => {
   const report = reconcileExecutionConstraints({
     producers: [
-      producer({ id: 'A', mutableResources: ['the shared basket'], concurrencySafe: false }),
+      producer({ id: 'A', mutableResources: ['the shared basket'] }),
       producer({ id: 'B', mutableResources: ['the shared basket'], concurrencySafe: false }),
     ],
   });
@@ -47,20 +97,30 @@ test('producers sharing a mutable resource may never run at the same time', () =
   assert.equal(report.status, 'constrained');
   assert.deepEqual(report.findings, []);
   assert.deepEqual(report.mustNotRunConcurrently, [
-    { producers: ['A', 'B'], reasons: ['shared-mutable-resource:the shared basket'] },
+    {
+      producers: ['A', 'B'],
+      reasons: ['declared-not-concurrency-safe:B', 'shared-mutable-resource:the shared basket'],
+    },
   ]);
 });
 
 test('a shared account and a shared fixture are each a conflict', () => {
   const report = reconcileExecutionConstraints({
     producers: [
-      producer({ id: 'A', accounts: ['refund-tester'], data: ['delivered-order'], concurrencySafe: false }),
+      producer({ id: 'A', accounts: ['refund-tester'], data: ['delivered-order'] }),
       producer({ id: 'B', accounts: ['refund-tester'], data: ['delivered-order'], concurrencySafe: false }),
     ],
   });
 
   assert.deepEqual(report.mustNotRunConcurrently, [
-    { producers: ['A', 'B'], reasons: ['shared-account:refund-tester', 'shared-data:delivered-order'] },
+    {
+      producers: ['A', 'B'],
+      reasons: [
+        'declared-not-concurrency-safe:B',
+        'shared-account:refund-tester',
+        'shared-data:delivered-order',
+      ],
+    },
   ]);
 });
 
@@ -82,7 +142,7 @@ test('a producer holding its environment exclusively conflicts with everything s
     producers: [
       producer({ id: 'A' }),
       producer({ id: 'B' }),
-      producer({ id: 'C', isolation: 'exclusive', concurrencySafe: false }),
+      producer({ id: 'C', isolation: 'exclusive' }),
       producer({ id: 'D', environment: 'preview' }),
     ],
   });
@@ -92,15 +152,20 @@ test('a producer holding its environment exclusively conflicts with everything s
     { producers: ['A', 'C'], reasons: ['exclusive-environment:C'] },
     { producers: ['B', 'C'], reasons: ['exclusive-environment:C'] },
   ]);
+  assert.deepEqual(
+    report.findings.map((entry) => entry.code),
+    ['undeclared-conflict', 'undeclared-conflict'],
+  );
 });
 
-test('a producer cannot need exclusive access and claim concurrency safety', () => {
+test('an exclusive producer sharing an environment with a concurrency-safe one is an undeclared conflict', () => {
   const report = reconcileExecutionConstraints({
-    producers: [producer({ id: 'A', isolation: 'exclusive', concurrencySafe: true })],
+    producers: [producer({ id: 'A' }), producer({ id: 'C', isolation: 'exclusive' })],
   });
 
   assert.equal(report.status, 'invalid');
-  assert.deepEqual(codes(report), ['exclusive-declared-concurrency-safe']);
+  assert.deepEqual(codes(report), ['undeclared-conflict']);
+  assert.match(report.findings[0].detail, /exclusive-environment:C/);
 });
 
 test('declared ordering is carried and impossible ordering is reported', () => {
@@ -174,6 +239,22 @@ test('the reconciliation returns constraints and never a schedule', () => {
 
   assert.equal(report.scheduling.schedule, null);
   assert.match(report.scheduling.statement, /does not schedule, parallelize, or run anything/);
+});
+
+test('the exit code reports findings rather than disposition', () => {
+  const constrained = reconcileExecutionConstraints({
+    producers: [producer({ id: 'A', concurrencySafe: false }), producer({ id: 'B', environment: 'preview' })],
+  });
+  const flagged = reconcileExecutionConstraints({
+    producers: [
+      producer({ id: 'A', mutableResources: ['the shared basket'] }),
+      producer({ id: 'B', mutableResources: ['the shared basket'] }),
+    ],
+  });
+
+  assert.equal(constrained.status, 'constrained');
+  assert.equal(exitCodeFor(constrained), EXIT_ACCEPTED);
+  assert.equal(exitCodeFor(flagged), EXIT_FINDINGS);
 });
 
 test('a missing or empty producer set is refused rather than reconciled', () => {
