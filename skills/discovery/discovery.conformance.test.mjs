@@ -49,18 +49,21 @@ test('the routing description merges discovery-loop while excluding neighbors', 
   assert.match(description, /write a spec/);
 });
 
-test('the skill composes chronicler, the read-only loop, and the mutation gate', () => {
+test('the skill composes chronicler, the cycle controller, and the mutation gate', () => {
   const parsed = frontmatter(ENTRY);
   assert.deepEqual(parsed.composes, [
     '_base/_molecules/chronicler/chronicler.md',
-    'discovery/_molecules/discovery-loop/discovery-loop.md',
+    'discovery/_molecules/cycle-controller/cycle-controller.md',
     'discovery/_atoms/tracker-update-gate/tracker-update-gate.md',
   ]);
 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
   for (const unit of [
     '_base/_molecules/chronicler/chronicler.md',
+    '_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md',
+    'discovery/_molecules/cycle-controller/cycle-controller.md',
     'discovery/_molecules/discovery-loop/discovery-loop.md',
+    'discovery/_atoms/alignment-check/alignment-check.md',
     'discovery/_atoms/evidence-reconcile/evidence-reconcile.md',
     'discovery/_atoms/frontier-ledger/frontier-ledger.md',
     'discovery/_atoms/tracker-update-gate/tracker-update-gate.md',
@@ -97,6 +100,31 @@ test('tracker mutation is isolated to exactly one approval-gated unit', () => {
   const loop = flat('discovery/_molecules/discovery-loop/discovery-loop.md');
   assert.match(loop, /Read-only body/);
   assert.match(loop, /cannot perform one/);
+});
+
+test('alignment is mandatory before every discovery handoff', () => {
+  const entry = flat(ENTRY);
+  const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+  const alignment = flat('discovery/_atoms/alignment-check/alignment-check.md');
+
+  assert.match(entry, /No handoff is written before an offered interactive alignment check/);
+  assert.match(entry, /Only a verified shared understanding can be persisted/);
+  assert.match(entry, /Every cycle handoff is read back/);
+  assert.match(controller, /The goal is shared understanding with the human/);
+  assert.match(controller, /A handoff cannot be written until the human verifies or corrects/);
+  assert.match(controller, /Compact the reread handoff into the continuation focus/);
+  assert.match(alignment, /Summarize what was found and uncovered/);
+  assert.match(alignment, /Offer an interactive alignment check/);
+  assert.match(alignment, /Do not treat silence, a status report,\s+or an unrelated response as alignment/);
+  assert.match(alignment, /mandatory before every discovery handoff/);
+});
+
+test('proof-of-concept work is recorded as a decision point, not implemented', () => {
+  const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+
+  assert.match(controller, /proof-of-concept appears necessary/);
+  assert.match(controller, /do not implement it/);
+  assert.match(controller, /records proof-of-concept need as a decision point/);
 });
 
 test('discovery explicitly refuses neighboring jobs', () => {

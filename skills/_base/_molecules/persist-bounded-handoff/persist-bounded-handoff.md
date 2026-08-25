@@ -4,7 +4,7 @@ description: Turn confirmed caller context into one bounded, redacted handoff do
 level: molecule
 includes: ["_base/_atoms/artifact-reference/artifact-reference.md","_base/_atoms/handoff-render/handoff-render.md","_base/_atoms/redact-sensitive/redact-sensitive.md","_base/_atoms/temp-path-resolve/temp-path-resolve.md","_base/_atoms/write-guarded/write-guarded.md","_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.mjs"]
 composes: ["_base/_atoms/artifact-reference/artifact-reference.md","_base/_atoms/handoff-render/handoff-render.md","_base/_atoms/redact-sensitive/redact-sensitive.md","_base/_atoms/temp-path-resolve/temp-path-resolve.md","_base/_atoms/write-guarded/write-guarded.md"]
-used-by: ["handoff/SKILL.md"]
+used-by: ["discovery/_molecules/cycle-controller/cycle-controller.md","handoff/SKILL.md"]
 allowed-tools: ["execute"]
 ---
 
