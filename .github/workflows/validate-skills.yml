@@ -93,6 +93,7 @@ jobs:
           skills/run-ci/_atoms/ci-runner/ci-runner.test.mjs
           skills/domain-mapping/domain-mapping.conformance.test.mjs
           skills/changelog/changelog.conformance.test.mjs
+          skills/changelog/_atoms/changelog-target/changelog-target.test.mjs
           skills/interrogate/interrogate.conformance.test.mjs
           skills/discovery/discovery.conformance.test.mjs
           skills/proof-of-concept/proof-of-concept.conformance.test.mjs
