@@ -87,6 +87,18 @@ test('handoff skill is an explicitly invoked wrapper over the adapter and shared
   assert.match(raw, /Do not create or copy a handoff\s+file in the workspace\./);
 });
 
+test('handoff carries a plain human-readable intent', () => {
+  const intentPath = path.join(REPOSITORY_ROOT, 'skills', 'handoff', 'intent.md');
+  assert.ok(fs.lstatSync(intentPath).isFile());
+  const intent = fs.readFileSync(intentPath, 'utf8');
+  const normalized = intent.replace(/\s+/g, ' ');
+
+  assert.match(intent, /^# Intent: handoff\s*$/m);
+  assert.ok(!intent.startsWith('---'));
+  assert.match(normalized, /one bounded continuation artifact/);
+  assert.match(normalized, /must not ask where to save the file/);
+});
+
 test('handoff context adapter preserves evidence boundaries and delegates persistence', () => {
   const raw = fs.readFileSync(ADAPTER, 'utf8');
   const frontmatter = readFrontmatter(raw, 'handoff/_atoms/handoff-context-adapter/handoff-context-adapter.md');

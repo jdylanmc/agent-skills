@@ -40,6 +40,7 @@ jobs:
           node scripts/run-registered-tests.mjs
           scripts/doctrine-manifest.test.mjs
           scripts/run-registered-tests.test.mjs
+          scripts/skill-intent.test.mjs
           scripts/validate-skill-graph.test.mjs
           scripts/derive-skill-graph.test.mjs
           scripts/workflow-registration.test.mjs
