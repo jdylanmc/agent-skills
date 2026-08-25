@@ -46,10 +46,34 @@ A worker is stateless and receives no history. The brief carries, in full:
    permission.
 5. The repository's binding conventions and how validation is run, so the worker
    does not invent either.
-6. What to return: what it changed, mapped to ledger identifiers, and anything
+6. The refusals below, in full.
+7. What to return: what it changed, mapped to ledger identifiers, and anything
    it could not do.
 
 A brief that omits the ledger has dispatched an unbounded worker.
+
+## What The Ledger Does Not Bound
+
+A ledger names files and changes. Everything a worker could do that **is not a
+file change** falls outside it, and a brief that lists only what to edit has
+said nothing about any of it. The costly version of this failure is not a bad
+edit; it is a worker that pushes, comments on the issue, or opens something on a
+shared remote while the run still believes nothing has left the worktree.
+
+So the brief refuses these explicitly, every time:
+
+| Refused | Why it is named rather than assumed |
+| --- | --- |
+| Writing outside the isolation worktree | The worktree is the boundary reconciliation can see. A file written beside it is invisible to every control below. |
+| Pushing, or any write to a remote | Publication happens once, at the end, after review. A worker push makes a shared remote reflect an unreconciled state. |
+| Mutating the tracker — closing, commenting, labelling, or assigning | The issue is the run's input. A worker editing its own requirements is the loop the grounding stage exists to prevent. |
+| Merging, approving, or requesting review | Merge authority is a person's, and no part of this run holds it. |
+| Reading, copying, or emitting credentials, tokens, or secrets | A worker needs none of them for a bounded edit, and evidence that travels through a report is evidence that leaks. |
+| Changing repository or agent configuration to make the work pass | Weakening the thing that would have caught the problem is not remediation. |
+| Rewriting history, or touching another run's worktree or branch | Both destroy evidence somebody else is relying on. |
+
+These are refusals, not preferences. A worker that believes one of them is
+necessary reports that and stops, and the decision returns to the operator.
 
 ## Remediation Is A Dispatch, Not A Correction
 
@@ -76,5 +100,7 @@ firmly would not find that case.
   an authority boundary.
 - **Never widens the brief to include an adjacent finding**, including one the
   worker raises mid-run. That is a new issue.
+- **Never dispatches a brief without the refusals.** A ledger bounds what may
+  be edited and bounds nothing else.
 - **Never treats the worker's report as verification.**
 - **Never dispatches a worker to judge its own output.**

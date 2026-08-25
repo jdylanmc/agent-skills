@@ -32,6 +32,34 @@ believed each one was justified.
 Reconciliation catches them because it compares the diff to the agreement rather
 than asking anyone whether they stayed in scope.
 
+## What Is Reconciled, And Against What
+
+The subject is **everything the run changed**, not everything it committed. A
+change left uncommitted, unstaged, or untracked is still a change sitting in the
+branch a change request will be opened from.
+
+| Input | Value |
+| --- | --- |
+| Base | The commit the isolation branch was created from, recorded before any implementation. Not `main`, and not whatever the base branch has since become. |
+| Subject | The isolation worktree as it stands now, including staged, unstaged, and untracked files. |
+| Detection | Rename and copy detection on, so a moved file is one change rather than a deletion and an unrelated addition. |
+
+Untracked files are invisible to a plain `git diff`, so they are given an index
+entry without content first:
+
+```sh
+git -C <worktree> add --intent-to-add --all
+git -C <worktree> diff --find-renames --find-copies <base-sha>
+```
+
+Reconciling `HEAD` against the base instead would ignore exactly the residue a
+run is most likely to leave behind, and "it was not committed" is not a reason a
+reviewer will ever see.
+
+A path excluded by the repository's ignore rules stays out of the diff and
+therefore has no unit. Record any such path the run created as residue and
+report it, rather than letting the ignore file decide what counts as a change.
+
 ## Granularity
 
 Reconciliation is at **hunk** granularity, not file granularity.
@@ -44,6 +72,26 @@ file-level coverage waves through.
 
 Each hunk maps to exactly one ledger entry. A hunk claimed by two entries is
 ambiguous and is reported as ambiguous rather than resolved by picking one.
+
+## A Change With No Hunks Is Still A Change
+
+A rename, a copy, a mode change, an emptied or empty-created file, and a binary
+edit all reach the diff as headers with **no `@@` line at all**. Walking hunks
+alone therefore sees nothing to claim, and a run that renamed a file nobody
+agreed to move reconciles clean.
+
+So every changed file carries at least one addressable unit. Content hunks are
+addressed by index; everything a content hunk cannot express is addressed once
+per file as `metadata`, carrying the parsed reason — `rename`, `copy`,
+`mode-change`, `add`, `delete`, `binary`, or several joined together.
+
+A file that was both moved and edited has **two** units. The entry claiming the
+edit describes the edit, and vouching for the move with it would be file-level
+coverage arriving through the back door.
+
+An unrecognized header with no hunks yields a unit with the reason `unknown`.
+That fails closed on purpose: an unparsed change stops the run rather than
+disappearing from a diff that then reconciles.
 
 ## Verdicts
 

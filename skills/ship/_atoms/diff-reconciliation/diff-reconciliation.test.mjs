@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { mayContinue, parseUnifiedDiff, reconcile } from './diff-reconciliation.mjs';
+import { METADATA_UNIT, mayContinue, parseUnifiedDiff, reconcile } from './diff-reconciliation.mjs';
 
 const DIFF_TWO_HUNKS = `diff --git a/src/app.js b/src/app.js
 index 1111111..2222222 100644
@@ -261,15 +261,172 @@ Binary files a/logo.png and b/logo.png differ
   const unclaimed = reconcile({ ledger: IN_SCOPE, diff: binary, mapping: [] });
   assert.equal(unclaimed.verdict, 'undisclosed-change');
   assert.deepEqual(unclaimed.undisclosed, [
-    { file: 'logo.png', hunkIndex: 0, reason: 'no ledger entry claims this hunk' },
+    {
+      file: 'logo.png',
+      hunkIndex: METADATA_UNIT,
+      change: 'binary',
+      reason: 'no ledger entry claims this file-metadata change',
+    },
   ]);
 
   const claimed = reconcile({
     ledger: IN_SCOPE,
     diff: binary,
-    mapping: [{ file: 'logo.png', hunkIndex: 0, entryId: 'L1' }],
+    mapping: [{ file: 'logo.png', hunkIndex: METADATA_UNIT, entryId: 'L1' }],
   });
   assert.equal(claimed.verdict, 'reconciled');
+});
+
+test('a change with no hunks at all is still addressable, whichever kind it is', () => {
+  // THE blind spot this exists to close. Every one of these is a real change
+  // to the repository, and every one of them carries no `@@` line, so a
+  // reconciler that walks hunks alone sees an empty diff and reconciles.
+  const cases = [
+    {
+      label: 'rename',
+      change: 'rename',
+      file: 'moved.txt',
+      previousFile: 'move-me.txt',
+      diff: `diff --git a/move-me.txt b/moved.txt
+similarity index 100%
+rename from move-me.txt
+rename to moved.txt
+`,
+    },
+    {
+      label: 'copy',
+      change: 'copy',
+      file: 'copy.txt',
+      previousFile: 'keep.txt',
+      diff: `diff --git a/keep.txt b/copy.txt
+similarity index 100%
+copy from keep.txt
+copy to copy.txt
+`,
+    },
+    {
+      label: 'mode change',
+      change: 'mode-change',
+      file: 'script.sh',
+      diff: `diff --git a/script.sh b/script.sh
+old mode 100644
+new mode 100755
+`,
+    },
+    {
+      label: 'empty file added',
+      change: 'add',
+      file: 'another.txt',
+      diff: `diff --git a/another.txt b/another.txt
+new file mode 100644
+index 0000000..e69de29
+`,
+    },
+    {
+      label: 'empty file deleted',
+      change: 'delete',
+      file: 'gone.txt',
+      diff: `diff --git a/gone.txt b/gone.txt
+deleted file mode 100644
+index e69de29..0000000
+`,
+    },
+  ];
+
+  for (const { label, change, file, previousFile, diff } of cases) {
+    const unclaimed = reconcile({ ledger: IN_SCOPE, diff, mapping: [] });
+    assert.equal(unclaimed.verdict, 'undisclosed-change', `${label} must not reconcile unclaimed`);
+    assert.ok(!mayContinue(unclaimed), `${label} must stop the run`);
+
+    const expected = {
+      file,
+      hunkIndex: METADATA_UNIT,
+      change,
+      reason: 'no ledger entry claims this file-metadata change',
+    };
+    if (previousFile !== undefined) expected.previousFile = previousFile;
+    assert.deepEqual(unclaimed.undisclosed, [expected], `${label} must name what changed`);
+
+    const claimed = reconcile({
+      ledger: IN_SCOPE,
+      diff,
+      mapping: [{ file, hunkIndex: METADATA_UNIT, entryId: 'L1' }],
+    });
+    assert.equal(claimed.verdict, 'reconciled', `${label} must be claimable`);
+  }
+});
+
+test('a rename carrying edits is two units, because one claim cannot vouch for both', () => {
+  // Claiming the edit must not silently authorize the move. They are separate
+  // changes and a ledger entry describing one says nothing about the other.
+  const diff = `diff --git a/old/name.js b/new/name.js
+similarity index 90%
+rename from old/name.js
+rename to new/name.js
+--- a/old/name.js
++++ b/new/name.js
+@@ -1,2 +1,3 @@
+ x
++y
+`;
+
+  const editOnly = reconcile({
+    ledger: IN_SCOPE,
+    diff,
+    mapping: [{ file: 'new/name.js', hunkIndex: 0, entryId: 'L1' }],
+  });
+  assert.equal(editOnly.verdict, 'undisclosed-change');
+  assert.deepEqual(editOnly.undisclosed, [
+    {
+      file: 'new/name.js',
+      hunkIndex: METADATA_UNIT,
+      change: 'rename',
+      previousFile: 'old/name.js',
+      reason: 'no ledger entry claims this file-metadata change',
+    },
+  ]);
+
+  const both = reconcile({
+    ledger: IN_SCOPE,
+    diff,
+    mapping: [
+      { file: 'new/name.js', hunkIndex: 0, entryId: 'L1' },
+      { file: 'new/name.js', hunkIndex: METADATA_UNIT, entryId: 'L1' },
+    ],
+  });
+  assert.equal(both.verdict, 'reconciled');
+});
+
+test('an ordinary edit gains no metadata unit, so a claim per hunk still reconciles', () => {
+  // The fail-closed rule must not tax every normal file with a second claim.
+  const files = parseUnifiedDiff(DIFF_TWO_HUNKS);
+  assert.deepEqual(files[0].hunks.map((unit) => unit.index), [0, 1]);
+});
+
+test('an unrecognized hunkless header fails closed rather than vanishing', () => {
+  // A truncated or unfamiliar header must not become an empty diff. Reporting
+  // `unknown` keeps an unparsed change visible and stops the run.
+  const result = reconcile({
+    ledger: IN_SCOPE,
+    diff: 'diff --git a/mystery.txt b/mystery.txt\n',
+    mapping: [],
+  });
+
+  assert.equal(result.verdict, 'undisclosed-change');
+  assert.equal(result.undisclosed[0].change, 'unknown');
+});
+
+test('several metadata changes on one file are reported together, deterministically', () => {
+  const files = parseUnifiedDiff(`diff --git a/old.sh b/new.sh
+old mode 100644
+new mode 100755
+similarity index 100%
+rename from old.sh
+rename to new.sh
+`);
+
+  assert.equal(files[0].hunks.length, 1);
+  assert.equal(files[0].hunks[0].change, 'rename+mode-change');
 });
 
 test('the parser indexes hunks per file, so identical indexes in two files are distinct', () => {
@@ -354,6 +511,13 @@ test('malformed input is rejected rather than silently reconciling', () => {
   assert.throws(() => reconcile({ ledger: [], diff: '', mapping: null }), TypeError);
   assert.throws(
     () => reconcile({ ledger: [{ classification: 'in-scope' }], diff: '', mapping: [] }),
+    TypeError,
+  );
+
+  // A pre-parsed file with nothing to claim would remove a change from the
+  // reconciliation without saying so.
+  assert.throws(
+    () => reconcile({ ledger: [], diff: [{ file: 'ghost.txt', hunks: [] }], mapping: [] }),
     TypeError,
   );
 });

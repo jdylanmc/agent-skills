@@ -43,7 +43,7 @@ test('every precondition met without a grant is eligible, and eligible is not pe
 
   assert.equal(result.disposition, 'eligible');
   assert.deepEqual(result.unmet, []);
-  assert.equal(result.granted, false);
+  assert.equal(result.grantRecorded, false);
   assert.ok(!mayMerge(result), 'eligible must never be treated as permission');
 });
 
@@ -83,9 +83,13 @@ test('a grant does not override an unmet precondition', () => {
   );
 
   assert.equal(result.disposition, 'withheld');
-  assert.equal(result.granted, true, 'the grant is still recorded, and still insufficient');
+  assert.equal(result.grantRecorded, true, 'the grant is recorded, and still insufficient');
   assert.ok(result.unmet.some((reason) => reason.includes('2=not-satisfied')));
   assert.ok(!mayMerge(result));
+
+  // No field on a withheld result may read as permission on its own. Only
+  // `mayMerge` answers that question, and it answers it once.
+  assert.equal(result.granted, undefined, 'a withheld result exposes no `granted` flag');
 });
 
 test('an unfinished criterion verdict withholds, whichever kind it is', () => {

@@ -50,7 +50,9 @@ usually the only artifact they read. It carries, in this order:
 1. The issue identity and a link to it.
 2. **The criterion table first** — every numbered criterion, its verdict, and
    its evidence. Before any narrative summary of the work.
-3. The merge disposition, with every unmet precondition named.
+3. The merge disposition, with every unmet precondition named. At publication
+   this is the evaluated disposition — `withheld` or `eligible` — because
+   nobody has been asked yet.
 4. The reconciliation verdict, and any `unfulfilled-entry` the ledger still
    holds.
 5. The `run-ci` evidence envelope as given, including its status and evidence
@@ -62,6 +64,18 @@ usually the only artifact they read. It carries, in this order:
 A summary of the work in place of the criterion table is the exact substitution
 the criterion table exists to prevent. The least favorable fact goes near the
 top, where a reader who stops early still reads it.
+
+## Recording The Grant Afterwards
+
+The merge grant is asked for **after** this change request exists, because a
+published artifact is what the person deciding should be looking at. When a
+grant is given, record it on the change request so the disposition there stops
+saying `eligible`.
+
+That update is a second write and is deliberately the only one: it records a
+decision somebody else made. It is not an approval, it does not merge, and it
+never changes a criterion verdict, a validation status, or a review finding to
+match the newer, happier disposition.
 
 ## The Provider Seam
 
@@ -96,9 +110,16 @@ When a shared provider adapter exists, this atom composes it instead of carrying
 its own detection. Until then the seam is stated here so that extracting it
 later is a move rather than a rewrite.
 
-An adapter that reports an unreadiness condition this atom does not enumerate is
-carried through under the name the adapter gave it. Collapsing an unfamiliar
-condition into a familiar one is how a distinct failure stops being visible.
+A shared adapter has a wider condition vocabulary than the three above, and it
+will grow. Conditions such as `provider-tool-unsupported` — a known host family
+with no adapter yet — and `provider-tool-unobserved` — readiness never probed —
+are **passed through under the adapter's own name**.
+
+Do not map an unfamiliar condition onto the nearest familiar one.
+`provider-tool-unobserved` reported as `provider-tool-missing` sends somebody to
+install a tool that is already there, and an unprobed tool reported as a ready
+one is worse still. An unrecognized condition is reported verbatim and treated
+as a failure to publish.
 
 ## Publication Outcomes
 
@@ -110,6 +131,7 @@ condition into a familiar one is how a distinct failure stops being visible.
 | `provider-tool-missing` | The matched provider's official tool is not installed. |
 | `provider-tool-unauthenticated` | The tool is installed and cannot authenticate. |
 | `publication-failed` | The command ran and no change request identifier came back. |
+| *any other adapter condition* | Reported under the adapter's own name. No change request exists. |
 
 `withheld-by-outcome` is deliberately not called `withheld`. That word already
 names the merge disposition, and one run reports both.
@@ -125,7 +147,7 @@ anything was created.
 ## Boundaries
 
 - **Never merges, approves, enables auto-merge, or requests a review decision.**
-  It opens the change request and stops.
+  It opens the change request, records a grant somebody else gave, and stops.
 - **Never pushes anything but the run's own isolation branch**, and never with
   force. It creates; driving an existing branch belongs to `shepherd`.
 - **Never publishes past a stopped run**, however complete the change looks.
