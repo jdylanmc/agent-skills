@@ -36,7 +36,7 @@ const CONTINUABLE_RECONCILIATION = new Set(['reconciled', 'unfulfilled-entry']);
  * @param {{blockers?: Array<object>}} [input.review] `roast` findings.
  * @param {{state: string, consent?: boolean}} [input.isolation]
  * @param {unknown} [input.grant] Must equal MERGE_GRANT_TOKEN to grant.
- * @returns {{disposition: string, unmet: string[], granted: boolean}}
+ * @returns {{disposition: string, unmet: string[], grantRecorded: boolean}}
  */
 export function evaluateMergeGate(input = {}) {
   if (input === null || typeof input !== 'object') {
@@ -84,14 +84,19 @@ export function evaluateMergeGate(input = {}) {
 
   // Strict equality, never truthiness. A boolean default, a config flag, or an
   // optimistic caller supplies a truthy value by accident; none supplies this.
-  const granted = grant === MERGE_GRANT_TOKEN;
+  //
+  // This records only that the token arrived. It is deliberately NOT called
+  // `granted`: a caller reading `granted: true` off a withheld result would be
+  // reading the one field that looks like permission on the one result that
+  // refuses it. `mayMerge` is the only permission bit here.
+  const grantRecorded = grant === MERGE_GRANT_TOKEN;
 
   let disposition = 'withheld';
   if (unmet.length === 0) {
-    disposition = granted ? 'granted' : 'eligible';
+    disposition = grantRecorded ? 'granted' : 'eligible';
   }
 
-  return { disposition, unmet, granted };
+  return { disposition, unmet, grantRecorded };
 }
 
 function describe(value) {

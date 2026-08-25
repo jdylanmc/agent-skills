@@ -49,12 +49,30 @@ All of them, together. There is no majority and no waiver.
 | Review | The `roast` findings carry no unresolved blocker. |
 | Isolation | The state is `worktree`, or `none` with recorded operator consent. |
 
+A **blocker** is a `roast` finding at `Must fix` that has not been remediated,
+disputed by the operator, or descoped to its own issue. `roast` returns a
+severity and gates nothing; treating `Must fix` as blocking is this run's own
+conservatism, and clearing one is never this run's decision alone.
+
 `intermittent` is not `passed`. A failure that passed on retry is a failure with
 a second data point, and treating it as green is how a flaky test becomes a
 policy of ignoring it.
 
 An empty criteria list is unmet rather than vacuously met. Nothing to check
 against is not the same as everything checked.
+
+## When The Grant Is Asked For
+
+After the change request exists, never before.
+
+The evaluation runs earlier, because the disposition belongs in the change
+request body. The **question** waits until there is a published artifact to
+point at: the diff, the criterion table, and the evidence, rather than this
+run's own summary of its own work.
+
+A `withheld` disposition is not put to anyone as a yes-or-no question. The only
+answer that would change it is waiving a precondition, and waiving is accepting
+a risk this run does not accept on anybody's behalf.
 
 ## The Grant Is A Distinct Token
 
