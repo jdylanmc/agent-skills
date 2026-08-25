@@ -111,5 +111,7 @@ jobs:
           skills/_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.adversarial.test.mjs
           skills/_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.test.mjs
           skills/handoff/handoff.test.mjs
+          skills/ship/_atoms/diff-reconciliation/diff-reconciliation.test.mjs
+          skills/ship/_atoms/merge-gate/merge-gate.test.mjs
           skills/ship/ship.conformance.test.mjs
           skills/orchestration-handoff/orchestration-handoff.conformance.test.mjs
