@@ -92,6 +92,7 @@ jobs:
           skills/domain-mapping/domain-mapping.conformance.test.mjs
           skills/interrogate/interrogate.conformance.test.mjs
           skills/discovery/discovery.conformance.test.mjs
+          skills/proof-of-concept/proof-of-concept.conformance.test.mjs
           skills/roast/_molecules/roast-intent/roast-intent.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-detect/cmux-detect.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-dispatch/cmux-dispatch.test.mjs
