@@ -60,7 +60,8 @@ Return:
 - decisions made during the loop and who made them;
 - open questions, each with owner or next workflow;
 - frontier classification: `ready`, `needs-interrogate`,
-  `needs-domain-mapping`, `needs-more-evidence`, `blocked`, or `stop`;
+  `needs-domain-mapping`, `needs-proof-of-concept`, `needs-more-evidence`,
+  `blocked`, or `stop`;
 - alignment status: `offered`, `verified`, `corrected`, or `not-aligned`;
 - handoff path, read-back status, and compacted continuation focus for every
   verified cycle handoff;
@@ -87,6 +88,9 @@ Return:
   document-grounded questioning before broader discovery.
 - Not domain mapping. Use `domain-mapping` when concepts, actors, systems,
   terminology, boundaries, states, events, or relationships are the blocker.
+- Not proof of concept. Use `proof-of-concept` when a small bounded prototype
+  would answer a discovery question more cheaply than more discussion or
+  reading.
 - Not specification. Discovery can recommend a spec, but it does not write
   requirements, acceptance criteria, Gherkin, or proof obligations.
 - Not ticketing or implementation. It does not create work items, split tasks,
