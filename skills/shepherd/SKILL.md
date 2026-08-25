@@ -56,9 +56,18 @@ Shepherd has two explicit layers:
    merely because the base branch advanced: a force-push restarts every build
    policy, and validation outlasts a busy `main`, so a pull request rebased on
    every base movement never lands.
+
+   That reasoning holds only while the base will still accept a branch behind
+   it. When the adapter reports that the base **requires** a change request to
+   contain the current base before merging, and git ancestry says this branch
+   does not, the branch is already unmergeable however green it reads, and an
+   advanced base is a trigger. The policy has three values — `required`,
+   `not-required`, and `unobserved` — and only `required` triggers, so a
+   repository without such a policy, or one where it could not be read, keeps
+   the rule above unchanged.
 4. If the base moved while the branch remains mergeable and green by available
-   git/provider evidence, return `no-op-mergeable-and-green`; do not rebase and
-   do not force-push.
+   git/provider evidence, and the base does not require the branch to contain
+   it, return `no-op-mergeable-and-green`; do not rebase and do not force-push.
 5. When a rebase trigger exists, rebase the pull request branch onto the fetched
    base SHA. Report the old base, new base, original head, final head, and moved
    commits.
@@ -103,8 +112,16 @@ Shepherd has two explicit layers:
    - `needs-human` when a semantic conflict, unsafe worktree, or missing policy
      decision needs a person;
    - `blocked` when tooling, permissions, cancellation, missing checks, or
-     unavailable metadata prevents a trustworthy conclusion;
+     unavailable metadata prevents a trustworthy conclusion, or when the branch
+     is behind a base that requires containing it, which is not green however
+     green everything else reads;
    - `failing` when local validation or remote checks are red.
+
+   Every disposition carries a **freshness receipt**: observation time, base
+   SHA, head SHA, up-to-date policy, and provider status. A disposition
+   describes the change request against one base commit at one moment. It is
+   evidence, not durable permission, and it stops describing anything once the
+   base moves.
 
 ## Output Contract
 
@@ -129,6 +146,7 @@ Return:
   matched, or provider tool evidence naming a missing or unauthenticated
   official CLI;
 - terminal disposition and reason;
+- the freshness receipt the disposition is bound to, and whether it is complete;
 - explicit next human action when disposition is not `mergeable-and-green`;
 - Chronicler log path or recording defect.
 
@@ -136,6 +154,11 @@ Return:
 
 - Never merges, approves, enables auto-merge, deletes a branch, or closes a
   change request. Merge authority stays with a human.
+- **Never watches.** One invocation observes one snapshot and ends. Re-observing
+  after a sibling change request merges into the same base belongs to the caller
+  that owns the set of open change requests, because it is the only thing that
+  knows what the set is. A skill that waited for events would be a daemon
+  holding push authority the whole time it waited.
 - Never resolves a semantic conflict silently. Authored or ambiguous conflicts
   stop with `needs-human` and describe both sides.
 - Never weakens, deletes, narrows, skips, or rewrites a test or validation gate

@@ -22,6 +22,7 @@ system, hosted check API, or change-request numbering scheme.
 | `branch` | yes | Local branch or detached work ref being shepherded. |
 | `base-ref` | yes | Git ref or commit that the branch should be compared and, when triggered, rebased onto. |
 | `captured-remote-head` | when pushing | Remote ref SHA used for the explicit lease. |
+| `up-to-date-policy` | no | Normalized signal stating whether the branch must contain the current base before it may land: `required`, `not-required`, or `unobserved`. Resolved by the coordinating molecule and never by this layer. |
 | `conflict-policy` | no | Trusted configuration for generated, structured, authored, and protected paths. |
 
 ## Operation
@@ -33,6 +34,12 @@ system, hosted check API, or change-request numbering scheme.
    local git evidence, a required validation result is known to have expired, or
    the provider adapter reports a conflicting state. Base drift alone is not a
    trigger.
+
+   One exception, and it is not an exception to the reasoning. When the supplied
+   up-to-date policy is `required` and git ancestry says the branch does not
+   contain the current base, the branch is already unlandable, so an advanced
+   base is a trigger. An `unobserved` policy is not a requirement, so a
+   repository with no such policy keeps the rule above unchanged.
 3. If the base moved but the branch is already validated and no trigger exists,
    return the no-op result supplied by the coordinating molecule. Do not rebase
    and do not push.

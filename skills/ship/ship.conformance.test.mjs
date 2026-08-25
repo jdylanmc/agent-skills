@@ -33,6 +33,11 @@ import { closureFor, readFrontmatter, validateRepository } from '../../scripts/v
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import { MERGE_GRANT_TOKEN, evaluateMergeGate, mayMerge } from './_atoms/merge-gate/merge-gate.mjs';
 import { reconcile as reconcileDiff } from './_atoms/diff-reconciliation/diff-reconciliation.mjs';
+import {
+  NESTED_INVOCATION,
+  evaluateHandoff,
+  mayReportShipped,
+} from './_atoms/shepherd-handoff/shepherd-handoff.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -48,6 +53,7 @@ const RECONCILE = 'ship/_atoms/diff-reconciliation/diff-reconciliation.md';
 const CRITERION = 'ship/_atoms/criterion-verdict/criterion-verdict.md';
 const MERGE_GATE = 'ship/_atoms/merge-gate/merge-gate.md';
 const PUBLISH = 'ship/_atoms/change-request/change-request.md';
+const HANDOFF = 'ship/_atoms/shepherd-handoff/shepherd-handoff.md';
 
 /** The grant stage two was reviewed with. Nothing here may widen it. */
 const PINNED_TOOLS = ['execute', 'read', 'search', 'task'];
@@ -139,14 +145,16 @@ test('the task grant is new, deliberate, and justified in the body', () => {
   assert.ok(frontmatter(ENTRY).allowedTools.includes('task'));
   assert.match(entry, /`task` is new in this stage, and it is the widest grant here/);
 
-  // Exactly one unit may carry `task`. A second one appearing means dispatch
-  // authority spread without anyone deciding it should.
+  // The set of units carrying `task` is pinned, so dispatch authority spreads
+  // only when somebody decides it should. The handoff atom is here because a
+  // handoff is a nested invocation in a separate worker, and narrating one
+  // instead is the failure it exists to prevent.
   const result = validateRepository(REPOSITORY_ROOT);
   const taskBearing = closureFor(result, ENTRY)
     .filter((unit) => (readFrontmatter(read(unit), unit).allowedTools ?? []).includes('task'))
     .sort();
 
-  assert.deepEqual(taskBearing, [DISPATCH, CYCLE, ENTRY].sort());
+  assert.deepEqual(taskBearing, [DISPATCH, CYCLE, HANDOFF, ENTRY].sort());
 });
 
 test('the execute-bearing closure is pinned, because execute can mutate', () => {
@@ -196,6 +204,7 @@ test('the skill composes chronicler, the grounding units, the merge gate, and pu
     CYCLE,
     MERGE_GATE,
     PUBLISH,
+    HANDOFF,
   ]);
 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
@@ -203,7 +212,7 @@ test('the skill composes chronicler, the grounding units, the merge gate, and pu
     '_base/_molecules/chronicler/chronicler.md',
     MOLECULE, GROUNDING, LAZINESS, SCOPE,
     CYCLE, ISOLATION, DISPATCH, RECONCILE, CRITERION,
-    MERGE_GATE, PUBLISH,
+    MERGE_GATE, PUBLISH, HANDOFF,
   ]) {
     assert.ok(closure.includes(unit), `${ENTRY} must reach ${unit}`);
   }
@@ -692,7 +701,7 @@ test('the change request opens only after reconciliation, validation, and review
   const evaluateIndex = entry.indexOf('**Evaluate the merge gate**');
   const openIndex = entry.indexOf('**Open the change request**');
   const askIndex = entry.indexOf('**Ask for the merge grant**');
-  const handoverIndex = entry.indexOf('**Hand over to `shepherd`**');
+  const handoverIndex = entry.indexOf('**Invoke `shepherd` and wait for it**');
   assert.ok(cycleIndex > 0 && evaluateIndex > 0 && openIndex > 0 && askIndex > 0 && handoverIndex > 0);
   assert.ok(cycleIndex < openIndex, 'the cycle runs before the change request opens');
   assert.ok(evaluateIndex < openIndex, 'the disposition is evaluated before it goes in the body');
@@ -835,6 +844,135 @@ test('handover happens only on recorded intent, and ship never merges', () => {
   );
 });
 
+test('the handoff is a nested invocation the run waits for, not a described one', () => {
+  const entry = flat(ENTRY);
+  const handoff = flat(HANDOFF);
+
+  // Structural: the step dispatches and blocks on a result, and the atom that
+  // classifies it is composed rather than described.
+  assert.match(entry, /\*\*Invoke `shepherd` and wait for it\*\*/);
+  assert.match(entry, /nested one in a separate worker\*\*, dispatched with\s+`task`/);
+  assert.match(
+    entry,
+    /\*\*This run does not report its own completion until shepherd returns a\s+terminal disposition\.\*\*/,
+  );
+  assert.match(entry, /`shipped-to-review` is never reported as though a handoff occurred/);
+  assert.match(handoff, /A Handoff Is An Invocation/);
+  assert.match(handoff, /a handoff that did\s+not leave this context did not happen/);
+
+  // Behavioral: the vocabulary a narrated handoff would report with cannot
+  // reach a completed handoff.
+  const described = evaluateHandoff({
+    intent: 'yes',
+    publication: { outcome: 'published', identifier: '#1' },
+    target: {
+      changeRequest: '#1',
+      headBranch: 'issue-1',
+      headSha: 'head',
+      baseBranch: 'main',
+      baseSha: 'base',
+      receipt: { observedAt: '2026-08-25T20:35:56Z', baseSha: 'base', headSha: 'head' },
+    },
+    invocation: { mode: 'narrated', status: 'returned' },
+    result: { disposition: 'mergeable-and-green' },
+  });
+  assert.equal(described.handoff, 'not-performed');
+  assert.equal(described.shipStatus, 'blocked');
+  assert.ok(!mayReportShipped(described));
+  assert.match(described.humanAction, /#1 \(branch issue-1\)/);
+
+  const invoked = evaluateHandoff({
+    intent: 'yes',
+    publication: { outcome: 'published', identifier: '#1' },
+    target: {
+      changeRequest: '#1',
+      headBranch: 'issue-1',
+      headSha: 'head',
+      baseBranch: 'main',
+      baseSha: 'base',
+      upToDatePolicy: 'required',
+      receipt: { observedAt: '2026-08-25T20:35:56Z', baseSha: 'base', headSha: 'head' },
+    },
+    invocation: { mode: NESTED_INVOCATION, status: 'returned' },
+    result: { disposition: 'mergeable-and-green' },
+    observedBase: { baseSha: 'base' },
+  });
+  assert.equal(invoked.handoff, 'completed');
+  assert.ok(mayReportShipped(invoked));
+});
+
+test('a declined handoff stays optional and an unrecorded one does not', () => {
+  const declined = evaluateHandoff({ intent: 'no' });
+  assert.equal(declined.handoff, 'not-required');
+  assert.ok(mayReportShipped(declined));
+
+  // `shepherd` stays an optional dependency precisely because `no` is a real
+  // answer. An unasked question is not that answer.
+  assert.equal(frontmatter(ENTRY).requiresSkills.find((entry) => entry.id === 'shepherd')?.required, false);
+  assert.equal(evaluateHandoff({ intent: undefined }).shipStatus, 'blocked');
+});
+
+test('handoff ownership is explicit, and a result is bound to the base it saw', () => {
+  const handoff = flat(HANDOFF);
+  const entry = flat(ENTRY);
+
+  assert.match(handoff, /Ownership Is Explicit Or Absent/);
+  for (const field of ['changeRequest', 'headBranch', 'headSha', 'baseBranch', 'baseSha', 'upToDatePolicy', 'receipt']) {
+    assert.match(handoff, new RegExp(`\`${field}\``), `the target must name ${field}`);
+  }
+  assert.match(handoff, /`unobserved` is never reported as `not-required`/);
+  assert.match(handoff, /\*\*It is not durable permission\.\*\*/);
+  assert.match(entry, /A shepherd result is snapshot-bound/);
+
+  const complete = {
+    intent: 'yes',
+    publication: { outcome: 'published', identifier: '#1' },
+    target: {
+      changeRequest: '#1',
+      headBranch: 'issue-1',
+      headSha: 'head',
+      baseBranch: 'main',
+      baseSha: 'base',
+      receipt: { observedAt: '2026-08-25T20:35:56Z', baseSha: 'base', headSha: 'head' },
+    },
+    invocation: { mode: NESTED_INVOCATION, status: 'returned' },
+    result: { disposition: 'mergeable-and-green' },
+  };
+
+  // A target missing any ownership field is refused rather than handed over.
+  const anonymous = evaluateHandoff({
+    ...complete,
+    target: { ...complete.target, baseSha: undefined, receipt: { observedAt: '2026-08-25T20:35:56Z' } },
+  });
+  assert.equal(anonymous.state, 'target-incomplete');
+  assert.equal(anonymous.shipStatus, 'blocked');
+
+  // The incident, reduced: a sibling merged into the same base after shepherd
+  // observed it, so the disposition describes a state that no longer exists.
+  const stale = evaluateHandoff({ ...complete, observedBase: { baseSha: 'base-after-sibling-merge' } });
+  assert.equal(stale.state, 'stale-disposition');
+  assert.equal(stale.requiresReinvocation, true);
+  assert.ok(!mayReportShipped(stale));
+});
+
+test('the set of open change requests is somebody else, and it is named', () => {
+  const handoff = flat(HANDOFF);
+  const entry = flat(ENTRY);
+
+  // The rule has to be recorded somewhere it will be inherited. A single-issue
+  // run cannot see a set, and shepherd is deliberately not made to wait.
+  assert.match(handoff, /After A Sibling Merges/);
+  assert.match(handoff, /must re-shepherd every still-open change\s+request whose readiness it previously reported/);
+  assert.match(handoff, /issue\s+#65/);
+  assert.match(handoff, /It does not and cannot watch a\s+set/);
+  assert.match(handoff, /a skill\s+that waits for events is a daemon/);
+  assert.match(entry, /\*\*What this run cannot own is the set\.\*\*/);
+  assert.match(entry, /\*\*Never watches a change request after handing it over\*\*/);
+
+  // The handoff atom hands over and nothing else: no `edit`, no `execute`.
+  assert.deepEqual(frontmatter(HANDOFF).allowedTools, ['task', 'read']);
+  assert.match(handoff, /\*\*Never merges, approves, rebases, or pushes\.\*\*/);
+});
 test('an incomplete outcome is not quietly reported as success', () => {
   const cycle = flat(CYCLE);
 

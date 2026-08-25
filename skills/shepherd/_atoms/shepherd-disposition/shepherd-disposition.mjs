@@ -1,3 +1,5 @@
+import { normalizeUpToDatePolicy, requiresUpToDateBranch } from '../provider-adapter/provider-adapter.mjs';
+
 const GREEN_LOCAL = new Set(['passed']);
 const BLOCKED_LOCAL = new Set(['cancelled', 'environment-failed', 'unsupported-provider', 'incomplete']);
 const COMPLETE_REMOTE = new Set(['passed', 'success']);
@@ -6,6 +8,31 @@ const MERGEABLE_STATES = new Set(['mergeable', 'clean', 'has_hooks']);
 
 function allRemoteChecksGreen(checks) {
   return Array.isArray(checks) && checks.length > 0 && checks.every((check) => COMPLETE_REMOTE.has(check.status));
+}
+
+/**
+ * Whether the base's own policy makes a behind branch unlandable.
+ *
+ * Base drift alone is not a trigger, because a branch rebased on every base
+ * movement never lands. That reasoning holds only while the base will still
+ * accept a behind branch. When the provider states that a change request must
+ * contain the current base before it may merge, a base that advanced has
+ * already made the branch unmergeable — mergeable content and green checks and
+ * all — and waiting changes nothing.
+ *
+ * `behind: false` is authoritative and settles it: a branch that already
+ * contains the base satisfies the policy however much the base moved.
+ * An unobserved policy is not a requirement, so a repository without one is
+ * unaffected.
+ */
+function behindUnderRequiredPolicy(signals) {
+  if (!requiresUpToDateBranch(signals.basePolicy?.upToDate)) {
+    return false;
+  }
+  if (signals.base?.behind === false) {
+    return false;
+  }
+  return signals.base?.moved === true || signals.base?.behind === true;
 }
 
 export function classifyShepherdPlan(signals = {}) {
@@ -17,24 +44,44 @@ export function classifyShepherdPlan(signals = {}) {
   const conflicted = signals.conflicts?.some((conflict) => ['authored', 'ambiguous', 'conflicted'].includes(conflict.kind)) === true;
   const mergeable = MERGEABLE_STATES.has(mergeability.state) && mergeability.isDraft !== true;
   const green = local.status === 'passed' && local.evidenceComplete === true && allRemoteChecksGreen(remoteChecks);
+  const upToDatePolicy = normalizeUpToDatePolicy(signals.basePolicy?.upToDate);
+  const behindStrictBase = behindUnderRequiredPolicy(signals);
 
-  if (signals.base?.moved === true && mergeable && green && !operatorAsked && !requiredCheckExpired && !conflicted) {
+  if (
+    signals.base?.moved === true
+    && mergeable
+    && green
+    && !operatorAsked
+    && !requiredCheckExpired
+    && !conflicted
+    && !behindStrictBase
+  ) {
     return {
       disposition: 'no-op-mergeable-and-green',
       action: 'no-op',
       shouldRebase: false,
       shouldForcePush: false,
       reason: 'base-moved-but-pr-remains-mergeable-and-green',
+      upToDatePolicy,
     };
   }
 
-  if (operatorAsked || requiredCheckExpired || conflicted || !mergeable) {
+  if (operatorAsked || requiredCheckExpired || conflicted || !mergeable || behindStrictBase) {
     return {
       disposition: 'shepherd-required',
       action: 'rebase-or-revalidate',
-      shouldRebase: operatorAsked || conflicted || !mergeable,
+      shouldRebase: operatorAsked || conflicted || !mergeable || behindStrictBase,
       shouldForcePush: false,
-      reason: operatorAsked ? 'operator-requested' : requiredCheckExpired ? 'required-check-expired' : conflicted ? 'conflicted' : 'not-mergeable',
+      reason: operatorAsked
+        ? 'operator-requested'
+        : requiredCheckExpired
+          ? 'required-check-expired'
+          : conflicted
+            ? 'conflicted'
+            : !mergeable
+              ? 'not-mergeable'
+              : 'base-advanced-under-required-up-to-date-policy',
+      upToDatePolicy,
     };
   }
 
@@ -44,6 +91,7 @@ export function classifyShepherdPlan(signals = {}) {
     shouldRebase: false,
     shouldForcePush: false,
     reason: 'no-rebase-trigger',
+    upToDatePolicy,
   };
 }
 
@@ -70,7 +118,34 @@ function missingRequired(signals) {
   return missing;
 }
 
+/**
+ * The snapshot a terminal disposition is bound to.
+ *
+ * A disposition says the change request was landable against one base commit
+ * at one moment. Without the moment and the commit, a caller holding the
+ * disposition later cannot tell whether it still describes anything, so every
+ * result carries them and says whether they are complete.
+ */
+export function freshnessReceipt(signals = {}) {
+  const observedAt = signals.observedAt ?? null;
+  const baseSha = signals.mergeability?.baseSha ?? signals.rebase?.baseSha ?? null;
+  const headSha = signals.push?.headSha ?? signals.mergeability?.headSha ?? null;
+
+  return {
+    observedAt,
+    baseSha,
+    headSha,
+    upToDatePolicy: normalizeUpToDatePolicy(signals.basePolicy?.upToDate),
+    provider: signals.provider?.status ?? 'unobserved',
+    complete: Boolean(observedAt && baseSha && headSha),
+  };
+}
+
 export function classifyTerminalDisposition(signals = {}) {
+  return { ...classifyOutcome(signals), receipt: freshnessReceipt(signals) };
+}
+
+function classifyOutcome(signals) {
   const defects = missingRequired(signals);
   if (defects.length > 0) {
     return { disposition: 'blocked', reason: 'missing-required-evidence', defects };
@@ -123,6 +198,17 @@ export function classifyTerminalDisposition(signals = {}) {
   }
   if (mergeability.isDraft === true || !['mergeable', 'clean', 'has_hooks'].includes(mergeability.state)) {
     return { disposition: 'needs-human', reason: `pull-request-${mergeability.state ?? 'not-mergeable'}`, defects };
+  }
+
+  // Mergeable content and green checks are not landability when the base
+  // refuses a behind branch. Reporting `mergeable-and-green` here would be
+  // reporting the exact state a person later has to fix by hand.
+  if (requiresUpToDateBranch(signals.basePolicy?.upToDate) && mergeability.behind === true) {
+    return {
+      disposition: 'blocked',
+      reason: 'base-advanced-under-required-up-to-date-policy',
+      defects,
+    };
   }
 
   const checks = signals.remoteChecks?.checks;

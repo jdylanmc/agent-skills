@@ -36,8 +36,14 @@ below is unreleased and no comparison links are available.
   against the confirmed plan before anything is validated, `run-ci` validates,
   `roast` reviews, and the run reports a verdict for each criterion rather than
   declaring success. Whether the result may merge is withheld until a person
-  grants it. `shepherd` keeps an existing change request landable — mergeable
-  and green — across any git provider.
+  grants it. When the operator asked for it, the published change request is
+  handed to `shepherd` as a real invocation the run waits on, naming the branch,
+  the commits it was landable against, and when that was observed; a run that
+  could not hand it over reports blocked with the target rather than reporting
+  it as delivered. `shepherd` keeps an existing change request landable —
+  mergeable and green — across any git provider, and treats a base that
+  advanced as a rebase trigger when that base requires a change request to
+  contain it.
 - **Quality assurance design.** `qa-design` turns a specification into the
   contract that says how its behavior will be proven: behavior rules with
   acceptance criteria, the smallest verification level that gives meaningful

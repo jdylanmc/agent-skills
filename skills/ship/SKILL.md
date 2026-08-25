@@ -1,9 +1,9 @@
 ---
 name: ship
-description: Take one tracker issue to review-ready: ground it into a confirmed plan, then dispatch a bounded worker in an isolated worktree, reconcile every hunk against the confirmed ledger, validate through run-ci, review through roast, gate the merge, and report criterion by criterion before opening a change request. Use when the operator asks to ship an issue, deliver a ticket, or take one deliverable unit to done. Do not use to work a whole backlog or fleet, which belongs to ship-with-squadron, and do not use to merge, approve, accept risk, or drive an existing change request, which belongs to shepherd.
+description: Take one tracker issue to review-ready: ground it into a confirmed plan, then dispatch a bounded worker in an isolated worktree, reconcile every hunk against the confirmed ledger, validate through run-ci, review through roast, gate the merge, report criterion by criterion, open a change request, and invoke shepherd on it when the operator asked for that. Use when the operator asks to ship an issue, deliver a ticket, or take one deliverable unit to done. Do not use to work a whole backlog or fleet, which belongs to ship-with-squadron, and do not use to merge, approve, accept risk, or drive an existing change request, which belongs to shepherd.
 allowed-tools: ["execute","read","search","task"]
-includes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md"]
-composes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md"]
+includes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md"]
+composes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md"]
 disable-model-invocation: true
 user-invocable: true
 requires-skills: [{"id":"run-ci","source":"local","required":true},{"id":"roast","source":"local","required":true},{"id":"shepherd","source":"local","required":false}]
@@ -17,7 +17,7 @@ Take one issue to done, without doing more than it asked for.
 record -> ask about shepherd -> ground on one issue -> fix the scope -> confirm
        -> isolate -> dispatch -> reconcile -> validate -> review -> remediate
        -> verdict -> evaluate the merge gate -> open the change request
-       -> ask for the merge grant -> hand to shepherd
+       -> ask for the merge grant -> invoke shepherd and wait
 ```
 
 Ship is an orchestration around a **single deliverable unit**. It coordinates
@@ -30,8 +30,9 @@ judges the change is grading its own work.
 
 > **This stage delivers to review; it does not land.** Ship ends with a change
 > request open, reconciled, validated, reviewed, and reported criterion by
-> criterion. Driving that change request green and mergeable belongs to
-> `shepherd`, and merging belongs to a person.
+> criterion, and handed to `shepherd` when the operator asked for that — as an
+> invocation waited on, not a packet described. Driving that change request
+> green and mergeable belongs to `shepherd`, and merging belongs to a person.
 
 ## Required References
 
@@ -40,6 +41,7 @@ judges the change is grading its own work.
 3. [Delivery cycle](./_molecules/delivery-cycle/delivery-cycle.md)
 4. [Merge gate](./_atoms/merge-gate/merge-gate.md)
 5. [Change request](./_atoms/change-request/change-request.md)
+6. [Shepherd handoff](./_atoms/shepherd-handoff/shepherd-handoff.md)
 
 ## Core Workflow
 
@@ -117,14 +119,32 @@ judges the change is grading its own work.
    `granted` is not a merge and is not an approval. It records that somebody
    authorized one, and the change request is updated to say so.
 
-8. **Hand over to `shepherd`** when, and only when, the shepherd intent recorded
-   in step 2 said so. Pass the change request identifier, the branch, the
+8. **Invoke `shepherd` and wait for it** when, and only when, the shepherd
+   intent recorded in step 2 said so. Follow
+   [Shepherd handoff](./_atoms/shepherd-handoff/shepherd-handoff.md), which
+   builds the target, dispatches the nested invocation, and classifies the
+   result with
+   [shepherd-handoff.mjs](./_atoms/shepherd-handoff/shepherd-handoff.mjs).
+
+   The invocation is a **nested one in a separate worker**, dispatched with
+   `task`, carrying the change request identifier, the branch, the captured head
+   and base SHAs, the base's up-to-date policy when it was observed, the
    validation evidence, the merge disposition, and the outstanding defects.
    Shepherd drives it toward mergeable; ship does not follow it there and does
    not merge it.
 
+   **This run does not report its own completion until shepherd returns a
+   terminal disposition.** A described handoff and a real one read identically
+   in a report, and only one of them leaves the change request with an owner.
+
+   When the handoff was required and did not happen — shepherd unavailable, the
+   dispatch failed, nothing was invoked, or nothing terminal came back — the
+   status is `blocked`, naming the target and the one exact human action.
+   `shipped-to-review` is never reported as though a handoff occurred.
+
    When shepherd intent was `no`, stop and report. The absence of an instruction
-   is not permission to continue.
+   is not permission to continue, and an explicit `no` keeps the option an
+   option.
 
    Handover also needs something to hand over. When publication returned
    anything but `published`, report that outcome and stop, whatever the shepherd
@@ -202,6 +222,42 @@ resolve merge state, read review threads, or watch checks; those belong to
 `shepherd`. Keeping it that narrow is what lets a shared provider adapter
 replace it later as a move rather than a rewrite.
 
+## The Handoff
+
+**Ready is not a property of a change request. It is a claim somebody has to
+keep true.**
+
+A change request was once opened here green and mergeable, reported as ready,
+and then owned by nobody. A sibling change request merged into the same base
+afterwards; that base requires a change request to contain the current base
+before it may merge, and the one reported ready quietly stopped being
+mergeable. A person found it.
+
+Three things follow, and they are enforced in
+[Shepherd handoff](./_atoms/shepherd-handoff/shepherd-handoff.md) rather than
+promised here:
+
+1. **A handoff is an invocation.** Only a nested invocation in a separate worker
+   that returned a terminal disposition counts. Shepherd needs `edit` and
+   `execute` in a worktree it owns, which this run does not hold for that
+   purpose, so a handoff that never left this context did not happen.
+2. **Ownership is explicit.** The target names the change request, branch,
+   captured head and base SHAs, the base's up-to-date policy — `required`,
+   `not-required`, or `unobserved`, never collapsed — and a freshness receipt
+   recording when the state was read. Anything missing is a refused handoff.
+3. **A shepherd result is snapshot-bound.** It says the change request was
+   landable against one base commit at one moment. It is not durable
+   permission, and a disposition whose base has since moved is re-shepherded
+   before the change request is presented as ready.
+
+**What this run cannot own is the set.** After anything merges into the base,
+every still-open change request previously reported ready is stale, and one
+single-issue run sees only its own. That set belongs to a caller that holds it —
+the strategic delivery front door in issue #65, or a squadron working a backlog
+— and the requirement is recorded in the handoff atom so it is inherited rather
+than rediscovered. It is deliberately not solved by making `shepherd` wait for
+events; that would be a daemon holding push authority the whole time.
+
 ## Output Contract
 
 Return:
@@ -217,8 +273,10 @@ Return:
   absent;
 - dependency state, each classified `blocking`, `changes-requirements`, or
   `informational`, with any blocker named and why it blocks;
-- shepherd intent, recorded from the question asked at the start, and whether
-  handover happened;
+- shepherd intent, recorded from the question asked at the start, the handoff
+  state — `not-required`, `completed`, or `not-performed` with its reason — the
+  handoff target with its captured head and base SHAs and up-to-date policy, the
+  freshness receipt, and shepherd's terminal disposition when one came back;
 - the proposed approach, its laziness verdict, and every reduction applied;
 - the exhaustive change ledger, and the reconciliation verdict with any
   undisclosed, ambiguous, or unfulfilled entries named;
@@ -252,6 +310,13 @@ Return:
 - **Never weakens, skips, or narrows a test to reach green.**
 - **Hands over rather than lands.** Driving a change request to mergeable
   belongs to `shepherd`. The two are deliberately separate skills.
+- **Never reports a handoff it did not perform.** When shepherd intent was
+  `yes`, the run reports `blocked` — with the target and the exact human action
+  — rather than `shipped-to-review`, unless a nested shepherd invocation
+  returned a terminal disposition bound to the current base.
+- **Never watches a change request after handing it over**, and never watches
+  its siblings. Re-shepherding a set after a sibling merge belongs to the caller
+  that owns the set.
 - **Pushes only its own isolation branch, and never with force.** Ship creates
   the change request; moving an existing branch belongs to `shepherd`.
 - **Not a fleet.** Working a whole dependency-aware backlog belongs to
@@ -270,7 +335,8 @@ Return:
 change-request commands. That last one includes a **non-force push of this run's
 own isolation branch** and the provider's official command-line tool, which is
 the only write to a shared remote this skill performs. `task` dispatches the
-implementation worker and the remediation dispatches.
+implementation worker, the remediation dispatches, and the nested `shepherd`
+invocation.
 
 **`task` is new in this stage, and it is the widest grant here.** It is granted
 because ship orchestrates rather than implements, and that separation is only

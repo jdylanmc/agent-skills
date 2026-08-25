@@ -144,6 +144,23 @@ never `published` with the branch offered in place of an identifier.
 constructed, predicted, or inferred from a branch name is not evidence that
 anything was created.
 
+## What Publication Hands Forward
+
+A `published` outcome returns more than an identifier, because the next step
+hands the change request to somebody and cannot do that anonymously:
+
+| Returned | Meaning |
+| --- | --- |
+| Identifier | Exactly what the provider gave back. |
+| Head branch and head SHA | What was pushed, at which commit. |
+| Base branch and base SHA | What it was opened against, at that moment. |
+| Observation time | When those were read. |
+
+Together these are the handoff target and its freshness receipt. They are plain
+git and publication facts, so recording them does not widen this seam: the base
+branch's own merge policy, its review state, and its checks stay unread here and
+belong to `shepherd`.
+
 ## Boundaries
 
 - **Never merges, approves, enables auto-merge, or requests a review decision.**

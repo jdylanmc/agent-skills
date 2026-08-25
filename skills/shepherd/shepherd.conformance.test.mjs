@@ -6,8 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { classifyConflictPath, conflictResolutionAction, validateConflictPolicy } from './_atoms/conflict-policy/conflict-policy.mjs';
-import { classifyShepherdPlan, classifyTerminalDisposition } from './_atoms/shepherd-disposition/shepherd-disposition.mjs';
-import { detectProvider, shouldRunProviderIndependentCore } from './_atoms/provider-adapter/provider-adapter.mjs';
+import { classifyShepherdPlan, classifyTerminalDisposition, freshnessReceipt } from './_atoms/shepherd-disposition/shepherd-disposition.mjs';
+import {
+  detectProvider,
+  normalizeUpToDatePolicy,
+  requiresUpToDateBranch,
+  shouldRunProviderIndependentCore,
+} from './_atoms/provider-adapter/provider-adapter.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -258,6 +263,133 @@ test('base drift while mergeable and green is a no-op, not a rebase or force-pus
   assert.equal(result.shouldRebase, false);
   assert.equal(result.shouldForcePush, false);
   assert.equal(result.action, 'no-op');
+});
+
+test('base drift stays a no-op when the base does not require containing it', () => {
+  // The busy-`main` case the no-op exists for. A repository with no such
+  // policy, and one where the policy could not be read, must both keep it.
+  for (const upToDate of [undefined, 'not-required', 'unobserved', 'strict', null]) {
+    const result = classifyShepherdPlan(greenSignals({
+      base: { moved: true },
+      basePolicy: { upToDate },
+      operatorRequest: { rebase: false },
+      requiredChecks: [{ name: 'validate', expired: false }],
+    }));
+
+    assert.equal(
+      result.disposition,
+      'no-op-mergeable-and-green',
+      `policy ${String(upToDate)} must not trigger a rebase`,
+    );
+    assert.equal(result.shouldRebase, false);
+  }
+});
+
+test('an advanced base is a trigger when the base requires the branch to contain it', () => {
+  // The incident: mergeable content, green checks, and a pull request that
+  // could not merge because its base had moved under a required up-to-date
+  // policy. A no-op here leaves it unlandable and reports it as green.
+  const result = classifyShepherdPlan(greenSignals({
+    base: { moved: true },
+    basePolicy: { upToDate: 'required' },
+    operatorRequest: { rebase: false },
+    requiredChecks: [{ name: 'validate', expired: false }],
+  }));
+
+  assert.equal(result.disposition, 'shepherd-required');
+  assert.equal(result.shouldRebase, true);
+  assert.equal(result.reason, 'base-advanced-under-required-up-to-date-policy');
+  assert.equal(result.upToDatePolicy, 'required');
+
+  // Ancestry settles it in the other direction: a branch that already contains
+  // the base satisfies the policy however far the base moved.
+  const alreadyContains = classifyShepherdPlan(greenSignals({
+    base: { moved: true, behind: false },
+    basePolicy: { upToDate: 'required' },
+    operatorRequest: { rebase: false },
+    requiredChecks: [{ name: 'validate', expired: false }],
+  }));
+  assert.equal(alreadyContains.disposition, 'no-op-mergeable-and-green');
+  assert.equal(alreadyContains.shouldRebase, false);
+});
+
+test('a branch behind a base that requires containing it is never mergeable-and-green', () => {
+  const behind = classifyTerminalDisposition(greenSignals({
+    basePolicy: { upToDate: 'required' },
+    mergeability: { state: 'mergeable', isDraft: false, baseSha: 'base-sha', headSha: 'head-sha', behind: true },
+  }));
+  assert.equal(behind.disposition, 'blocked');
+  assert.equal(behind.reason, 'base-advanced-under-required-up-to-date-policy');
+
+  // Without the policy, or with it unobserved, the same evidence is green.
+  for (const basePolicy of [undefined, { upToDate: 'not-required' }, { upToDate: 'unobserved' }]) {
+    const result = classifyTerminalDisposition(greenSignals({
+      basePolicy,
+      mergeability: { state: 'mergeable', isDraft: false, baseSha: 'base-sha', headSha: 'head-sha', behind: true },
+    }));
+    assert.equal(result.disposition, 'mergeable-and-green');
+  }
+});
+
+test('an unobserved up-to-date policy is never treated as not-required', () => {
+  for (const value of [undefined, null, '', 'strict', 'Required', 0]) {
+    assert.equal(normalizeUpToDatePolicy(value), 'unobserved', `${String(value)} must not resolve a policy`);
+    assert.equal(requiresUpToDateBranch(value), false);
+  }
+
+  assert.equal(normalizeUpToDatePolicy(true), 'required');
+  assert.equal(normalizeUpToDatePolicy(false), 'not-required');
+  assert.equal(requiresUpToDateBranch('required'), true);
+  assert.equal(requiresUpToDateBranch('not-required'), false);
+  assert.equal(requiresUpToDateBranch('unobserved'), false);
+});
+
+test('every terminal disposition carries the snapshot it was observed against', () => {
+  const result = classifyTerminalDisposition(greenSignals({
+    observedAt: '2026-08-25T20:35:56Z',
+    basePolicy: { upToDate: 'required' },
+  }));
+
+  assert.equal(result.disposition, 'mergeable-and-green');
+  assert.deepEqual(result.receipt, {
+    observedAt: '2026-08-25T20:35:56Z',
+    baseSha: 'base-sha',
+    headSha: 'head-sha',
+    upToDatePolicy: 'required',
+    provider: 'supported-provider',
+    complete: true,
+  });
+
+  // A receipt without an observation time cannot be compared with anything
+  // later, so it says so rather than looking like evidence.
+  assert.equal(freshnessReceipt(greenSignals()).complete, false);
+  assert.equal(freshnessReceipt({}).complete, false);
+  assert.equal(freshnessReceipt({}).upToDatePolicy, 'unobserved');
+  assert.equal(freshnessReceipt({}).provider, 'unobserved');
+});
+
+test('shepherd states plainly that it does not watch', () => {
+  const entry = flat(ENTRY);
+  const molecule = flat('shepherd/_molecules/pr-shepherding/pr-shepherding.md');
+
+  assert.match(entry, /\*\*Never watches\.\*\*/);
+  assert.match(entry, /belongs to the caller\s+that owns the set of open change requests/);
+  assert.match(entry, /freshness receipt/);
+  assert.match(molecule, /One Snapshot, Not A Watch/);
+  assert.match(molecule, /it does not track siblings/);
+});
+
+test('the required up-to-date policy is adapter evidence, not core vocabulary', () => {
+  const adapter = flat('shepherd/_atoms/provider-adapter/provider-adapter.md');
+  const core = flat('shepherd/_atoms/git-shepherd-core/git-shepherd-core.md');
+
+  assert.match(adapter, /The Required Up-To-Date Policy/);
+  assert.match(adapter, /`unobserved` is never reported as `not-required`/);
+  assert.match(adapter, /This is a field of `read-state`, not a fourth operation/);
+
+  // The core consumes the normalized signal and still resolves nothing itself.
+  assert.match(core, /`up-to-date-policy`/);
+  assert.match(core, /Resolved by the coordinating molecule and never by this layer/);
 });
 
 test('operator request, expired required check, or unmergeable state are action triggers', () => {

@@ -33,8 +33,28 @@ An adapter exposes exactly three operations:
 | Operation | Input | Output |
 | --- | --- | --- |
 | `resolve-target` | Change-request identifier, local repository, and optional explicit provider. | Base ref, head ref, writable head remote when known, captured head SHA, and provider identity. |
-| `read-state` | Resolved target and local git SHAs. | Review state, mergeability/conflict state, draft or blocked state when the provider has those concepts, and source timestamp/SHA. |
+| `read-state` | Resolved target and local git SHAs. | Review state, mergeability/conflict state, whether the branch is behind its base, the base's required up-to-date policy when the provider exposes one, draft or blocked state when the provider has those concepts, and source timestamp/SHA. |
 | `read-checks` | Resolved target and head SHA. | Normalized validation states with raw provider fields preserved when available. |
+
+## The Required Up-To-Date Policy
+
+Some providers let a base branch refuse a change request that does not contain
+the base's current commit. That is hosted policy, not git state, so it belongs
+behind this seam and reaches the core only as a normalized value.
+
+| Value | Meaning |
+| --- | --- |
+| `required` | The provider states the branch must contain the current base before it may merge. |
+| `not-required` | The policy was read, and it imposes no such requirement. |
+| `unobserved` | The policy could not be read. |
+
+`unobserved` is never reported as `not-required`. One says the policy imposes
+nothing; the other says nobody could look. Only `required` changes what the core
+does, so an unreadable policy leaves existing behavior intact rather than
+causing a rebase on every base movement.
+
+This is a field of `read-state`, not a fourth operation. The adapter still
+exposes exactly three.
 
 ## Detection Order
 
