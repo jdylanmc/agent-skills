@@ -20,7 +20,8 @@ Track what the discovery loop knows and what can happen next.
 | `needs-interrogate` | A pointed question must be answered before discovery can proceed. |
 | `needs-domain-mapping` | Terms, actors, systems, boundaries, or relationships are blocking progress. |
 | `needs-proof-of-concept` | A small bounded prototype is the cheapest way to answer the discovery question. |
-| `needs-more-evidence` | A named source or source type is missing. |
+| `needs-research` | The blocker is knowledge that does not exist in reachable evidence and must be sought outside it. |
+| `needs-more-evidence` | A named source or source type exists and is reachable, but has not been read. |
 | `blocked` | The next step depends on unavailable authority, access, or a decision owner. |
 | `stop` | Discovery should not continue because the request is out of scope or unsafe. |
 
@@ -31,6 +32,11 @@ Track what the discovery loop knows and what can happen next.
 - Assign every blocker an owner, source, or next workflow when known.
 - Route to `proof-of-concept` when code can answer the question cheaply; do not
   pretend the prototype has already been run.
+- Choose `needs-research` over `needs-more-evidence` when the answer is not
+  reachable from the repository, the tracker, or supplied documents at all. The
+  distinction is reachability, not difficulty: a source that exists and has not
+  been read is `needs-more-evidence`; a fact nobody here has recorded is
+  `needs-research`. Name the external question rather than the topic.
 - Record why a next action is ready; do not merely name it.
 - Do not mutate a tracker. A tracker update is a separate gated operation.
 

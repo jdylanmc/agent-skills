@@ -5,7 +5,7 @@ level: atom
 allowed-tools: []
 includes: []
 composes: []
-used-by: ["_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","optimize-prompt/_molecules/prompt-optimization/prompt-optimization.md","prompt-coach/_molecules/prompt-review/prompt-review.md"]
+used-by: ["_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","discovery/_molecules/research-thread/research-thread.md","optimize-prompt/_molecules/prompt-optimization/prompt-optimization.md","prompt-coach/_molecules/prompt-review/prompt-review.md"]
 ---
 
 # Review Validate Report
