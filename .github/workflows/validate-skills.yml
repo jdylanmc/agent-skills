@@ -105,4 +105,6 @@ jobs:
           skills/cmux-orchestrate/_atoms/cmux-signal/cmux-signal.test.mjs
           skills/_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.test.mjs
           skills/_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.adversarial.test.mjs
+          skills/_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.test.mjs
           skills/handoff/handoff.test.mjs
+          skills/orchestration-handoff/orchestration-handoff.conformance.test.mjs

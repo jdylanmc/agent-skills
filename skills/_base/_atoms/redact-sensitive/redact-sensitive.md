@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["execute"]
 includes: ["_base/_atoms/redact-sensitive/redact-sensitive.config.mjs","_base/_atoms/redact-sensitive/redact-sensitive.mjs"]
 composes: []
-used-by: ["_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md","optimize-prompt/_molecules/prompt-optimization/prompt-optimization.md"]
+used-by: ["_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md","_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.md","optimize-prompt/_molecules/prompt-optimization/prompt-optimization.md"]
 ---
 
 # Sensitive Content Redaction
