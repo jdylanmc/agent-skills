@@ -62,7 +62,7 @@ only the ones that become headings.
 | `what_did_not_work` | yes | Approaches that failed, and why. |
 | `next_steps` | yes | What the next agent should do. |
 | `suggested_skills` | no | An array of `{"skill": "...", "reason": "..."}`. Omitted when no skill usefully follows. |
-| `available_skills` | no | The caller's real skill identifiers. When supplied, a suggestion outside the set is `unknown_skill`. |
+| `available_skills` | required when `suggested_skills` is present | The caller's real skill identifiers. A suggestion outside the set, or a non-empty `suggested_skills` with this field absent or empty, is `unknown_skill`. |
 | `title` | no | The document heading. Defaults to `Handoff`. |
 | `schema_version` | no | The payload contract this caller was written against. Must be `1` when present, and is echoed in the normalized payload. |
 
@@ -113,9 +113,10 @@ still finds what it expects.
 - `Artifacts and References` renders one list item per reference,
   `- <locator> - <note>`, and the note is omitted when there is none.
 - `Suggested Skills` renders `- <skill> - <reason>`. A suggestion without a
-  reason is malformed input. When the caller supplies its available skills, a
-  suggestion outside that set is `unknown_skill`, which is what stops an
-  invented skill from reaching the next agent.
+  reason is malformed input. A non-empty `suggested_skills` always requires a
+  populated `available_skills` to validate against; a suggestion outside that
+  set, or `available_skills` left absent or empty, is `unknown_skill`, which is
+  what stops an invented skill from reaching the next agent.
 - `Suggested Skills` is **omitted entirely**, heading included, when no skill
   is supplied. An empty optional section is noise.
 - A section body may not introduce a `#` or `##` heading of its own outside a

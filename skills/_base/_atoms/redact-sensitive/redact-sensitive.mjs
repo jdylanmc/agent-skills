@@ -7,23 +7,43 @@
  */
 
 import {
+  HandoffError,
   isDirectInvocation,
   parseFlags,
   readTextSource,
-  redactText,
+  redactTextWithConfiguredIdentifiers,
   runEntryPoint,
 } from '../../_molecules/persist-bounded-handoff/persist-bounded-handoff.mjs';
+import {
+  loadIdentifierConfig,
+} from './redact-sensitive.config.mjs';
 
-const USAGE = 'Usage: redact-sensitive.mjs (--file <path> | --stdin) [--probe]';
+const USAGE = 'Usage: redact-sensitive.mjs (--file <path> | --stdin) [--config <path>] [--probe]';
 
 export function run(argv) {
   const parsed = parseFlags(
     argv,
-    { values: { '--file': 'file' }, flags: { '--stdin': 'stdin' } },
+    {
+      values: { '--file': 'file', '--config': 'config' },
+      flags: { '--stdin': 'stdin' },
+    },
     USAGE,
   );
   const source = readTextSource(parsed, USAGE, 'text');
-  return `${JSON.stringify(redactText(source), null, 2)}\n`;
+  let configured;
+  try {
+    configured = loadIdentifierConfig({
+      file: parsed.config,
+      json: process.env.REDACT_SENSITIVE_CONFIG_JSON,
+    });
+  } catch (error) {
+    if (error.code === 'malformed_config') {
+      throw new HandoffError(error.code, error.message);
+    }
+    throw error;
+  }
+  const result = redactTextWithConfiguredIdentifiers(source, configured.identifiers);
+  return `${JSON.stringify(result, null, 2)}\n`;
 }
 
 if (isDirectInvocation(import.meta.url)) {

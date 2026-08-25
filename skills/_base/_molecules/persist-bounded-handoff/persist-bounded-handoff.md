@@ -51,7 +51,7 @@ The caller supplies one bounded JSON payload of **confirmed** context.
 | `what_did_not_work` | yes | Approaches that failed, and why. |
 | `next_steps` | yes | What the next agent should do. |
 | `suggested_skills` | no | Exact skill identifiers and the reason for each. Omitted when no skill usefully follows. |
-| `available_skills` | no | The caller's real skill identifiers. When supplied, a suggestion outside the set is refused. |
+| `available_skills` | required when `suggested_skills` is present | The caller's real skill identifiers. A suggestion outside the set, or a non-empty `suggested_skills` with this field absent or empty, is refused. |
 | `title` | no | The document heading. Defaults to `Handoff`. |
 | `schema_version` | no | The payload contract the caller was written against. Must be `1` when present, and is echoed in the normalized payload so a caller can assert what it got. |
 
@@ -110,19 +110,26 @@ referencing.
 ## Operation
 
 ```text
-node <molecules>/persist-bounded-handoff.mjs (--payload <file> | --stdin)
+node <molecules>/persist-bounded-handoff.mjs (--payload <file> | --stdin) [--config <path>]
 ```
 
 | Input | Required | Meaning |
 | --- | --- | --- |
 | `--payload` | one of | A file holding the JSON payload. |
 | `--stdin` | one of | The JSON payload on standard input. |
+| `--config` | no | A version 1 repository identifier configuration. |
 | `--probe` | no | Prints `persist-bounded-handoff: available` and exits `0`. |
 
 Exactly one payload source is supplied; both or neither is `usage`. Exit `0`
 prints the [Output](#output) fields as one JSON object on standard output. Any
 non-zero exit prints one JSON failure object on standard error and writes
 nothing.
+
+Configured identifiers come from `--config` or
+`REDACT_SENSITIVE_CONFIG_JSON`. The configuration is parsed by the
+dependency-free redaction configuration module, shared with the
+`redact-sensitive` entry point, so both entry points apply the same terms
+without a dependency cycle.
 
 The composed operation runs in this order, and the order matters:
 
@@ -132,15 +139,20 @@ The composed operation runs in this order, and the order matters:
    own document or section heading is rejected before rendering.
 2. **Redact** every text field with
    [Sensitive content redaction](../../_atoms/redact-sensitive/redact-sensitive.md), so nothing
-   the floor **recognizes** reaches the renderer. The floor is a pattern match,
-   not a guarantee: a secret with no recognizable shape, a customer name, or an
-   internal host name passes straight through, and removing those stays the
+   the deterministic floor or configured identifiers **recognize** reaches the
+   renderer. The floor is a pattern match, not a guarantee: a secret with no
+   recognizable shape, a customer name, or an internal host name not in the
+   configuration passes straight through, and removing those stays the
    caller's obligation. The title is redacted with the sections; a suggested
-   skill identifier is rendered verbatim, so one that a rule would rewrite is
-   rejected at validation instead.
-3. **Render** with [Handoff rendering](../../_atoms/handoff-render/handoff-render.md), then
-   confirm the rendered document is already clean. Redaction is idempotent, so
-   a second finding is a defect here rather than in the caller's content.
+   skill identifier is rendered verbatim, so one that either redaction layer
+   would rewrite is rejected at validation instead.
+3. **Render and settle** with
+   [Handoff rendering](../../_atoms/handoff-render/handoff-render.md), then
+   apply both redaction layers to the rendered document and confirm it is
+   clean. This second pass protects joins introduced by rendering, such as an
+   identifier split between an artifact locator and its note. Redaction is
+   idempotent, so a third finding is a defect here rather than in the caller's
+   content.
 4. **Resolve** the destination with
    [Temporary path resolution](../../_atoms/temp-path-resolve/temp-path-resolve.md).
 5. **Write and verify** with
@@ -189,7 +201,8 @@ left behind.
 | `usage` | yes | The arguments were not understood, or neither or both payload sources were supplied. Fix the invocation. |
 | `malformed_payload` | yes | The payload broke a shape, bound, or constraint: an unknown field, a missing or malformed slug, an over-long section, a control character, an unpaired UTF-16 surrogate, an unterminated fence, a locator carrying prose or ending in `:` or `=`, a suggestion with no reason, or a document that outgrew its bound. The message names the field. |
 | `inlined_artifact_body` | yes | A section body reproduced an artifact instead of referencing it. Replace the block with a locator in `artifacts_and_references`. |
-| `unknown_skill` | yes | A suggestion named a skill outside `available_skills`. Suggest a real skill or omit the section. |
+| `unknown_skill` | yes | A suggestion named a skill outside `available_skills`, or `suggested_skills` was non-empty while `available_skills` was absent or empty. Suggest a real skill, supply the caller's available skills, or omit the section. |
+| `malformed_config` | yes | The optional repository identifier configuration was unreadable or invalid. Correct the configuration without placing its values in the failure output. |
 | `redaction_incomplete` | no | The rendered document still matched a redaction rule after redaction. Redaction is idempotent and complete in one pass, and the one seam a caller could reach - a locator ending in a separator - is refused during validation instead, so this is a defect in this core rather than in the caller's content. Report it with the payload; do not retry. |
 | `temp_unavailable` | no | The runtime reported a temporary directory that does not resolve or is not a directory. An environment fault. |
 | `unsafe_temp_root` | partly | The `handoffs` child exists with a shape this core refuses: a symbolic link, a non-directory, or a directory owned by another user or writable by group or others. See [Recovering from `unsafe_temp_root`](../../_atoms/temp-path-resolve/temp-path-resolve.md#recovering-from-unsafe_temp_root). |
@@ -255,13 +268,14 @@ the work should stop, invoke a next skill, notify anyone, or clean up earlier
 handoffs. It holds no control state, so a caller's own state machine, approval
 gates, and delivery authority are unaffected by anything here.
 
-**Redaction is a floor, not a guarantee.** The rules match recognizable shapes,
-so a secret carrying no shape a pattern can see, a customer name in a sentence,
-or an internal host name that matters all reach the document unchanged. The
-caller supplying the context is responsible for removing those **before** it
-calls, and this molecule cannot check that it did. It is also eager on purpose:
-`token: bounded` in prose is redacted, and the answer is to rewrite the
-sentence rather than to weaken the rule.
+**Redaction is a floor, not a guarantee.** The deterministic rules match
+recognizable shapes and the configured list matches only its supplied terms, so
+a secret carrying no recognizable shape, a customer name in a sentence, or an
+internal host name that is not configured can reach the document unchanged.
+The caller supplying the context is responsible for removing those **before**
+it calls, and this molecule cannot check that it did. The deterministic floor
+is also eager on purpose: `token: bounded` in prose is redacted, and the
+answer is to rewrite the sentence rather than to weaken the rule.
 
 It is non-routable and records nothing. The routable skill that composes it
 owns Chronicle recording, and one failed handoff is an outcome that skill

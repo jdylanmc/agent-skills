@@ -3,7 +3,7 @@ name: redact-sensitive
 description: Replace secrets, credentials, and personally identifiable information with explicit redaction markers, idempotently, so a reader can see that something was removed.
 level: atom
 allowed-tools: ["execute"]
-includes: ["_base/_atoms/redact-sensitive/redact-sensitive.mjs"]
+includes: ["_base/_atoms/redact-sensitive/redact-sensitive.config.mjs","_base/_atoms/redact-sensitive/redact-sensitive.mjs"]
 composes: []
 used-by: ["_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md"]
 ---
@@ -20,18 +20,20 @@ one. Every replacement here is announced.
 
 ## Required Files
 
-1. [Redaction entry point](./redact-sensitive.mjs)
+1. [Repository identifier configuration](./redact-sensitive.config.mjs)
+2. [Redaction entry point](./redact-sensitive.mjs)
 
 ## Operation
 
 ```text
-node <atoms>/redact-sensitive.mjs (--file <path> | --stdin)
+node <atoms>/redact-sensitive.mjs (--file <path> | --stdin) [--config <path>]
 ```
 
 | Input | Required | Meaning |
 | --- | --- | --- |
 | `--file` | one of | A file holding the text to redact. |
 | `--stdin` | one of | The text on standard input. |
+| `--config` | no | A repository-specific version 1 JSON identifier configuration. |
 | `--probe` | no | Prints `redact-sensitive: available` and exits `0`. |
 
 Exactly one text source is supplied; both or neither is `usage`. Exit `0`
@@ -48,9 +50,31 @@ Every replacement is `[REDACTED:<category>]`:
 | `private-key` | A PEM private-key block, header and body and footer. |
 | `credential` | A `Bearer` or `Basic` authorization value, and a cloud access-key identifier. |
 | `token` | A recognizable provider token or a JSON Web Token. |
+| `connection-string` | A credential-bearing database, cache, or message-broker connection URI. |
 | `secret` | The value of an assignment whose key names a secret. |
 | `email` | An electronic mail address. |
 | `phone` | A telephone number written with separators or a country code. |
+
+Repository-specific categories come from configuration:
+
+```json
+{
+  "version": 1,
+  "identifiers": [
+    {
+      "value": "<deployment-specific identifier>",
+      "evidenceType": "internal-system"
+    }
+  ]
+}
+```
+
+The configuration belongs to the repository or deployment using this unit,
+never to this public shared unit. It may instead be supplied through
+`REDACT_SENSITIVE_CONFIG_JSON`, which is the continuous-integration path for a
+private term list. Configured identifiers match without regard to casing and
+remain detectable when spaces, punctuation, or line wrapping split the term.
+Only the evidence type appears in output.
 
 A key names a secret when either tier below recognizes it. The keyword may sit
 anywhere in the key, so `secret_key`, `accessToken`, `dbPassword`, `signingKey`,
@@ -141,6 +165,7 @@ A failure is one JSON object on standard error, `{"error": {"code", "reason",
 | --- | --- |
 | `usage` | The arguments were not understood, or the text source could not be read. |
 | `malformed_payload` | The input was not a string, or exceeded the bound above. |
+| `malformed_config` | The repository-specific identifier configuration is invalid. |
 | `internal_error` | An unclassified defect in this atom. Report it. |
 
 ## Boundaries

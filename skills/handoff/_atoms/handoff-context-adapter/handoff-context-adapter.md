@@ -50,14 +50,31 @@ boundaries.
      safety rules, licensing rules, and repository constraints;
    - `artifacts_and_references`: locators for existing evidence;
    - `what_worked`: approaches that produced useful results;
-   - `what_did_not_work`: attempts that failed or were intentionally avoided;
-   - `next_steps`: ordered continuation steps.
+   - `what_did_not_work`: attempts that failed or were intentionally avoided,
+     plus problems still open when the session stopped - known breakage, failing
+     checks, and unresolved questions. This field is the single home of record
+     for anything not working, so a session that ends mid-problem does not read
+     as finished work;
+   - `next_steps`: ordered continuation steps. Distinguish a step the evidence
+     compels from a move that is a judgement call. Write a recommended move with
+     explicit judgement language, such as a leading `Recommendation:`, and name
+     the alternative it was chosen over. An unlabelled step is read as
+     established fact by an agent who cannot check it.
 5. Reference existing specifications, plans, ADRs, issues, commits, diffs, logs,
    and generated artifacts by locator only. Put short context in each reference's
    `note`; do not paste the artifact body into any prose section.
 6. Include `suggested_skills` only when a next skill is genuinely useful. Every
    suggestion must name an exact available skill identifier and give a one-line
    reason. Omit the field entirely when no skill is needed.
+
+   Whenever `suggested_skills` is populated, populate `available_skills` in the
+   same payload with the real routable skill identifiers resolved from the
+   current repository or runtime. That set is what makes an invented suggestion
+   refusable: `persist-bounded-handoff` rejects a suggestion outside it, and
+   rejects `suggested_skills` outright when `available_skills` is left absent
+   or empty, both with `unknown_skill`. There is no way to populate
+   `suggested_skills` without also supplying the real skill set it is checked
+   against.
 7. Before calling the persistence molecule, remove sensitive material that the
    shared redaction floor cannot reliably recognize, including customer names,
    internal hostnames, private paths that are not necessary to resume, and any

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { loadIdentifierConfig } from '../../_atoms/redact-sensitive/redact-sensitive.config.mjs';
 import {
   DEFAULT_CHILD_DIRECTORY,
   HandoffError,
@@ -62,6 +63,7 @@ test('Suggested Skills is omitted when no skill follows and placed before Next S
 
   const withSkills = renderHandoff(normalizePayload(completePayload({
     suggested_skills: [{ skill: 'shepherd', reason: 'The pull request still needs monitoring.' }],
+    available_skills: ['shepherd'],
   })));
   assert.deepEqual(withSkills.headings, HEADING_ORDER);
   assert.ok(withSkills.document.includes('- shepherd - The pull request still needs monitoring.'));
@@ -104,6 +106,7 @@ test('artifact references are retained, with and without a note', () => {
 
 test('redaction replaces each category with a visible marker and is idempotent', () => {
   const cases = [
+    [['postgres', '://user:password', '@database.example/app'].join(''), 'connection-string'],
     ['-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIB\n-----END RSA PRIVATE KEY-----', 'private-key'],
     ['Authorization: Bearer abcdefghijklmnop', 'credential'],
     ['token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345', 'token'],
@@ -200,6 +203,32 @@ test('sensitive content never reaches the written document', (t) => {
     result.redactions,
     [{ category: 'email', count: 1 }, { category: 'token', count: 1 }],
   );
+});
+
+test('configured identifiers are redacted in persisted fields and after rendering', (t) => {
+  sandbox(t, 'handoff-configured-redaction');
+  const identifier = ['Private', 'System'].join(' ');
+  const configuration = loadIdentifierConfig({
+    json: JSON.stringify({
+      version: 1,
+      identifiers: [{ value: identifier, evidenceType: 'internal-system' }],
+    }),
+  });
+  const result = persistBoundedHandoff(completePayload({
+    title: `Transfer ${identifier}`,
+    goal: `Escalate ${identifier}.`,
+    artifacts_and_references: [{
+      reference: 'https://example.invalid/private',
+      note: 'system',
+    }],
+  }), {
+    identifiers: configuration.identifiers,
+  });
+
+  const written = fs.readFileSync(result.path, 'utf8');
+  assert.equal(written.toLocaleLowerCase().includes('private system'), false);
+  assert.equal(written.includes('[REDACTED:internal-system]'), true);
+  assert.deepEqual(result.redactions, [{ category: 'internal-system', count: 3 }]);
 });
 
 test('slugify normalizes a repository or work name into a usable slug', () => {

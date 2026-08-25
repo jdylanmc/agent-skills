@@ -20,6 +20,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  loadIdentifierConfig,
+  redactConfiguredIdentifiers,
+} from '../../_atoms/redact-sensitive/redact-sensitive.config.mjs';
+
 export const SCHEMA_VERSION = 1;
 
 export const MAX_SECTION_BYTES = 8000;
@@ -409,6 +414,13 @@ const REDACTION_RULES = [
     apply: fromPattern(/\bAKIA[0-9A-Z]{16}\b/g, () => '[REDACTED:credential]'),
   },
   {
+    category: 'connection-string',
+    apply: fromPattern(
+      /\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|mssql|redis|amqps?):\/\/[^/\s:@]+:[^@/\s]+@[^/\s]+/gi,
+      () => '[REDACTED:connection-string]',
+    ),
+  },
+  {
     category: 'secret',
     apply: redactAssignments,
   },
@@ -477,6 +489,25 @@ function mergeRedactions(target, redactions) {
   for (const entry of redactions) {
     target.set(entry.category, (target.get(entry.category) ?? 0) + entry.count);
   }
+}
+
+/**
+ * Applies the broad handoff floor first, then the repository-specific terms.
+ * The configuration module is intentionally dependency-free, so this shared
+ * implementation can serve both the atom entry point and persisted handoffs.
+ */
+export function redactTextWithConfiguredIdentifiers(value, identifiers = []) {
+  const floor = redactText(value);
+  const configured = redactConfiguredIdentifiers(floor.text, identifiers);
+  const counts = new Map();
+  mergeRedactions(counts, floor.redactions);
+  mergeRedactions(counts, configured.redactions);
+  return {
+    text: configured.text,
+    redactions: [...counts.entries()]
+      .map(([category, count]) => ({ category, count }))
+      .sort((left, right) => left.category.localeCompare(right.category)),
+  };
 }
 
 /* -------------------------------------------------------------------------
@@ -768,7 +799,17 @@ function normalizeSuggestedSkill(entry, index, availableSkills) {
     );
   }
   const reason = normalizeLine(entry.reason ?? '', `${field}.reason`, MAX_REASON_BYTES);
-  if (availableSkills && !availableSkills.includes(skill)) {
+  // A suggestion can only be checked against the caller's real skill set, so
+  // a non-empty suggested_skills always requires a populated available_skills
+  // to validate against. Absence is refused rather than treated as consent -
+  // an unset guard here would let an invented skill reach the next agent.
+  if (!Array.isArray(availableSkills) || availableSkills.length === 0) {
+    fail(
+      'unknown_skill',
+      `${field}.skill names ${skill}, but available_skills was not supplied so no suggestion can be validated`,
+    );
+  }
+  if (!availableSkills.includes(skill)) {
     fail(
       'unknown_skill',
       `${field}.skill names ${skill}, which is not in the caller's available skills`,
@@ -863,10 +904,10 @@ export function normalizePayload(input) {
   return { schema_version: SCHEMA_VERSION, title, slug, available_skills: availableSkills, ...sections };
 }
 
-export function redactPayload(payload) {
+export function redactPayload(payload, identifiers = []) {
   const counts = new Map();
   const redact = (value) => {
-    const result = redactText(value);
+    const result = redactTextWithConfiguredIdentifiers(value, identifiers);
     mergeRedactions(counts, result.redactions);
     return result.text;
   };
@@ -888,7 +929,15 @@ export function redactPayload(payload) {
     }
     next[section.key] = value === null
       ? null
-      : value.map((entry) => ({ skill: entry.skill, reason: redact(entry.reason) }));
+      : value.map((entry) => {
+        if (redactTextWithConfiguredIdentifiers(entry.skill, identifiers).text !== entry.skill) {
+          fail(
+            'malformed_payload',
+            'a suggested skill identifier matches a sensitive identifier and cannot be rendered',
+          );
+        }
+        return { skill: entry.skill, reason: redact(entry.reason) };
+      });
   }
 
   const redactions = [...counts.entries()]
@@ -1181,14 +1230,27 @@ export function writeGuarded({ destination, allowedRoot, content }) {
  * Composed operation
  * ---------------------------------------------------------------------- */
 
-export function persistBoundedHandoff(input, { now = new Date(), child = DEFAULT_CHILD_DIRECTORY } = {}) {
+export function persistBoundedHandoff(input, {
+  now = new Date(),
+  child = DEFAULT_CHILD_DIRECTORY,
+  identifiers = [],
+} = {}) {
   const normalized = normalizePayload(input);
-  const { payload, redactions } = redactPayload(normalized);
-  const { document, headings } = renderHandoff(payload);
+  const { payload, redactions } = redactPayload(normalized, identifiers);
+  const rendered = renderHandoff(payload);
+  const settled = redactTextWithConfiguredIdentifiers(rendered.document, identifiers);
+  const redactionCounts = new Map();
+  mergeRedactions(redactionCounts, redactions);
+  mergeRedactions(redactionCounts, settled.redactions);
+  const document = settled.text;
+  const headings = documentHeadings(document);
+  const allRedactions = [...redactionCounts.entries()]
+    .map(([category, count]) => ({ category, count }))
+    .sort((left, right) => left.category.localeCompare(right.category));
 
-  // Redaction is idempotent, so a second pass that still finds something is a
-  // defect in this module rather than in the caller's content.
-  if (redactText(document).text !== document) {
+  // Both redaction layers are idempotent, so a second pass that still finds
+  // something is a defect in this module rather than in the caller's content.
+  if (redactTextWithConfiguredIdentifiers(document, identifiers).text !== document) {
     fail('redaction_incomplete', 'the rendered handoff still matches a redaction rule');
   }
 
@@ -1207,8 +1269,8 @@ export function persistBoundedHandoff(input, { now = new Date(), child = DEFAULT
         name: target.name,
         bytes: written.bytes,
         headings,
-        redactions,
-        suggested_skills_included: headings.includes('Suggested Skills'),
+        redactions: allRedactions,
+        suggested_skills_included: payload.suggested_skills !== null,
       };
     } catch (error) {
       // Only a name taken between the proposal and the exclusive create is
@@ -1347,14 +1409,41 @@ export function isDirectInvocation(moduleUrl) {
   }
 }
 
-const USAGE = 'Usage: persist-bounded-handoff.mjs (--payload <file> | --stdin) [--probe]';
+const USAGE = 'Usage: persist-bounded-handoff.mjs (--payload <file> | --stdin) [--config <path>] [--probe]';
+
+function readPersistedHandoff(argv) {
+  const parsed = parseFlags(
+    argv,
+    {
+      values: { '--payload': 'file', '--config': 'config' },
+      flags: { '--stdin': 'stdin' },
+    },
+    USAGE,
+  );
+  let config;
+  try {
+    config = loadIdentifierConfig({
+      file: parsed.config,
+      json: process.env.REDACT_SENSITIVE_CONFIG_JSON,
+    });
+  } catch (error) {
+    if (error.code === 'malformed_config') {
+      fail(error.code, error.message);
+    }
+    throw error;
+  }
+  return {
+    payload: readJsonSource(parsed, USAGE),
+    identifiers: config.identifiers,
+  };
+}
 
 if (isDirectInvocation(import.meta.url)) {
   runEntryPoint(
     process.argv.slice(2),
     (argv) => {
-      const payload = readPayload(argv, USAGE);
-      return `${JSON.stringify(persistBoundedHandoff(payload), null, 2)}\n`;
+      const { payload, identifiers } = readPersistedHandoff(argv);
+      return `${JSON.stringify(persistBoundedHandoff(payload, { identifiers }), null, 2)}\n`;
     },
     'persist-bounded-handoff',
   );
