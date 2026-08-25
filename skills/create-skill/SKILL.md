@@ -95,7 +95,14 @@ legitimately have none, which is not this skill's concern.
    chosen decomposition seams, validation output including `cancelled`, the
    full remediation account — what was found, what was fixed, what was declined
    with the duck's reasoning, and what remains unresolved with its ways forward
-   — and any requirement that could not be satisfied.
+   — and any requirement that could not be satisfied. Never report the package
+   complete, ready, finished, or reviewable unless `/roast` actually ran on the
+   final package head, the remediation account is current for that head, and
+   every finding has been addressed. Addressed means fixed, declined with a
+   fresh-context rubber-duck verdict, explicitly deferred to the operator with
+   a bounded way forward, or left unresolved only under a non-complete status.
+   A missing, refused, unsynthesized, stale, or unaddressed roast is a blocked
+   or halted run, not a completed package.
 
 ## Output Contract
 
@@ -109,9 +116,13 @@ Return:
   and what remains unanswered;
 - why each atom or molecule boundary exists;
 - the exact validation commands run and their verbatim summary output;
-- the roast findings, the `Must fix` fixes, every rubber-duck verdict with its
-  reasoning, and every unresolved finding with a bounded way forward;
-- the exact reason the roast could not run, when it could not;
+- the roast findings and how each was addressed: `Must fix` fixes, every
+  rubber-duck verdict with its reasoning, every operator deferral with a
+  bounded way forward, and any unresolved finding that prevents completion;
+- `completion_status`: `complete`, `blocked`, `halted`, or
+  `awaiting-operator`;
+- the exact reason the roast could not run, when it could not, with
+  `completion_status: blocked` or `halted`;
 - any explicit limitation, refusal, or unsatisfied requirement.
 
 ## Boundaries
@@ -122,6 +133,9 @@ Return:
 - Treats coaching as best effort and its absence as visible degradation. A
   degraded coach never lowers the intent requirement, softens the confirmation,
   or excuses a missing intent.
+- Treats roasting and remediation as required, not best effort. A skipped,
+  missing, refused, unsynthesized, stale, or unaddressed roast blocks a
+  completion report even when validation passed.
 - Never lets the coach write a file or stand in for the operator's
   confirmation. The storage gate binds a confirmation to the exact bytes it
   presented, and a coaching packet is not one.

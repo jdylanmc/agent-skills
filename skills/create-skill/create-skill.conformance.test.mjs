@@ -183,6 +183,23 @@ test('the roast and resolve loop still runs, and still runs after the build', ()
   assert.match(flat(ENTRY), /re-roasts after every head-changing correction/);
 });
 
+test('a package cannot be reported complete unless a current roast ran and feedback was addressed', () => {
+  const entry = flat(ENTRY);
+  const remediation = flat('create-skill/_molecules/self-roast-remediation/self-roast-remediation.md');
+  const invocation = flat('create-skill/_atoms/self-roast-invocation/self-roast-invocation.md');
+
+  assert.match(entry, /Never report the package\s+complete, ready, finished, or reviewable unless `\/roast` actually ran/);
+  assert.match(entry, /every finding has been addressed/);
+  assert.match(entry, /unaddressed roast is a blocked\s+or halted run/);
+  assert.match(entry, /`completion_status`: `complete`, `blocked`, `halted`, or\s+`awaiting-operator`/);
+  assert.match(entry, /Treats roasting and remediation as required, not best effort/);
+  assert.match(remediation, /caller\s+must not report the package complete/);
+  assert.match(remediation, /A missing, refused, unsynthesized, or stale roast never produces a\s+`complete` result/);
+  assert.match(remediation, /A roast with unaddressed feedback never produces a\s+`complete` result/);
+  assert.match(invocation, /blocked from being called complete/);
+  assert.match(invocation, /until each finding has an address recorded/);
+});
+
 test('the wrapper refuses to store an intent the operator has not confirmed', () => {
   const entry = flat(ENTRY);
   assert.match(entry, /Never stores an intent the operator has not confirmed/);

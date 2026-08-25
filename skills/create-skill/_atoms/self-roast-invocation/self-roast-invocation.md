@@ -59,6 +59,11 @@ to. Review that must be remembered is review that gets skipped.
 ## Guarantees
 
 - The package is roasted before it is presented, not after someone remembers.
+- If `/roast` cannot run, refuses, or returns an unsynthesized result, the
+  package is blocked from being called complete.
+- If `/roast` returns findings, the package is blocked from being called
+  complete until each finding has an address recorded in the remediation
+  ledger.
 - Every finding is bound to the head it was found on.
 - Routing follows the finding's priority, not the author's opinion of it.
 
