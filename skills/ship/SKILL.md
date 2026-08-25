@@ -16,7 +16,8 @@ Take one issue to done, without doing more than it asked for.
 ```text
 record -> ask about shepherd -> ground on one issue -> fix the scope -> confirm
        -> isolate -> dispatch -> reconcile -> validate -> review -> remediate
-       -> verdict -> gate the merge -> open the change request -> hand to shepherd
+       -> verdict -> evaluate the merge gate -> open the change request
+       -> ask for the merge grant -> hand to shepherd
 ```
 
 Ship is an orchestration around a **single deliverable unit**. It coordinates
@@ -70,20 +71,16 @@ judges the change is grading its own work.
    `run-ci`, reviews through `roast`, remediates within a declared limit, and
    returns a criterion-by-criterion verdict.
 
-5. **Gate the merge** with [Merge gate](./_atoms/merge-gate/merge-gate.md). The
-   disposition starts `withheld` and is moved only by the deterministic
-   evaluation in [merge-gate.mjs](./_atoms/merge-gate/merge-gate.mjs), which
-   reaches `eligible` when every precondition is met and `granted` only when a
-   person supplies the explicit grant.
+5. **Evaluate the merge gate** with
+   [Merge gate](./_atoms/merge-gate/merge-gate.md). The disposition starts
+   `withheld` and is moved only by the deterministic evaluation in
+   [merge-gate.mjs](./_atoms/merge-gate/merge-gate.mjs), which reaches
+   `eligible` when every mechanical precondition is met.
 
-   Ask for the grant only on `eligible`. A `withheld` disposition is not put to
-   the operator as a yes-or-no question, because the only available answer would
-   be to waive a precondition, and waiving is accepting risk. That decision is
-   theirs to take outside this run, with the criterion table in front of them.
-
-   `granted` is not a merge and is not an approval. It records that somebody
-   authorized one. Step 6 carries the disposition into the change request so the
-   reviewer reads it there rather than inferring it from a green suite.
+   **Do not ask for the grant here.** Nothing exists yet for a person to look
+   at. The evaluated disposition goes into the change request in step 6 so the
+   question in step 7 is asked about a published artifact rather than about this
+   run's own account of itself.
 
 6. **Open the change request** with
    [Change request](./_atoms/change-request/change-request.md), and only then.
@@ -98,16 +95,29 @@ judges the change is grading its own work.
    before them. A change request opened early is a change request someone starts
    reviewing before it is honest about itself.
 
-   Do not open one on an `undisclosed-change` or `isolation-refused` outcome. Do
-   open one on `incomplete` or `handed-back`, marked as such and naming exactly
-   what is outstanding — hiding an unfinished change is worse than showing one.
+   Do not open one on an `undisclosed-change`, `ambiguous-mapping`, or
+   `isolation-refused` outcome. Do open one on `incomplete` or `handed-back`,
+   marked as such and naming exactly what is outstanding — hiding an unfinished
+   change is worse than showing one.
 
    Report the publication outcome as given. `provider-unsupported`,
    `provider-tool-missing`, `provider-tool-unauthenticated`, and
    `publication-failed` all mean no change request exists, and a pushed branch
    is not offered in place of one.
 
-7. **Hand over to `shepherd`** when, and only when, the shepherd intent recorded
+7. **Ask for the merge grant**, and only on an `eligible` disposition with a
+   published change request to point at. Give the identifier, the criterion
+   table, and the evidence, then re-evaluate the gate with whatever the person
+   supplied. Only an explicit grant produces `granted`.
+
+   A `withheld` disposition is not put to the operator as a yes-or-no question,
+   because the only available answer would be to waive a precondition, and
+   waiving is accepting risk. That decision is theirs to take outside this run.
+
+   `granted` is not a merge and is not an approval. It records that somebody
+   authorized one, and the change request is updated to say so.
+
+8. **Hand over to `shepherd`** when, and only when, the shepherd intent recorded
    in step 2 said so. Pass the change request identifier, the branch, the
    validation evidence, the merge disposition, and the outstanding defects.
    Shepherd drives it toward mergeable; ship does not follow it there and does
@@ -159,6 +169,12 @@ review, or an empty criteria list all withhold. `eligible` means every
 precondition is met and is still not permission. Only `granted` is, and only a
 person's explicit grant produces it.
 
+The grant is asked for **after the change request exists**, never before. Asked
+earlier, the only thing available to judge is this run's own account of its
+work, and a run summarizing itself favorably is the failure the criterion table
+already exists to prevent. Publishing first puts the diff, the criterion table,
+and the evidence in front of the person being asked.
+
 The preconditions and the grant are **conjunctive**. A grant while a criterion
 is `not-satisfied` leaves the disposition `withheld`, because overriding an
 unmet criterion is accepting a risk, and this run does not accept risk.
@@ -178,6 +194,9 @@ which of three conditions it met: the tool was ready, the tool was missing or
 unauthenticated, or no provider was recognized. They are distinct, and none of
 them is reported as a clean run with nothing to publish.
 
+A condition the adapter names and this skill does not enumerate is reported
+under the adapter's own name rather than mapped onto the nearest familiar one.
+
 The seam opens one change request and reads back its identifier. It does not
 resolve merge state, read review threads, or watch checks; those belong to
 `shepherd`. Keeping it that narrow is what lets a shared provider adapter
@@ -188,8 +207,8 @@ replace it later as a move rather than a rewrite.
 Return:
 
 - `status`: `shipped-to-review`, `incomplete`, `handed-back`,
-  `undisclosed-change`, `isolation-refused`, `needs-alignment`, `blocked`,
-  `underspecified`, or `out-of-scope`;
+  `undisclosed-change`, `ambiguous-mapping`, `isolation-refused`,
+  `needs-alignment`, `blocked`, `underspecified`, or `out-of-scope`;
 - issue identity and the definition of done as numbered acceptance criteria;
 - **a verdict per criterion with its evidence**, then the derived aggregate;
 - the merge disposition — `withheld`, `eligible`, or `granted` — with every
@@ -203,12 +222,15 @@ Return:
 - the proposed approach, its laziness verdict, and every reduction applied;
 - the exhaustive change ledger, and the reconciliation verdict with any
   undisclosed, ambiguous, or unfulfilled entries named;
-- the `run-ci` evidence envelope as given, and the `roast` findings as given;
+- the `run-ci` evidence envelope as given, and the `roast` findings as given,
+  each with its severity and how any `Must fix` was cleared — remediated,
+  disputed by the operator, or descoped to its own issue;
 - remediation attempts used against the declared limit;
 - the publication outcome — `published`, `withheld-by-outcome`,
   `provider-unsupported`, `provider-tool-missing`,
-  `provider-tool-unauthenticated`, or `publication-failed` — and the change
-  request identifier when one was opened;
+  `provider-tool-unauthenticated`, `publication-failed`, or a condition the
+  provider adapter named — and the change request identifier when one was
+  opened;
 - adjacent and out-of-scope findings, with enough detail to become their own
   issues;
 - anything still unsettled, marked as unsettled;

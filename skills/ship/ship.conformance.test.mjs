@@ -4,6 +4,10 @@
  * Ship now holds real authority, so the properties pinned here are the ones
  * whose loss would be invisible in prose:
  *
+ * Assertions here pin contracts — vocabulary, ordering, permissions,
+ * composition — rather than the wording of the paragraph that explains them.
+ * A test that fails when a sentence is reflowed protects prose, not behavior.
+ *
  * 1. **Its authority is pinned to what was reviewed.** Stage two dispatches a
  *    worker and opens a change request, so it grants `task` — deliberately, as
  *    an edit somebody read, not as a side effect of composing a new unit. It
@@ -28,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import { MERGE_GRANT_TOKEN, evaluateMergeGate, mayMerge } from './_atoms/merge-gate/merge-gate.mjs';
+import { reconcile as reconcileDiff } from './_atoms/diff-reconciliation/diff-reconciliation.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -84,10 +89,6 @@ test('ship is a routable single-issue delivery skill a human invokes deliberatel
   // that writes code and opens a change request on a shared remote, so it
   // begins because a person asked for it by name.
   assert.equal(parsed.disableModelInvocation, true);
-  assert.match(
-    flat(ENTRY),
-    /\*\*`disable-model-invocation` flips to `true` in this stage\.\*\*/,
-  );
 });
 
 test('the routing description promises review-ready, not merged', () => {
@@ -121,20 +122,9 @@ test('ship writes nothing itself, and says plainly that this is a narrow claim',
   // does hold edit. The package must not be allowed to trade on the narrower
   // reading.
   assert.match(entry, /There is still no `edit` grant, and that is a narrower claim than it looks/);
-  assert.match(
-    entry,
-    /the absence of `edit` does not mean nothing is written on ship's behalf/,
-  );
-  assert.match(entry, /a permission argument dressed up as a safety\s+argument/);
-  assert.match(
-    entry,
-    /What actually bounds the writing is the confirmed ledger and the deterministic\s+reconciliation of every hunk against it/,
-  );
 
   const dispatch = flat(DISPATCH);
   assert.match(dispatch, /Dispatching Is Not A Loophole/);
-  assert.match(dispatch, /"The\s+orchestrator cannot write" is false in effect/);
-  assert.match(dispatch, /A brief is an instruction, and an instruction is a promise; the\s+reconciliation is the control/);
 
   const result = validateRepository(REPOSITORY_ROOT);
   for (const unit of closureFor(result, ENTRY)) {
@@ -148,10 +138,6 @@ test('the task grant is new, deliberate, and justified in the body', () => {
 
   assert.ok(frontmatter(ENTRY).allowedTools.includes('task'));
   assert.match(entry, /`task` is new in this stage, and it is the widest grant here/);
-  assert.match(
-    entry,
-    /Stage one held it back precisely so that adding it\s+would be a reviewed edit rather than a side effect of composing something new/,
-  );
 
   // Exactly one unit may carry `task`. A second one appearing means dispatch
   // authority spread without anyone deciding it should.
@@ -186,11 +172,6 @@ test('the execute-bearing closure is pinned, because execute can mutate', () => 
     'ship/_molecules/delivery-cycle/delivery-cycle.md',
     'ship/_molecules/delivery-grounding/delivery-grounding.md',
   ]);
-
-  assert.match(
-    flat(ENTRY),
-    /`execute` is not a read-only capability, and the absence of `edit` is not\s+proof that nothing is written/,
-  );
 });
 
 test('nothing in the closure widens the pinned grant', () => {
@@ -434,10 +415,6 @@ test('reconciliation runs before validation, so green cannot excuse undisclosed'
   assert.ok(validateIndex < reviewIndex, 'validation precedes review');
 
   assert.match(cycle, /\*\*This gate runs before\s+validation, not after\.\*\*/);
-  assert.match(
-    cycle,
-    /A green suite on an undisclosed change is a green\s+suite on something nobody agreed to/,
-  );
   assert.match(entry, /Reconciliation runs \*\*before\*\* validation/);
 });
 
@@ -450,17 +427,23 @@ test('an undisclosed change stops the run and is never remediated by amending th
     assert.match(reconcile, new RegExp(`\`${verdict}\``), `the reconciler must define ${verdict}`);
   }
 
-  assert.match(reconcile, /Amending the agreement to match what happened is not reconciliation/);
   assert.match(reconcile, /\*\*Never amends the ledger to make the diff reconcile\.\*\*/);
   assert.match(
     reconcile,
     /\*\*Never downgrades `undisclosed-change` to a warning\*\* because the change is\s+small, obviously correct, or already validated/,
   );
   assert.match(cycle, /\*\*Never continues past `undisclosed-change`\*\*/);
-  assert.match(entry, /Amending the ledger so the diff reconciles\s+is not reconciliation/);
 
-  // Reachable as a terminal status, not merely described.
-  assert.match(entry, /`undisclosed-change`, `isolation-refused`/);
+  // Both reconciliation stops are reachable as terminal statuses, not merely
+  // described. `ambiguous-mapping` stopping the run with nowhere to report it
+  // would leave the operator with a halted run and no name for why.
+  assert.match(entry, /`undisclosed-change`, `ambiguous-mapping`, `isolation-refused`/);
+  assert.match(cycle, /\| `ambiguous-mapping` \|/);
+  assert.match(flat(PUBLISH), /\| `ambiguous-mapping` \| No\. \|/);
+  assert.match(
+    entry,
+    /Do not open one on an `undisclosed-change`, `ambiguous-mapping`, or\s+`isolation-refused` outcome/,
+  );
 });
 
 test('reconciliation is at hunk granularity, and says why file granularity fails', () => {
@@ -471,8 +454,82 @@ test('reconciliation is at hunk granularity, and says why file granularity fails
     reconcile,
     /a ledger entry naming a\s+file would vouch for every change made anywhere in that file/,
   );
-  assert.match(reconcile, /the\s+one-line adjacent fix that the scope boundary exists to refuse/);
   assert.match(reconcile, /A hunk claimed by two entries is\s+ambiguous/);
+});
+
+test('a change carrying no hunk is still addressable, so metadata cannot ride along', () => {
+  // The blind spot: a rename, a mode change, or an emptied file reaches the
+  // diff with no `@@` line, so a hunk-walking reconciler sees nothing to claim
+  // and reconciles a change nobody agreed to.
+  const reconcile = flat(RECONCILE);
+
+  assert.match(reconcile, /A Change With No Hunks Is Still A Change/);
+  for (const change of ['rename', 'copy', 'mode-change', 'add', 'delete', 'binary', 'unknown']) {
+    assert.match(reconcile, new RegExp(`\`${change}\``), `the metadata reasons must include ${change}`);
+  }
+  assert.match(reconcile, /every changed file carries at least one addressable unit/);
+  assert.match(reconcile, /addressed once\s+per file as `metadata`/);
+
+  // Behavior, not prose: the implementation is exercised directly.
+  const rename = `diff --git a/old.txt b/new.txt\nsimilarity index 100%\nrename from old.txt\nrename to new.txt\n`;
+  const unclaimed = reconcileDiff({
+    ledger: [{ id: 'L1', classification: 'in-scope' }],
+    diff: rename,
+    mapping: [],
+  });
+  assert.equal(unclaimed.verdict, 'undisclosed-change');
+  assert.equal(unclaimed.undisclosed[0].change, 'rename');
+});
+
+test('reconciliation names its base and includes uncommitted residue', () => {
+  // "It was not committed" is not a reason a reviewer will ever see, and an
+  // untracked file is invisible to a plain `git diff`.
+  const reconcile = flat(RECONCILE);
+  const cycle = flat(CYCLE);
+
+  assert.match(reconcile, /What Is Reconciled, And Against What/);
+  assert.match(reconcile, /including staged, unstaged, and untracked files/);
+  assert.match(reconcile, /git -C <worktree> add --intent-to-add --all/);
+  assert.match(reconcile, /git -C <worktree> diff --find-renames --find-copies <base-sha>/);
+  assert.match(reconcile, /The commit the isolation branch was created from/);
+  assert.match(cycle, /including staged, unstaged, and untracked residue/);
+});
+
+test('the worker brief refuses the authority a file list does not bound', () => {
+  // A ledger names files. Pushing, commenting on the tracker, merging, and
+  // reading credentials are none of them file changes, so a brief that lists
+  // only what to edit has said nothing about any of them.
+  const dispatch = flat(DISPATCH);
+
+  assert.match(dispatch, /What The Ledger Does Not Bound/);
+  assert.match(dispatch, /Writing outside the isolation worktree/);
+  assert.match(dispatch, /Pushing, or any write to a remote/);
+  assert.match(dispatch, /Mutating the tracker/);
+  assert.match(dispatch, /Merging, approving, or requesting review/);
+  assert.match(dispatch, /credentials, tokens, or secrets/);
+  assert.match(dispatch, /Rewriting history, or touching another run's worktree or branch/);
+  assert.match(dispatch, /\*\*Never dispatches a brief without the refusals\.\*\*/);
+});
+
+test('roast severities map explicitly, and clearing a blocker is not the run\'s call alone', () => {
+  // `roast` returns a severity and gates nothing. The merge gate consumes
+  // blockers, so the translation has to be written down somewhere or every run
+  // invents it.
+  const cycle = flat(CYCLE);
+  const gate = flat(MERGE_GATE);
+
+  for (const severity of ['Must fix', 'Should fix', 'Consider']) {
+    assert.match(cycle, new RegExp(`\`${severity}\``), `the mapping must cover ${severity}`);
+  }
+  assert.match(cycle, /`roast` gates nothing and approves nothing/);
+  assert.match(cycle, /\| `Must fix` \| A \*\*blocker\*\*/);
+  assert.match(gate, /A \*\*blocker\*\* is a `roast` finding at `Must fix`/);
+
+  // Remediated, disputed, or descoped — and only the first is this run's to do.
+  assert.match(cycle, /\*\*Remediated\*\*/);
+  assert.match(cycle, /\*\*Disputed\*\* — the operator/);
+  assert.match(cycle, /\*\*Descoped\*\* — the operator/);
+  assert.match(cycle, /The cycle never disputes a finding on\s+its own behalf/);
 });
 
 test('the reconciler is honest about what it cannot verify', () => {
@@ -481,12 +538,10 @@ test('the reconciler is honest about what it cannot verify', () => {
   const source = flatSource('ship', '_atoms', 'diff-reconciliation', 'diff-reconciliation.mjs');
 
   assert.match(source, /It does NOT verify that a hunk \*semantically belongs\*/);
-  assert.match(source, /the same kind of promise it exists to replace/);
 
   const reconcile = flat(RECONCILE);
   assert.match(reconcile, /\*\*It checks coverage and uniqueness, not meaning\.\*\*/);
   assert.match(reconcile, /The semantic\s+judgement stays with the reviewer/);
-  assert.match(reconcile, /Claiming more\s+than that would make this control the same kind of promise it exists to replace/);
 });
 
 test('every run is isolated, and absent isolation is named rather than implied', () => {
@@ -501,15 +556,10 @@ test('every run is isolated, and absent isolation is named rather than implied',
     /every run works in a \*\*dedicated worktree\s+on its own branch\*\* — always, explicitly/,
   );
   assert.match(isolation, /never the repository's primary\s+checkout and never a worktree belonging to another run/);
-  assert.match(isolation, /rather than implying\s+a separation that does not exist/);
   assert.match(isolation, /`none` is a decision for a person, not a detail to proceed past/);
 
   // Reusing a worktree looks like isolation and is not.
   assert.match(isolation, /Reuse Is Not Isolation/);
-  assert.match(
-    isolation,
-    /Its\s+branch carries commits this run did not make and did not disclose/,
-  );
 
   assert.match(entry, /isolation state, with worktree path and branch, or the recorded reason it is\s+absent/);
 });
@@ -521,19 +571,7 @@ test('remediation is bounded and re-reconciles, because a fix is a change', () =
   assert.match(cycle, /Remediate, within a limit/);
   assert.match(cycle, /Record the\s+attempt count and its declared limit before the first attempt/);
   assert.match(cycle, /After each remediation, return to step 3/);
-  assert.match(
-    cycle,
-    /A fix is a change, and an\s+unreconciled fix is exactly how an undisclosed change enters late/,
-  );
-  assert.match(
-    cycle,
-    /An unbounded retry loop converts a defect the operator should see into\s+time spent not seeing it/,
-  );
   assert.match(dispatch, /Remediation Is A Dispatch, Not A Correction/);
-  assert.match(
-    dispatch,
-    /that would make it the author of\s+part of the change it is about to judge/,
-  );
 });
 
 test('the worker brief carries the ledger as its authority boundary', () => {
@@ -561,15 +599,10 @@ test('completion is reported per criterion with evidence, never as a summary', (
     assert.match(criterion, new RegExp(`\`${verdict}\``), `the verdict set must include ${verdict}`);
   }
 
-  assert.match(criterion, /A run that ends with\s+"done" has discarded that structure/);
   assert.match(criterion, /"The implementation handles this" is not evidence/);
   assert.match(criterion, /The Aggregate Is Derived, Never Asserted/);
-  assert.match(criterion, /A criterion that seems\s+minor is a candidate for `descoped` — which requires asking/);
+  assert.match(criterion, /`descoped` requires the operator's explicit confirmation, recorded/);
   assert.match(criterion, /\*\*Never reports an aggregate verdict without the per-criterion rows\.\*\*/);
-  assert.match(
-    criterion,
-    /A reader who stops after the\s+first line should have read the least favorable fact/,
-  );
 
   assert.match(entry, /\*\*a verdict per criterion with its evidence\*\*, then the derived aggregate/);
 });
@@ -599,6 +632,13 @@ test('the merge is a deliberate grant and never a default', () => {
   assert.match(entry, /the merge disposition — `withheld`, `eligible`, or `granted` — with every\s+unmet precondition named/);
   assert.match(entry, /The criterion verdicts and the merge disposition go in the body/);
   assert.match(flat(PUBLISH), /The merge disposition, with every unmet precondition named/);
+
+  // The grant is asked for about a published artifact, so the disposition in
+  // the body at publication time is the evaluated one, and a later grant is
+  // recorded rather than assumed.
+  assert.match(flat(PUBLISH), /Recording The Grant Afterwards/);
+  assert.match(flat(MERGE_GATE), /When The Grant Is Asked For/);
+  assert.match(flat(MERGE_GATE), /After the change request exists, never before/);
 });
 
 test('the merge gate is deterministic, and withholding is its resting state', () => {
@@ -649,22 +689,21 @@ test('the change request opens only after reconciliation, validation, and review
   const entry = flat(ENTRY);
 
   const cycleIndex = entry.indexOf('Run [Delivery cycle]');
+  const evaluateIndex = entry.indexOf('**Evaluate the merge gate**');
   const openIndex = entry.indexOf('**Open the change request**');
+  const askIndex = entry.indexOf('**Ask for the merge grant**');
   const handoverIndex = entry.indexOf('**Hand over to `shepherd`**');
-  assert.ok(cycleIndex > 0 && openIndex > 0 && handoverIndex > 0);
+  assert.ok(cycleIndex > 0 && evaluateIndex > 0 && openIndex > 0 && askIndex > 0 && handoverIndex > 0);
   assert.ok(cycleIndex < openIndex, 'the cycle runs before the change request opens');
+  assert.ok(evaluateIndex < openIndex, 'the disposition is evaluated before it goes in the body');
+
+  // The grant is asked for about a published artifact. Asked earlier, the only
+  // thing available to judge is the run's own account of its own work.
+  assert.ok(openIndex < askIndex, 'the change request exists before anyone is asked to grant');
+  assert.ok(askIndex < handoverIndex, 'handover follows the grant question');
   assert.ok(openIndex < handoverIndex, 'handover follows publication');
 
   assert.match(entry, /Opening a change request \*\*mutates a shared remote\*\*/);
-  assert.match(
-    entry,
-    /A change request opened early is a change request someone starts\s+reviewing before it is honest about itself/,
-  );
-  assert.match(entry, /Do not open one on an `undisclosed-change` or `isolation-refused` outcome/);
-  assert.match(
-    entry,
-    /hiding an unfinished change is worse than showing one/,
-  );
 });
 
 test('publication distinguishes an opened change request from every way of not opening one', () => {
@@ -690,6 +729,15 @@ test('publication distinguishes an opened change request from every way of not o
     publish,
     /`withheld-by-outcome` is deliberately not called `withheld`/,
   );
+
+  // An adapter's vocabulary is wider than these six and will grow. Mapping an
+  // unfamiliar condition onto the nearest familiar one sends somebody to fix
+  // the wrong thing.
+  assert.match(publish, /`provider-tool-unsupported`/);
+  assert.match(publish, /`provider-tool-unobserved`/);
+  assert.match(publish, /\*\*passed through under the adapter's own name\*\*/);
+  assert.match(publish, /Do not map an unfamiliar condition onto the nearest familiar one/);
+  assert.match(entry, /or a condition the\s+provider adapter named/);
 
   // The failure this separates is a run that pushed a branch, failed to open
   // anything, and reported the branch as though it were the handover.
@@ -790,7 +838,14 @@ test('handover happens only on recorded intent, and ship never merges', () => {
 test('an incomplete outcome is not quietly reported as success', () => {
   const cycle = flat(CYCLE);
 
-  for (const outcome of ['verified', 'incomplete', 'handed-back', 'undisclosed-change', 'isolation-refused']) {
+  for (const outcome of [
+    'verified',
+    'incomplete',
+    'handed-back',
+    'undisclosed-change',
+    'ambiguous-mapping',
+    'isolation-refused',
+  ]) {
     assert.match(cycle, new RegExp(`\`${outcome}\``), `the cycle must define ${outcome}`);
   }
   assert.match(

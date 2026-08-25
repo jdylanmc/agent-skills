@@ -22,12 +22,34 @@
 const AUTHORIZED_CLASSIFICATIONS = new Set(['in-scope', 'enabling']);
 
 /**
- * Parse a unified diff into files and hunks.
+ * Metadata changes a content hunk cannot express, in report order.
+ *
+ * A rename, a copy, and a mode change survive a file whose contents are
+ * untouched, so a diff carries them as headers and no `@@` line at all. They
+ * are real changes to the repository and must be claimable.
+ */
+const STRUCTURAL_REASONS = ['rename', 'copy', 'mode-change'];
+const REASON_ORDER = [...STRUCTURAL_REASONS, 'add', 'delete', 'binary'];
+
+/** The address of the single file-metadata unit. Never a hunk index. */
+export const METADATA_UNIT = 'metadata';
+
+/**
+ * Parse a unified diff into files and addressable units.
  *
  * Hunks are indexed per file from 0, in file order, so a mapping can address
  * one precisely. File-level addressing is deliberately not offered: an entry
  * naming a file would vouch for every change anywhere in it, including the
  * one-line adjacent fix the scope boundary exists to refuse.
+ *
+ * A file's metadata gets its own unit at the address `metadata`, separate from
+ * its content hunks, because a rename claimed by the entry that edited the
+ * file's body would be vouched for by a claim that says nothing about it.
+ *
+ * EVERY CHANGED FILE YIELDS AT LEAST ONE UNIT. A file header with no hunks and
+ * no recognized metadata still produces a unit with the reason `unknown`. That
+ * fails closed: an unparsed header becomes an unclaimable change that stops the
+ * run, rather than a file that quietly reconciles because nothing addressed it.
  */
 export function parseUnifiedDiff(text) {
   if (typeof text !== 'string') {
@@ -40,7 +62,7 @@ export function parseUnifiedDiff(text) {
   for (const line of text.split('\n')) {
     const fileHeader = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
     if (fileHeader) {
-      current = { file: fileHeader[2], hunks: [], binary: false };
+      current = { file: fileHeader[2], hunks: [], reasons: new Set() };
       files.push(current);
       continue;
     }
@@ -48,13 +70,48 @@ export function parseUnifiedDiff(text) {
     if (!current) continue;
 
     if (/^Binary files? /.test(line) || /^GIT binary patch$/.test(line)) {
-      current.binary = true;
+      current.reasons.add('binary');
+      continue;
+    }
+
+    if (/^old mode \d+$/.test(line) || /^new mode \d+$/.test(line)) {
+      current.reasons.add('mode-change');
+      continue;
+    }
+
+    if (/^new file mode \d+$/.test(line)) {
+      current.reasons.add('add');
+      continue;
+    }
+
+    if (/^deleted file mode \d+$/.test(line)) {
+      current.reasons.add('delete');
+      continue;
+    }
+
+    const renameFrom = /^rename from (.+)$/.exec(line);
+    if (renameFrom) {
+      current.reasons.add('rename');
+      current.previousFile = renameFrom[1];
+      continue;
+    }
+
+    const copyFrom = /^copy from (.+)$/.exec(line);
+    if (copyFrom) {
+      current.reasons.add('copy');
+      current.previousFile = copyFrom[1];
+      continue;
+    }
+
+    if (/^rename to /.test(line) || /^copy to /.test(line)) {
+      current.reasons.add(line.startsWith('rename to ') ? 'rename' : 'copy');
       continue;
     }
 
     const hunkHeader = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
     if (hunkHeader) {
       current.hunks.push({
+        kind: 'hunk',
         index: current.hunks.length,
         oldStart: Number(hunkHeader[1]),
         oldLines: hunkHeader[2] === undefined ? 1 : Number(hunkHeader[2]),
@@ -64,11 +121,19 @@ export function parseUnifiedDiff(text) {
     }
   }
 
-  // A binary change carries no hunks but is still a change. Give it one
-  // addressable unit so it cannot pass through unclaimed.
   for (const file of files) {
-    if (file.binary && file.hunks.length === 0) {
-      file.hunks.push({ index: 0, binary: true });
+    const reasons = REASON_ORDER.filter((reason) => file.reasons.has(reason));
+    delete file.reasons;
+
+    const structural = reasons.some((reason) => STRUCTURAL_REASONS.includes(reason));
+    if (file.hunks.length > 0 && !structural) continue;
+
+    // A hunkless file always gets a unit, named or not; a file with hunks gets
+    // an extra one only for the changes those hunks cannot express.
+    const change = reasons.length > 0 ? reasons.join('+') : 'unknown';
+    file.hunks.unshift({ kind: 'metadata', index: METADATA_UNIT, change });
+    if (file.previousFile !== undefined) {
+      file.hunks[0].previousFile = file.previousFile;
     }
   }
 
@@ -112,11 +177,23 @@ export function reconcile({ ledger, diff, mapping }) {
     entries.set(entry.id, entry);
   }
 
-  // Every addressable unit of the diff.
+  // Every addressable unit of the diff: one per content hunk, plus one per
+  // file-metadata change a content hunk cannot express.
   const hunks = new Map();
   for (const file of files) {
+    // `parseUnifiedDiff` never yields a file with nothing to claim. A caller
+    // supplying one has removed a change from the reconciliation without
+    // saying so, which is the failure this module exists to catch.
+    if ((file.hunks ?? []).length === 0) {
+      throw new TypeError(`${file.file}: a changed file must carry at least one addressable unit`);
+    }
     for (const hunk of file.hunks ?? []) {
-      hunks.set(hunkKey(file.file, hunk.index), { file: file.file, hunkIndex: hunk.index });
+      const unit = { file: file.file, hunkIndex: hunk.index };
+      if (hunk.kind === 'metadata') {
+        unit.change = hunk.change;
+        if (hunk.previousFile !== undefined) unit.previousFile = hunk.previousFile;
+      }
+      hunks.set(hunkKey(file.file, hunk.index), unit);
     }
   }
 
@@ -141,7 +218,13 @@ export function reconcile({ ledger, diff, mapping }) {
     const claimed = claims.get(key);
 
     if (!claimed || claimed.size === 0) {
-      undisclosed.push({ ...hunk, reason: 'no ledger entry claims this hunk' });
+      undisclosed.push({
+        ...hunk,
+        reason:
+          hunk.change === undefined
+            ? 'no ledger entry claims this hunk'
+            : 'no ledger entry claims this file-metadata change',
+      });
       continue;
     }
 

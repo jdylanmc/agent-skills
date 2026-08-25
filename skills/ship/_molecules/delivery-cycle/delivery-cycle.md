@@ -47,6 +47,10 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
    suite on something nobody agreed to, and running validation first invites
    treating the pass as a reason to wave the discrepancy through.
 
+   The subject is the isolation worktree against the base commit recorded in
+   step 1, including staged, unstaged, and untracked residue. A change that was
+   never committed is still a change on the branch this run will publish.
+
    `undisclosed-change` and `ambiguous-mapping` stop the cycle and return to the
    operator. They are not remediation subjects, because remediating them means
    deciding alone what should have been agreed.
@@ -59,6 +63,31 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
    does not review its own diff; a workflow that judges what it produced is
    grading its own work, and the whole point of dispatching the writing
    elsewhere was to keep those two apart.
+
+   `roast` returns findings at `Must fix`, `Should fix`, or `Consider`. Those
+   are severity categories: `roast` gates nothing and approves nothing, and it
+   is this cycle that decides what to do with them.
+
+   | Severity | Treated here as |
+   | --- | --- |
+   | `Must fix` | A **blocker**. It is carried into the merge gate as unresolved until it is cleared below. |
+   | `Should fix` | Reported with its recommendation, and does not block. |
+   | `Consider` | Reported, and does not block. |
+
+   A blocker is cleared exactly three ways, and the cycle may only take the
+   first on its own:
+
+   - **Remediated** — a bounded dispatch fixes it, and step 3 and step 4 run
+     again over the result.
+   - **Disputed** — the operator, shown the finding and its evidence, records
+     that it is wrong or does not apply. The cycle never disputes a finding on
+     its own behalf; that would be the change arguing with its own review.
+   - **Descoped** — the operator records it as its own issue, with the
+     identifier, and the run carries it as outstanding rather than resolved.
+
+   An uncleared blocker is not a reason to stop reporting. The run continues to
+   its verdict and hands back with the blocker named, because the person
+   deciding needs to see it rather than wait for it.
 
 6. **Remediate, within a limit.** A validation failure or a review blocker
    becomes a **new bounded dispatch** against the same ledger. Record the
@@ -84,10 +113,16 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
 | `incomplete` | Reconciled and validated, but a criterion is `partial`, `not-satisfied`, or `not-verifiable`. |
 | `handed-back` | The remediation limit was reached with defects outstanding. |
 | `undisclosed-change` | The diff contains changes the confirmed ledger does not. The cycle stopped. |
+| `ambiguous-mapping` | One change is claimed by more than one ledger entry, so "exactly one entry" is unverifiable. The cycle stopped. |
 | `isolation-refused` | No safe place to work and no consent to proceed without one. |
 
 `incomplete` is a real and expected outcome, not a polite way of saying
 `verified`. It is what makes the criterion table worth producing.
+
+`undisclosed-change` and `ambiguous-mapping` are separate outcomes because they
+are separate problems. One is a change nobody agreed to; the other is an
+agreement too vague to say which entry covers what. Collapsing them would send
+the operator to look for the wrong thing.
 
 ## Boundaries
 
