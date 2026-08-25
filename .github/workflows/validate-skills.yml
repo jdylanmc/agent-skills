@@ -40,6 +40,7 @@ jobs:
           node scripts/run-registered-tests.mjs
           scripts/doctrine-manifest.test.mjs
           scripts/run-registered-tests.test.mjs
+          scripts/skill-intent.test.mjs
           scripts/validate-skill-graph.test.mjs
           scripts/derive-skill-graph.test.mjs
           scripts/workflow-registration.test.mjs
@@ -86,3 +87,6 @@ jobs:
           skills/cmux-orchestrate/_atoms/cmux-helper-pane/cmux-helper-pane.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-invoke/cmux-invoke.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-signal/cmux-signal.test.mjs
+          skills/_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.test.mjs
+          skills/_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.adversarial.test.mjs
+          skills/handoff/handoff.test.mjs
