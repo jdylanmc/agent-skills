@@ -86,6 +86,7 @@ test('the roast package is reached as a required nested skill and is otherwise u
   assert.deepEqual(parsed.requiresSkills, [
     { id: 'roast', source: 'local', required: true },
     { id: 'skill-coach', source: 'local', required: false },
+    { id: 'changelog', source: 'local', required: false },
   ]);
   const roastEdge = parsed.requiresSkills.find((edge) => edge.id === 'roast');
   const coachEdge = parsed.requiresSkills.find((edge) => edge.id === 'skill-coach');
@@ -372,4 +373,48 @@ test('every test file on disk is registered in the workflow', () => {
     'the workflow does not glob; an unregistered test never runs in continuous integration',
   );
   assert.ok(found.length > 0, 'the walk found no tests, which would make this assertion vacuous');
+});
+
+test('a new skill is recorded in the changelog as part of creating it', () => {
+  // A library that gains a skill and mentions it later has a changelog nobody
+  // can trust to be current.
+  const parsed = frontmatter(ENTRY);
+  const entry = flat(ENTRY);
+
+  const changelogEdge = parsed.requiresSkills.find((edge) => edge.id === 'changelog');
+  assert.ok(changelogEdge, 'create-skill must reach the changelog skill');
+  assert.equal(changelogEdge.source, 'local');
+  assert.equal(
+    changelogEdge.required,
+    false,
+    'a hard requirement would fail creation in a repository with no changelog',
+  );
+
+  assert.match(entry, /\*\*Record the new skill in the changelog\.\*\*/);
+  assert.match(entry, /place\s+the returned patch in the same change as the package itself/);
+  assert.match(entry, /`Changelog: entered` with the proposed entry, or `Changelog: degraded`/);
+
+  // Reached by invocation, never composed — the same rule as the coach.
+  const result = validateRepository(REPOSITORY_ROOT);
+  for (const unit of closureFor(result, ENTRY)) {
+    assert.ok(
+      !unit.startsWith('changelog/'),
+      `${ENTRY} must reach the changelog by invocation, not by composing ${unit}`,
+    );
+  }
+});
+
+test('recording a changelog entry does not route around the changelog write boundary', () => {
+  const entry = flat(ENTRY);
+
+  assert.match(entry, /`changelog` holds no write authority; it returns a patch/);
+  assert.match(
+    entry,
+    /the entry still reaches history only\s+through the same human review that approves the new package/,
+  );
+  assert.match(entry, /it is never\s+added to a released section/);
+
+  // Creating a skill must not silently decide where a project keeps history.
+  assert.match(entry, /Do not create a changelog file as a side effect of\s+creating a skill/);
+  assert.match(entry, /Changelog entry is best effort/);
 });
