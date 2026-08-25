@@ -107,11 +107,15 @@ test('alignment is mandatory before every discovery handoff', () => {
   const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
   const alignment = flat('discovery/_atoms/alignment-check/alignment-check.md');
 
-  assert.match(entry, /No handoff is written before the alignment check/);
+  assert.match(entry, /No handoff is written before an offered interactive alignment check/);
+  assert.match(entry, /Only a verified shared understanding can be persisted/);
   assert.match(entry, /Every cycle handoff is read back/);
-  assert.match(controller, /A handoff cannot be written until the human confirms or corrects/);
-  assert.match(controller, /Use the reread handoff, not memory, to choose the next cycle/);
+  assert.match(controller, /The goal is shared understanding with the human/);
+  assert.match(controller, /A handoff cannot be written until the human verifies or corrects/);
+  assert.match(controller, /Compact the reread handoff into the continuation focus/);
   assert.match(alignment, /Summarize what was found and uncovered/);
+  assert.match(alignment, /Offer an interactive alignment check/);
+  assert.match(alignment, /Do not treat silence, a status report,\s+or an unrelated response as alignment/);
   assert.match(alignment, /mandatory before every discovery handoff/);
 });
 

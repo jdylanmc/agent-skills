@@ -1,6 +1,6 @@
 ---
 name: alignment-check
-description: Confirm shared human understanding of the current discovery state before any discovery handoff is written.
+description: Offer an interactive alignment check that verifies shared human understanding of the current discovery state before any discovery handoff is written.
 level: atom
 allowed-tools: []
 includes: []
@@ -10,8 +10,8 @@ used-by: ["discovery/_molecules/cycle-controller/cycle-controller.md"]
 
 # Alignment Check
 
-Confirm that the agent and human share the same understanding before the
-discovery state is persisted.
+Offer a human-facing alignment check and verify that the agent and human share
+the same understanding before discovery state is persisted.
 
 ## Inputs
 
@@ -22,7 +22,9 @@ discovery state is persisted.
 
 ## Operation
 
-1. Summarize what was found and uncovered:
+1. Offer an interactive alignment check. Do not treat silence, a status report,
+   or an unrelated response as alignment.
+2. Summarize what was found and uncovered:
    - confirmed facts;
    - source claims that remain only claims;
    - contradictions and ambiguities;
@@ -30,18 +32,19 @@ discovery state is persisted.
    - open questions;
    - current frontier state;
    - proposed next cycle.
-2. Ask for alignment on that summary before any handoff is written.
-3. If the human corrects the summary, update the discovery packet and repeat
+3. Ask whether that summary is the shared understanding to preserve before any
+   handoff is written.
+4. If the human corrects the summary, update the discovery packet and repeat
    the alignment summary.
-4. Continue only when the human confirms the current discovery state is aligned
-   enough to persist.
-5. If the human does not align, stop with `not-aligned` and no handoff.
+5. Continue only when the human verifies the current discovery state as shared
+   understanding.
+6. If the human does not align, stop with `not-aligned` and no handoff.
 
 ## Output
 
 Return:
 
-- `alignment`: `aligned`, `corrected`, or `not-aligned`;
+- `alignment`: `offered`, `verified`, `corrected`, or `not-aligned`;
 - the exact aligned summary;
 - corrections that changed the discovery packet;
 - unresolved disagreements that block persistence.
@@ -53,3 +56,4 @@ Return:
 - It does not turn corrections into facts unless the human explicitly supplies
   them as decisions or source-backed evidence.
 - It is mandatory before every discovery handoff.
+- It verifies shared understanding; it is not a generic approval prompt.

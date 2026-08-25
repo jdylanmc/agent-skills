@@ -39,8 +39,9 @@ and one boundary.
 2. Run [Cycle controller](./_molecules/cycle-controller/cycle-controller.md).
    It runs the read-only discovery cycle, routes to `interrogate` or
    `domain-mapping` when those jobs own the next question, incorporates the
-   returned answers or map, performs the human alignment check, writes the
-   aligned handoff, reads it back, and chooses the next cycle.
+   returned answers or map, offers an interactive human alignment check, writes
+   the verified shared understanding to a handoff, reads it back, compacts the
+   continuation state, and chooses the next discovery cycle.
 3. If and only if the operator explicitly approves a tracker update, run
    [Tracker update gate](./_atoms/tracker-update-gate/tracker-update-gate.md).
    The discovery cycle body never mutates tracker state.
@@ -60,8 +61,9 @@ Return:
 - open questions, each with owner or next workflow;
 - frontier classification: `ready`, `needs-interrogate`,
   `needs-domain-mapping`, `needs-more-evidence`, `blocked`, or `stop`;
-- alignment status: `aligned`, `corrected`, or `not-aligned`;
-- handoff path and read-back status for every aligned cycle handoff;
+- alignment status: `offered`, `verified`, `corrected`, or `not-aligned`;
+- handoff path, read-back status, and compacted continuation focus for every
+  verified cycle handoff;
 - recommended next action and why;
 - any approved tracker update result, or `no tracker update requested`;
 - any Chronicler log path or recording defect.
@@ -71,12 +73,14 @@ Return:
 - The cycle body is read-only. It reads and searches evidence, records through
   Chronicler, and reports; it does not mutate trackers, files, branches, or
   issues.
-- No handoff is written before the alignment check. The agent must summarize
-  what was found and uncovered, the current discovery state, and the proposed
-  next cycle, then let the human correct it before persistence.
+- No handoff is written before an offered interactive alignment check. The
+  agent must summarize what was found and uncovered, the current discovery
+  state, and the proposed next cycle, then let the human correct it. Only a
+  verified shared understanding can be persisted.
 - Every cycle handoff is read back before it becomes the input to the next
-  cycle. If read-back fails, stop with an incomplete handoff instead of
-  continuing from memory.
+  cycle. The reread handoff is compacted into the continuation focus for the
+  next discovery pass. If read-back fails, stop with an incomplete handoff
+  instead of continuing from memory.
 - Tracker mutation is isolated to the tracker update gate and requires explicit
   operator approval for the exact update.
 - Not interrogate. Use `interrogate` when one rough idea needs pointed

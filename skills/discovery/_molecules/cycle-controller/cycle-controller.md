@@ -1,6 +1,6 @@
 ---
 name: cycle-controller
-description: Orchestrate recursive discovery cycles by running discovery, aligning with the human, persisting a handoff, reading it back, and choosing the next cycle.
+description: Orchestrate recursive discovery cycles by running discovery, offering interactive human alignment, persisting a handoff, reading it back, compacting continuation state, and choosing the next cycle.
 level: molecule
 includes: ["discovery/_molecules/discovery-loop/discovery-loop.md","discovery/_atoms/alignment-check/alignment-check.md","_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md"]
 composes: ["discovery/_molecules/discovery-loop/discovery-loop.md","discovery/_atoms/alignment-check/alignment-check.md","_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md"]
@@ -31,14 +31,19 @@ Own the recursive discovery control loop.
 4. If a proof-of-concept appears necessary, do not implement it. Record the
    proof question, evidence requirement, risk, and recommended owner as a
    future workflow. Implementation authority belongs elsewhere.
-5. Run [Alignment check](../../_atoms/alignment-check/alignment-check.md).
-   A handoff cannot be written until the human confirms or corrects the
-   discovery state.
-6. Convert only aligned context into the payload for
+5. Offer and run [Alignment check](../../_atoms/alignment-check/alignment-check.md).
+   The goal is shared understanding with the human. A handoff cannot be written
+   until the human verifies or corrects the discovery state.
+6. Convert only verified shared understanding into the payload for
    [Persist bounded handoff](../../../_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md).
 7. Persist the handoff and read back the exact reported path. Treat a failed
    read-back as `handoff-incomplete` and stop.
-8. Use the reread handoff, not memory, to choose the next cycle:
+8. Compact the reread handoff into the continuation focus: the smallest set of
+   aligned facts, decisions, open questions, frontier state, and next action
+   needed to begin the next discovery pass without rereading the whole prior
+   conversation.
+9. Use that compacted handoff-derived focus, not memory, to choose and start the
+   next cycle:
    - continue discovery;
    - run another interrogation;
    - run another domain map;
@@ -53,7 +58,7 @@ Map aligned discovery state into the bounded handoff payload:
 | Handoff field | Discovery source |
 | --- | --- |
 | `goal` | Discovery subject and intended outcome. |
-| `current_progress` | Aligned facts, decisions, frontier, and cycle count. |
+| `current_progress` | Verified shared understanding, aligned facts, decisions, frontier, and cycle count. |
 | `decisions_and_constraints` | Decisions, boundaries, refusals, and alignment corrections. |
 | `artifacts_and_references` | Evidence sources, prior handoffs, maps, and interrogation packets. |
 | `what_worked` | Evidence routes and questions that advanced understanding. |
@@ -64,9 +69,11 @@ Map aligned discovery state into the bounded handoff payload:
 ## Boundaries
 
 - The controller may repeat discovery cycles, but it may not skip alignment.
-- The controller never writes a handoff from unaligned or disputed context.
+- The controller offers the alignment check interactively and never writes a
+  handoff from unverified, unaligned, or disputed context.
 - The controller reads back every handoff before using it as continuation
   state.
+- The controller compacts the reread handoff before starting discovery again.
 - The controller routes to `interrogate` and `domain-mapping`; it does not
   absorb their jobs.
 - The controller records proof-of-concept need as a decision point; it does not
