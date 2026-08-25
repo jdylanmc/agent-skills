@@ -38,6 +38,15 @@ below is unreleased and no comparison links are available.
   declaring success. Whether the result may merge is withheld until a person
   grants it. `shepherd` keeps an existing change request landable — mergeable
   and green — across any git provider.
+- **Quality assurance design.** `qa-design` turns a specification into the
+  contract that says how its behavior will be proven: behavior rules with
+  acceptance criteria, the smallest verification level that gives meaningful
+  evidence for each, Gherkin scenarios in domain language, system-test
+  procedures written for a person and precise enough for an agent, the
+  deterministic checks the repository has already adopted, the execution and
+  concurrency constraints every planned proof must honor, and a reconciled
+  traceability map that states its own gaps. It designs proof and never produces
+  it: nothing is implemented, executed, scheduled, or judged.
 - **Validation.** `run-ci` discovers and runs the validation a repository
   already declares, reporting an evidence envelope that distinguishes failure,
   cancellation, missing tools, and incomplete execution.
