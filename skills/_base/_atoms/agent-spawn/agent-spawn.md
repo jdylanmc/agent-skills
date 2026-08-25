@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["task"]
 includes: []
 composes: []
-used-by: ["_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","prompt-coach/_molecules/prompt-review/prompt-review.md","roast/_molecules/roast-code-branch/roast-code-branch.md"]
+used-by: ["_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","optimize-prompt/_molecules/prompt-optimization/prompt-optimization.md","prompt-coach/_molecules/prompt-review/prompt-review.md","roast/_molecules/roast-code-branch/roast-code-branch.md"]
 ---
 
 # Agent Spawn

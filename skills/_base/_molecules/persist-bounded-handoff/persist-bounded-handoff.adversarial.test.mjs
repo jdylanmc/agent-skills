@@ -909,9 +909,16 @@ test('the molecule grants exactly what its atoms need and no more', () => {
   for (const atom of ATOM_UNITS) {
     assert.match(read(atom), /^allowed-tools: \["execute"\]$/m);
     assert.match(read(atom), /^composes: \[\]$/m);
-    assert.match(
-      read(atom),
-      /^used-by: \["_base\/_molecules\/persist-bounded-handoff\/persist-bounded-handoff\.md"\]$/m,
+
+    // `used-by` is derived, and a `_base` atom is shared by design, so this
+    // molecule must appear among an atom's consumers rather than be its only
+    // one. `redact-sensitive` in particular is the repository's deterministic
+    // redaction floor; a second consumer is the point of putting it in `_base`.
+    // The tool assertions above are what this test actually guards.
+    const usedBy = JSON.parse(read(atom).match(/^used-by: (.+)$/m)[1]);
+    assert.ok(
+      usedBy.includes('_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md'),
+      `${atom} must record this molecule as a consumer`,
     );
   }
 });
