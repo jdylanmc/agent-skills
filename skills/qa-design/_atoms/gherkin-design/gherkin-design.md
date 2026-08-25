@@ -87,6 +87,7 @@ decidable from feature text:
 
 | Concern | Codes |
 | --- | --- |
+| Parse | `missing-feature`, `multiple-features`, `content-before-feature`, `step-outside-scenario`, `examples-outside-outline`, `table-outside-step`, `doc-string-outside-step`, `unterminated-doc-string`, `malformed-tag-line`, `unrecognized-line` |
 | Shape | `empty-scenario`, `missing-when`, `missing-then`, `unanchored-continuation-step`, `out-of-order-steps`, `no-scenarios`, `missing-scenario-name` |
 | Identity | `missing-scenario-id`, `duplicate-scenario-id`, `malformed-scenario-id` |
 | Breadth | `multiple-when` |
@@ -104,6 +105,18 @@ the defect, and a space-delimited search misses exactly that case.
 A doc string may declare a media type on its opening delimiter, as in `"""json`.
 The closing delimiter is bare, and a doc string left open is reported rather
 than swallowing the rest of the feature.
+
+A parse code stops the review: the report returns `parse-failed` and no shape,
+identity, or language finding is attempted, because a document that did not
+parse cannot be reviewed honestly.
+
+`malformed-tag-line` is the one parse code that looks like a technicality and is
+not. A tag carries no whitespace, so `@id:a shopper` is the tag `@id:a` beside a
+loose word. Accepting it would silently truncate the identity to `a` and leave a
+scenario confidently referred to by a name nobody chose. Tags are also scoped
+where they are written: tags above the `Feature` belong to the feature, and tags
+above an `Examples` table belong to that table, so neither becomes the identity
+of whatever scenario is declared next.
 
 ## Exit Codes
 

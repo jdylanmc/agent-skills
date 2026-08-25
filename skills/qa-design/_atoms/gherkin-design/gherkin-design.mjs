@@ -54,7 +54,10 @@ const LEAK_PATTERNS = [
   { rule: 'css-or-xpath-selector', pattern: /(?:css=|xpath=|\[data-test[^\]]*\]|(?:^|\s)\/\/[a-z]+\[)/i },
   { rule: 'sql-statement', pattern: /\b(?:select\s+\S+\s+from|insert\s+into|update\s+\w+\s+set|delete\s+from)\b/i },
   { rule: 'http-route', pattern: /\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/\S*/ },
-  { rule: 'code-invocation', pattern: /\b[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*\s*\(/ },
+  // No whitespace before the parenthesis. `checkoutService.submit(order)` is a
+  // call; `invoice.pdf (attached)` is a filename in a sentence, and treating
+  // the second as an implementation leak trains people to ignore the finding.
+  { rule: 'code-invocation', pattern: /\b[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*\(/ },
   { rule: 'assertion-vocabulary', pattern: /(?:\bassert\b|\bexpect\(|\btoEqual\b|\bshould\.be\b)/i },
 ];
 
@@ -171,6 +174,9 @@ function parseFeature(text) {
           return;
         }
         feature = { name: value, line };
+        // Tags above the Feature belong to the feature. Carrying them forward
+        // would give the first scenario an identity nobody declared for it.
+        pendingTags = [];
         return;
       }
       if (!feature) {
@@ -202,6 +208,9 @@ function parseFeature(text) {
       }
       examples = { line, header: null, rows: [] };
       current.examples.push(examples);
+      // Tags above an Examples table belong to that table, not to whatever
+      // scenario is declared next.
+      pendingTags = [];
       return;
     }
 

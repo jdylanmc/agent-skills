@@ -102,14 +102,22 @@ is not.
 
 ## Cross-Checks
 
-Three defects are invisible to the part that produced them, so the contract is
+Five defects are invisible to the part that produced them, so the contract is
 where they are caught:
 
 | Finding | Meaning |
 | --- | --- |
+| `rule-outside-map` | A rule was designed for and the traceability map never mentions it. |
+| `requirement-outside-rules` | The traceability map traces a requirement the rule set never declared. |
 | `producer-outside-contract` | A producer claims a requirement the traceability map never declared. |
 | `scenario-without-producer` | A designed scenario declared no execution constraints, so nothing downstream knows what it needs. |
 | `procedure-without-producer` | A designed procedure declared no execution constraints, for the same reason. |
+
+The rule set and the map are compared in **both** directions, because one
+direction alone hides half of any disagreement. Checking only that every rule is
+traced lets an invented requirement sit in the map unnoticed; checking only that
+every row has a rule lets a rule nobody traced disappear. Each is a contract
+that looks complete from whichever end you started at.
 
 ## Contract Identity
 
@@ -121,7 +129,7 @@ designed against rather than to whichever revision is current.
 
 ## Level Discipline
 
-Steps 3 and 4 run for selected rules only. The temptation is to give every rule
+Steps 4 and 5 run for selected rules only. The temptation is to give every rule
 a scenario and a system test, because a contract that covers everything twice
 looks thorough in review.
 

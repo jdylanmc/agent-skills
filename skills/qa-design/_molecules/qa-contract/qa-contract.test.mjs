@@ -171,6 +171,51 @@ test('a producer proving a requirement the map never declared is caught by the c
   assert.match(result.findings[0].detail, /R9/);
 });
 
+test('a rule the traceability map never mentions is caught by the contract', () => {
+  const result = resolveContract(contract({
+    rules: [{ id: 'R1', decidable: true }, { id: 'R2', decidable: true }, { id: 'R3', decidable: true }],
+  }));
+
+  assert.equal(result.status, 'inconsistent');
+  assert.deepEqual(codes(result), ['rule-outside-map']);
+  assert.equal(result.findings[0].subject, 'R3');
+});
+
+test('a traced requirement the rule set never declared is caught by the contract', () => {
+  const result = resolveContract(contract({
+    rules: [{ id: 'R1', decidable: true }],
+  }));
+
+  assert.equal(result.status, 'inconsistent');
+  assert.deepEqual(codes(result), ['requirement-outside-rules']);
+  assert.equal(result.findings[0].subject, 'R2');
+});
+
+test('the rule set and the map are compared in both directions at once', () => {
+  const result = resolveContract(contract({
+    rules: [{ id: 'R1', decidable: true }, { id: 'R-only-a-rule', decidable: true }],
+    traceability: traceability({
+      rows: [
+        { requirement: 'R1', evidence: ['refund-granted'] },
+        { requirement: 'R-only-a-row', evidence: ['refund-through-the-app'] },
+      ],
+    }),
+    constraints: constraints({
+      producers: [
+        { id: 'refund-granted', requirementIds: ['R1'], traceabilityIds: ['T1'] },
+        { id: 'refund-through-the-app', requirementIds: ['R-only-a-row'], traceabilityIds: ['T2'] },
+      ],
+    }),
+  }));
+
+  assert.equal(result.status, 'inconsistent');
+  assert.deepEqual(codes(result), ['requirement-outside-rules', 'rule-outside-map']);
+  assert.deepEqual(
+    [...new Set(result.findings.map((entry) => entry.severity))],
+    ['high'],
+  );
+});
+
 test('a scenario or procedure with no execution constraints is caught by the contract', () => {
   const result = resolveContract(contract({
     constraints: constraints({ producers: [] }),

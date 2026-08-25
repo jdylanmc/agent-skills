@@ -86,6 +86,18 @@ test('needing an environment alone and running alone are different declarations'
   assert.deepEqual(report.mustNotRunConcurrently, []);
 });
 
+test('a lone producer needing its environment to itself is never reported parallel safe', () => {
+  const report = reconcileExecutionConstraints({
+    producers: [producer({ id: 'staging-takeover', isolation: 'exclusive' })],
+  });
+
+  assert.equal(report.status, 'constrained');
+  assert.deepEqual(report.findings, []);
+  assert.deepEqual(report.exclusiveAccess, ['staging-takeover']);
+  assert.deepEqual(report.serialOnly, []);
+  assert.deepEqual(report.mustNotRunConcurrently, []);
+});
+
 test('producers sharing a mutable resource may never run at the same time', () => {
   const report = reconcileExecutionConstraints({
     producers: [

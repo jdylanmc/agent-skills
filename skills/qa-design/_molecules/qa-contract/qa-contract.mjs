@@ -168,8 +168,34 @@ export function resolveContract(input = {}) {
   // Cross-checks between the parts. Each one is invisible to the part that
   // produced it, which is why the contract is where they are caught.
   const requirementIds = new Set((traceability.rows ?? []).map((row) => row.requirement));
+  const ruleIds = new Set(rules.map((rule) => rule.id.trim()));
   const producers = constraints.producers ?? [];
   const producerIds = new Set(producers.map((producer) => producer.id));
+
+  // The rule set and the map are checked in both directions. One direction
+  // alone leaves the other half of the disagreement invisible: a rule nobody
+  // traced looks like a complete map, and a row nobody declared looks like a
+  // complete rule set.
+  for (const id of [...ruleIds].sort()) {
+    if (!requirementIds.has(id)) {
+      findings.push(finding(
+        'rule-outside-map',
+        'high',
+        id,
+        'the rule was designed for and the traceability map never mentions it',
+      ));
+    }
+  }
+  for (const id of [...requirementIds].sort()) {
+    if (!ruleIds.has(id)) {
+      findings.push(finding(
+        'requirement-outside-rules',
+        'high',
+        id,
+        'the traceability map traces a requirement the rule set never declared',
+      ));
+    }
+  }
 
   for (const producer of producers) {
     const strays = (producer.requirementIds ?? []).filter((id) => !requirementIds.has(id)).sort();
@@ -221,6 +247,8 @@ export function resolveContract(input = {}) {
       'scenario-without-producer',
       'procedure-without-producer',
       'duplicate-procedure-id',
+      'rule-outside-map',
+      'requirement-outside-rules',
     ].includes(entry.code));
   const unresolved = unresolvedGherkin.length > 0
     || resolvedProcedures.some((procedure) => procedure.missingSections.length > 0);

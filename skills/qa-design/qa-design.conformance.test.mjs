@@ -319,7 +319,69 @@ test('running alone and needing an environment alone are documented as different
 
   assert.match(atom, /Isolation and Concurrency Are Different Questions/);
   assert.match(atom, /`concurrencySafe: false` \| Conflicts with every other producer, in any environment/);
-  assert.match(atom, /never reports `parallel-safe` while any producer has declared itself serial/);
+  assert.match(atom, /never reports `parallel-safe` while any producer has declared itself serial or claimed an environment exclusively/);
+  assert.match(atom, /a lone exclusive procedure still needs an environment held for it/);
+});
+
+test('the contract cross-checks its parts in both directions', () => {
+  const molecule = flat(MOLECULE);
+  const checks = firstColumnValues(sectionOf(MOLECULE, 'Cross-Checks'));
+
+  assert.deepEqual(checks, [
+    'rule-outside-map',
+    'requirement-outside-rules',
+    'producer-outside-contract',
+    'scenario-without-producer',
+    'procedure-without-producer',
+  ]);
+  assert.match(molecule, /compared in \*\*both\*\* directions, because one direction alone hides half of any disagreement/);
+  assert.match(molecule, /Each is a contract that looks complete from whichever end you started at/);
+});
+
+test('a rule set and a map that disagree cannot resolve to designed', () => {
+  const parts = {
+    contract: { id: 'refunds', revision: '3' },
+    rules: [{ id: 'R1', decidable: true }],
+    gherkin: null,
+    procedures: [],
+    traceability: {
+      status: 'complete',
+      findings: [],
+      rows: [{ requirement: 'R1', evidence: ['example-r1-success'] }],
+    },
+    constraints: { status: 'parallel-safe', findings: [], producers: [] },
+  };
+
+  assert.equal(contractHelper.resolveContract(parts).status, 'designed');
+  assert.equal(
+    contractHelper.resolveContract({
+      ...parts,
+      rules: [...parts.rules, { id: 'R2', decidable: true }],
+    }).status,
+    'inconsistent',
+  );
+  assert.equal(
+    contractHelper.resolveContract({
+      ...parts,
+      traceability: {
+        ...parts.traceability,
+        rows: [...parts.traceability.rows, { requirement: 'R2', evidence: ['example-r2-success'] }],
+      },
+    }).status,
+    'inconsistent',
+  );
+});
+
+test('a parse code stops the Gherkin review, and tags are scoped where they are written', () => {
+  const atom = flat('qa-design/_atoms/gherkin-design/gherkin-design.md');
+  const rows = read('qa-design/_atoms/gherkin-design/gherkin-design.md')
+    .split('\n')
+    .find((line) => line.startsWith('| Parse |'));
+
+  assert.ok(rows, 'the findings table must document the parse codes');
+  assert.match(rows, /`malformed-tag-line`/);
+  assert.match(atom, /A parse code stops the review/);
+  assert.match(atom, /tags above the `Feature` belong to the feature, and tags above an `Examples` table belong to that table/);
 });
 
 test('the traceability map never passes itself off as coverage', () => {

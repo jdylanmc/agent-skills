@@ -70,9 +70,14 @@ They are not two spellings of one field, and neither implies the other.
 A producer may be exclusive and still concurrency safe: it needs staging to
 itself, and preview work is none of its business. A producer that declares
 `concurrencySafe: false` is making the stronger claim, and it is honored as
-stated. The reconciliation never reports `parallel-safe` while any producer has
-declared itself serial, even when it is the only producer and has nothing to
-conflict with - the declaration is the answer, not the pair count.
+stated.
+
+The reconciliation never reports `parallel-safe` while any producer has declared
+itself serial or claimed an environment exclusively, even when it is the only
+producer and has nothing to conflict with. The declaration is the answer, not
+the pair count: a lone exclusive procedure still needs an environment held for
+it, and reporting the run as parallel safe would describe a freedom nobody
+declared.
 
 ## Reconciliation
 

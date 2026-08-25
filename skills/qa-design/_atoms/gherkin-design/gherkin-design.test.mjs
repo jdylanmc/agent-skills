@@ -316,6 +316,50 @@ test('ordinary tags are carried without being mistaken for an identity', () => {
   assert.equal(report.scenarios[0].identity, 'places-order');
 });
 
+test('a tag above the feature belongs to the feature, not to the first scenario', () => {
+  const report = reviewGherkin({
+    feature: [
+      '@id:whole-feature',
+      'Feature: Checkout',
+      '',
+      '  Scenario: A shopper places an order',
+      '    Given a shopper has one item in the cart',
+      '    When the shopper places the order',
+      '    Then the order is confirmed',
+    ].join('\n'),
+  });
+
+  assert.equal(report.scenarios[0].identity, null);
+  assert.deepEqual(codes(report), ['missing-scenario-id']);
+});
+
+test('a tag above an Examples table does not become the next scenario identity', () => {
+  const report = reviewGherkin({
+    feature: [
+      'Feature: Checkout',
+      '',
+      '  @id:basket-priced',
+      '  Scenario Outline: A basket is priced',
+      '    Given a basket of <count> items',
+      '    When the shopper opens the cart',
+      '    Then the total shown is stated',
+      '',
+      '    @id:the-examples',
+      '    Examples:',
+      '      | count |',
+      '      | 1     |',
+      '',
+      '  Scenario: A shopper places an order',
+      '    Given a shopper has one item in the cart',
+      '    When the shopper places the order',
+      '    Then the order is confirmed',
+    ].join('\n'),
+  });
+
+  assert.deepEqual(report.scenarios.map((entry) => entry.identity), ['basket-priced', null]);
+  assert.deepEqual(codes(report), ['missing-scenario-id']);
+});
+
 test('implementation detail in a step is kept out of the specification', () => {
   const report = reviewGherkin({
     feature: feature(
@@ -332,6 +376,20 @@ test('implementation detail in a step is kept out of the specification', () => {
     report.findings.filter((entry) => entry.code === 'implementation-leak').map((entry) => entry.severity),
     ['high', 'high'],
   );
+});
+
+test('a file name in a sentence is not mistaken for a code invocation', () => {
+  const report = reviewGherkin({
+    feature: feature(
+      scenario('receipt-attached', 'A shopper receives the receipt', [
+        'Given a shopper has a confirmed order',
+        'When the shopper opens the confirmation message',
+        'Then invoice.pdf (attached) is offered for download',
+      ]),
+    ),
+  });
+
+  assert.equal(report.status, 'clean');
 });
 
 test('an outcome that cannot be judged true or false is reported as ambiguous', () => {

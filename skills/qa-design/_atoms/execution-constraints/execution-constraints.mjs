@@ -270,21 +270,26 @@ export function reconcileExecutionConstraints(input = {}) {
   mustNotRunConcurrently.sort((a, b) => a.producers.join().localeCompare(b.producers.join()));
 
   const serialOnly = complete.filter((producer) => !producer.concurrencySafe).map((producer) => producer.id).sort();
+  const exclusiveAccess = complete
+    .filter((producer) => producer.isolation === 'exclusive')
+    .map((producer) => producer.id)
+    .sort();
 
   const hasBlockingFinding = findings.some((entry) => entry.severity === 'high');
-  // A producer that declared itself serial constrains the run even when it is
-  // the only producer and therefore has no pair to conflict with. Reporting
-  // `parallel-safe` there would answer a question nobody asked and lose the one
-  // declaration that mattered.
+  // A producer that declared itself serial, or that needs its environment to
+  // itself, constrains the run even when it is the only producer and therefore
+  // has no pair to conflict with. Reporting `parallel-safe` there would answer
+  // a question nobody asked and lose the one declaration that mattered.
   const constrained = mustNotRunConcurrently.length > 0
     || orderingEdges.length > 0
-    || serialOnly.length > 0;
+    || serialOnly.length > 0
+    || exclusiveAccess.length > 0;
   const status = hasBlockingFinding ? 'invalid' : (constrained ? 'constrained' : 'parallel-safe');
 
   return {
     status,
     producers: complete,
-    exclusiveAccess: complete.filter((producer) => producer.isolation === 'exclusive').map((producer) => producer.id).sort(),
+    exclusiveAccess,
     serialOnly,
     mustNotRunConcurrently,
     orderingEdges: orderingEdges.sort((a, b) => `${a.producer}${a.runsAfter}`.localeCompare(`${b.producer}${b.runsAfter}`)),
