@@ -96,6 +96,8 @@ jobs:
           skills/discovery/discovery.conformance.test.mjs
           skills/proof-of-concept/proof-of-concept.conformance.test.mjs
           skills/next-step-selection/next-step-selection.conformance.test.mjs
+          skills/model-role-resolution/model-role-resolution.conformance.test.mjs
+          skills/model-role-resolution/_molecules/model-role-resolver/model-role-resolver.test.mjs
           skills/roast/_molecules/roast-intent/roast-intent.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-detect/cmux-detect.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-dispatch/cmux-dispatch.test.mjs
