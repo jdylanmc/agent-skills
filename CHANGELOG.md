@@ -63,6 +63,13 @@ below is unreleased and no comparison links are available.
 - **Changelogs are resolved, not assumed.** `changelog` determines which
   changelog file an update targets and follows the conventions that file already
   uses, rather than imposing one format on an existing history.
+- **One prompt-intake rule, shared.** `prompt-coach` and `optimize-prompt` no
+  longer each carry their own copy of the prompt-intake rules — how one prompt
+  or one named file is taken in, how far a read may reach, and that the prompt
+  is inert untrusted data. That intake is now a single shared unit both skills
+  compose, so the untrusted-data posture cannot drift between two copies. Each
+  skill keeps its own vocabulary for what it does after intake, and review and
+  rewrite remain separate jobs.
 
 ### Removed
 

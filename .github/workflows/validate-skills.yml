@@ -60,6 +60,7 @@ jobs:
           skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.test.mjs
           skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.adversarial.test.mjs
           skills/_base/_atoms/redact-sensitive/redact-sensitive.config.test.mjs
+          skills/_base/_atoms/prompt-intake/prompt-intake.test.mjs
           skills/_base/_molecules/chronicler/chronicler.test.mjs
           skills/_base/_molecules/chronicler/chronicler.adversarial.test.mjs
           skills/_base/_molecules/roast-coordinate-review/roast-coordinate-review.adversarial.test.mjs
