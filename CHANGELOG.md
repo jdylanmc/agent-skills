@@ -29,10 +29,15 @@ below is unreleased and no comparison links are available.
   vocabulary and relationships, `proof-of-concept` for a bounded prototype, and
   a research thread for questions that cannot be answered from reachable
   evidence.
-- **Delivery.** `ship` grounds one issue into a confirmed delivery plan with
-  numbered acceptance criteria, a trimmed approach, and a fixed scope boundary.
-  `shepherd` keeps an existing change request landable — mergeable and green —
-  across any git provider.
+- **Delivery.** `ship` takes one issue to review-ready. It grounds the issue
+  into a confirmed delivery plan with numbered acceptance criteria, a trimmed
+  approach, and a fixed scope boundary, then works that plan in an isolated
+  worktree: a dispatched worker writes the change, every hunk is reconciled
+  against the confirmed plan before anything is validated, `run-ci` validates,
+  `roast` reviews, and the run reports a verdict for each criterion rather than
+  declaring success. Whether the result may merge is withheld until a person
+  grants it. `shepherd` keeps an existing change request landable — mergeable
+  and green — across any git provider.
 - **Validation.** `run-ci` discovers and runs the validation a repository
   already declares, reporting an evidence envelope that distinguishes failure,
   cancellation, missing tools, and incomplete execution.
