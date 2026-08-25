@@ -164,9 +164,13 @@ test('the conversation follows the idea instead of a questionnaire', () => {
 
 test('create-skill reaches the coach by invocation, optionally, and keeps the roast required', () => {
   const parsed = frontmatter(CREATE_ENTRY);
+  // `changelog` was added deliberately so a new skill is recorded when it is
+  // created. It is optional for the same reason the coach is: a hard
+  // requirement would fail creation in a repository that keeps no changelog.
   assert.deepEqual(parsed.requiresSkills, [
     { id: 'roast', source: 'local', required: true },
     { id: 'skill-coach', source: 'local', required: false },
+    { id: 'changelog', source: 'local', required: false },
   ]);
 
   const result = validateRepository(REPOSITORY_ROOT);
