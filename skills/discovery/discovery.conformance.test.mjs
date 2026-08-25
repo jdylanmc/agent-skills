@@ -119,12 +119,17 @@ test('alignment is mandatory before every discovery handoff', () => {
   assert.match(alignment, /mandatory before every discovery handoff/);
 });
 
-test('proof-of-concept work is recorded as a decision point, not implemented', () => {
+test('discovery routes bounded prototype questions to proof-of-concept', () => {
+  const entry = flat(ENTRY);
   const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+  const frontier = flat('discovery/_atoms/frontier-ledger/frontier-ledger.md');
 
-  assert.match(controller, /proof-of-concept appears necessary/);
-  assert.match(controller, /do not implement it/);
-  assert.match(controller, /records proof-of-concept need as a decision point/);
+  assert.match(entry, /needs-proof-of-concept/);
+  assert.match(entry, /Use `proof-of-concept` when a small bounded prototype/);
+  assert.match(controller, /frontier is `needs-proof-of-concept`/);
+  assert.match(controller, /route the scoped prototype\s+question to `proof-of-concept`/);
+  assert.match(controller, /Discovery owns alignment, handoff, compaction,\s+and next-cycle selection/);
+  assert.match(frontier, /small bounded prototype is the cheapest way/);
 });
 
 test('discovery explicitly refuses neighboring jobs', () => {

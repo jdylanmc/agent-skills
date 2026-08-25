@@ -19,6 +19,7 @@ Track what the discovery loop knows and what can happen next.
 | `ready` | Enough evidence exists for the recommended next workflow. |
 | `needs-interrogate` | A pointed question must be answered before discovery can proceed. |
 | `needs-domain-mapping` | Terms, actors, systems, boundaries, or relationships are blocking progress. |
+| `needs-proof-of-concept` | A small bounded prototype is the cheapest way to answer the discovery question. |
 | `needs-more-evidence` | A named source or source type is missing. |
 | `blocked` | The next step depends on unavailable authority, access, or a decision owner. |
 | `stop` | Discovery should not continue because the request is out of scope or unsafe. |
@@ -28,6 +29,8 @@ Track what the discovery loop knows and what can happen next.
 - Keep confirmed facts separate from assumptions.
 - Keep unanswered questions visible.
 - Assign every blocker an owner, source, or next workflow when known.
+- Route to `proof-of-concept` when code can answer the question cheaply; do not
+  pretend the prototype has already been run.
 - Record why a next action is ready; do not merely name it.
 - Do not mutate a tracker. A tracker update is a separate gated operation.
 

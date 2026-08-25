@@ -28,9 +28,11 @@ Own the recursive discovery control loop.
 3. If the frontier is `needs-domain-mapping`, route the blocking vocabulary or
    relationship uncertainty to `domain-mapping`, then incorporate the returned
    map as domain evidence.
-4. If a proof-of-concept appears necessary, do not implement it. Record the
-   proof question, evidence requirement, risk, and recommended owner as a
-   future workflow. Implementation authority belongs elsewhere.
+4. If the frontier is `needs-proof-of-concept`, route the scoped prototype
+   question to `proof-of-concept`, then incorporate the findings as prototype
+   evidence, including what worked, what failed, edge cases, gaps, cleanup
+   status, and human feedback. Discovery owns alignment, handoff, compaction,
+   and next-cycle selection after the proof of concept returns.
 5. Offer and run [Alignment check](../../_atoms/alignment-check/alignment-check.md).
    The goal is shared understanding with the human. A handoff cannot be written
    until the human verifies or corrects the discovery state.
@@ -47,7 +49,7 @@ Own the recursive discovery control loop.
    - continue discovery;
    - run another interrogation;
    - run another domain map;
-   - request proof-of-concept planning;
+   - run a proof of concept;
    - hand off to specification or ticket breakdown;
    - stop as ready, blocked, or insufficient evidence.
 
@@ -64,7 +66,7 @@ Map aligned discovery state into the bounded handoff payload:
 | `what_worked` | Evidence routes and questions that advanced understanding. |
 | `what_did_not_work` | Missing sources, contradictions, and dead ends. |
 | `next_steps` | The next cycle selected from the reread handoff. |
-| `suggested_skills` | `interrogate`, `domain-mapping`, `discovery`, or the next downstream skill when exact and useful. |
+| `suggested_skills` | `interrogate`, `domain-mapping`, `proof-of-concept`, `discovery`, or the next downstream skill when exact and useful. |
 
 ## Boundaries
 
@@ -76,7 +78,8 @@ Map aligned discovery state into the bounded handoff payload:
 - The controller compacts the reread handoff before starting discovery again.
 - The controller routes to `interrogate` and `domain-mapping`; it does not
   absorb their jobs.
-- The controller records proof-of-concept need as a decision point; it does not
-  run or implement a proof of concept.
+- The controller routes to `proof-of-concept` when prototype evidence is the
+  next cheapest answer; it does not absorb that skill's job or treat prototype
+  code as product code.
 - Tracker mutation remains outside this molecule in the root skill's
   approval-gated tracker update gate.
