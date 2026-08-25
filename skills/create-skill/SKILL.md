@@ -6,7 +6,7 @@ includes: ["_base/_molecules/chronicler/chronicler.md","create-skill/_molecules/
 composes: ["_base/_molecules/chronicler/chronicler.md","create-skill/_molecules/intent-capture/intent-capture.md","create-skill/_molecules/skill-package-design/skill-package-design.md","create-skill/_molecules/skill-package-conformance/skill-package-conformance.md","create-skill/_molecules/self-roast-remediation/self-roast-remediation.md"]
 disable-model-invocation: false
 user-invocable: true
-requires-skills: [{"id": "roast", "source": "local", "required": true}, {"id": "skill-coach", "source": "local", "required": false}]
+requires-skills: [{"id": "roast", "source": "local", "required": true}, {"id": "skill-coach", "source": "local", "required": false}, {"id": "changelog", "source": "local", "required": false}]
 ---
 
 # Create Skill
@@ -91,7 +91,27 @@ legitimately have none, which is not this skill's concern.
    re-roasts after every head-changing correction, and stops for operator
    reconfirmation every three rounds. The package arrives already reviewed
    instead of carrying a reminder to review it.
-8. Report the created package, the stored intent, the coaching status, the
+8. **Record the new skill in the changelog.** Invoke `changelog` for an entry
+   describing what the new skill does for someone who might use it, and place
+   the returned patch in the same change as the package itself.
+
+   The entry belongs with the package because they are one reviewable unit. A
+   library that gains a skill and mentions it later has a changelog nobody can
+   trust to be current, and the moment the package is reviewed is the only
+   moment its externally meaningful effect is actually understood.
+
+   `changelog` holds no write authority; it returns a patch. Placing that patch
+   here is not a way around that boundary — the entry still reaches history only
+   through the same human review that approves the new package, and it is never
+   added to a released section.
+
+   Changelog entry is best effort. When no changelog exists, when the target is
+   ambiguous, or when `changelog` cannot run, report `Changelog: degraded` with
+   the reason and continue. Do not create a changelog file as a side effect of
+   creating a skill; choosing where a project's history lives is its own
+   decision.
+
+9. Report the created package, the stored intent, the coaching status, the
    chosen decomposition seams, validation output including `cancelled`, the
    full remediation account — what was found, what was fixed, what was declined
    with the duck's reasoning, and what remains unresolved with its ways forward
@@ -119,6 +139,8 @@ Return:
 - the roast findings and how each was addressed: `Must fix` fixes, every
   rubber-duck verdict with its reasoning, every operator deferral with a
   bounded way forward, and any unresolved finding that prevents completion;
+- `Changelog: entered` with the proposed entry, or `Changelog: degraded` with
+  the reason it could not be written;
 - `completion_status`: `complete`, `blocked`, `halted`, or
   `awaiting-operator`;
 - the exact reason the roast could not run, when it could not, with
