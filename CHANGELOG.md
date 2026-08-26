@@ -53,6 +53,12 @@ below is unreleased and no comparison links are available.
   concurrency constraints every planned proof must honor, and a reconciled
   traceability map that states its own gaps. It designs proof and never produces
   it: nothing is implemented, executed, scheduled, or judged.
+- **Product specification.** `spec` turns one persisted, human-confirmed
+  Discovery artifact into an authoritative nano Product Requirements Document
+  and a linked full companion beneath `docs/agent/specs/`. The nano document
+  carries stable acceptance-criteria identities for downstream work; the full
+  document preserves supporting evidence, assumptions, decisions, and
+  traceability without acquiring authority of its own.
 - **Validation.** `run-ci` discovers and runs the validation a repository
   already declares, reporting an evidence envelope that distinguishes failure,
   cancellation, missing tools, and incomplete execution.

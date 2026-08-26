@@ -33,11 +33,16 @@ function slash(candidate) {
   return candidate.split(path.sep).join('/');
 }
 
-function pairPaths(nanoPath, fullPath) {
+function pairPaths(repositoryRoot, nanoPath, fullPath) {
+  if (typeof repositoryRoot !== 'string' || repositoryRoot.trim() === '') {
+    throw new SpecPairError('invalid-input', 'repositoryRoot is required');
+  }
+  const root = slash(path.resolve(repositoryRoot));
+  const expectedDirectory = `${root}/docs/agent/specs`;
   const nano = slash(path.resolve(nanoPath));
   const full = slash(path.resolve(fullPath));
-  const nanoMatch = nano.match(/\/docs\/agent\/specs\/([a-z0-9]+(?:-[a-z0-9]+)*)\.nano\.md$/);
-  const fullMatch = full.match(/\/docs\/agent\/specs\/([a-z0-9]+(?:-[a-z0-9]+)*)\.full\.md$/);
+  const nanoMatch = nano.match(/\/([a-z0-9]+(?:-[a-z0-9]+)*)\.nano\.md$/);
+  const fullMatch = full.match(/\/([a-z0-9]+(?:-[a-z0-9]+)*)\.full\.md$/);
   if (!nanoMatch || !fullMatch || nanoMatch[1] !== fullMatch[1]) {
     throw new SpecPairError(
       'invalid-path',
@@ -47,11 +52,34 @@ function pairPaths(nanoPath, fullPath) {
   if (path.dirname(nano) !== path.dirname(full)) {
     throw new SpecPairError('invalid-path', 'the nano and full documents must be siblings');
   }
-  return { nano, full, slug: nanoMatch[1] };
+  if (path.dirname(nano) !== expectedDirectory || path.dirname(full) !== expectedDirectory) {
+    throw new SpecPairError(
+      'invalid-path',
+      `the pair must be directly beneath ${expectedDirectory}`,
+    );
+  }
+  return { root, nano, full, slug: nanoMatch[1] };
+}
+
+function withoutFencedBlocks(text) {
+  const output = [];
+  let fence = null;
+  for (const line of text.split(/\r?\n/)) {
+    const marker = line.match(/^\s*(```+|~~~+)/)?.[1] ?? null;
+    if (marker) {
+      if (fence === null) fence = marker[0];
+      else if (marker[0] === fence) fence = null;
+      output.push('');
+      continue;
+    }
+    output.push(fence === null ? line : '');
+  }
+  return output.join('\n');
 }
 
 function lineValue(text, label) {
-  const matches = [...text.matchAll(new RegExp(`^- ${label}:\\s*(.+)$`, 'gmi'))];
+  const visible = withoutFencedBlocks(text);
+  const matches = [...visible.matchAll(new RegExp(`^- ${label}:\\s*(.+)$`, 'gm'))];
   if (matches.length !== 1) {
     throw new SpecPairError('invalid-shape', `${label} must appear exactly once`);
   }
@@ -208,13 +236,27 @@ function validateFull(text, slug, nano) {
   return { requirements, decisions };
 }
 
-export function validateSpecPair({ nanoPath, fullPath, nanoText, fullText }) {
-  const resolved = pairPaths(nanoPath, fullPath);
+export function validateSpecPair({
+  repositoryRoot,
+  nanoPath,
+  fullPath,
+  nanoText,
+  fullText,
+  expectedSource,
+  expectedRevision,
+}) {
+  const resolved = pairPaths(repositoryRoot, nanoPath, fullPath);
   if (typeof nanoText !== 'string' || typeof fullText !== 'string') {
     throw new SpecPairError('invalid-input', 'nanoText and fullText must be strings');
   }
   const nano = validateNano(nanoText, resolved.slug);
   const full = validateFull(fullText, resolved.slug, nano);
+  if (nano.source !== expectedSource || nano.revision !== expectedRevision) {
+    throw new SpecPairError(
+      'identity-mismatch',
+      'the specification provenance does not match the validated Discovery source',
+    );
+  }
   return {
     status: 'valid',
     slug: resolved.slug,
@@ -229,37 +271,67 @@ export function validateSpecPair({ nanoPath, fullPath, nanoText, fullText }) {
   };
 }
 
-export function validateFiles(nanoPath, fullPath) {
-  const paths = pairPaths(nanoPath, fullPath);
+function refuseSymlinkPath(repositoryRoot, candidate) {
+  const root = fs.realpathSync(repositoryRoot);
+  const relative = path.relative(root, candidate);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new SpecPairError('invalid-path', `path escapes the repository: ${candidate}`);
+  }
+  let current = root;
+  for (const segment of relative.split(path.sep)) {
+    current = path.join(current, segment);
+    const stat = fs.lstatSync(current);
+    if (stat.isSymbolicLink()) {
+      throw new SpecPairError('unsafe-path', `symbolic links are refused: ${current}`);
+    }
+  }
+}
+
+export function validateFiles(repositoryRoot, nanoPath, fullPath, expectedSource, expectedRevision) {
+  const paths = pairPaths(repositoryRoot, nanoPath, fullPath);
   for (const candidate of [paths.nano, paths.full]) {
-    if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) {
+    if (!fs.existsSync(candidate)) {
+      throw new SpecPairError('unreadable', `specification artifact does not exist: ${candidate}`);
+    }
+    refuseSymlinkPath(repositoryRoot, candidate);
+    if (!fs.lstatSync(candidate).isFile()) {
       throw new SpecPairError('unreadable', `specification artifact is not a regular file: ${candidate}`);
     }
   }
   return validateSpecPair({
+    repositoryRoot,
     nanoPath: paths.nano,
     fullPath: paths.full,
     nanoText: fs.readFileSync(paths.nano, 'utf8'),
     fullText: fs.readFileSync(paths.full, 'utf8'),
+    expectedSource,
+    expectedRevision,
   });
 }
 
-export const USAGE = 'Usage: spec-pair.mjs --nano <absolute-path> --full <absolute-path>';
+export const USAGE = 'Usage: spec-pair.mjs --root <absolute-path> --nano <absolute-path> --full <absolute-path> --source <locator> --revision <revision>';
 
 export function run(argv, streams = process) {
   const args = {};
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!['--nano', '--full'].includes(flag) || !value || !path.isAbsolute(value)) {
+    if (!['--root', '--nano', '--full', '--source', '--revision'].includes(flag) || !value) {
+      throw new SpecPairError('usage', USAGE);
+    }
+    if (['--root', '--nano', '--full'].includes(flag) && !path.isAbsolute(value)) {
       throw new SpecPairError('usage', USAGE);
     }
     args[flag.slice(2)] = value;
   }
-  if (!args.nano || !args.full || argv.length !== 4) {
+  if (!args.root || !args.nano || !args.full || !args.source || !args.revision || argv.length !== 10) {
     throw new SpecPairError('usage', USAGE);
   }
-  streams.stdout.write(`${JSON.stringify(validateFiles(args.nano, args.full), null, 2)}\n`);
+  streams.stdout.write(`${JSON.stringify(
+    validateFiles(args.root, args.nano, args.full, args.source, args.revision),
+    null,
+    2,
+  )}\n`);
   return 0;
 }
 

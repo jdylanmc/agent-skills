@@ -2,6 +2,7 @@
 name: discovery-source
 description: Resolve exactly one Markdown or tracker-issue Discovery artifact into a confirmed, revision-bound intake record, refusing raw conversation, stale evidence, and materially incomplete shared understanding.
 level: atom
+allowed-tools: ["execute"]
 includes: ["spec/_atoms/discovery-source/discovery-source.mjs"]
 composes: []
 used-by: ["spec/_molecules/product-specification/product-specification.md"]

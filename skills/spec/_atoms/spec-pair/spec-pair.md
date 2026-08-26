@@ -2,6 +2,7 @@
 name: spec-pair
 description: Persist and validate one authoritative nano Product Requirements Document and its supporting full sibling beneath docs/agent/specs, enforcing shared identity, provenance, links, and nano-to-full traceability.
 level: atom
+allowed-tools: ["edit","execute"]
 includes: ["spec/_atoms/spec-pair/spec-pair.mjs"]
 composes: []
 used-by: ["spec/_molecules/product-specification/product-specification.md"]
@@ -74,8 +75,11 @@ both paths, compare exact bytes, then validate:
 
 ```text
 node <atoms>/spec-pair.mjs \
+  --root <absolute-repository-root> \
   --nano <absolute-nano-path> \
-  --full <absolute-full-path>
+  --full <absolute-full-path> \
+  --source <confirmed-source-locator> \
+  --revision <confirmed-source-revision>
 ```
 
 Do not report either path until both writes, both rereads, and the pair

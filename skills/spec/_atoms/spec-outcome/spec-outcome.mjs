@@ -49,6 +49,17 @@ export function resolveSpecOutcome(input) {
   const siblingConflicts = count(input.siblingConflicts, 'siblingConflicts');
   const openMustFix = count(input.openMustFix, 'openMustFix');
 
+  const blockers = [];
+  if (!['ready', 'incomplete'].includes(input.sourceStatus)) {
+    blockers.push(`source status is ${input.sourceStatus}`);
+  }
+  if (input.pairStatus !== 'valid') blockers.push(`pair status is ${input.pairStatus}`);
+  if (input.roastStatus !== 'complete') blockers.push(`Roast status is ${input.roastStatus}`);
+  if (openMustFix > 0) blockers.push(`${openMustFix} Must fix finding(s) remain`);
+  if (blockers.length) {
+    return { status: 'blocked', reasons: blockers };
+  }
+
   if (input.sourceStatus === 'incomplete' || discoveryGaps > 0) {
     return {
       status: 'needs-discovery',
@@ -63,15 +74,6 @@ export function resolveSpecOutcome(input) {
   if (siblingConflicts > 0) decisions.push(`${siblingConflicts} sibling conflict(s) remain`);
   if (decisions.length) {
     return { status: 'needs-decision', reasons: decisions };
-  }
-
-  const blockers = [];
-  if (input.sourceStatus !== 'ready') blockers.push(`source status is ${input.sourceStatus}`);
-  if (input.pairStatus !== 'valid') blockers.push(`pair status is ${input.pairStatus}`);
-  if (input.roastStatus !== 'complete') blockers.push(`Roast status is ${input.roastStatus}`);
-  if (openMustFix > 0) blockers.push(`${openMustFix} Must fix finding(s) remain`);
-  if (blockers.length) {
-    return { status: 'blocked', reasons: blockers };
   }
 
   if (input.approval !== 'approved') {

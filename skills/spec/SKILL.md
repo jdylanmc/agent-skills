@@ -39,12 +39,15 @@ record -> resolve confirmed Discovery source -> model product intent
    distinctions, formalizes product intent, writes the sibling Product
    Requirements Documents beneath `docs/agent/specs/`, rereads and validates
    them, and resolves every pre-review status.
-3. Invoke `roast` once against the exact candidate pair using the
-   `specification` artifact profile. Roast is read-only and returns
-   recommendations; it does not repair the pair. If the profile is unavailable,
-   the review is incomplete, or any `Must fix` finding remains unresolved,
-   return `blocked`. The outer delivery workflow may apply repairs and invoke
-   this skill and Roast again; this run does not own that loop.
+3. Submit the exact candidate pair to `roast` and require its evidence-based
+   classification to return artifact type `specification`. Roast is read-only
+   and returns recommendations; it does not repair the pair. The
+   `specification` artifact profile is delivered by issue #118 and is not
+   available in the repository at the time this package is introduced, so
+   `complete` remains unreachable until that dependency lands. If the profile is
+   unavailable, the review is incomplete, or any `Must fix` finding remains
+   unresolved, return `blocked`. The outer delivery workflow may apply repairs
+   and invoke this skill and Roast again; this run does not own that loop.
 4. Present the nano Product Requirements Document first. Present the full
    document as linked, expandable supporting context. A human may approve the
    nano intention and acceptance criteria only after the independent review is
@@ -68,6 +71,14 @@ The intake must also carry:
 Raw conversation, a summary reconstructed from memory, an inaccessible source,
 an unconfirmed source, or a source whose current revision differs from its
 confirmed revision is refused.
+
+The current Discovery package persists its bounded continuation handoff beneath
+the operating system temporary directory. Until Discovery is reinforced to
+persist aligned application knowledge directly beneath `docs/agent/discovery/`,
+a Markdown source reaches `/spec` only after an explicitly approved promotion
+into that durable workspace. A tracker issue may be consumed directly when it
+satisfies the same confirmation and revision contract. Never silently copy a
+temporary handoff and call that promotion approved.
 
 ## Output Contract
 

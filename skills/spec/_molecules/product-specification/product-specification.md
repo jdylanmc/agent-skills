@@ -5,7 +5,7 @@ level: molecule
 includes: ["spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
 composes: ["spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
 used-by: ["spec/SKILL.md"]
-allowed-tools: []
+allowed-tools: ["edit","execute"]
 ---
 
 # Product Specification

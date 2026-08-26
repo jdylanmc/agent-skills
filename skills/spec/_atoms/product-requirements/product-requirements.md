@@ -2,6 +2,7 @@
 name: product-requirements
 description: Formalize a confirmed Discovery record into product intention, stable acceptance criteria, essential non-goals, supporting requirements, and traceability without selecting architecture or inventing missing decisions.
 level: atom
+allowed-tools: []
 includes: []
 composes: []
 used-by: ["spec/_molecules/product-specification/product-specification.md"]

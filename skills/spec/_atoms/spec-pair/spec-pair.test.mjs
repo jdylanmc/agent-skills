@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 
-import { validateSpecPair } from './spec-pair.mjs';
+import { validateFiles, validateSpecPair } from './spec-pair.mjs';
 
 const ROOT = '/repo/docs/agent/specs';
 
@@ -96,10 +98,13 @@ None.
 
 function validate(nanoText = nano(), fullText = full()) {
   return validateSpecPair({
+    repositoryRoot: '/repo',
     nanoPath: `${ROOT}/faster-checkout.nano.md`,
     fullPath: `${ROOT}/faster-checkout.full.md`,
     nanoText,
     fullText,
+    expectedSource: 'docs/agent/discovery/faster-checkout.md',
+    expectedRevision: 'a'.repeat(64),
   });
 }
 
@@ -122,10 +127,25 @@ test('validates one identity-bound, mutually linked specification pair', () => {
 
 test('requires the pair beneath docs/agent/specs with one slug', () => {
   assert.equal(code(() => validateSpecPair({
+    repositoryRoot: '/repo',
     nanoPath: '/repo/specs/faster.nano.md',
     fullPath: '/repo/specs/faster.full.md',
     nanoText: nano(),
     fullText: full(),
+    expectedSource: 'docs/agent/discovery/faster-checkout.md',
+    expectedRevision: 'a'.repeat(64),
+  })), 'invalid-path');
+});
+
+test('refuses a matching-looking pair rooted in another repository', () => {
+  assert.equal(code(() => validateSpecPair({
+    repositoryRoot: '/repo',
+    nanoPath: '/other/repo/docs/agent/specs/faster-checkout.nano.md',
+    fullPath: '/other/repo/docs/agent/specs/faster-checkout.full.md',
+    nanoText: nano(),
+    fullText: full(),
+    expectedSource: 'docs/agent/discovery/faster-checkout.md',
+    expectedRevision: 'a'.repeat(64),
   })), 'invalid-path');
 });
 
@@ -142,6 +162,18 @@ test('requires matching identity and provenance', () => {
     code(() => validate(nano(), full({ revision: 'b'.repeat(64) }))),
     'identity-mismatch',
   );
+});
+
+test('binds pair provenance to the validated Discovery record', () => {
+  assert.equal(code(() => validateSpecPair({
+    repositoryRoot: '/repo',
+    nanoPath: `${ROOT}/faster-checkout.nano.md`,
+    fullPath: `${ROOT}/faster-checkout.full.md`,
+    nanoText: nano(),
+    fullText: full(),
+    expectedSource: 'https://github.com/example/app/issues/42',
+    expectedRevision: 'issue-42@1',
+  })), 'identity-mismatch');
 });
 
 test('full requirements cannot become authority without a nano reference', () => {
@@ -165,4 +197,49 @@ test('traceability accounts for every nano acceptance criterion', () => {
 test('sibling links are exact and relative', () => {
   const wrong = nano().replace('./faster-checkout.full.md', '../other.full.md');
   assert.equal(code(() => validate(wrong, full())), 'invalid-link');
+});
+
+test('metadata examples inside fenced blocks do not participate', () => {
+  const fenced = `${nano()}
+
+\`\`\`markdown
+- Spec ID: SPEC-EXAMPLE
+\`\`\`
+`;
+  assert.equal(validate(fenced, full()).specId, 'SPEC-FASTER-CHECKOUT');
+});
+
+test('file validation refuses a symbolic-link artifact', (t) => {
+  const root = fs.mkdtempSync(path.join(process.cwd(), '.spec-pair-fixture-'));
+  try {
+    const directory = path.join(root, 'docs', 'agent', 'specs');
+    fs.mkdirSync(directory, { recursive: true });
+    const target = path.join(root, 'target.md');
+    fs.writeFileSync(target, nano());
+    const nanoPath = path.join(directory, 'faster-checkout.nano.md');
+    try {
+      fs.symlinkSync(target, nanoPath);
+    } catch (error) {
+      if (error.code === 'EPERM') {
+        t.skip('the platform does not permit creating a test symlink');
+        return;
+      }
+      throw error;
+    }
+    const fullPath = path.join(directory, 'faster-checkout.full.md');
+    fs.writeFileSync(fullPath, full());
+
+    assert.throws(
+      () => validateFiles(
+        root,
+        nanoPath,
+        fullPath,
+        'docs/agent/discovery/faster-checkout.md',
+        'a'.repeat(64),
+      ),
+      (error) => error.code === 'unsafe-path',
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

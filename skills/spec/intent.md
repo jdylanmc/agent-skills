@@ -54,6 +54,8 @@ human.
 - Submit the exact candidate pair to the independent Roast workflow before
   human approval. A roast is one read-only review pass; the delivery workflow
   owns any repeated roast, repair, and re-roast loop.
+- An unavailable independent specification review leaves the work incomplete.
+  Completion remains unreachable until that review exists.
 - Treat only an approved nano document as settled product intent.
 
 ## What it must not do

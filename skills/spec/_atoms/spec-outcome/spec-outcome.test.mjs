@@ -40,6 +40,18 @@ test('an unavailable or incomplete Roast is blocked, never clean', () => {
     'blocked',
     'approval is not offered until the independent review exists',
   );
+  assert.equal(
+    resolveSpecOutcome(evidence({ openDecisions: 1, roastStatus: 'unavailable' })).status,
+    'blocked',
+  );
+  assert.equal(
+    resolveSpecOutcome(evidence({ discoveryGaps: 1, openMustFix: 1 })).status,
+    'blocked',
+  );
+  assert.equal(
+    resolveSpecOutcome(evidence({ siblingConflicts: 1, pairStatus: 'invalid' })).status,
+    'blocked',
+  );
 });
 
 test('unresolved Must fix findings make complete impossible', () => {
