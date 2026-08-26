@@ -113,6 +113,7 @@ jobs:
           skills/handoff/handoff.test.mjs
           skills/ship/_atoms/diff-reconciliation/diff-reconciliation.test.mjs
           skills/ship/_atoms/merge-gate/merge-gate.test.mjs
+          skills/ship/_atoms/shepherd-handoff/shepherd-handoff.test.mjs
           skills/ship/ship.conformance.test.mjs
           skills/orchestration-handoff/orchestration-handoff.conformance.test.mjs
           skills/qa-design/qa-design.conformance.test.mjs

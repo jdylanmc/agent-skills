@@ -43,9 +43,13 @@ allowed-tools: ["edit","execute","read","search"]
    `provider-unsupported`.
 4. Fetch the current base and head, then classify whether there is a rebase
    trigger. Triggers are operator request, genuine conflict or unmergeable
-   state, or expired required validation. Base drift alone is not a trigger.
+   state, expired required validation, or an advanced base whose own policy
+   requires the branch to contain it. Base drift alone is not a trigger.
 5. When the base moved but the change remains mergeable and green, return
-   `no-op-mergeable-and-green` without rebasing or force-pushing.
+   `no-op-mergeable-and-green` without rebasing or force-pushing — unless the
+   adapter reported that the base requires the branch to contain it and git
+   ancestry says it does not. That branch is already unlandable, so it is a
+   trigger rather than a no-op. An `unobserved` policy is not a requirement.
 6. When a trigger exists, rebase the branch onto the fetched base SHA and report
    the commits that moved.
 7. If the rebase stops, use [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md).
@@ -67,6 +71,18 @@ allowed-tools: ["edit","execute","read","search"]
    `provider_status: provider-unsupported` beside the git-level result.
 12. Classify the terminal disposition with
    [Shepherd disposition](../../_atoms/shepherd-disposition/shepherd-disposition.md).
+   Every disposition carries the freshness receipt it was observed against:
+   observation time, base SHA, head SHA, up-to-date policy, and provider status.
+
+## One Snapshot, Not A Watch
+
+An invocation observes one snapshot and ends. Its disposition describes the
+change request against one base commit at one moment, and it stops describing
+anything the moment the base moves.
+
+Re-observing after something merges into the base belongs to whoever asked for
+the shepherding, because that caller knows which change requests it still has
+open. This molecule does not wait for events, and it does not track siblings.
 
 ## Concurrency
 
@@ -79,5 +95,5 @@ shared scratch directories, global mutable state, or another `as-wt-*` worktree.
 Return the pull request URL, branch, base SHA, rebased head SHA, moved commit
 summary, conflict policy decisions, regeneration commands run, local validation
 envelope from `run-ci`, push receipt confirming `--force-with-lease`, remote
-check table, terminal disposition, and any Chronicler log path or recording
-defect.
+check table, terminal disposition, the freshness receipt that disposition is
+bound to, and any Chronicler log path or recording defect.
