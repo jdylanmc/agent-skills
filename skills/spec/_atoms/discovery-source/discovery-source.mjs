@@ -33,14 +33,14 @@ const FIELDS = [
 
 function text(value, field) {
   if (typeof value !== 'string' || value.trim() === '') {
-    throw new DiscoverySourceError('incomplete', `${field} must be non-empty text`);
+    throw new DiscoverySourceError('invalid-source', `${field} must be non-empty text`);
   }
   return value.trim();
 }
 
 function stringArray(value, field, { nonEmpty = false } = {}) {
   if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
-    throw new DiscoverySourceError('incomplete', `${field} must be an array of non-empty strings`);
+    throw new DiscoverySourceError('invalid-source', `${field} must be an array of non-empty strings`);
   }
   if (nonEmpty && value.length === 0) {
     throw new DiscoverySourceError('incomplete', `${field} must not be empty`);

@@ -90,5 +90,10 @@ test('distinguishes a malformed record from materially incomplete Discovery', ()
     code(() => validateDiscoverySource(source({ kind: undefined }))),
     'invalid-source',
   );
+  assert.equal(code(() => validateDiscoverySource(source({ kind: null }))), 'invalid-source');
+  assert.equal(code(() => validateDiscoverySource(source({ locator: 42 }))), 'invalid-source');
+  assert.equal(code(() => validateDiscoverySource(source({ decisions: null }))), 'invalid-source');
   assert.equal(code(() => validateDiscoverySource(source({ confirmedFacts: [] }))), 'incomplete');
+  assert.equal(code(() => validateDiscoverySource(source({ scope: [] }))), 'incomplete');
+  assert.equal(code(() => validateDiscoverySource(source({ exclusions: [] }))), 'incomplete');
 });
