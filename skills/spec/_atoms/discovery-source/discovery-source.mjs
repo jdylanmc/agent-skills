@@ -91,6 +91,10 @@ export function validateDiscoverySource(input) {
   if (unknown.length) {
     throw new DiscoverySourceError('invalid-source', `unknown field(s): ${unknown.join(', ')}`);
   }
+  const missing = FIELDS.filter((field) => !(field in input));
+  if (missing.length) {
+    throw new DiscoverySourceError('invalid-source', `missing field(s): ${missing.join(', ')}`);
+  }
   if (input.version !== STATE_VERSION) {
     throw new DiscoverySourceError('invalid-source', `version must be ${STATE_VERSION}`);
   }

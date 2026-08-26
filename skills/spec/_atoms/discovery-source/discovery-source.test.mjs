@@ -81,3 +81,10 @@ test('refuses materially incomplete shared understanding', () => {
 test('rejects unknown fields instead of silently losing evidence', () => {
   assert.equal(code(() => validateDiscoverySource(source({ transcript: 'raw conversation' }))), 'invalid-source');
 });
+
+test('distinguishes a malformed record from materially incomplete Discovery', () => {
+  const malformed = source();
+  delete malformed.kind;
+  assert.equal(code(() => validateDiscoverySource(malformed)), 'invalid-source');
+  assert.equal(code(() => validateDiscoverySource(source({ confirmedFacts: [] }))), 'incomplete');
+});

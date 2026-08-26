@@ -2,10 +2,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { validateFiles, validateSpecPair } from './spec-pair.mjs';
 
 const ROOT = '/repo/docs/agent/specs';
+const REPOSITORY_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..', '..', '..', '..',
+);
+const SANDBOX_ROOT = path.join(REPOSITORY_ROOT, '.test-sandbox');
 
 function nano(overrides = {}) {
   return `# Faster checkout
@@ -194,6 +200,16 @@ test('traceability accounts for every nano acceptance criterion', () => {
   assert.equal(code(() => validate(nano(), missing)), 'missing-traceability');
 });
 
+test('fenced traceability examples do not satisfy real coverage', () => {
+  const fencedOnly = full()
+    .replace('| AC-002 | Existing eligibility decision |\n', '')
+    .replace(
+      '## Open Questions',
+      '```markdown\n| AC-002 | Example only |\n```\n\n## Open Questions',
+    );
+  assert.equal(code(() => validate(nano(), fencedOnly)), 'missing-traceability');
+});
+
 test('sibling links are exact and relative', () => {
   const wrong = nano().replace('./faster-checkout.full.md', '../other.full.md');
   assert.equal(code(() => validate(wrong, full())), 'invalid-link');
@@ -210,7 +226,8 @@ test('metadata examples inside fenced blocks do not participate', () => {
 });
 
 test('file validation refuses a symbolic-link artifact', (t) => {
-  const root = fs.mkdtempSync(path.join(process.cwd(), '.spec-pair-fixture-'));
+  fs.mkdirSync(SANDBOX_ROOT, { recursive: true });
+  const root = fs.mkdtempSync(path.join(SANDBOX_ROOT, 'spec-pair-fixture-'));
   try {
     const directory = path.join(root, 'docs', 'agent', 'specs');
     fs.mkdirSync(directory, { recursive: true });
@@ -242,4 +259,47 @@ test('file validation refuses a symbolic-link artifact', (t) => {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('file validation accepts a repository root reached through a symlink', (t) => {
+  fs.mkdirSync(SANDBOX_ROOT, { recursive: true });
+  const actualRoot = fs.mkdtempSync(path.join(SANDBOX_ROOT, 'spec-pair-root-'));
+  const linkedRoot = `${actualRoot}-link`;
+  try {
+    const directory = path.join(actualRoot, 'docs', 'agent', 'specs');
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'faster-checkout.nano.md'), nano());
+    fs.writeFileSync(path.join(directory, 'faster-checkout.full.md'), full());
+    try {
+      fs.symlinkSync(actualRoot, linkedRoot, 'dir');
+    } catch (error) {
+      if (error.code === 'EPERM') {
+        t.skip('the platform does not permit creating a test symlink');
+        return;
+      }
+      throw error;
+    }
+
+    const result = validateFiles(
+      linkedRoot,
+      path.join(linkedRoot, 'docs', 'agent', 'specs', 'faster-checkout.nano.md'),
+      path.join(linkedRoot, 'docs', 'agent', 'specs', 'faster-checkout.full.md'),
+      'docs/agent/discovery/faster-checkout.md',
+      'a'.repeat(64),
+    );
+    assert.equal(result.status, 'valid');
+  } finally {
+    fs.rmSync(linkedRoot, { recursive: true, force: true });
+    fs.rmSync(actualRoot, { recursive: true, force: true });
+  }
+});
+
+test('nano rejects duplicate authority sections', () => {
+  const duplicate = `${nano()}
+
+## Acceptance Criteria
+
+- AC-999: A hidden second authority block.
+`;
+  assert.equal(code(() => validate(duplicate, full())), 'invalid-nano');
 });

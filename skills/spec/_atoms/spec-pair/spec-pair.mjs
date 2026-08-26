@@ -87,11 +87,11 @@ function lineValue(text, label) {
 }
 
 function headings(text) {
-  return [...text.matchAll(/^##\s+(.+?)\s*$/gm)].map((match) => match[1]);
+  return [...withoutFencedBlocks(text).matchAll(/^##\s+(.+?)\s*$/gm)].map((match) => match[1]);
 }
 
 function section(text, heading) {
-  const lines = text.split(/\r?\n/);
+  const lines = withoutFencedBlocks(text).split(/\r?\n/);
   const marker = `## ${heading}`;
   const start = lines.findIndex((line) => line.trim() === marker);
   if (start === -1) return null;
@@ -129,15 +129,12 @@ function acceptanceCriteria(nanoText) {
 
 function validateNano(text, slug) {
   const actualHeadings = headings(text);
-  const required = NANO_HEADINGS.slice(0, 2);
-  if (required.some((heading) => !actualHeadings.includes(heading))) {
-    throw new SpecPairError('invalid-nano', 'nano requires Intention and Acceptance Criteria');
-  }
+  const expectedHeadings = actualHeadings.includes('Non-goals')
+    ? NANO_HEADINGS
+    : NANO_HEADINGS.slice(0, 2);
   if (
-    actualHeadings.some((heading) => !NANO_HEADINGS.includes(heading))
-    || actualHeadings[0] !== 'Intention'
-    || actualHeadings[1] !== 'Acceptance Criteria'
-    || (actualHeadings.includes('Non-goals') && actualHeadings[2] !== 'Non-goals')
+    actualHeadings.length !== expectedHeadings.length
+    || actualHeadings.some((heading, index) => heading !== expectedHeadings[index])
   ) {
     throw new SpecPairError(
       'invalid-nano',
@@ -272,7 +269,7 @@ export function validateSpecPair({
 }
 
 function refuseSymlinkPath(repositoryRoot, candidate) {
-  const root = fs.realpathSync(repositoryRoot);
+  const root = path.resolve(repositoryRoot);
   const relative = path.relative(root, candidate);
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new SpecPairError('invalid-path', `path escapes the repository: ${candidate}`);
