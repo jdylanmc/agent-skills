@@ -1,6 +1,6 @@
 ---
 name: spec
-description: Convert one persisted, human-confirmed Discovery artifact into a linked pair of product requirements documents under docs/agent/specs: a minimal authoritative nano specification and a detailed supporting full specification. Use after Discovery has produced a clear shared understanding, whether the source is a Markdown artifact or tracker issue. Do not use to continue discovery, choose architecture, author Gherkin, create tickets, mutate trackers, implement, or approve the result.
+description: "Convert one persisted, human-confirmed Discovery artifact into a linked pair of product requirements documents under docs/agent/specs: a minimal authoritative nano specification and a detailed supporting full specification. Use after Discovery has produced a clear shared understanding, whether the source is a Markdown artifact or tracker issue. Do not use to continue discovery, choose architecture, author Gherkin, create tickets, mutate trackers, implement, or approve the result."
 allowed-tools: ["edit","execute","read","search","task"]
 includes: ["_base/_molecules/chronicler/chronicler.md","spec/_molecules/product-specification/product-specification.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","spec/_molecules/product-specification/product-specification.md"]
