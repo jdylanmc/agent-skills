@@ -36,10 +36,20 @@ function behindUnderRequiredPolicy(signals) {
   if (!requiresUpToDateBranch(signals.basePolicy?.upToDate)) {
     return false;
   }
-  if (signals.mergeability?.behind === false) {
+  const behind = branchBehindBase(signals);
+  if (behind === false) {
     return false;
   }
-  return signals.base?.moved === true || signals.mergeability?.behind === true;
+  return signals.base?.moved === true || behind === true;
+}
+
+function branchBehindBase(signals) {
+  const providerBehind = signals.mergeability?.behind;
+  const gitBehind = signals.base?.behind;
+  if (typeof providerBehind === 'boolean') {
+    return providerBehind;
+  }
+  return typeof gitBehind === 'boolean' ? gitBehind : null;
 }
 
 export function classifyShepherdPlan(signals = {}) {
@@ -159,7 +169,34 @@ export function freshnessReceipt(signals = {}) {
 
 export function classifyTerminalDisposition(signals = {}) {
   const receipt = freshnessReceipt(signals);
-  return { ...classifyOutcome(signals, receipt), receipt };
+  const outcome = classifyOutcome(signals, receipt);
+  return {
+    ...outcome,
+    receipt,
+    ...(['mergeable-and-green', 'no-op-mergeable-and-green'].includes(outcome.disposition)
+      ? {}
+      : { nextHumanAction: nextHumanActionFor(outcome) }),
+  };
+}
+
+function nextHumanActionFor(outcome) {
+  const detail = outcome.defects?.length > 0 ? ` (${outcome.defects.join(', ')})` : '';
+  switch (outcome.disposition) {
+    case 'provider-unsupported':
+      return 'Use a supported provider adapter or inspect the hosted change request manually.';
+    case 'provider-tool-unsupported':
+      return 'Add an official-tool adapter for this provider or inspect the hosted change request manually.';
+    case 'provider-tool-missing':
+      return `Install the provider's official CLI, then invoke shepherd again${detail}.`;
+    case 'provider-tool-unauthenticated':
+      return `Authenticate the provider's official CLI, then invoke shepherd again${detail}.`;
+    case 'needs-human':
+      return `Resolve ${outcome.reason}, then invoke shepherd again${detail}.`;
+    case 'failing':
+      return `Fix ${outcome.reason}, rerun validation, then invoke shepherd again${detail}.`;
+    default:
+      return `Clear ${outcome.reason}, gather complete evidence, then invoke shepherd again${detail}.`;
+  }
 }
 
 function classifyOutcome(signals, receipt) {
@@ -221,10 +258,11 @@ function classifyOutcome(signals, receipt) {
   // refuses a behind branch. Under that policy the question has to be settled
   // rather than assumed: `behind === false` is the only answer that clears it,
   // and an unread one is its own outcome rather than the reassuring one.
-  if (requiresUpToDateBranch(signals.basePolicy?.upToDate) && mergeability.behind !== false) {
+  const behind = branchBehindBase(signals);
+  if (requiresUpToDateBranch(signals.basePolicy?.upToDate) && behind !== false) {
     return {
       disposition: 'blocked',
-      reason: mergeability.behind === true
+      reason: behind === true
         ? 'base-advanced-under-required-up-to-date-policy'
         : 'up-to-date-state-unobserved-under-required-policy',
       defects,

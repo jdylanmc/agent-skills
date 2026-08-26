@@ -16,6 +16,7 @@ import {
   buildFreshnessReceipt,
   compareObservation,
   isTerminalDisposition,
+  nonEmptyString,
   normalizeUpToDatePolicy,
   requiresUpToDateBranch,
   validateFreshnessReceipt,
@@ -62,6 +63,15 @@ test('a boolean policy normalizes one way, and anything unreadable is unobserved
 
   for (const value of UP_TO_DATE_POLICIES) {
     assert.equal(normalizeUpToDatePolicy(value), value);
+  }
+});
+
+test('shared receipt strings reject absent, blank, and non-string values', () => {
+  assert.equal(nonEmptyString('commit-sha'), 'commit-sha');
+  assert.equal(nonEmptyString(' commit-sha '), ' commit-sha ');
+
+  for (const value of [undefined, null, '', '   ', 0, true, {}]) {
+    assert.equal(nonEmptyString(value), null);
   }
 });
 

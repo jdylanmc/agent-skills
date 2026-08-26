@@ -25,7 +25,8 @@ used-by: ["shepherd/_molecules/pr-shepherding/pr-shepherding.md"]
 | `push` | Whether the branch was pushed with `--force-with-lease`. |
 | `remoteChecks` | Provider validation status after the push, normalized by an adapter when available. |
 | `basePolicy` | Whether the base requires a change request to contain it before merging — `required`, `not-required`, or `unobserved`. |
-| `base` | Whether the base moved, and whether the branch is behind it by git ancestry. |
+| `base` | Whether the base moved, plus git ancestry's `behind` result when available. |
+| `mergeability` | Provider mergeability, draft state, base/head SHAs, and the provider's `behind` result when available. |
 
 ## Terminal Dispositions
 
@@ -71,8 +72,10 @@ So `basePolicy.upToDate: required` plus a base that advanced is a trigger, and
 `mergeable-and-green` is refused while the branch is known to be behind such a
 base.
 
-Under that policy the question must be **settled**, not assumed. `behind:
-false` is the only answer that clears it; `true` blocks as
+Under that policy the question must be **settled**, not assumed. A boolean
+provider `mergeability.behind` result is preferred; otherwise a boolean
+`base.behind` result from git ancestry settles the same question. `false` is
+the only answer that clears it; `true` blocks as
 `base-advanced-under-required-up-to-date-policy`, and an absent or non-boolean
 value blocks as `up-to-date-state-unobserved-under-required-policy`. Being
 behind and not knowing are different facts, and neither is green.
@@ -103,6 +106,10 @@ can date or place cannot be compared with anything later, so it blocks as
 The consumer of that receipt is a different skill, so its shape, its validation,
 and the comparison against a later observation all live in the shared
 landability unit.
+
+Every non-green terminal result also carries `nextHumanAction`. The deterministic
+classifier supplies the smallest action implied by its reason and defects, so a
+caller can hand the result to a person without inventing remediation prose.
 
 ## Classification Order
 

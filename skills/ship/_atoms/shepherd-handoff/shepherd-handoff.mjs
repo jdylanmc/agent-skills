@@ -34,16 +34,15 @@ import {
   UP_TO_DATE_POLICIES,
   compareObservation,
   isTerminalDisposition,
+  nonEmptyString,
   normalizeUpToDatePolicy,
   validateFreshnessReceipt,
 } from '../../../_base/_atoms/landability/landability.mjs';
 
-export { isTerminalDisposition, normalizeUpToDatePolicy };
-
 /**
  * The only invocation shape that hands anything over. Shepherd needs `edit`
- * and `execute` inside a worktree it owns, which the delivery orchestration
- * does not hold, so the work cannot happen in its context even in principle.
+ * inside a worktree it owns, which the delivery orchestration does not hold,
+ * so the work cannot happen in its context even in principle.
  */
 export const NESTED_INVOCATION = 'nested-worker';
 
@@ -52,15 +51,6 @@ const REQUIRED_TARGET_FIELDS = ['changeRequest', 'headBranch', 'headSha', 'baseB
 
 /** Publication-time observations that make the handoff auditable afterwards. */
 const REQUIRED_RECEIPT_FIELDS = ['observedAt', 'baseSha', 'headSha'];
-
-function text(value) {
-  return typeof value === 'string' && value.trim() !== '' ? value : null;
-}
-
-function validTimestamp(value) {
-  const candidate = text(value);
-  return candidate && Number.isFinite(Date.parse(candidate)) ? candidate : null;
-}
 
 /**
  * Build the handoff target: what is handed over, and what was true at
@@ -77,16 +67,16 @@ function validTimestamp(value) {
 export function buildHandoffTarget(input = {}) {
   const receipt = input.receipt ?? {};
   const target = {
-    changeRequest: text(input.changeRequest),
-    headBranch: text(input.headBranch),
-    headSha: text(input.headSha),
-    baseBranch: text(input.baseBranch),
-    baseSha: text(input.baseSha),
+    changeRequest: nonEmptyString(input.changeRequest),
+    headBranch: nonEmptyString(input.headBranch),
+    headSha: nonEmptyString(input.headSha),
+    baseBranch: nonEmptyString(input.baseBranch),
+    baseSha: nonEmptyString(input.baseSha),
     upToDatePolicy: normalizeUpToDatePolicy(input.upToDatePolicy),
     receipt: {
-      observedAt: text(receipt.observedAt),
-      baseSha: text(receipt.baseSha) ?? text(input.baseSha),
-      headSha: text(receipt.headSha) ?? text(input.headSha),
+      observedAt: nonEmptyString(receipt.observedAt),
+      baseSha: nonEmptyString(receipt.baseSha) ?? nonEmptyString(input.baseSha),
+      headSha: nonEmptyString(receipt.headSha) ?? nonEmptyString(input.headSha),
     },
   };
 
@@ -103,24 +93,8 @@ export function buildHandoffTarget(input = {}) {
   return { target, missing };
 }
 
-/**
- * Normalize the reading taken **after** shepherd returned.
- *
- * A partial or wrongly typed reading is no reading. Accepting one would let a
- * caller satisfy the freshness check by passing an object shaped like an
- * observation.
- *
- * @param {unknown} input
- * @returns {{observedAt: string|null, baseSha: string|null, headSha: string|null, complete: boolean}}
- */
-export function normalizeObservation(input) {
-  if (input === null || typeof input !== 'object') {
-    return { observedAt: null, baseSha: null, headSha: null, complete: false };
-  }
-  const observedAt = validTimestamp(input.observedAt);
-  const baseSha = text(input.baseSha);
-  const headSha = text(input.headSha);
-  return { observedAt, baseSha, headSha, complete: Boolean(observedAt && baseSha && headSha) };
+export function publicationSucceeded(publication) {
+  return publication?.outcome === 'published' && nonEmptyString(publication.identifier) !== null;
 }
 
 /**
@@ -150,7 +124,7 @@ export function evaluateHandoff(input = {}) {
 
   // Publication is decided once, before intent, so both intent paths agree
   // about a run that published nothing.
-  if (publication?.outcome !== 'published') {
+  if (!publicationSucceeded(publication)) {
     return satisfied('not-required', 'no-published-target', {
       target: null,
       unmet: [`publication: outcome is ${describe(publication?.outcome)}`],
@@ -228,8 +202,7 @@ export function evaluateHandoff(input = {}) {
     });
   }
 
-  const observation = normalizeObservation(input.observedBase);
-  const { freshness, drifted } = compareObservation(result.receipt, observation);
+  const { freshness, drifted } = compareObservation(result.receipt, input.observedBase);
   const policy = effectivePolicy(result.receipt, target);
 
   if (freshness === 'stale') {
@@ -258,7 +231,7 @@ export function evaluateHandoff(input = {}) {
 
   if (
     !['mergeable-and-green', 'no-op-mergeable-and-green'].includes(result.disposition)
-    && !text(result.nextHumanAction)
+    && !nonEmptyString(result.nextHumanAction)
   ) {
     return notPerformed('result-action-incomplete', {
       target,

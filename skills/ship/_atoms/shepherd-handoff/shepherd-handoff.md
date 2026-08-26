@@ -110,7 +110,7 @@ time it waited.
 | --- | --- | --- |
 | `declined-by-operator` | `not-required` | Unconstrained. The operator said no. |
 | `intent-unrecorded` | `not-performed` | `blocked`. An unasked question is not a `no`. |
-| `no-published-target` | `not-performed` | Unconstrained; the publication outcome is reported as given. |
+| `no-published-target` | `not-required` | Unconstrained; the publication outcome is reported as given. |
 | `target-incomplete` | `not-performed` | `blocked`. |
 | `not-invoked` | `not-performed` | `blocked`. A narrated packet reaches here. |
 | `shepherd-unavailable` | `not-performed` | `blocked`. |
@@ -126,6 +126,9 @@ A `completed` handoff is not a claim that the change request is green. Shepherd
 may end at `needs-human`, `failing`, or `blocked`, and those are handed on with
 the next human action shepherd named. What `completed` means is narrower and is
 the whole point: **the change request has an owner and a current disposition.**
+Every evaluated handoff also reports the effective up-to-date `policy`.
+Shepherd's observed value wins; the publication value is only the fallback.
+The policy explains the result but does not replace the freshness check.
 
 ## Boundaries
 

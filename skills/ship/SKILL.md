@@ -252,9 +252,9 @@ Three things follow, and they are enforced in
 promised here:
 
 1. **A handoff is an invocation.** Only a nested invocation in a separate worker
-   that returned a terminal disposition counts. Shepherd needs `edit` and
-   `execute` in a worktree it owns, which this run does not hold for that
-   purpose, so a handoff that never left this context did not happen.
+   that returned a terminal disposition counts. Shepherd needs `edit` in a
+   worktree it owns, which this run does not hold, so a handoff that never left
+   this context did not happen.
 2. **Ownership is explicit.** The target names the change request, branch,
    captured head and base SHAs, the base's up-to-date policy — `required`,
    `not-required`, or `unobserved`, never collapsed — and a freshness receipt
@@ -290,7 +290,8 @@ Return:
 - shepherd intent, recorded from the question asked at the start, the handoff
   state — `not-required`, `completed`, or `not-performed` with its reason — the
   handoff target with its captured head and base SHAs and up-to-date policy, the
-  freshness receipt, and shepherd's terminal disposition when one came back;
+  freshness receipt, the effective policy reported after shepherd returns, and
+  shepherd's terminal disposition when one came back;
 - the proposed approach, its laziness verdict, and every reduction applied;
 - the exhaustive change ledger, and the reconciliation verdict with any
   undisclosed, ambiguous, or unfulfilled entries named;

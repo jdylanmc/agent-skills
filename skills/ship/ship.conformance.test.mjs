@@ -31,12 +31,14 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import { classifyTerminalDisposition } from '../shepherd/_atoms/shepherd-disposition/shepherd-disposition.mjs';
 import { MERGE_GRANT_TOKEN, evaluateMergeGate, mayMerge } from './_atoms/merge-gate/merge-gate.mjs';
 import { reconcile as reconcileDiff } from './_atoms/diff-reconciliation/diff-reconciliation.mjs';
 import {
   NESTED_INVOCATION,
   evaluateHandoff,
   handoffSatisfied,
+  publicationSucceeded,
 } from './_atoms/shepherd-handoff/shepherd-handoff.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -913,6 +915,66 @@ test('the handoff is a nested invocation the run waits for, not a described one'
   });
   assert.equal(invoked.handoff, 'completed');
   assert.ok(handoffSatisfied(invoked));
+  assert.ok(publicationSucceeded({
+    outcome: 'published',
+    identifier: '#1',
+  }));
+});
+
+test('ship accepts the actual terminal result shape shepherd produces', () => {
+  const signals = {
+    observedAt: '2026-08-25T20:36:00Z',
+    provider: { status: 'supported-provider', provider: 'github' },
+    preflight: { status: 'ok' },
+    rebase: { status: 'completed', baseSha: 'base' },
+    regeneration: { status: 'not-applicable' },
+    localValidation: { status: 'passed', evidenceComplete: true },
+    push: { status: 'pushed-with-lease', headSha: 'head' },
+    basePolicy: { upToDate: 'required' },
+    mergeability: {
+      state: 'mergeable',
+      isDraft: false,
+      baseSha: 'base',
+      headSha: 'head',
+      behind: false,
+    },
+    remoteChecks: { checks: [{ name: 'validate', status: 'passed' }] },
+  };
+
+  for (const [remoteChecks, disposition] of [
+    [{ checks: [{ name: 'validate', status: 'passed' }] }, 'mergeable-and-green'],
+    [{ checks: [{ name: 'validate', status: 'failed' }] }, 'failing'],
+  ]) {
+    const shepherdResult = classifyTerminalDisposition({ ...signals, remoteChecks });
+    const evaluation = evaluateHandoff({
+      intent: 'yes',
+      publication: { outcome: 'published', identifier: '#1' },
+      target: {
+        changeRequest: '#1',
+        headBranch: 'issue-1',
+        headSha: 'published-head',
+        baseBranch: 'main',
+        baseSha: 'published-base',
+        upToDatePolicy: 'unobserved',
+        receipt: {
+          observedAt: '2026-08-25T20:35:56Z',
+          baseSha: 'published-base',
+          headSha: 'published-head',
+        },
+      },
+      invocation: { mode: NESTED_INVOCATION, status: 'returned' },
+      result: shepherdResult,
+      observedBase: {
+        observedAt: '2026-08-25T20:36:01Z',
+        baseSha: 'base',
+        headSha: 'head',
+      },
+    });
+
+    assert.equal(evaluation.handoff, 'completed');
+    assert.equal(evaluation.state, `shepherd-${disposition}`);
+    assert.ok(handoffSatisfied(evaluation));
+  }
 });
 
 test('a declined handoff stays optional and an unrecorded one does not', () => {

@@ -18,7 +18,7 @@ import {
   buildHandoffTarget,
   evaluateHandoff,
   handoffSatisfied,
-  normalizeObservation,
+  publicationSucceeded,
 } from './shepherd-handoff.mjs';
 
 /** What publication recorded: fixed forever, and never the freshness subject. */
@@ -318,30 +318,17 @@ test('an unread post-shepherd snapshot always blocks', () => {
   assert.equal(fromTarget.policy, 'required');
 });
 
-test('an observation needs a valid timestamp and both commits', () => {
-  assert.deepEqual(normalizeObservation({
-    baseSha: 'a',
-    headSha: 'b',
-    observedAt: '2026-08-25T22:06:00Z',
-  }), {
-    observedAt: '2026-08-25T22:06:00Z',
-    baseSha: 'a',
-    headSha: 'b',
-    complete: true,
-  });
-
-  for (const input of [
+test('publication success requires both the outcome and the provider identifier', () => {
+  assert.equal(publicationSucceeded({ outcome: 'published', identifier: '#111' }), true);
+  for (const publication of [
     undefined,
-    null,
-    'a',
-    7,
     {},
-    { baseSha: 'a' },
-    { headSha: 'b' },
-    { baseSha: 'a', headSha: 3 },
-    { observedAt: 'now', baseSha: 'a', headSha: 'b' },
+    { outcome: 'published' },
+    { outcome: 'published', identifier: '' },
+    { outcome: 'published', identifier: 111 },
+    { outcome: 'publication-failed', identifier: '#111' },
   ]) {
-    assert.equal(normalizeObservation(input).complete, false, `${JSON.stringify(input)} is not an observation`);
+    assert.equal(publicationSucceeded(publication), false);
   }
 });
 

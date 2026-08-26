@@ -329,6 +329,21 @@ test('an advanced base is a trigger when the base requires the branch to contain
   assert.equal(alreadyContains.receipt.headSha, 'head-sha');
   assert.ok(isTerminalDisposition(alreadyContains.disposition));
 
+  const gitAlreadyContains = classifyShepherdPlan(greenSignals({
+    base: { moved: true, behind: false },
+    basePolicy: { upToDate: 'required' },
+    mergeability: {
+      state: 'mergeable',
+      isDraft: false,
+      baseSha: 'base-sha',
+      headSha: 'head-sha',
+    },
+    operatorRequest: { rebase: false },
+    requiredChecks: [{ name: 'validate', expired: false }],
+  }));
+  assert.equal(gitAlreadyContains.disposition, 'no-op-mergeable-and-green');
+  assert.equal(gitAlreadyContains.shouldRebase, false);
+
   const undated = greenSignals({
     base: { moved: true },
     basePolicy: { upToDate: 'not-required' },
@@ -380,6 +395,35 @@ test('under a required policy the branch must be known to contain the base', () 
     })).disposition,
     'mergeable-and-green',
   );
+  assert.equal(
+    classifyTerminalDisposition(greenSignals({
+      base: { behind: false },
+      basePolicy: { upToDate: 'required' },
+      mergeability: mergeability(undefined),
+    })).disposition,
+    'mergeable-and-green',
+  );
+
+  for (const [providerBehind, gitBehind, expectedPlan, expectedTerminal] of [
+    [true, false, 'shepherd-required', 'blocked'],
+    [false, true, 'no-op-mergeable-and-green', 'mergeable-and-green'],
+  ]) {
+    const conflictingSignals = greenSignals({
+      base: { moved: true, behind: gitBehind },
+      basePolicy: { upToDate: 'required' },
+      mergeability: mergeability(providerBehind),
+    });
+    assert.equal(
+      classifyShepherdPlan(conflictingSignals).disposition,
+      expectedPlan,
+      `provider behind=${providerBehind} must override git behind=${gitBehind} in planning`,
+    );
+    assert.equal(
+      classifyTerminalDisposition(conflictingSignals).disposition,
+      expectedTerminal,
+      `provider behind=${providerBehind} must override git behind=${gitBehind} at the terminal gate`,
+    );
+  }
 
   // Without the policy, or with it unobserved, the same evidence is green:
   // nothing about the base decides landability there.
@@ -447,6 +491,7 @@ test('the terminal vocabulary is the shared one, including every provider condit
     }));
     assert.equal(result.disposition, status);
     assert.ok(isTerminalDisposition(result.disposition), `${status} must be a shared terminal disposition`);
+    assert.ok(result.nextHumanAction, `${status} must name the next human action`);
   }
 
   for (const signals of [
@@ -460,6 +505,18 @@ test('the terminal vocabulary is the shared one, including every provider condit
       isTerminalDisposition(classifyTerminalDisposition(signals).disposition),
       'every classified ending must be in the shared vocabulary',
     );
+  }
+});
+
+test('every non-green terminal result names the next human action', () => {
+  for (const signals of [
+    greenSignals({ localValidation: { status: 'failed', evidenceComplete: true } }),
+    greenSignals({ push: { status: 'pushed-without-lease', headSha: 'head-sha' } }),
+    greenSignals({ conflicts: [{ kind: 'authored', path: 'src/a.ts' }] }),
+  ]) {
+    const result = classifyTerminalDisposition(signals);
+    assert.notEqual(result.disposition, 'mergeable-and-green');
+    assert.ok(result.nextHumanAction);
   }
 });
 

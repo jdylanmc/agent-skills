@@ -66,12 +66,12 @@ export function requiresUpToDateBranch(value) {
   return normalizeUpToDatePolicy(value) === 'required';
 }
 
-function commit(value) {
+export function nonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
 
 function timestamp(value) {
-  const candidate = commit(value);
+  const candidate = nonEmptyString(value);
   return candidate && Number.isFinite(Date.parse(candidate)) ? candidate : null;
 }
 
@@ -83,8 +83,8 @@ function timestamp(value) {
  */
 export function buildFreshnessReceipt(input = {}) {
   const observedAt = timestamp(input.observedAt);
-  const baseSha = commit(input.baseSha);
-  const headSha = commit(input.headSha);
+  const baseSha = nonEmptyString(input.baseSha);
+  const headSha = nonEmptyString(input.headSha);
 
   return {
     observedAt,
@@ -114,7 +114,7 @@ export function validateFreshnessReceipt(receipt) {
 
   const defects = [];
   for (const field of ['baseSha', 'headSha']) {
-    if (!commit(receipt[field])) {
+    if (!nonEmptyString(receipt[field])) {
       defects.push(`receipt.${field}: ${receipt[field] === undefined ? 'absent' : 'not a non-empty string'}`);
     }
   }
@@ -143,14 +143,15 @@ export function validateFreshnessReceipt(receipt) {
  * that cannot afford `unobserved` decides that, not this function.
  *
  * @param {object} receipt
- * @param {{baseSha?: string, headSha?: string}} [observation]
+ * @param {{observedAt?: string, baseSha?: string, headSha?: string}} [observation]
+ *   `observedAt` must be later than the receipt's observation time.
  * @returns {{freshness: 'fresh'|'stale'|'unobserved', drifted: string[]}}
  */
 export function compareObservation(receipt, observation) {
-  const observedBase = commit(observation?.baseSha);
-  const observedHead = commit(observation?.headSha);
-  const recordedBase = commit(receipt?.baseSha);
-  const recordedHead = commit(receipt?.headSha);
+  const observedBase = nonEmptyString(observation?.baseSha);
+  const observedHead = nonEmptyString(observation?.headSha);
+  const recordedBase = nonEmptyString(receipt?.baseSha);
+  const recordedHead = nonEmptyString(receipt?.headSha);
   const recordedAt = timestamp(receipt?.observedAt);
   const observedAt = timestamp(observation?.observedAt);
 
