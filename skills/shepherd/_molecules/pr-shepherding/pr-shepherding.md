@@ -2,8 +2,8 @@
 name: pr-shepherding
 description: Coordinate pull request intake, rebase conflict policy, validation, leased push, remote check watch, and final disposition.
 level: molecule
-includes: ["shepherd/_atoms/provider-adapter/provider-adapter.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md"]
-composes: ["shepherd/_atoms/provider-adapter/provider-adapter.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md"]
+includes: ["shepherd/_atoms/provider-adapter/provider-adapter.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
+composes: ["shepherd/_atoms/provider-adapter/provider-adapter.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
 used-by: ["shepherd/SKILL.md"]
 allowed-tools: ["edit","execute","read","search"]
 ---
@@ -17,6 +17,7 @@ allowed-tools: ["edit","execute","read","search"]
 3. [PR intake](../../_atoms/pr-intake/pr-intake.md)
 4. [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md)
 5. [Shepherd disposition](../../_atoms/shepherd-disposition/shepherd-disposition.md)
+6. [Landability vocabulary](../../../_base/_atoms/landability/landability.md)
 
 ## Layers
 

@@ -1,4 +1,11 @@
-import { normalizeUpToDatePolicy, requiresUpToDateBranch } from '../provider-adapter/provider-adapter.mjs';
+import {
+  buildFreshnessReceipt,
+  isTerminalDisposition,
+  normalizeUpToDatePolicy,
+  requiresUpToDateBranch,
+} from '../../../_base/_atoms/landability/landability.mjs';
+
+export { isTerminalDisposition };
 
 const GREEN_LOCAL = new Set(['passed']);
 const BLOCKED_LOCAL = new Set(['cancelled', 'environment-failed', 'unsupported-provider', 'incomplete']);
@@ -122,30 +129,27 @@ function missingRequired(signals) {
  * The snapshot a terminal disposition is bound to.
  *
  * A disposition says the change request was landable against one base commit
- * at one moment. Without the moment and the commit, a caller holding the
+ * at one moment. Without the moment and the commits, a caller holding the
  * disposition later cannot tell whether it still describes anything, so every
- * result carries them and says whether they are complete.
+ * result carries them and says whether they are complete. The shape is the
+ * shared one, because the caller consuming it is a different skill.
  */
 export function freshnessReceipt(signals = {}) {
-  const observedAt = signals.observedAt ?? null;
-  const baseSha = signals.mergeability?.baseSha ?? signals.rebase?.baseSha ?? null;
-  const headSha = signals.push?.headSha ?? signals.mergeability?.headSha ?? null;
-
-  return {
-    observedAt,
-    baseSha,
-    headSha,
-    upToDatePolicy: normalizeUpToDatePolicy(signals.basePolicy?.upToDate),
-    provider: signals.provider?.status ?? 'unobserved',
-    complete: Boolean(observedAt && baseSha && headSha),
-  };
+  return buildFreshnessReceipt({
+    observedAt: signals.observedAt,
+    baseSha: signals.mergeability?.baseSha ?? signals.rebase?.baseSha,
+    headSha: signals.push?.headSha ?? signals.mergeability?.headSha,
+    upToDatePolicy: signals.basePolicy?.upToDate,
+    provider: signals.provider?.status,
+  });
 }
 
 export function classifyTerminalDisposition(signals = {}) {
-  return { ...classifyOutcome(signals), receipt: freshnessReceipt(signals) };
+  const receipt = freshnessReceipt(signals);
+  return { ...classifyOutcome(signals, receipt), receipt };
 }
 
-function classifyOutcome(signals) {
+function classifyOutcome(signals, receipt) {
   const defects = missingRequired(signals);
   if (defects.length > 0) {
     return { disposition: 'blocked', reason: 'missing-required-evidence', defects };
@@ -201,12 +205,15 @@ function classifyOutcome(signals) {
   }
 
   // Mergeable content and green checks are not landability when the base
-  // refuses a behind branch. Reporting `mergeable-and-green` here would be
-  // reporting the exact state a person later has to fix by hand.
-  if (requiresUpToDateBranch(signals.basePolicy?.upToDate) && mergeability.behind === true) {
+  // refuses a behind branch. Under that policy the question has to be settled
+  // rather than assumed: `behind === false` is the only answer that clears it,
+  // and an unread one is its own outcome rather than the reassuring one.
+  if (requiresUpToDateBranch(signals.basePolicy?.upToDate) && mergeability.behind !== false) {
     return {
       disposition: 'blocked',
-      reason: 'base-advanced-under-required-up-to-date-policy',
+      reason: mergeability.behind === true
+        ? 'base-advanced-under-required-up-to-date-policy'
+        : 'up-to-date-state-unobserved-under-required-policy',
       defects,
     };
   }
@@ -222,6 +229,13 @@ function classifyOutcome(signals) {
   const red = checks.filter((check) => !COMPLETE_REMOTE.has(check.status));
   if (red.length > 0) {
     return { disposition: 'failing', reason: 'remote-checks-failing', defects: red.map((check) => check.name) };
+  }
+
+  // A green result nobody can date or place is a claim rather than evidence:
+  // the caller holding it later cannot tell whether it still describes the
+  // change request it names.
+  if (receipt.complete !== true) {
+    return { disposition: 'blocked', reason: 'incomplete-freshness-receipt', defects };
   }
 
   return { disposition: 'mergeable-and-green', reason: 'complete-green-evidence', defects: [] };

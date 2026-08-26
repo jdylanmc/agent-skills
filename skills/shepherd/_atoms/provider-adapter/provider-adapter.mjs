@@ -1,3 +1,8 @@
+import {
+  normalizeUpToDatePolicy,
+  requiresUpToDateBranch,
+} from '../../../_base/_atoms/landability/landability.mjs';
+
 const PROVIDERS = [
   { id: 'github', cli: 'gh', patterns: [/github\.com[:/]/i] },
   { id: 'azure-devops', cli: 'az', patterns: [/dev\.azure\.com[:/]/i, /visualstudio\.com[:/]/i] },
@@ -77,36 +82,11 @@ export function shouldRunProviderIndependentCore(adapterResult = {}) {
   ].includes(adapterResult.status);
 }
 
-const UP_TO_DATE_POLICIES = new Set(['required', 'not-required', 'unobserved']);
-
 /**
- * Normalize the base branch's up-to-date requirement, as reported by an
- * adapter's `read-state`.
- *
- * Anything unrecognized becomes `unobserved`, never `not-required`. One says
- * the policy was read and imposes nothing; the other says nobody could look.
- * Collapsing them means a base branch that refuses a behind branch gets treated
- * as one that does not, which is precisely the state that reads as mergeable
- * right up until somebody tries.
- *
- * @param {unknown} value
- * @returns {'required'|'not-required'|'unobserved'}
+ * The up-to-date policy an adapter reads in `read-state` is shared vocabulary,
+ * because the skill that publishes a change request consumes the same values.
+ * One implementation lives in the shared landability unit and is re-exported
+ * here so adapter callers keep one import, and so the two skills cannot end up
+ * disagreeing about what a boolean means.
  */
-export function normalizeUpToDatePolicy(value) {
-  if (value === true) {
-    return 'required';
-  }
-  if (value === false) {
-    return 'not-required';
-  }
-  return UP_TO_DATE_POLICIES.has(value) ? value : 'unobserved';
-}
-
-/**
- * True only when the provider states the requirement. An unobserved policy is
- * not a requirement, so a repository without one keeps the existing behavior:
- * a base that merely advanced is not a rebase trigger.
- */
-export function requiresUpToDateBranch(policy) {
-  return normalizeUpToDatePolicy(policy) === 'required';
-}
+export { normalizeUpToDatePolicy, requiresUpToDateBranch };

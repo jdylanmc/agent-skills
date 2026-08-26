@@ -13,9 +13,10 @@ requires-skills: [{"id":"run-ci","source":"local","required":true}]
 
 Shepherd takes one existing git-hosted change request or explicit branch/base
 pair and drives its branch to a terminal disposition: `mergeable-and-green`,
-`no-op-mergeable-and-green`, `provider-unsupported`, `provider-tool-missing`,
-`provider-tool-unauthenticated`, `needs-human`, `blocked`, or `failing`. It never
-creates or merges the change request.
+`no-op-mergeable-and-green`, `provider-unsupported`,
+`provider-tool-unsupported`, `provider-tool-missing`,
+`provider-tool-unauthenticated`, `needs-human`, `blocked`, or `failing`. It
+never creates or merges the change request.
 
 ```text
 record -> detect adapter -> resolve target -> git core -> run-ci -> leased push when needed -> provider status when available -> disposition
@@ -64,7 +65,8 @@ Shepherd has two explicit layers:
    advanced base is a trigger. The policy has three values — `required`,
    `not-required`, and `unobserved` — and only `required` triggers, so a
    repository without such a policy, or one where it could not be read, keeps
-   the rule above unchanged.
+   the rule above unchanged. Under `required`, the branch's position must be
+   settled rather than assumed: only a known "contains the base" clears it.
 4. If the base moved while the branch remains mergeable and green by available
    git/provider evidence, and the base does not require the branch to contain
    it, return `no-op-mergeable-and-green`; do not rebase and do not force-push.
@@ -106,6 +108,8 @@ Shepherd has two explicit layers:
      branch/change request is already mergeable and green;
    - `provider-unsupported` when the git-level core completed but no hosted
      adapter matched;
+   - `provider-tool-unsupported` when the git-level core completed but the
+     matched host family has no official-tool adapter yet;
    - `provider-tool-missing` or `provider-tool-unauthenticated` when the git-level
      core completed but the matched provider's official CLI could not observe
      hosted state;
@@ -113,15 +117,17 @@ Shepherd has two explicit layers:
      decision needs a person;
    - `blocked` when tooling, permissions, cancellation, missing checks, or
      unavailable metadata prevents a trustworthy conclusion, or when the branch
-     is behind a base that requires containing it, which is not green however
-     green everything else reads;
+     is behind a base that requires containing it — or its position against
+     that base was never read — which is not green however green everything
+     else reads;
    - `failing` when local validation or remote checks are red.
 
    Every disposition carries a **freshness receipt**: observation time, base
    SHA, head SHA, up-to-date policy, and provider status. A disposition
    describes the change request against one base commit at one moment. It is
    evidence, not durable permission, and it stops describing anything once the
-   base moves.
+   base moves. A result whose receipt is incomplete is `blocked` rather than
+   green: a green claim nobody can date or place cannot be checked later.
 
 ## Output Contract
 
