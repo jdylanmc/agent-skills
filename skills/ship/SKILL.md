@@ -345,7 +345,8 @@ Return:
 ## Permissions
 
 `read` and `search` gather the issue, its dependencies, and repository context.
-`execute` runs git, the isolated worktree, the declared validation, and the
+`execute` runs git, the isolated worktree, the declared validation, the
+read-only post-shepherd observation of base and head SHAs, and the
 change-request commands. That last one includes a **non-force push of this run's
 own isolation branch** and the provider's official command-line tool, which is
 the only write to a shared remote this skill performs. `task` dispatches the

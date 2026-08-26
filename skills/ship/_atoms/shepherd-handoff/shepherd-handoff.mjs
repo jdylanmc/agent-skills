@@ -31,10 +31,10 @@
  */
 
 import {
+  UP_TO_DATE_POLICIES,
   compareObservation,
   isTerminalDisposition,
   normalizeUpToDatePolicy,
-  requiresUpToDateBranch,
   validateFreshnessReceipt,
 } from '../../../_base/_atoms/landability/landability.mjs';
 
@@ -55,6 +55,11 @@ const REQUIRED_RECEIPT_FIELDS = ['observedAt', 'baseSha', 'headSha'];
 
 function text(value) {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+function validTimestamp(value) {
+  const candidate = text(value);
+  return candidate && Number.isFinite(Date.parse(candidate)) ? candidate : null;
 }
 
 /**
@@ -87,6 +92,11 @@ export function buildHandoffTarget(input = {}) {
 
   const missing = [
     ...REQUIRED_TARGET_FIELDS.filter((field) => !target[field]).map((field) => `target.${field}`),
+    ...(input.upToDatePolicy === true
+      || input.upToDatePolicy === false
+      || UP_TO_DATE_POLICIES.includes(input.upToDatePolicy)
+      ? []
+      : ['target.upToDatePolicy']),
     ...REQUIRED_RECEIPT_FIELDS.filter((field) => !target.receipt[field]).map((field) => `receipt.${field}`),
   ];
 
@@ -107,10 +117,10 @@ export function normalizeObservation(input) {
   if (input === null || typeof input !== 'object') {
     return { observedAt: null, baseSha: null, headSha: null, complete: false };
   }
-  const observedAt = text(input.observedAt);
+  const observedAt = validTimestamp(input.observedAt);
   const baseSha = text(input.baseSha);
   const headSha = text(input.headSha);
-  return { observedAt, baseSha, headSha, complete: Boolean(baseSha && headSha) };
+  return { observedAt, baseSha, headSha, complete: Boolean(observedAt && baseSha && headSha) };
 }
 
 /**
@@ -234,10 +244,7 @@ export function evaluateHandoff(input = {}) {
     });
   }
 
-  if (freshness === 'unobserved' && requiresUpToDateBranch(policy)) {
-    // The base decides landability here, and nobody read it. Under any other
-    // policy an unread base is a gap in the report; under this one it is the
-    // whole question.
+  if (freshness === 'unobserved') {
     return notPerformed('freshness-unobserved', {
       target,
       disposition: result.disposition,
@@ -245,7 +252,21 @@ export function evaluateHandoff(input = {}) {
       policy,
       requiresReinvocation: true,
       unmet: ['observation: the base and head were not re-read after shepherd returned'],
-      humanAction: `${target.changeRequest} (branch ${target.headBranch}) sits on a base that requires containing it: re-read the base and head, then re-check or invoke shepherd again.`,
+      humanAction: `${target.changeRequest} (branch ${target.headBranch}) has no verified post-shepherd observation: re-read the base and head, then re-check or invoke shepherd again.`,
+    });
+  }
+
+  if (
+    !['mergeable-and-green', 'no-op-mergeable-and-green'].includes(result.disposition)
+    && !text(result.nextHumanAction)
+  ) {
+    return notPerformed('result-action-incomplete', {
+      target,
+      disposition: result.disposition,
+      freshness,
+      policy,
+      unmet: [`result.nextHumanAction is absent for ${result.disposition}`],
+      humanAction: humanActionFor(target, `shepherd returned ${result.disposition} without a next human action`),
     });
   }
 
@@ -254,7 +275,9 @@ export function evaluateHandoff(input = {}) {
     disposition: result.disposition,
     freshness,
     policy,
-    humanAction: result.disposition === 'mergeable-and-green' ? null : result.nextHumanAction ?? null,
+    humanAction: ['mergeable-and-green', 'no-op-mergeable-and-green'].includes(result.disposition)
+      ? null
+      : result.nextHumanAction,
   });
 }
 

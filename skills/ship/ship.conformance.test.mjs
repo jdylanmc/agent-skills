@@ -178,6 +178,7 @@ test('the execute-bearing closure is pinned, because execute can mutate', () => 
     'ship/_atoms/diff-reconciliation/diff-reconciliation.md',
     'ship/_atoms/issue-grounding/issue-grounding.md',
     'ship/_atoms/run-isolation/run-isolation.md',
+    'ship/_atoms/shepherd-handoff/shepherd-handoff.md',
     'ship/_molecules/delivery-cycle/delivery-cycle.md',
     'ship/_molecules/delivery-grounding/delivery-grounding.md',
   ]);
@@ -873,6 +874,7 @@ test('the handoff is a nested invocation the run waits for, not a described one'
       headSha: 'head',
       baseBranch: 'main',
       baseSha: 'base',
+      upToDatePolicy: 'unobserved',
       receipt: { observedAt: '2026-08-25T20:35:56Z', baseSha: 'base', headSha: 'head' },
     },
     invocation: { mode: 'narrated', status: 'returned' },
@@ -951,6 +953,7 @@ test('handoff ownership is explicit, and a result is bound to the base it saw', 
       headSha: 'head',
       baseBranch: 'main',
       baseSha: 'base',
+      upToDatePolicy: 'unobserved',
       receipt: { observedAt: '2026-08-25T20:35:56Z', baseSha: 'base', headSha: 'head' },
     },
     invocation: { mode: NESTED_INVOCATION, status: 'returned' },
@@ -979,7 +982,11 @@ test('handoff ownership is explicit, and a result is bound to the base it saw', 
   // observed it, so the disposition describes a state that no longer exists.
   const stale = evaluateHandoff({
     ...complete,
-    observedBase: { baseSha: 'base-after-sibling-merge', headSha: 'head' },
+    observedBase: {
+      observedAt: '2026-08-25T20:37:00Z',
+      baseSha: 'base-after-sibling-merge',
+      headSha: 'head',
+    },
   });
   assert.equal(stale.state, 'stale-disposition');
   assert.equal(stale.requiresReinvocation, true);
@@ -1000,8 +1007,9 @@ test('the set of open change requests is somebody else, and it is named', () => 
   assert.match(entry, /\*\*What this run cannot own is the set\.\*\*/);
   assert.match(entry, /\*\*Never watches a change request after handing it over\*\*/);
 
-  // The handoff atom hands over and nothing else: no `edit`, no `execute`.
-  assert.deepEqual(frontmatter(HANDOFF).allowedTools, ['task', 'read']);
+  // The handoff atom can dispatch and make the read-only freshness observation,
+  // but it cannot edit the branch it hands over.
+  assert.deepEqual(frontmatter(HANDOFF).allowedTools, ['task', 'read', 'execute']);
   assert.match(handoff, /\*\*Never merges, approves, rebases, or pushes\.\*\*/);
 });
 test('an incomplete outcome is not quietly reported as success', () => {

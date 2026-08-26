@@ -310,13 +310,38 @@ test('an advanced base is a trigger when the base requires the branch to contain
   // Ancestry settles it in the other direction: a branch that already contains
   // the base satisfies the policy however far the base moved.
   const alreadyContains = classifyShepherdPlan(greenSignals({
-    base: { moved: true, behind: false },
+    base: { moved: true },
     basePolicy: { upToDate: 'required' },
+    mergeability: {
+      state: 'mergeable',
+      isDraft: false,
+      baseSha: 'base-sha',
+      headSha: 'head-sha',
+      behind: false,
+    },
     operatorRequest: { rebase: false },
     requiredChecks: [{ name: 'validate', expired: false }],
   }));
   assert.equal(alreadyContains.disposition, 'no-op-mergeable-and-green');
   assert.equal(alreadyContains.shouldRebase, false);
+  assert.equal(alreadyContains.receipt.complete, true);
+  assert.equal(alreadyContains.receipt.baseSha, 'base-sha');
+  assert.equal(alreadyContains.receipt.headSha, 'head-sha');
+  assert.ok(isTerminalDisposition(alreadyContains.disposition));
+
+  const undated = greenSignals({
+    base: { moved: true },
+    basePolicy: { upToDate: 'not-required' },
+    operatorRequest: { rebase: false },
+    requiredChecks: [{ name: 'validate', expired: false }],
+  });
+  delete undated.observedAt;
+  const incomplete = classifyShepherdPlan(undated);
+  assert.equal(incomplete.disposition, 'blocked');
+  assert.equal(incomplete.reason, 'incomplete-freshness-receipt');
+  assert.equal(incomplete.action, 'observe-state');
+  assert.equal(incomplete.shouldRebase, false);
+  assert.equal(incomplete.receipt.complete, false);
 });
 
 test('under a required policy the branch must be known to contain the base', () => {

@@ -56,16 +56,17 @@ A disposition says a change request was landable against one base commit at one
 moment. The receipt records that moment: `observedAt`, `baseSha`, `headSha`, the
 up-to-date policy, the provider status, and whether those are complete.
 
-A receipt is validated before it is believed. A missing field, a field that is
-not a non-empty string, and a `complete: true` asserted over missing fields are
-all defects, because a consumer holding one of those has nothing to compare a
-later observation against.
+A receipt is validated before it is believed. A missing field, an invalid
+timestamp, a commit that is not a non-empty string, and a `complete: true`
+asserted over missing fields are all defects, because a consumer holding one of
+those has nothing to compare a later observation against.
 
 Comparison needs **both** commits. A moved base means the disposition describes
 a merge that no longer applies; a moved head means it describes different code.
+It also needs an observation timestamp strictly after the receipt. An absent,
+invalid, equal, or earlier timestamp does not prove a re-read happened.
 An observation that could not be made is `unobserved`, never `stale`:
-manufacturing drift nobody saw is its own kind of wrong, and a caller that
-cannot afford an unobserved comparison decides that for itself.
+manufacturing drift nobody saw is its own kind of wrong.
 
 ## Boundaries
 

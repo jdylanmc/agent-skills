@@ -255,7 +255,11 @@ test('a change request that moved after shepherd observed it is stale', () => {
   // The incident, reduced: a sibling merged into the same base after shepherd
   // observed it, so the disposition describes a state that no longer exists.
   const movedBase = evaluateHandoff(completeHandoff({
-    observedBase: { baseSha: '9d5e4f7', headSha: REBASED_HEAD },
+    observedBase: {
+      observedAt: '2026-08-25T22:06:00Z',
+      baseSha: '9d5e4f7',
+      headSha: REBASED_HEAD,
+    },
   }));
   assert.equal(movedBase.state, 'stale-disposition');
   assert.equal(movedBase.freshness, 'stale');
@@ -267,13 +271,17 @@ test('a change request that moved after shepherd observed it is stale', () => {
 
   // A head that moved is the same problem about different code.
   const movedHead = evaluateHandoff(completeHandoff({
-    observedBase: { baseSha: REBASED_BASE, headSha: 'abc1234' },
+    observedBase: {
+      observedAt: '2026-08-25T22:06:00Z',
+      baseSha: REBASED_BASE,
+      headSha: 'abc1234',
+    },
   }));
   assert.equal(movedHead.state, 'stale-disposition');
   assert.ok(movedHead.unmet.some((entry) => entry.includes('abc1234')));
 });
 
-test('an unread base blocks under a required policy and is merely reported otherwise', () => {
+test('an unread post-shepherd snapshot always blocks', () => {
   const required = completeHandoff().result.receipt;
 
   for (const observedBase of [undefined, null, {}, 'main', { baseSha: REBASED_BASE }, { baseSha: '', headSha: '' }]) {
@@ -287,17 +295,16 @@ test('an unread base blocks under a required policy and is merely reported other
     assert.match(result.humanAction, /re-read the base and head/);
   }
 
-  // Without that policy the same gap is a reported unknown rather than a
-  // block: nothing about the base decides landability there.
   for (const upToDatePolicy of ['not-required', 'unobserved']) {
     const result = evaluateHandoff(completeHandoff({
       result: { ...completeHandoff().result, receipt: { ...required, upToDatePolicy } },
       observedBase: undefined,
     }));
 
-    assert.equal(result.handoff, 'completed');
+    assert.equal(result.handoff, 'not-performed');
     assert.equal(result.freshness, 'unobserved');
-    assert.ok(handoffSatisfied(result));
+    assert.equal(result.shipStatus, 'blocked');
+    assert.ok(!handoffSatisfied(result));
   }
 
   // The policy shepherd observed wins over what was known at publication, and
@@ -311,15 +318,29 @@ test('an unread base blocks under a required policy and is merely reported other
   assert.equal(fromTarget.policy, 'required');
 });
 
-test('an observation is only an observation when both commits are non-empty strings', () => {
-  assert.deepEqual(normalizeObservation({ baseSha: 'a', headSha: 'b', observedAt: 'now' }), {
-    observedAt: 'now',
+test('an observation needs a valid timestamp and both commits', () => {
+  assert.deepEqual(normalizeObservation({
+    baseSha: 'a',
+    headSha: 'b',
+    observedAt: '2026-08-25T22:06:00Z',
+  }), {
+    observedAt: '2026-08-25T22:06:00Z',
     baseSha: 'a',
     headSha: 'b',
     complete: true,
   });
 
-  for (const input of [undefined, null, 'a', 7, {}, { baseSha: 'a' }, { headSha: 'b' }, { baseSha: 'a', headSha: 3 }]) {
+  for (const input of [
+    undefined,
+    null,
+    'a',
+    7,
+    {},
+    { baseSha: 'a' },
+    { headSha: 'b' },
+    { baseSha: 'a', headSha: 3 },
+    { observedAt: 'now', baseSha: 'a', headSha: 'b' },
+  ]) {
     assert.equal(normalizeObservation(input).complete, false, `${JSON.stringify(input)} is not an observation`);
   }
 });
@@ -337,7 +358,18 @@ test('the publication receipt falls back to the captured target commits but neve
   assert.equal(target.receipt.baseSha, PUBLISHED_BASE);
   assert.equal(target.receipt.headSha, PUBLISHED_HEAD);
   assert.equal(target.upToDatePolicy, 'unobserved');
-  assert.deepEqual(missing, []);
+  assert.deepEqual(missing, ['target.upToDatePolicy']);
+
+  const explicit = buildHandoffTarget({
+    changeRequest: '#111',
+    headBranch: 'branch',
+    headSha: PUBLISHED_HEAD,
+    baseBranch: 'main',
+    baseSha: PUBLISHED_BASE,
+    upToDatePolicy: 'unobserved',
+    receipt: { observedAt: '2026-08-25T20:35:56Z' },
+  });
+  assert.deepEqual(explicit.missing, []);
 
   assert.deepEqual(buildHandoffTarget().missing, [
     'target.changeRequest',
@@ -345,10 +377,26 @@ test('the publication receipt falls back to the captured target commits but neve
     'target.headSha',
     'target.baseBranch',
     'target.baseSha',
+    'target.upToDatePolicy',
     'receipt.observedAt',
     'receipt.baseSha',
     'receipt.headSha',
   ]);
+});
+
+test('a non-green disposition must name the next human action', () => {
+  const missingAction = evaluateHandoff(completeHandoff({
+    result: {
+      ...completeHandoff().result,
+      disposition: 'failing',
+      nextHumanAction: undefined,
+    },
+  }));
+
+  assert.equal(missingAction.state, 'result-action-incomplete');
+  assert.equal(missingAction.shipStatus, 'blocked');
+  assert.ok(!handoffSatisfied(missingAction));
+  assert.ok(missingAction.unmet.some((entry) => entry.includes('nextHumanAction')));
 });
 
 test('a non-object input is a defect rather than a silently empty handoff', () => {

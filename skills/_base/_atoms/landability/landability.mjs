@@ -70,6 +70,11 @@ function commit(value) {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
 
+function timestamp(value) {
+  const candidate = commit(value);
+  return candidate && Number.isFinite(Date.parse(candidate)) ? candidate : null;
+}
+
 /**
  * Build a freshness receipt from whatever was observed.
  *
@@ -77,7 +82,7 @@ function commit(value) {
  * @returns {{observedAt: string|null, baseSha: string|null, headSha: string|null, upToDatePolicy: string, provider: string, complete: boolean}}
  */
 export function buildFreshnessReceipt(input = {}) {
-  const observedAt = commit(input.observedAt);
+  const observedAt = timestamp(input.observedAt);
   const baseSha = commit(input.baseSha);
   const headSha = commit(input.headSha);
 
@@ -108,10 +113,13 @@ export function validateFreshnessReceipt(receipt) {
   }
 
   const defects = [];
-  for (const field of ['observedAt', 'baseSha', 'headSha']) {
+  for (const field of ['baseSha', 'headSha']) {
     if (!commit(receipt[field])) {
       defects.push(`receipt.${field}: ${receipt[field] === undefined ? 'absent' : 'not a non-empty string'}`);
     }
+  }
+  if (!timestamp(receipt.observedAt)) {
+    defects.push(`receipt.observedAt: ${receipt.observedAt === undefined ? 'absent' : 'not a valid timestamp'}`);
   }
   if (defects.length === 0 && receipt.complete === false) {
     defects.push('receipt.complete: the producer reported the receipt as incomplete');
@@ -143,8 +151,18 @@ export function compareObservation(receipt, observation) {
   const observedHead = commit(observation?.headSha);
   const recordedBase = commit(receipt?.baseSha);
   const recordedHead = commit(receipt?.headSha);
+  const recordedAt = timestamp(receipt?.observedAt);
+  const observedAt = timestamp(observation?.observedAt);
 
-  if (!observedBase || !observedHead || !recordedBase || !recordedHead) {
+  if (
+    !observedBase
+    || !observedHead
+    || !recordedBase
+    || !recordedHead
+    || !recordedAt
+    || !observedAt
+    || Date.parse(observedAt) <= Date.parse(recordedAt)
+  ) {
     return { freshness: 'unobserved', drifted: [] };
   }
 

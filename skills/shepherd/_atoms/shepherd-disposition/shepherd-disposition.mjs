@@ -36,10 +36,10 @@ function behindUnderRequiredPolicy(signals) {
   if (!requiresUpToDateBranch(signals.basePolicy?.upToDate)) {
     return false;
   }
-  if (signals.base?.behind === false) {
+  if (signals.mergeability?.behind === false) {
     return false;
   }
-  return signals.base?.moved === true || signals.base?.behind === true;
+  return signals.base?.moved === true || signals.mergeability?.behind === true;
 }
 
 export function classifyShepherdPlan(signals = {}) {
@@ -53,6 +53,7 @@ export function classifyShepherdPlan(signals = {}) {
   const green = local.status === 'passed' && local.evidenceComplete === true && allRemoteChecksGreen(remoteChecks);
   const upToDatePolicy = normalizeUpToDatePolicy(signals.basePolicy?.upToDate);
   const behindStrictBase = behindUnderRequiredPolicy(signals);
+  const receipt = freshnessReceipt(signals);
 
   if (
     signals.base?.moved === true
@@ -63,6 +64,17 @@ export function classifyShepherdPlan(signals = {}) {
     && !conflicted
     && !behindStrictBase
   ) {
+    if (!receipt.complete) {
+      return {
+        disposition: 'blocked',
+        action: 'observe-state',
+        shouldRebase: false,
+        shouldForcePush: false,
+        reason: 'incomplete-freshness-receipt',
+        upToDatePolicy,
+        receipt,
+      };
+    }
     return {
       disposition: 'no-op-mergeable-and-green',
       action: 'no-op',
@@ -70,6 +82,7 @@ export function classifyShepherdPlan(signals = {}) {
       shouldForcePush: false,
       reason: 'base-moved-but-pr-remains-mergeable-and-green',
       upToDatePolicy,
+      receipt,
     };
   }
 

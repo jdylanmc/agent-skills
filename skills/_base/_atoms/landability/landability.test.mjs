@@ -109,9 +109,9 @@ test('a receipt somebody else produced is checked rather than believed', () => {
   const wrongTypes = validateFreshnessReceipt({ observedAt: 1, baseSha: '', headSha: {} });
   assert.equal(wrongTypes.valid, false);
   assert.deepEqual(wrongTypes.defects.map((defect) => defect.split(':')[0]), [
-    'receipt.observedAt',
     'receipt.baseSha',
     'receipt.headSha',
+    'receipt.observedAt',
   ]);
 
   // A producer that says complete while omitting fields is reporting twice as
@@ -128,29 +128,70 @@ test('a receipt somebody else produced is checked rather than believed', () => {
     complete: false,
   });
   assert.equal(admitted.valid, false);
+
+  const invalidTime = validateFreshnessReceipt({
+    observedAt: 'later',
+    baseSha: 'eb0ce00',
+    headSha: '57d9d26',
+    complete: true,
+  });
+  assert.equal(invalidTime.valid, false);
+  assert.ok(invalidTime.defects.some((defect) => defect.startsWith('receipt.observedAt')));
 });
 
-test('comparison needs both commits, and an unmade observation is not agreement', () => {
-  const receipt = { baseSha: 'fdd15de', headSha: '3f78428' };
+test('comparison needs both commits and a later observation time', () => {
+  const receipt = {
+    observedAt: '2026-08-25T22:05:00Z',
+    baseSha: 'fdd15de',
+    headSha: '3f78428',
+  };
 
-  assert.deepEqual(compareObservation(receipt, { baseSha: 'fdd15de', headSha: '3f78428' }), {
+  assert.deepEqual(compareObservation(receipt, {
+    observedAt: '2026-08-25T22:06:00Z',
+    baseSha: 'fdd15de',
+    headSha: '3f78428',
+  }), {
     freshness: 'fresh',
     drifted: [],
   });
 
-  const movedBase = compareObservation(receipt, { baseSha: '9d5e4f7', headSha: '3f78428' });
+  const movedBase = compareObservation(receipt, {
+    observedAt: '2026-08-25T22:06:00Z',
+    baseSha: '9d5e4f7',
+    headSha: '3f78428',
+  });
   assert.equal(movedBase.freshness, 'stale');
   assert.deepEqual(movedBase.drifted, ['base fdd15de -> 9d5e4f7']);
 
-  const movedHead = compareObservation(receipt, { baseSha: 'fdd15de', headSha: 'abc1234' });
+  const movedHead = compareObservation(receipt, {
+    observedAt: '2026-08-25T22:06:00Z',
+    baseSha: 'fdd15de',
+    headSha: 'abc1234',
+  });
   assert.equal(movedHead.freshness, 'stale');
   assert.deepEqual(movedHead.drifted, ['head 3f78428 -> abc1234']);
 
-  const movedBoth = compareObservation(receipt, { baseSha: '9d5e4f7', headSha: 'abc1234' });
+  const movedBoth = compareObservation(receipt, {
+    observedAt: '2026-08-25T22:06:00Z',
+    baseSha: '9d5e4f7',
+    headSha: 'abc1234',
+  });
   assert.equal(movedBoth.drifted.length, 2);
 
-  for (const observation of [undefined, {}, { baseSha: 'fdd15de' }, { baseSha: '', headSha: '3f78428' }]) {
+  for (const observation of [
+    undefined,
+    {},
+    { baseSha: 'fdd15de' },
+    { baseSha: '', headSha: '3f78428' },
+    { observedAt: 'not-a-time', baseSha: 'fdd15de', headSha: '3f78428' },
+    { observedAt: receipt.observedAt, baseSha: 'fdd15de', headSha: '3f78428' },
+    { observedAt: '2026-08-25T22:04:00Z', baseSha: 'fdd15de', headSha: '3f78428' },
+  ]) {
     assert.equal(compareObservation(receipt, observation).freshness, 'unobserved');
   }
-  assert.equal(compareObservation({}, { baseSha: 'fdd15de', headSha: '3f78428' }).freshness, 'unobserved');
+  assert.equal(compareObservation({}, {
+    observedAt: '2026-08-25T22:06:00Z',
+    baseSha: 'fdd15de',
+    headSha: '3f78428',
+  }).freshness, 'unobserved');
 });
