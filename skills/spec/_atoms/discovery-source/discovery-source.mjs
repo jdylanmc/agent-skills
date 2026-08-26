@@ -91,7 +91,7 @@ export function validateDiscoverySource(input) {
   if (unknown.length) {
     throw new DiscoverySourceError('invalid-source', `unknown field(s): ${unknown.join(', ')}`);
   }
-  const missing = FIELDS.filter((field) => !(field in input));
+  const missing = FIELDS.filter((field) => input[field] === undefined);
   if (missing.length) {
     throw new DiscoverySourceError('invalid-source', `missing field(s): ${missing.join(', ')}`);
   }

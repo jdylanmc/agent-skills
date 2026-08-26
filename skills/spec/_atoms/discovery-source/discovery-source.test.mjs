@@ -86,5 +86,9 @@ test('distinguishes a malformed record from materially incomplete Discovery', ()
   const malformed = source();
   delete malformed.kind;
   assert.equal(code(() => validateDiscoverySource(malformed)), 'invalid-source');
+  assert.equal(
+    code(() => validateDiscoverySource(source({ kind: undefined }))),
+    'invalid-source',
+  );
   assert.equal(code(() => validateDiscoverySource(source({ confirmedFacts: [] }))), 'incomplete');
 });
