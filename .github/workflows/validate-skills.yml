@@ -122,3 +122,7 @@ jobs:
           skills/qa-design/_atoms/traceability-map/traceability-map.test.mjs
           skills/qa-design/_atoms/execution-constraints/execution-constraints.test.mjs
           skills/qa-design/_molecules/qa-contract/qa-contract.test.mjs
+          skills/spec/spec.conformance.test.mjs
+          skills/spec/_atoms/discovery-source/discovery-source.test.mjs
+          skills/spec/_atoms/spec-outcome/spec-outcome.test.mjs
+          skills/spec/_atoms/spec-pair/spec-pair.test.mjs
