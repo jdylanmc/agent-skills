@@ -2,8 +2,8 @@
 name: ship
 description: Take one tracker issue to review-ready: ground it into a confirmed plan, then dispatch a bounded worker in an isolated worktree, reconcile every hunk against the confirmed ledger, validate through run-ci, review through roast, gate the merge, report criterion by criterion, open a change request, and invoke shepherd on it when the operator asked for that. Use when the operator asks to ship an issue, deliver a ticket, or take one deliverable unit to done. Do not use to work a whole backlog or fleet, which belongs to ship-with-squadron, and do not use to merge, approve, accept risk, or drive an existing change request, which belongs to shepherd.
 allowed-tools: ["execute","read","search","task"]
-includes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md"]
-composes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md"]
+includes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md"]
+composes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md"]
 disable-model-invocation: true
 user-invocable: true
 requires-skills: [{"id":"run-ci","source":"local","required":true},{"id":"roast","source":"local","required":true},{"id":"shepherd","source":"local","required":false}]
@@ -42,6 +42,7 @@ judges the change is grading its own work.
 4. [Merge gate](./_atoms/merge-gate/merge-gate.md)
 5. [Change request](./_atoms/change-request/change-request.md)
 6. [Shepherd handoff](./_atoms/shepherd-handoff/shepherd-handoff.md)
+7. [Landability vocabulary](../_base/_atoms/landability/landability.md)
 
 ## Core Workflow
 
@@ -136,6 +137,19 @@ judges the change is grading its own work.
    **This run does not report its own completion until shepherd returns a
    terminal disposition.** A described handoff and a real one read identically
    in a report, and only one of them leaves the change request with an owner.
+
+   **Then re-read the base and the head**, after shepherd returns, and pass both
+   commits with the time they were read. Shepherd's own receipt says what it
+   saw when it finished; this reading says whether that is still true. When the
+   base requires the branch to contain it, an unread base leaves the one fact
+   that decides landability unknown, and the handoff blocks rather than
+   reporting a disposition nobody re-checked.
+
+   Freshness compares **shepherd's receipt** against that reading, never the
+   publication snapshot. A successful rebase moves the head, and under a
+   required up-to-date policy it moves the branch onto a base that has already
+   advanced, so comparing what publication recorded would call every successful
+   rebase stale.
 
    When the handoff was required and did not happen — shepherd unavailable, the
    dispatch failed, nothing was invoked, or nothing terminal came back — the
@@ -238,9 +252,9 @@ Three things follow, and they are enforced in
 promised here:
 
 1. **A handoff is an invocation.** Only a nested invocation in a separate worker
-   that returned a terminal disposition counts. Shepherd needs `edit` and
-   `execute` in a worktree it owns, which this run does not hold for that
-   purpose, so a handoff that never left this context did not happen.
+   that returned a terminal disposition counts. Shepherd needs `edit` in a
+   worktree it owns, which this run does not hold, so a handoff that never left
+   this context did not happen.
 2. **Ownership is explicit.** The target names the change request, branch,
    captured head and base SHAs, the base's up-to-date policy — `required`,
    `not-required`, or `unobserved`, never collapsed — and a freshness receipt
@@ -276,7 +290,8 @@ Return:
 - shepherd intent, recorded from the question asked at the start, the handoff
   state — `not-required`, `completed`, or `not-performed` with its reason — the
   handoff target with its captured head and base SHAs and up-to-date policy, the
-  freshness receipt, and shepherd's terminal disposition when one came back;
+  freshness receipt, the effective policy reported after shepherd returns, and
+  shepherd's terminal disposition when one came back;
 - the proposed approach, its laziness verdict, and every reduction applied;
 - the exhaustive change ledger, and the reconciliation verdict with any
   undisclosed, ambiguous, or unfulfilled entries named;
@@ -331,7 +346,8 @@ Return:
 ## Permissions
 
 `read` and `search` gather the issue, its dependencies, and repository context.
-`execute` runs git, the isolated worktree, the declared validation, and the
+`execute` runs git, the isolated worktree, the declared validation, the
+read-only post-shepherd observation of base and head SHAs, and the
 change-request commands. That last one includes a **non-force push of this run's
 own isolation branch** and the provider's official command-line tool, which is
 the only write to a shared remote this skill performs. `task` dispatches the

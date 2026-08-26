@@ -1,4 +1,11 @@
-import { normalizeUpToDatePolicy, requiresUpToDateBranch } from '../provider-adapter/provider-adapter.mjs';
+import {
+  buildFreshnessReceipt,
+  isTerminalDisposition,
+  normalizeUpToDatePolicy,
+  requiresUpToDateBranch,
+} from '../../../_base/_atoms/landability/landability.mjs';
+
+export { isTerminalDisposition };
 
 const GREEN_LOCAL = new Set(['passed']);
 const BLOCKED_LOCAL = new Set(['cancelled', 'environment-failed', 'unsupported-provider', 'incomplete']);
@@ -29,10 +36,20 @@ function behindUnderRequiredPolicy(signals) {
   if (!requiresUpToDateBranch(signals.basePolicy?.upToDate)) {
     return false;
   }
-  if (signals.base?.behind === false) {
+  const behind = branchBehindBase(signals);
+  if (behind === false) {
     return false;
   }
-  return signals.base?.moved === true || signals.base?.behind === true;
+  return signals.base?.moved === true || behind === true;
+}
+
+function branchBehindBase(signals) {
+  const providerBehind = signals.mergeability?.behind;
+  const gitBehind = signals.base?.behind;
+  if (typeof providerBehind === 'boolean') {
+    return providerBehind;
+  }
+  return typeof gitBehind === 'boolean' ? gitBehind : null;
 }
 
 export function classifyShepherdPlan(signals = {}) {
@@ -46,6 +63,7 @@ export function classifyShepherdPlan(signals = {}) {
   const green = local.status === 'passed' && local.evidenceComplete === true && allRemoteChecksGreen(remoteChecks);
   const upToDatePolicy = normalizeUpToDatePolicy(signals.basePolicy?.upToDate);
   const behindStrictBase = behindUnderRequiredPolicy(signals);
+  const receipt = freshnessReceipt(signals);
 
   if (
     signals.base?.moved === true
@@ -56,6 +74,17 @@ export function classifyShepherdPlan(signals = {}) {
     && !conflicted
     && !behindStrictBase
   ) {
+    if (!receipt.complete) {
+      return {
+        disposition: 'blocked',
+        action: 'observe-state',
+        shouldRebase: false,
+        shouldForcePush: false,
+        reason: 'incomplete-freshness-receipt',
+        upToDatePolicy,
+        receipt,
+      };
+    }
     return {
       disposition: 'no-op-mergeable-and-green',
       action: 'no-op',
@@ -63,6 +92,7 @@ export function classifyShepherdPlan(signals = {}) {
       shouldForcePush: false,
       reason: 'base-moved-but-pr-remains-mergeable-and-green',
       upToDatePolicy,
+      receipt,
     };
   }
 
@@ -122,30 +152,54 @@ function missingRequired(signals) {
  * The snapshot a terminal disposition is bound to.
  *
  * A disposition says the change request was landable against one base commit
- * at one moment. Without the moment and the commit, a caller holding the
+ * at one moment. Without the moment and the commits, a caller holding the
  * disposition later cannot tell whether it still describes anything, so every
- * result carries them and says whether they are complete.
+ * result carries them and says whether they are complete. The shape is the
+ * shared one, because the caller consuming it is a different skill.
  */
 export function freshnessReceipt(signals = {}) {
-  const observedAt = signals.observedAt ?? null;
-  const baseSha = signals.mergeability?.baseSha ?? signals.rebase?.baseSha ?? null;
-  const headSha = signals.push?.headSha ?? signals.mergeability?.headSha ?? null;
-
-  return {
-    observedAt,
-    baseSha,
-    headSha,
-    upToDatePolicy: normalizeUpToDatePolicy(signals.basePolicy?.upToDate),
-    provider: signals.provider?.status ?? 'unobserved',
-    complete: Boolean(observedAt && baseSha && headSha),
-  };
+  return buildFreshnessReceipt({
+    observedAt: signals.observedAt,
+    baseSha: signals.mergeability?.baseSha ?? signals.rebase?.baseSha,
+    headSha: signals.push?.headSha ?? signals.mergeability?.headSha,
+    upToDatePolicy: signals.basePolicy?.upToDate,
+    provider: signals.provider?.status,
+  });
 }
 
 export function classifyTerminalDisposition(signals = {}) {
-  return { ...classifyOutcome(signals), receipt: freshnessReceipt(signals) };
+  const receipt = freshnessReceipt(signals);
+  const outcome = classifyOutcome(signals, receipt);
+  return {
+    ...outcome,
+    receipt,
+    ...(['mergeable-and-green', 'no-op-mergeable-and-green'].includes(outcome.disposition)
+      ? {}
+      : { nextHumanAction: nextHumanActionFor(outcome) }),
+  };
 }
 
-function classifyOutcome(signals) {
+function nextHumanActionFor(outcome) {
+  const detail = outcome.defects?.length > 0 ? ` (${outcome.defects.join(', ')})` : '';
+  switch (outcome.disposition) {
+    case 'provider-unsupported':
+      return 'Use a supported provider adapter or inspect the hosted change request manually.';
+    case 'provider-tool-unsupported':
+      return 'Add an official-tool adapter for this provider or inspect the hosted change request manually.';
+    case 'provider-tool-missing':
+      return `Install the provider's official CLI, then invoke shepherd again${detail}.`;
+    case 'provider-tool-unauthenticated':
+      return `Authenticate the provider's official CLI, then invoke shepherd again${detail}.`;
+    case 'needs-human':
+      return `Resolve ${outcome.reason}, then invoke shepherd again${detail}.`;
+    case 'failing':
+      return `Fix ${outcome.reason}, rerun validation, then invoke shepherd again${detail}.`;
+    default:
+      return `Clear ${outcome.reason}, gather complete evidence, then invoke shepherd again${detail}.`;
+  }
+}
+
+function classifyOutcome(signals, receipt) {
   const defects = missingRequired(signals);
   if (defects.length > 0) {
     return { disposition: 'blocked', reason: 'missing-required-evidence', defects };
@@ -201,12 +255,16 @@ function classifyOutcome(signals) {
   }
 
   // Mergeable content and green checks are not landability when the base
-  // refuses a behind branch. Reporting `mergeable-and-green` here would be
-  // reporting the exact state a person later has to fix by hand.
-  if (requiresUpToDateBranch(signals.basePolicy?.upToDate) && mergeability.behind === true) {
+  // refuses a behind branch. Under that policy the question has to be settled
+  // rather than assumed: `behind === false` is the only answer that clears it,
+  // and an unread one is its own outcome rather than the reassuring one.
+  const behind = branchBehindBase(signals);
+  if (requiresUpToDateBranch(signals.basePolicy?.upToDate) && behind !== false) {
     return {
       disposition: 'blocked',
-      reason: 'base-advanced-under-required-up-to-date-policy',
+      reason: behind === true
+        ? 'base-advanced-under-required-up-to-date-policy'
+        : 'up-to-date-state-unobserved-under-required-policy',
       defects,
     };
   }
@@ -222,6 +280,13 @@ function classifyOutcome(signals) {
   const red = checks.filter((check) => !COMPLETE_REMOTE.has(check.status));
   if (red.length > 0) {
     return { disposition: 'failing', reason: 'remote-checks-failing', defects: red.map((check) => check.name) };
+  }
+
+  // A green result nobody can date or place is a claim rather than evidence:
+  // the caller holding it later cannot tell whether it still describes the
+  // change request it names.
+  if (receipt.complete !== true) {
+    return { disposition: 'blocked', reason: 'incomplete-freshness-receipt', defects };
   }
 
   return { disposition: 'mergeable-and-green', reason: 'complete-green-evidence', defects: [] };

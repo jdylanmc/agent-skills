@@ -31,12 +31,14 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import { classifyTerminalDisposition } from '../shepherd/_atoms/shepherd-disposition/shepherd-disposition.mjs';
 import { MERGE_GRANT_TOKEN, evaluateMergeGate, mayMerge } from './_atoms/merge-gate/merge-gate.mjs';
 import { reconcile as reconcileDiff } from './_atoms/diff-reconciliation/diff-reconciliation.mjs';
 import {
   NESTED_INVOCATION,
   evaluateHandoff,
-  mayReportShipped,
+  handoffSatisfied,
+  publicationSucceeded,
 } from './_atoms/shepherd-handoff/shepherd-handoff.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -54,6 +56,7 @@ const CRITERION = 'ship/_atoms/criterion-verdict/criterion-verdict.md';
 const MERGE_GATE = 'ship/_atoms/merge-gate/merge-gate.md';
 const PUBLISH = 'ship/_atoms/change-request/change-request.md';
 const HANDOFF = 'ship/_atoms/shepherd-handoff/shepherd-handoff.md';
+const LANDABILITY = '_base/_atoms/landability/landability.md';
 
 /** The grant stage two was reviewed with. Nothing here may widen it. */
 const PINNED_TOOLS = ['execute', 'read', 'search', 'task'];
@@ -177,6 +180,7 @@ test('the execute-bearing closure is pinned, because execute can mutate', () => 
     'ship/_atoms/diff-reconciliation/diff-reconciliation.md',
     'ship/_atoms/issue-grounding/issue-grounding.md',
     'ship/_atoms/run-isolation/run-isolation.md',
+    'ship/_atoms/shepherd-handoff/shepherd-handoff.md',
     'ship/_molecules/delivery-cycle/delivery-cycle.md',
     'ship/_molecules/delivery-grounding/delivery-grounding.md',
   ]);
@@ -205,6 +209,7 @@ test('the skill composes chronicler, the grounding units, the merge gate, and pu
     MERGE_GATE,
     PUBLISH,
     HANDOFF,
+    LANDABILITY,
   ]);
 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
@@ -871,6 +876,7 @@ test('the handoff is a nested invocation the run waits for, not a described one'
       headSha: 'head',
       baseBranch: 'main',
       baseSha: 'base',
+      upToDatePolicy: 'unobserved',
       receipt: { observedAt: '2026-08-25T20:35:56Z', baseSha: 'base', headSha: 'head' },
     },
     invocation: { mode: 'narrated', status: 'returned' },
@@ -878,7 +884,7 @@ test('the handoff is a nested invocation the run waits for, not a described one'
   });
   assert.equal(described.handoff, 'not-performed');
   assert.equal(described.shipStatus, 'blocked');
-  assert.ok(!mayReportShipped(described));
+  assert.ok(!handoffSatisfied(described));
   assert.match(described.humanAction, /#1 \(branch issue-1\)/);
 
   const invoked = evaluateHandoff({
@@ -894,22 +900,98 @@ test('the handoff is a nested invocation the run waits for, not a described one'
       receipt: { observedAt: '2026-08-25T20:35:56Z', baseSha: 'base', headSha: 'head' },
     },
     invocation: { mode: NESTED_INVOCATION, status: 'returned' },
-    result: { disposition: 'mergeable-and-green' },
-    observedBase: { baseSha: 'base' },
+    result: {
+      disposition: 'mergeable-and-green',
+      receipt: {
+        observedAt: '2026-08-25T20:36:00Z',
+        baseSha: 'base',
+        headSha: 'head',
+        upToDatePolicy: 'required',
+        provider: 'supported-provider',
+        complete: true,
+      },
+    },
+    observedBase: { observedAt: '2026-08-25T20:36:01Z', baseSha: 'base', headSha: 'head' },
   });
   assert.equal(invoked.handoff, 'completed');
-  assert.ok(mayReportShipped(invoked));
+  assert.ok(handoffSatisfied(invoked));
+  assert.ok(publicationSucceeded({
+    outcome: 'published',
+    identifier: '#1',
+  }));
+});
+
+test('ship accepts the actual terminal result shape shepherd produces', () => {
+  const signals = {
+    observedAt: '2026-08-25T20:36:00Z',
+    provider: { status: 'supported-provider', provider: 'github' },
+    preflight: { status: 'ok' },
+    rebase: { status: 'completed', baseSha: 'base' },
+    regeneration: { status: 'not-applicable' },
+    localValidation: { status: 'passed', evidenceComplete: true },
+    push: { status: 'pushed-with-lease', headSha: 'head' },
+    basePolicy: { upToDate: 'required' },
+    mergeability: {
+      state: 'mergeable',
+      isDraft: false,
+      baseSha: 'base',
+      headSha: 'head',
+      behind: false,
+    },
+    remoteChecks: { checks: [{ name: 'validate', status: 'passed' }] },
+  };
+
+  for (const [remoteChecks, disposition] of [
+    [{ checks: [{ name: 'validate', status: 'passed' }] }, 'mergeable-and-green'],
+    [{ checks: [{ name: 'validate', status: 'failed' }] }, 'failing'],
+  ]) {
+    const shepherdResult = classifyTerminalDisposition({ ...signals, remoteChecks });
+    const evaluation = evaluateHandoff({
+      intent: 'yes',
+      publication: { outcome: 'published', identifier: '#1' },
+      target: {
+        changeRequest: '#1',
+        headBranch: 'issue-1',
+        headSha: 'published-head',
+        baseBranch: 'main',
+        baseSha: 'published-base',
+        upToDatePolicy: 'unobserved',
+        receipt: {
+          observedAt: '2026-08-25T20:35:56Z',
+          baseSha: 'published-base',
+          headSha: 'published-head',
+        },
+      },
+      invocation: { mode: NESTED_INVOCATION, status: 'returned' },
+      result: shepherdResult,
+      observedBase: {
+        observedAt: '2026-08-25T20:36:01Z',
+        baseSha: 'base',
+        headSha: 'head',
+      },
+    });
+
+    assert.equal(evaluation.handoff, 'completed');
+    assert.equal(evaluation.state, `shepherd-${disposition}`);
+    assert.ok(handoffSatisfied(evaluation));
+  }
 });
 
 test('a declined handoff stays optional and an unrecorded one does not', () => {
-  const declined = evaluateHandoff({ intent: 'no' });
+  const declined = evaluateHandoff({
+    intent: 'no',
+    publication: { outcome: 'published', identifier: '#1' },
+  });
   assert.equal(declined.handoff, 'not-required');
-  assert.ok(mayReportShipped(declined));
+  assert.ok(handoffSatisfied(declined));
 
   // `shepherd` stays an optional dependency precisely because `no` is a real
   // answer. An unasked question is not that answer.
   assert.equal(frontmatter(ENTRY).requiresSkills.find((entry) => entry.id === 'shepherd')?.required, false);
-  assert.equal(evaluateHandoff({ intent: undefined }).shipStatus, 'blocked');
+  assert.equal(evaluateHandoff({
+    intent: undefined,
+    publication: { outcome: 'published', identifier: '#1' },
+  }).shipStatus, 'blocked');
 });
 
 test('handoff ownership is explicit, and a result is bound to the base it saw', () => {
@@ -933,10 +1015,21 @@ test('handoff ownership is explicit, and a result is bound to the base it saw', 
       headSha: 'head',
       baseBranch: 'main',
       baseSha: 'base',
+      upToDatePolicy: 'unobserved',
       receipt: { observedAt: '2026-08-25T20:35:56Z', baseSha: 'base', headSha: 'head' },
     },
     invocation: { mode: NESTED_INVOCATION, status: 'returned' },
-    result: { disposition: 'mergeable-and-green' },
+    result: {
+      disposition: 'mergeable-and-green',
+      receipt: {
+        observedAt: '2026-08-25T20:36:00Z',
+        baseSha: 'base',
+        headSha: 'head',
+        upToDatePolicy: 'required',
+        provider: 'supported-provider',
+        complete: true,
+      },
+    },
   };
 
   // A target missing any ownership field is refused rather than handed over.
@@ -949,10 +1042,17 @@ test('handoff ownership is explicit, and a result is bound to the base it saw', 
 
   // The incident, reduced: a sibling merged into the same base after shepherd
   // observed it, so the disposition describes a state that no longer exists.
-  const stale = evaluateHandoff({ ...complete, observedBase: { baseSha: 'base-after-sibling-merge' } });
+  const stale = evaluateHandoff({
+    ...complete,
+    observedBase: {
+      observedAt: '2026-08-25T20:37:00Z',
+      baseSha: 'base-after-sibling-merge',
+      headSha: 'head',
+    },
+  });
   assert.equal(stale.state, 'stale-disposition');
   assert.equal(stale.requiresReinvocation, true);
-  assert.ok(!mayReportShipped(stale));
+  assert.ok(!handoffSatisfied(stale));
 });
 
 test('the set of open change requests is somebody else, and it is named', () => {
@@ -969,8 +1069,9 @@ test('the set of open change requests is somebody else, and it is named', () => 
   assert.match(entry, /\*\*What this run cannot own is the set\.\*\*/);
   assert.match(entry, /\*\*Never watches a change request after handing it over\*\*/);
 
-  // The handoff atom hands over and nothing else: no `edit`, no `execute`.
-  assert.deepEqual(frontmatter(HANDOFF).allowedTools, ['task', 'read']);
+  // The handoff atom can dispatch and make the read-only freshness observation,
+  // but it cannot edit the branch it hands over.
+  assert.deepEqual(frontmatter(HANDOFF).allowedTools, ['task', 'read', 'execute']);
   assert.match(handoff, /\*\*Never merges, approves, rebases, or pushes\.\*\*/);
 });
 test('an incomplete outcome is not quietly reported as success', () => {

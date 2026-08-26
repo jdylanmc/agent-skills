@@ -10,112 +10,91 @@
  * had been reported ready silently stopped being mergeable. A person noticed,
  * not a workflow.
  *
- * Two properties are pinned here, and neither survives in prose:
+ * Three properties are pinned here, and none survives in prose:
  *
  * 1. **A handoff is an invocation, not a sentence.** Describing what shepherd
  *    should do next is indistinguishable, in the report, from having invoked
  *    it. So the only invocation this accepts is a nested one in a separate
  *    worker context that returned a terminal disposition. Anything else is
  *    `not-performed`, and the run may not report its own completion.
- * 2. **A shepherd result is bound to the snapshot it observed.** It says the
- *    change request was landable against one base commit at one moment. It is
- *    not durable permission, and once the base moves it is evidence about a
- *    state that no longer exists.
+ * 2. **Two snapshots, and they are not interchangeable.** The publication
+ *    receipt records what was handed over and when — ownership evidence, fixed
+ *    forever. The shepherd receipt records what shepherd actually observed,
+ *    which is a *later* and usually different pair of commits, because a
+ *    successful rebase moves both. Freshness compares the shepherd receipt,
+ *    never the publication one, against a reading taken after shepherd
+ *    returned. Comparing the immutable one would make every successful rebase
+ *    permanently stale.
+ * 3. **An unread base is not a fresh one.** When the base requires the branch
+ *    to contain it, failing to re-read after shepherd returns leaves the one
+ *    fact that decides landability unknown, and unknown is not evidence.
  */
 
-/** Every disposition shepherd may end on. Anything else is not an ending. */
-export const TERMINAL_SHEPHERD_DISPOSITIONS = new Set([
-  'mergeable-and-green',
-  'no-op-mergeable-and-green',
-  'provider-unsupported',
-  'provider-tool-missing',
-  'provider-tool-unauthenticated',
-  'needs-human',
-  'blocked',
-  'failing',
-]);
+import {
+  UP_TO_DATE_POLICIES,
+  compareObservation,
+  isTerminalDisposition,
+  nonEmptyString,
+  normalizeUpToDatePolicy,
+  validateFreshnessReceipt,
+} from '../../../_base/_atoms/landability/landability.mjs';
 
 /**
  * The only invocation shape that hands anything over. Shepherd needs `edit`
- * and `execute`, which the delivery orchestration does not hold, so the work
- * cannot happen in its context even in principle.
+ * inside a worktree it owns, which the delivery orchestration does not hold,
+ * so the work cannot happen in its context even in principle.
  */
 export const NESTED_INVOCATION = 'nested-worker';
-
-const POLICY_VALUES = new Set(['required', 'not-required', 'unobserved']);
 
 /** Ownership fields without which nobody can tell what was handed to whom. */
 const REQUIRED_TARGET_FIELDS = ['changeRequest', 'headBranch', 'headSha', 'baseBranch', 'baseSha'];
 
-/** Receipt fields that make a disposition checkable against a later observation. */
+/** Publication-time observations that make the handoff auditable afterwards. */
 const REQUIRED_RECEIPT_FIELDS = ['observedAt', 'baseSha', 'headSha'];
 
 /**
- * Normalize the base branch's up-to-date requirement.
+ * Build the handoff target: what is handed over, and what was true at
+ * publication.
  *
- * An unrecognized or absent value becomes `unobserved` and never
- * `not-required`. They are different facts: one says the policy was read and
- * imposes nothing, the other says nobody looked. Collapsing them is how a
- * strict base branch gets handed over as though it were a relaxed one.
- *
- * @param {unknown} value
- * @returns {'required'|'not-required'|'unobserved'}
- */
-export function normalizeUpToDatePolicy(value) {
-  return POLICY_VALUES.has(value) ? value : 'unobserved';
-}
-
-/**
- * Build the handoff target: what is handed over, and against what observation.
+ * The receipt here is **pre-invocation ownership evidence**. It is never
+ * compared against a later observation, because shepherd is expected to move
+ * the branch and, under a required up-to-date policy, is expected to move it
+ * onto a base that has advanced.
  *
  * @param {object} [input]
- * @param {string} [input.changeRequest] Identifier the provider returned.
- * @param {string} [input.headBranch]
- * @param {string} [input.headSha] Head captured at publication.
- * @param {string} [input.baseBranch]
- * @param {string} [input.baseSha] Base captured at publication.
- * @param {unknown} [input.upToDatePolicy]
- * @param {{observedAt?: string, baseSha?: string, headSha?: string}} [input.receipt]
  * @returns {{target: object, missing: string[]}}
  */
 export function buildHandoffTarget(input = {}) {
   const receipt = input.receipt ?? {};
   const target = {
-    changeRequest: input.changeRequest ?? null,
-    headBranch: input.headBranch ?? null,
-    headSha: input.headSha ?? null,
-    baseBranch: input.baseBranch ?? null,
-    baseSha: input.baseSha ?? null,
+    changeRequest: nonEmptyString(input.changeRequest),
+    headBranch: nonEmptyString(input.headBranch),
+    headSha: nonEmptyString(input.headSha),
+    baseBranch: nonEmptyString(input.baseBranch),
+    baseSha: nonEmptyString(input.baseSha),
     upToDatePolicy: normalizeUpToDatePolicy(input.upToDatePolicy),
     receipt: {
-      observedAt: receipt.observedAt ?? null,
-      baseSha: receipt.baseSha ?? input.baseSha ?? null,
-      headSha: receipt.headSha ?? input.headSha ?? null,
+      observedAt: nonEmptyString(receipt.observedAt),
+      baseSha: nonEmptyString(receipt.baseSha) ?? nonEmptyString(input.baseSha),
+      headSha: nonEmptyString(receipt.headSha) ?? nonEmptyString(input.headSha),
     },
   };
 
   const missing = [
     ...REQUIRED_TARGET_FIELDS.filter((field) => !target[field]).map((field) => `target.${field}`),
+    ...(input.upToDatePolicy === true
+      || input.upToDatePolicy === false
+      || UP_TO_DATE_POLICIES.includes(input.upToDatePolicy)
+      ? []
+      : ['target.upToDatePolicy']),
     ...REQUIRED_RECEIPT_FIELDS.filter((field) => !target.receipt[field]).map((field) => `receipt.${field}`),
   ];
 
   return { target, missing };
 }
 
-/**
- * Compare a shepherd result against the base as it stands now.
- *
- * @param {{receipt?: object}} target
- * @param {{baseSha?: string}} [observedBase] The base observed after shepherd returned.
- * @returns {'fresh'|'stale'|'unobserved'}
- */
-export function evaluateFreshness(target, observedBase) {
-  const recordedBase = target?.receipt?.baseSha ?? null;
-  const currentBase = observedBase?.baseSha ?? null;
-  if (!recordedBase || !currentBase) {
-    return 'unobserved';
-  }
-  return recordedBase === currentBase ? 'fresh' : 'stale';
+export function publicationSucceeded(publication) {
+  return publication?.outcome === 'published' && nonEmptyString(publication.identifier) !== null;
 }
 
 /**
@@ -126,26 +105,37 @@ export function evaluateFreshness(target, observedBase) {
  * reads as though somebody has it.
  *
  * @param {object} [input]
- * @param {'yes'|'no'|unknown} [input.intent] The recorded shepherd intent.
  * @param {{outcome?: string, identifier?: string}} [input.publication]
+ * @param {'yes'|'no'|unknown} [input.intent] The recorded shepherd intent.
  * @param {object} [input.target] Input for {@link buildHandoffTarget}.
  * @param {{mode?: string, status?: string, reason?: string}} [input.invocation]
- * @param {{disposition?: string, nextHumanAction?: string}} [input.result]
- * @param {{baseSha?: string}} [input.observedBase]
+ * @param {{disposition?: string, receipt?: object, nextHumanAction?: string}} [input.result]
+ * @param {{baseSha?: string, headSha?: string, observedAt?: string}} [input.observedBase]
+ *   The base and head re-read after shepherd returned.
  * @returns {object}
  */
 export function evaluateHandoff(input = {}) {
   if (input === null || typeof input !== 'object') {
     throw new TypeError('evaluateHandoff expects an object');
   }
-  const { intent, publication, invocation, result, observedBase } = input;
+  const { intent, publication, invocation, result } = input;
   const built = buildHandoffTarget(input.target ?? {});
   const target = built.target;
+
+  // Publication is decided once, before intent, so both intent paths agree
+  // about a run that published nothing.
+  if (!publicationSucceeded(publication)) {
+    return satisfied('not-required', 'no-published-target', {
+      target: null,
+      unmet: [`publication: outcome is ${describe(publication?.outcome)}`],
+      humanAction: 'Report the publication outcome as given. No change request exists to shepherd.',
+    });
+  }
 
   if (intent === 'no') {
     // The operator declined it. Conditional means conditional, and a decline
     // is a decision rather than an omission.
-    return performed('not-required', 'declined-by-operator', { target: null });
+    return satisfied('not-required', 'declined-by-operator', { target });
   }
 
   if (intent !== 'yes') {
@@ -154,17 +144,6 @@ export function evaluateHandoff(input = {}) {
       unmet: ['intent: no shepherd intent was recorded before the run started'],
       humanAction:
         'Ask whether this change request should be shepherded, record the answer, and re-run the handoff.',
-    });
-  }
-
-  if (publication?.outcome !== 'published') {
-    // There is nothing to hand over. Inventing a target here would turn one
-    // visible failure into a second one somewhere harder to see.
-    return notPerformed('no-published-target', {
-      target: null,
-      constrainsStatus: false,
-      unmet: [`publication: outcome is ${describe(publication?.outcome)}`],
-      humanAction: 'Report the publication outcome as given. No change request exists to shepherd.',
     });
   }
 
@@ -201,7 +180,7 @@ export function evaluateHandoff(input = {}) {
     });
   }
 
-  if (!TERMINAL_SHEPHERD_DISPOSITIONS.has(result?.disposition)) {
+  if (!isTerminalDisposition(result?.disposition)) {
     // A dispatch nobody waited on looks exactly like this. Reporting
     // completion here would be reporting somebody else's unfinished work.
     return notPerformed('no-terminal-disposition', {
@@ -211,66 +190,117 @@ export function evaluateHandoff(input = {}) {
     });
   }
 
-  const freshness = evaluateFreshness(target, observedBase);
+  const receipt = validateFreshnessReceipt(result.receipt);
+  if (!receipt.valid) {
+    // A disposition with no usable receipt cannot be checked against anything
+    // later, so it is an unverifiable claim rather than evidence.
+    return notPerformed('result-receipt-incomplete', {
+      target,
+      disposition: result.disposition,
+      unmet: receipt.defects,
+      humanAction: humanActionFor(target, 'shepherd returned no usable freshness receipt'),
+    });
+  }
+
+  const { freshness, drifted } = compareObservation(result.receipt, input.observedBase);
+  const policy = effectivePolicy(result.receipt, target);
+
   if (freshness === 'stale') {
     return notPerformed('stale-disposition', {
       target,
       disposition: result.disposition,
       freshness,
+      policy,
       requiresReinvocation: true,
-      unmet: [
-        `receipt: base ${target.receipt.baseSha} was observed, and the base is now ${observedBase.baseSha}`,
-      ],
-      humanAction: humanActionFor(target, 'the base advanced after shepherd observed it'),
+      unmet: drifted.map((entry) => `observation: ${entry} since shepherd observed it`),
+      humanAction: humanActionFor(target, 'the change request moved after shepherd observed it'),
     });
   }
 
-  return performed('completed', `shepherd-${result.disposition}`, {
+  if (freshness === 'unobserved') {
+    return notPerformed('freshness-unobserved', {
+      target,
+      disposition: result.disposition,
+      freshness,
+      policy,
+      requiresReinvocation: true,
+      unmet: ['observation: the base and head were not re-read after shepherd returned'],
+      humanAction: `${target.changeRequest} (branch ${target.headBranch}) has no verified post-shepherd observation: re-read the base and head, then re-check or invoke shepherd again.`,
+    });
+  }
+
+  if (
+    !['mergeable-and-green', 'no-op-mergeable-and-green'].includes(result.disposition)
+    && !nonEmptyString(result.nextHumanAction)
+  ) {
+    return notPerformed('result-action-incomplete', {
+      target,
+      disposition: result.disposition,
+      freshness,
+      policy,
+      unmet: [`result.nextHumanAction is absent for ${result.disposition}`],
+      humanAction: humanActionFor(target, `shepherd returned ${result.disposition} without a next human action`),
+    });
+  }
+
+  return satisfied('completed', `shepherd-${result.disposition}`, {
     target,
     disposition: result.disposition,
     freshness,
-    humanAction: result.disposition === 'mergeable-and-green' ? null : result.nextHumanAction ?? null,
+    policy,
+    humanAction: ['mergeable-and-green', 'no-op-mergeable-and-green'].includes(result.disposition)
+      ? null
+      : result.nextHumanAction,
   });
 }
 
 /**
- * True only when the handoff either happened or was never asked for.
+ * True when the handoff imposes no bar on the run's reported status: it either
+ * completed, or it was never required.
  *
- * Callers ask this instead of comparing strings, because the one mistake worth
- * preventing is a run reporting itself shipped while its change request has no
- * owner.
+ * This is deliberately not called permission to report `shipped-to-review`. A
+ * run that published nothing satisfies the handoff and still has no change
+ * request to report; publication carries that contract, and one function
+ * answering both questions is how a failed publication would slip through as a
+ * delivery.
  */
-export function mayReportShipped(evaluation) {
+export function handoffSatisfied(evaluation) {
   return evaluation?.handoff === 'completed' || evaluation?.handoff === 'not-required';
 }
 
-function performed(handoff, state, extra = {}) {
-  return {
-    handoff,
-    state,
-    shipStatus: null,
-    disposition: null,
-    freshness: 'unobserved',
-    requiresReinvocation: false,
-    unmet: [],
-    humanAction: null,
-    ...extra,
-  };
+/** The shepherd receipt states the policy it observed; the target only records what was known earlier. */
+function effectivePolicy(receipt, target) {
+  const observed = normalizeUpToDatePolicy(receipt?.upToDatePolicy);
+  return observed === 'unobserved' ? normalizeUpToDatePolicy(target?.upToDatePolicy) : observed;
 }
 
-function notPerformed(state, { constrainsStatus = true, ...extra } = {}) {
+function satisfied(handoff, state, extra = {}) {
+  return { ...base(), handoff, state, ...extra };
+}
+
+function notPerformed(state, extra = {}) {
   return {
+    ...base(),
     handoff: 'not-performed',
     state,
     // `blocked` names this run, not the change request: the delivery is not
     // finished, because the step that finishes it did not happen.
-    shipStatus: constrainsStatus ? 'blocked' : null,
+    shipStatus: 'blocked',
+    ...extra,
+  };
+}
+
+function base() {
+  return {
+    handoff: 'not-required',
+    state: null,
+    shipStatus: null,
     disposition: null,
     freshness: 'unobserved',
+    policy: 'unobserved',
     requiresReinvocation: false,
     unmet: [],
     humanAction: null,
-    ...extra,
   };
 }
 

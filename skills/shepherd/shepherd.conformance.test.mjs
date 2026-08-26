@@ -6,7 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { classifyConflictPath, conflictResolutionAction, validateConflictPolicy } from './_atoms/conflict-policy/conflict-policy.mjs';
-import { classifyShepherdPlan, classifyTerminalDisposition, freshnessReceipt } from './_atoms/shepherd-disposition/shepherd-disposition.mjs';
+import {
+  classifyShepherdPlan,
+  classifyTerminalDisposition,
+  freshnessReceipt,
+  isTerminalDisposition,
+} from './_atoms/shepherd-disposition/shepherd-disposition.mjs';
 import {
   detectProvider,
   normalizeUpToDatePolicy,
@@ -34,6 +39,7 @@ function flat(relativePath) {
 function greenSignals(overrides = {}) {
   return {
     provider: { status: 'supported-provider', provider: 'example' },
+    observedAt: '2026-08-25T22:05:00Z',
     preflight: { status: 'ok' },
     rebase: { status: 'completed', baseSha: 'base-sha' },
     regeneration: { status: 'completed' },
@@ -304,29 +310,125 @@ test('an advanced base is a trigger when the base requires the branch to contain
   // Ancestry settles it in the other direction: a branch that already contains
   // the base satisfies the policy however far the base moved.
   const alreadyContains = classifyShepherdPlan(greenSignals({
-    base: { moved: true, behind: false },
+    base: { moved: true },
     basePolicy: { upToDate: 'required' },
+    mergeability: {
+      state: 'mergeable',
+      isDraft: false,
+      baseSha: 'base-sha',
+      headSha: 'head-sha',
+      behind: false,
+    },
     operatorRequest: { rebase: false },
     requiredChecks: [{ name: 'validate', expired: false }],
   }));
   assert.equal(alreadyContains.disposition, 'no-op-mergeable-and-green');
   assert.equal(alreadyContains.shouldRebase, false);
+  assert.equal(alreadyContains.receipt.complete, true);
+  assert.equal(alreadyContains.receipt.baseSha, 'base-sha');
+  assert.equal(alreadyContains.receipt.headSha, 'head-sha');
+  assert.ok(isTerminalDisposition(alreadyContains.disposition));
+
+  const gitAlreadyContains = classifyShepherdPlan(greenSignals({
+    base: { moved: true, behind: false },
+    basePolicy: { upToDate: 'required' },
+    mergeability: {
+      state: 'mergeable',
+      isDraft: false,
+      baseSha: 'base-sha',
+      headSha: 'head-sha',
+    },
+    operatorRequest: { rebase: false },
+    requiredChecks: [{ name: 'validate', expired: false }],
+  }));
+  assert.equal(gitAlreadyContains.disposition, 'no-op-mergeable-and-green');
+  assert.equal(gitAlreadyContains.shouldRebase, false);
+
+  const undated = greenSignals({
+    base: { moved: true },
+    basePolicy: { upToDate: 'not-required' },
+    operatorRequest: { rebase: false },
+    requiredChecks: [{ name: 'validate', expired: false }],
+  });
+  delete undated.observedAt;
+  const incomplete = classifyShepherdPlan(undated);
+  assert.equal(incomplete.disposition, 'blocked');
+  assert.equal(incomplete.reason, 'incomplete-freshness-receipt');
+  assert.equal(incomplete.action, 'observe-state');
+  assert.equal(incomplete.shouldRebase, false);
+  assert.equal(incomplete.receipt.complete, false);
 });
 
-test('a branch behind a base that requires containing it is never mergeable-and-green', () => {
+test('under a required policy the branch must be known to contain the base', () => {
+  const mergeability = (behind) => ({
+    state: 'mergeable',
+    isDraft: false,
+    baseSha: 'base-sha',
+    headSha: 'head-sha',
+    ...(behind === undefined ? {} : { behind }),
+  });
+
   const behind = classifyTerminalDisposition(greenSignals({
     basePolicy: { upToDate: 'required' },
-    mergeability: { state: 'mergeable', isDraft: false, baseSha: 'base-sha', headSha: 'head-sha', behind: true },
+    mergeability: mergeability(true),
   }));
   assert.equal(behind.disposition, 'blocked');
   assert.equal(behind.reason, 'base-advanced-under-required-up-to-date-policy');
 
-  // Without the policy, or with it unobserved, the same evidence is green.
-  for (const basePolicy of [undefined, { upToDate: 'not-required' }, { upToDate: 'unobserved' }]) {
+  // Being behind and not knowing are different facts, and neither is green.
+  // Treating an unread state as "not behind" is how a change request that
+  // cannot merge gets reported as mergeable.
+  for (const unread of [undefined, null, 'no', 0, 'false']) {
     const result = classifyTerminalDisposition(greenSignals({
-      basePolicy,
-      mergeability: { state: 'mergeable', isDraft: false, baseSha: 'base-sha', headSha: 'head-sha', behind: true },
+      basePolicy: { upToDate: 'required' },
+      mergeability: mergeability(unread),
     }));
+    assert.equal(result.disposition, 'blocked', `behind=${String(unread)} must not read as contained`);
+    assert.equal(result.reason, 'up-to-date-state-unobserved-under-required-policy');
+  }
+
+  // Only a settled `false` clears it.
+  assert.equal(
+    classifyTerminalDisposition(greenSignals({
+      basePolicy: { upToDate: 'required' },
+      mergeability: mergeability(false),
+    })).disposition,
+    'mergeable-and-green',
+  );
+  assert.equal(
+    classifyTerminalDisposition(greenSignals({
+      base: { behind: false },
+      basePolicy: { upToDate: 'required' },
+      mergeability: mergeability(undefined),
+    })).disposition,
+    'mergeable-and-green',
+  );
+
+  for (const [providerBehind, gitBehind, expectedPlan, expectedTerminal] of [
+    [true, false, 'shepherd-required', 'blocked'],
+    [false, true, 'no-op-mergeable-and-green', 'mergeable-and-green'],
+  ]) {
+    const conflictingSignals = greenSignals({
+      base: { moved: true, behind: gitBehind },
+      basePolicy: { upToDate: 'required' },
+      mergeability: mergeability(providerBehind),
+    });
+    assert.equal(
+      classifyShepherdPlan(conflictingSignals).disposition,
+      expectedPlan,
+      `provider behind=${providerBehind} must override git behind=${gitBehind} in planning`,
+    );
+    assert.equal(
+      classifyTerminalDisposition(conflictingSignals).disposition,
+      expectedTerminal,
+      `provider behind=${providerBehind} must override git behind=${gitBehind} at the terminal gate`,
+    );
+  }
+
+  // Without the policy, or with it unobserved, the same evidence is green:
+  // nothing about the base decides landability there.
+  for (const basePolicy of [undefined, { upToDate: 'not-required' }, { upToDate: 'unobserved' }]) {
+    const result = classifyTerminalDisposition(greenSignals({ basePolicy, mergeability: mergeability(true) }));
     assert.equal(result.disposition, 'mergeable-and-green');
   }
 });
@@ -346,13 +448,13 @@ test('an unobserved up-to-date policy is never treated as not-required', () => {
 
 test('every terminal disposition carries the snapshot it was observed against', () => {
   const result = classifyTerminalDisposition(greenSignals({
-    observedAt: '2026-08-25T20:35:56Z',
     basePolicy: { upToDate: 'required' },
+    mergeability: { state: 'mergeable', isDraft: false, baseSha: 'base-sha', headSha: 'head-sha', behind: false },
   }));
 
   assert.equal(result.disposition, 'mergeable-and-green');
   assert.deepEqual(result.receipt, {
-    observedAt: '2026-08-25T20:35:56Z',
+    observedAt: '2026-08-25T22:05:00Z',
     baseSha: 'base-sha',
     headSha: 'head-sha',
     upToDatePolicy: 'required',
@@ -360,12 +462,62 @@ test('every terminal disposition carries the snapshot it was observed against', 
     complete: true,
   });
 
-  // A receipt without an observation time cannot be compared with anything
-  // later, so it says so rather than looking like evidence.
-  assert.equal(freshnessReceipt(greenSignals()).complete, false);
+  // A receipt nobody can date or place is a claim rather than evidence, so it
+  // says so, and the disposition it accompanies is not green.
+  const undated = greenSignals();
+  delete undated.observedAt;
+  assert.equal(freshnessReceipt(undated).complete, false);
+  assert.equal(classifyTerminalDisposition(undated).disposition, 'blocked');
+  assert.equal(classifyTerminalDisposition(undated).reason, 'incomplete-freshness-receipt');
+
   assert.equal(freshnessReceipt({}).complete, false);
   assert.equal(freshnessReceipt({}).upToDatePolicy, 'unobserved');
   assert.equal(freshnessReceipt({}).provider, 'unobserved');
+});
+
+test('the terminal vocabulary is the shared one, including every provider condition', () => {
+  // A disposition this classifier can return that a consumer does not know is
+  // read as no ending at all, which is why the list has one home.
+  for (const status of [
+    'provider-unsupported',
+    'provider-tool-unsupported',
+    'provider-tool-missing',
+    'provider-tool-unauthenticated',
+  ]) {
+    const result = classifyTerminalDisposition(greenSignals({
+      provider: { status, provider: 'example', tool: 'cli' },
+      remoteChecks: undefined,
+      mergeability: undefined,
+    }));
+    assert.equal(result.disposition, status);
+    assert.ok(isTerminalDisposition(result.disposition), `${status} must be a shared terminal disposition`);
+    assert.ok(result.nextHumanAction, `${status} must name the next human action`);
+  }
+
+  for (const signals of [
+    greenSignals(),
+    greenSignals({ localValidation: { status: 'failed', evidenceComplete: true } }),
+    greenSignals({ push: { status: 'pushed-without-lease', headSha: 'head-sha' } }),
+    greenSignals({ conflicts: [{ kind: 'authored', path: 'src/a.ts' }] }),
+    {},
+  ]) {
+    assert.ok(
+      isTerminalDisposition(classifyTerminalDisposition(signals).disposition),
+      'every classified ending must be in the shared vocabulary',
+    );
+  }
+});
+
+test('every non-green terminal result names the next human action', () => {
+  for (const signals of [
+    greenSignals({ localValidation: { status: 'failed', evidenceComplete: true } }),
+    greenSignals({ push: { status: 'pushed-without-lease', headSha: 'head-sha' } }),
+    greenSignals({ conflicts: [{ kind: 'authored', path: 'src/a.ts' }] }),
+  ]) {
+    const result = classifyTerminalDisposition(signals);
+    assert.notEqual(result.disposition, 'mergeable-and-green');
+    assert.ok(result.nextHumanAction);
+  }
 });
 
 test('shepherd states plainly that it does not watch', () => {

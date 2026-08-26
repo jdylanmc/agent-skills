@@ -25,7 +25,8 @@ used-by: ["shepherd/_molecules/pr-shepherding/pr-shepherding.md"]
 | `push` | Whether the branch was pushed with `--force-with-lease`. |
 | `remoteChecks` | Provider validation status after the push, normalized by an adapter when available. |
 | `basePolicy` | Whether the base requires a change request to contain it before merging — `required`, `not-required`, or `unobserved`. |
-| `base` | Whether the base moved, and whether the branch is behind it by git ancestry. |
+| `base` | Whether the base moved, plus git ancestry's `behind` result when available. |
+| `mergeability` | Provider mergeability, draft state, base/head SHAs, and the provider's `behind` result when available. |
 
 ## Terminal Dispositions
 
@@ -34,10 +35,17 @@ used-by: ["shepherd/_molecules/pr-shepherding/pr-shepherding.md"]
 | `mergeable-and-green` | Preflight succeeded, rebase completed onto the recorded base SHA, regeneration completed or was not applicable, local declared validation passed with complete evidence, push used an explicit SHA-pinned lease, post-push mergeability matches the expected base and head, and every required remote check passed. |
 | `no-op-mergeable-and-green` | The base advanced, but the pull request is still mergeable and green, no required check expired, and the operator did not ask for a rebase; do not rebase or force-push. |
 | `needs-human` | A semantic or ambiguous conflict, unsafe worktree state, missing policy decision, or permission boundary requires a human. |
+| `provider-unsupported` | The git-level core completed, but no hosted adapter matched the inspected remotes or configuration. |
+| `provider-tool-unsupported` | The git-level core completed, but the matched host family has no official-tool adapter yet. |
 | `provider-tool-missing` | The git-level core completed, but the matched provider's official CLI was unavailable, so hosted merge/review/check state could not be observed. |
 | `provider-tool-unauthenticated` | The git-level core completed, but the matched provider's official CLI was not authenticated, so hosted merge/review/check state could not be observed. |
-| `blocked` | The run could not proceed because of environment, cancellation, unavailable provider metadata required for the requested action, or another external blocker. |
+| `blocked` | The run could not proceed because of environment, cancellation, unavailable provider metadata required for the requested action, or another external blocker — including a branch behind a base that requires containing it, an unread up-to-date state under that policy, and a green result carrying an incomplete freshness receipt. |
 | `failing` | Rebase completed but local validation or remote continuous integration is red. |
+
+This table is the whole vocabulary, and it is defined once in the shared
+landability unit rather than restated by each consumer. A disposition missing
+from a consumer's copy is read as no ending at all, which is exactly what
+happened to `provider-tool-unsupported`.
 
 ## Planning Classification
 
@@ -64,6 +72,14 @@ So `basePolicy.upToDate: required` plus a base that advanced is a trigger, and
 `mergeable-and-green` is refused while the branch is known to be behind such a
 base.
 
+Under that policy the question must be **settled**, not assumed. A boolean
+provider `mergeability.behind` result is preferred; otherwise a boolean
+`base.behind` result from git ancestry settles the same question. `false` is
+the only answer that clears it; `true` blocks as
+`base-advanced-under-required-up-to-date-policy`, and an absent or non-boolean
+value blocks as `up-to-date-state-unobserved-under-required-policy`. Being
+behind and not knowing are different facts, and neither is green.
+
 Three values, never two. `unobserved` is not `not-required`: one says the policy
 was read and imposes nothing, the other says nobody could look. Only `required`
 triggers, so a repository whose base has no such policy — or where it could not
@@ -82,6 +98,19 @@ one moment. It is evidence about that moment and not durable permission. A
 caller holding a disposition after the base moved is holding a statement about a
 state that no longer exists, and the receipt is what lets it notice.
 
+**An incomplete receipt is not a formatting problem.** A green result nobody
+can date or place cannot be compared with anything later, so it blocks as
+`incomplete-freshness-receipt` rather than being reported as
+`mergeable-and-green`.
+
+The consumer of that receipt is a different skill, so its shape, its validation,
+and the comparison against a later observation all live in the shared
+landability unit.
+
+Every non-green terminal result also carries `nextHumanAction`. The deterministic
+classifier supplies the smallest action implied by its reason and defects, so a
+caller can hand the result to a person without inventing remediation prose.
+
 ## Classification Order
 
 1. Human decisions win first: semantic conflicts and unsafe policy gaps are
@@ -98,4 +127,5 @@ state that no longer exists, and the receipt is what lets it notice.
 A red suite never produces `mergeable-and-green`. A skipped, deleted, narrowed,
 or weakened suite is not green evidence. Missing remote checks are blocked, not
 success. A branch behind a base that requires containing it is not
-`mergeable-and-green`, however green everything else reads.
+`mergeable-and-green`, however green everything else reads, and neither is one
+whose position against that base was never read.
