@@ -145,6 +145,36 @@ beneath it rather than pasted at the top; the roast dispositions; the changelog
 status; and anything unresolved. Verbatim output is evidence a reviewer can
 expand, never the thing that buries the decision.
 
+## The Writing Component
+
+A skill is mostly prose, and the prose is the part that decides behaviour: a
+description is what routes a model, a boundary is what it declines, a
+completion criterion is what it treats as done. Changing a skill therefore
+changes agent-facing writing more often than it changes anything else, so this
+skill has a designated **writing component** rather than improvising wording
+inline.
+
+That component is `agent-whisperer` (issue 27), which reviews the prose surface
+of a skill — descriptions, references, boundaries, completion criteria — for the
+levers that decide whether material is reached and understood. It is invoked,
+never composed: reviewing writing is a component of changing a skill, the same
+way `skill-coach` is a component of creating one and `prompt-coach` is a
+component of optimizing a prompt.
+
+**The seam is declared here in prose and not yet in `requires-skills`, on
+purpose.** The validator resolves every `local` skill dependency against the
+skills that exist, and refuses an unresolved one whether it is required or
+optional. `agent-whisperer` lives on an unmerged branch, so declaring the edge
+today would fail graph validation for a skill that is not there. Until it
+lands, the prose surface is reviewed inside the roast, and the wording change is
+reported like any other part of the change.
+
+When `agent-whisperer` merges, one line completes the seam: add
+`{"id": "agent-whisperer", "source": "local", "required": false}` to
+`requires-skills` and invoke it on the prose surface before the roast. It stays
+optional for the same reason `changelog` is — the tool may be unavailable, not
+because reviewing the writing is optional by choice.
+
 ## Boundaries
 
 - **One existing skill per run.** It reinforces a single package and never

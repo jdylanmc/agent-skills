@@ -39,6 +39,15 @@ import {
   isWritableClass,
   resolveSkillTarget,
 } from './_atoms/reinforcement-target/reinforcement-target.mjs';
+import {
+  DECISIONS,
+  applyEvent as decisionApplyEvent,
+  assertDiffMatchesDecision,
+  createDecision,
+  requireIntentDecision,
+} from './_atoms/intent-decision/intent-decision.mjs';
+import * as reinforceRoast from './_atoms/reinforce-roast/reinforce-roast.mjs';
+import * as sharedLedger from '../create-skill/_atoms/roast-round-ledger/roast-round-ledger.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -160,6 +169,7 @@ test('the edit grant is bounded to this package: no foreign unit carries write a
     '_base/_atoms/chronicle-replay/chronicle-replay.md',
     '_base/_molecules/chronicler/chronicler.md',
     'reinforce-skill/SKILL.md',
+    DECISION,
     NARROW,
     ROAST_ATOM,
     TARGET,
@@ -363,6 +373,132 @@ test('the write-boundary guard it relies on actually behaves', () => {
   assert.equal(dirty.refused.length, 2, 'the doctrine and foreign-skill paths are refused');
   const clean = auditDiff(REPOSITORY_ROOT, 'roast', ['skills/roast/SKILL.md']);
   assert.equal(clean.clean, true);
+});
+
+test('the intent decision is a gate that refuses, not a step that can be skipped', () => {
+  // The two rules that decide whether "intent first" is real: a run cannot
+  // reach a pull request undecided, and a preserves-intent run owns no write.
+  const undecided = createDecision({ skill: 'reinforce-skill', priorIntent: '# Intent: x\n' });
+  assert.equal(requireIntentDecision(undecided).requirement, 'blocked');
+  assert.equal(requireIntentDecision(null).requirement, 'blocked');
+  assert.deepEqual(DECISIONS, ['changes-intent', 'preserves-intent']);
+
+  const preserved = decisionApplyEvent(undecided, {
+    type: 'decide',
+    decision: 'preserves-intent',
+    reasoning: 'a bug fix that does not change what the skill is for',
+  });
+  let refusal = null;
+  try {
+    assertDiffMatchesDecision(preserved, ['skills/reinforce-skill/intent.md']);
+  } catch (error) {
+    refusal = error.code;
+  }
+  assert.equal(refusal, 'undisclosed_intent_edit', 'a narrow change may not widen into an intent edit');
+
+  assert.match(flat(DECISION), /Required Files/);
+  assert.match(flat(DECISION), /state machine that refuses/);
+  assert.match(flat(DECISION), /A Narrow Change May Not Widen Into an Intent Edit/);
+});
+
+test('the roast gate drives create-skill\'s validated machine, not a second copy of its prose', () => {
+  // Issue 47 says a reinforcement resolves findings under the same rules
+  // create-skill uses. Here those rules are the same functions, not similar
+  // sentences, so "the same rules" is checkable.
+  assert.equal(reinforceRoast.applyEvent, sharedLedger.applyEvent);
+  assert.equal(reinforceRoast.createLedger, sharedLedger.createLedger);
+  assert.deepEqual(reinforceRoast.MANDATORY_PRIORITIES, ['Must fix']);
+  assert.equal(reinforceRoast.ROUNDS_BEFORE_RECONFIRMATION, 3);
+
+  assert.match(flat(ROAST_ATOM), /Required Files/);
+  assert.match(flat(ROAST_ATOM), /reuses\*\*\s+`create-skill`'s validated remediation ledger rather than restating it/);
+});
+
+test('a remediation correction may not wander into a neighbouring skill or a shared unit', () => {
+  const code = (fn) => {
+    try {
+      fn();
+    } catch (error) {
+      return error.code;
+    }
+    return null;
+  };
+
+  // The shared gate permits these; the reinforcement layer is what refuses them.
+  assert.equal(sharedLedger.assertGateIntegrity(['skills/roast/SKILL.md']).status, 'intact');
+  assert.equal(
+    code(() => reinforceRoast.assertReinforcementChangeSet(REPOSITORY_ROOT, 'reinforce-skill', [
+      'skills/roast/SKILL.md',
+    ])),
+    'out_of_target',
+  );
+  assert.equal(
+    code(() => reinforceRoast.assertReinforcementChangeSet(REPOSITORY_ROOT, 'reinforce-skill', [
+      'skills/_base/_molecules/chronicler/chronicler.md',
+    ])),
+    'out_of_target',
+  );
+  assert.equal(
+    code(() => reinforceRoast.assertReinforcementChangeSet(REPOSITORY_ROOT, 'reinforce-skill', [
+      'skills/reinforce-skill/SKILL.md',
+      'AGENTS.md',
+    ])),
+    'gate_weakened',
+  );
+  assert.equal(
+    reinforceRoast.assertReinforcementChangeSet(REPOSITORY_ROOT, 'reinforce-skill', [
+      'skills/reinforce-skill/SKILL.md',
+      '.github/workflows/validate-skills.yml',
+    ]).status,
+    'intact',
+  );
+});
+
+test('a reinforcement is never complete on a roast that did not happen', () => {
+  const ledger = reinforceRoast.createLedger({ packagePath: 'skills/reinforce-skill', head: 'h1' });
+  const never = reinforceRoast.assertRoastComplete(ledger);
+  assert.equal(never.remediation, 'blocked');
+  assert.equal(never.roast, 'none');
+
+  reinforceRoast.applyEvent(ledger, { type: 'roast-recorded', head: 'h1', findings: [] });
+  assert.equal(reinforceRoast.assertRoastComplete(ledger).remediation, 'clean');
+
+  reinforceRoast.applyEvent(ledger, {
+    type: 'correction',
+    head: 'h2',
+    changedPaths: ['skills/reinforce-skill/SKILL.md'],
+  });
+  assert.equal(
+    reinforceRoast.assertRoastComplete(ledger).remediation,
+    'blocked',
+    'a correction that moves the head forces a re-roast before completion',
+  );
+});
+
+test('agent-whisperer is declared as the writing component, and why the edge is not frontmatter yet', () => {
+  const entry = flat(ENTRY);
+  assert.match(entry, /## The Writing Component/);
+  assert.match(entry, /That component is `agent-whisperer`/);
+  assert.match(entry, /It is invoked,\s+never composed/);
+
+  // The seam is prose because the validator refuses an unresolved local skill
+  // dependency, required or not. Pinning the reason keeps a later revision from
+  // "fixing" it by inventing an edge that fails the build.
+  assert.match(entry, /not yet in `requires-skills`, on\s+purpose/);
+  assert.match(entry, /refuses an unresolved one whether it is required or\s+optional/);
+  assert.match(entry, /"id": "agent-whisperer", "source": "local", "required": false/);
+
+  // And it genuinely is absent today, which is what makes the prose seam correct.
+  const skills = fs.readdirSync(SKILLS_ROOT, { withFileTypes: true })
+    .filter((entry_) => entry_.isDirectory())
+    .map((entry_) => entry_.name);
+  assert.ok(
+    !skills.includes('agent-whisperer'),
+    'agent-whisperer now exists: complete the seam by declaring the requires-skills edge',
+  );
+
+  // The intent states the requirement in plain words, without naming structure.
+  assert.match(flat('reinforce-skill/intent.md'), /Have the writing reviewed by whatever reviews writing for\s+agents/);
 });
 
 test('the package carries a plain human-readable intent', () => {

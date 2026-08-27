@@ -46,6 +46,12 @@ gets corrected here rather than introduced here.
   same reviewable change. When there is no changelog, or the changelog tool
   cannot run, say so and carry on — recording is expected, not a gate that
   blocks an otherwise good change.
+- **Have the writing reviewed by whatever reviews writing for agents.** Most of
+  a skill is prose, and the prose is the part that decides what a model reaches
+  for and what it declines, so changing a skill changes agent-facing writing more
+  often than it changes anything else. That review belongs to the component that
+  does it, not to a wording guess made in passing here. When no such component is
+  available, say so and let the roast cover the prose.
 - **Open a pull request with the evidence and stop.**
 
 ## What it must refuse

@@ -3,7 +3,7 @@ name: reinforce-roast
 description: Roast the reinforced skill and resolve findings under the same rules create-skill uses — Must fix resolved mandatorily, everything arguable judged by a fresh-context rubber duck, re-roast after every head-changing correction, stop every three rounds for the operator — treating the roast as review and never as approval.
 level: atom
 allowed-tools: ["read","search","execute","task"]
-includes: []
+includes: ["reinforce-skill/_atoms/reinforce-roast/reinforce-roast.mjs"]
 composes: []
 used-by: ["reinforce-skill/_molecules/skill-reinforcement/skill-reinforcement.md"]
 ---
@@ -17,6 +17,34 @@ to a new package, so a change is held to the same bar as a creation.
 ```text
 roast the head -> route by priority -> resolve or duck -> re-roast the new head
 ```
+
+## Required Files
+
+1. [Deterministic remediation gate](./reinforce-roast.mjs)
+
+The rules below are mechanical, not aspirational. The gate **reuses**
+`create-skill`'s validated remediation ledger rather than restating it, so
+"under the same rules `create-skill` uses" is a fact rather than a claim: the
+same machine binds a roast to the head it reviewed, keeps a `Must fix` finding
+out of the rubber duck's reach, refuses a `Should fix` or `Consider` finding
+that has no recorded verdict, and enters `awaiting-operator` after three closed
+rounds, refusing every event but the operator's answer.
+
+One rule is genuinely different here and is layered on top. `create-skill`
+writes a new package into empty space, so its change-set check asks only whether
+a correction edited a repository gate. A reinforcement mutates a working package
+that sits beside every other skill, so a correction made to silence a finding
+could reach for a *neighbour* — another skill's `SKILL.md`, a shared `_base`
+unit, the intent of a skill nobody asked about. The shared gate permits all
+three. `assertReinforcementChangeSet` refuses them by layering the
+reinforcement write boundary over the gate check, so a remediation change set
+must answer both questions: did it weaken a gate, and did it stay inside the one
+skill being reinforced.
+
+Reusing another unit's script is a code dependency, not unit composition; the
+two are separate graphs. The price is that a change to the shared ledger changes
+what a reinforcement is held to, so the pinned guarantees are asserted beside
+this atom and a drift fails the build for a human to read.
 
 ## Inputs
 
@@ -64,7 +92,10 @@ correction that resolved it, what the duck declined and its reasoning, what
 awaits a human, the rounds closed, and anything unresolved with a bounded way
 forward. A `clean` result means every finding from the current-head roast is
 addressed — fixed, duck-declined, human-deferred, or recorded as unresolved
-under a non-complete status.
+under a non-complete status. `assertRoastComplete` decides that from the
+ledger's own record rather than from anyone's recollection, and it fails closed
+on a missing roast, a stale one, an open finding, an outstanding operator pause,
+and a halted loop.
 
 ## Boundaries
 

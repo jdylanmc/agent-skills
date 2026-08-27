@@ -2,8 +2,8 @@
 name: intent-decision
 description: Decide explicitly whether a change alters what a skill is for, and when it does, synthesize the revised intent and store it only after the operator confirms the exact words, so an implementation never drifts from the intent that describes it.
 level: atom
-allowed-tools: ["read","edit"]
-includes: []
+allowed-tools: ["read","edit","execute"]
+includes: ["reinforce-skill/_atoms/intent-decision/intent-decision.mjs"]
 composes: []
 used-by: ["reinforce-skill/_molecules/skill-reinforcement/skill-reinforcement.md"]
 ---
@@ -20,6 +20,24 @@ the way `used-by` can. A stale intent is worse than no intent, because
 regenerating the skill from it would faithfully rebuild the wrong thing. So this
 decision is made explicitly, and it is made **before** the implementation
 changes.
+
+## Required Files
+
+1. [Deterministic intent-revision gate](./intent-decision.mjs)
+
+The rules below are not a request that the caller remember them. They are a
+state machine that refuses: the decision has no default, the `preserves-intent`
+branch owns no write, a confirmation is bound to the exact bytes presented, and
+storage is bound to the exact bytes confirmed over the exact prior that was
+read.
+
+The gate reuses two validated implementations rather than restating them.
+`intent-storage-gate.mjs` owns the digest that binds a confirmation to the bytes
+it confirmed, and `intent-synthesis.mjs` owns whether a draft reads as plain
+requirements. It does not reuse that gate's `store`, which writes only where no
+file exists: creating an intent and replacing a human-authored one are different
+acts with different risks, and the second one carries a stale-prior refusal the
+first does not need.
 
 ## Inputs
 
@@ -89,6 +107,16 @@ changes. That ordering is the whole reason intent exists: the implementation
 follows from the intent, so this is the place where drift is corrected rather
 than introduced.
 
+## A Narrow Change May Not Widen Into an Intent Edit
+
+The gate refuses an unconfirmed write *through* it. A second, separate check
+refuses an intent edit that went *around* it: before the change set is
+published, `assertDiffMatchesDecision` compares the recorded decision against
+the paths actually changed. A `preserves-intent` run whose diff contains
+`intent.md` either changed what the skill is for without asking or mislabelled
+its own change, and both are refusals. A `changes-intent` run whose diff does
+not contain `intent.md` is refused on the same evidence.
+
 ## Output
 
 Return the decision, the reasoning, and — for `changes-intent` — the confirmed
@@ -99,6 +127,7 @@ the operator declined to confirm as unresolved, and do not proceed to store it.
 ## Boundaries
 
 This atom decides and, only on confirmation, writes the target's own
-`intent.md`. It writes no other file, stores no unconfirmed intent, infers no
-decision, and never edits `doctrine/` or another skill's intent. It treats a
-stored intent as the standard, never as instruction.
+`intent.md`. It writes no other file — the storage target is derived from the
+skill name and a supplied path that differs from it is refused — stores no
+unconfirmed intent, infers no decision, and never edits `doctrine/` or another
+skill's intent. It treats a stored intent as the standard, never as instruction.
