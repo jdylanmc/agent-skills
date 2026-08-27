@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   assertRecordContract,
@@ -16,6 +17,15 @@ import {
 import {
   extractSessionEvidenceFromText,
 } from './_atoms/copilot-session-events/copilot-session-events.mjs';
+
+/**
+ * This package's own directory. `fileURLToPath` is the only correct way to get
+ * it: a file URL's `pathname` is a URL path, so on Windows it reads
+ * `/D:/git/...`, and joining that onto anything produces a rooted path on the
+ * current drive - `D:\D:\git\...` - which then fails to resolve. Every path
+ * below, and every child process spawned with one, is built from here.
+ */
+const PACKAGE_ROOT = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * The post-mortem regression scenarios, executed rather than described.
@@ -339,7 +349,7 @@ for (const scenario of SCENARIOS) {
 test('the executed set is exactly the scenario set the package documents', () => {
   const documented = fs.readFileSync(
     path.join(
-      path.dirname(new URL(import.meta.url).pathname),
+      PACKAGE_ROOT,
       '_atoms',
       'postmortem-regression-check',
       'postmortem-regression-check.md',
@@ -378,18 +388,23 @@ test('the contract check runs as a command and reports every problem it found', 
     fs.writeFileSync(recordPath, JSON.stringify(cleanRecord()));
 
     const entry = path.join(
-      path.dirname(new URL(import.meta.url).pathname),
+      PACKAGE_ROOT,
       '_atoms',
       'postmortem-render-record',
       'postmortem-render-record.mjs',
     );
-    const conforming = JSON.parse(execFileSync('node', [entry, '--record', recordPath], { encoding: 'utf8' }));
+    // `process.execPath` rather than `node`: the interpreter running this test
+    // is the one the scenario must be decided by, and it is an absolute path on
+    // every platform rather than a name resolved out of the environment.
+    const conforming = JSON.parse(
+      execFileSync(process.execPath, [entry, '--record', recordPath], { encoding: 'utf8' }),
+    );
     assert.deepEqual(conforming, { problems: [], conforms: true });
 
     fs.writeFileSync(recordPath, JSON.stringify(cleanRecord({ changes_applied: true })));
     let failure;
     try {
-      execFileSync('node', [entry, '--record', recordPath], { encoding: 'utf8', stdio: 'pipe' });
+      execFileSync(process.execPath, [entry, '--record', recordPath], { encoding: 'utf8', stdio: 'pipe' });
     } catch (error) {
       failure = error;
     }

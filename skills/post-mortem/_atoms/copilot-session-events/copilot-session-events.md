@@ -161,6 +161,8 @@ always shows which source it came from.
 | `invalid_record` | The record carries no event type. |
 | `unrecognized_event` | The event type is outside the supported vocabulary. |
 | `unmapped_event` | The adapter records the event but maps it to no neutral evidence kind. |
+| `detail_withheld` | A published detail field held a filesystem path and was withheld. |
+| `skill_detail_withheld` | A skill invocation carried a field the ledger may not publish, such as a name that is a filesystem path. |
 | `schema_drift` | A supported event no longer carries a field the reader depends on. |
 | `session_identity_contradiction` | The log claims a different session than the one whose identity was proved. |
 | `session_identity_unpublishable` | The recorded session identity is a filesystem path and was withheld. |
@@ -202,6 +204,22 @@ Anything other than `complete` caps confidence at **Moderate** for every finding
 that depends on the affected records. This cap compounds with the caps declared
 for the current session and for any selected Skill Run Log, and the most
 restrictive cap wins.
+
+Projecting the reading into the neutral ledger can raise limitations the reader
+never saw, because withholding happens where publication happens. So the ledger
+decides its own completeness after every one of its limitations is appended,
+by the same rule: a compaction stays `compacted`, any remaining limitation
+makes it `partial`, and only a ledger carrying none is `complete`. A ledger that
+reported a limitation and still called itself complete is refused by the seam's
+contract, so this is a correctness rule rather than a presentation choice.
+
+**One unpublishable field costs that field, not the reading.** A skill name, an
+agent name, or any other whitelisted field can turn out to be a filesystem
+location, because it was chosen by whatever the runtime loaded. The field is
+withheld and a limitation is stated against the anchor it came from; the
+invocation keeps its anchor and its publishable fields, and a skill whose name
+could not be published is listed under a fixed stand-in name rather than
+dropped from the record of what the session ran.
 
 ## Output
 

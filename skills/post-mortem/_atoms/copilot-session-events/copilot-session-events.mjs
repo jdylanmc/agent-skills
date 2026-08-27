@@ -180,6 +180,64 @@ const NEUTRAL_DETAIL_FIELDS = [
 ];
 
 /**
+ * The fields a skill invocation publishes beside its anchor. `name` is handled
+ * apart from these because the ledger requires every skill entry to carry one,
+ * so an unpublishable name is replaced rather than left absent.
+ */
+const SKILL_INVOCATION_FIELDS = ['source', 'trigger', 'within_subagent'];
+
+/** Published in place of a skill name the ledger may not carry. */
+export const UNPUBLISHABLE_SKILL_NAME = 'unpublishable_name';
+
+/**
+ * A value the ledger may publish as a detail. Everything that reaches here has
+ * already been through `safeString`, so its length is bounded and its control
+ * characters are gone; what is still in question is its shape, and a filesystem
+ * location is the shape that may not be published.
+ */
+function isPublishableDetailValue(value) {
+  if (value === null || typeof value === 'boolean' || typeof value === 'number') {
+    return true;
+  }
+  return typeof value === 'string' && !isPathShaped(value);
+}
+
+/**
+ * Sanitizes one skill invocation for publication.
+ *
+ * A skill name is chosen by whatever the runtime loaded, so it is untrusted
+ * input like every other field read out of a log and can be a filesystem
+ * location. Publishing it would leak a path, and because the seam refuses any
+ * ledger that carries one, publishing it would also cost the entire reading
+ * over a single field. Dropping the invocation instead would understate what
+ * the session ran. So the unpublishable field is withheld, the invocation keeps
+ * its anchor, and the caller states the withholding against that anchor.
+ */
+function publishableInvocation(invocation) {
+  const withheld = [];
+  const namePublishable = typeof invocation.name === 'string'
+    && invocation.name.trim() !== ''
+    && !isPathShaped(invocation.name);
+  if (!namePublishable) {
+    withheld.push('name');
+  }
+  const published = {
+    anchor: invocation.anchor,
+    name: namePublishable ? invocation.name : UNPUBLISHABLE_SKILL_NAME,
+  };
+  for (const field of SKILL_INVOCATION_FIELDS) {
+    const value = invocation[field] ?? null;
+    if (isPublishableDetailValue(value)) {
+      published[field] = value;
+      continue;
+    }
+    withheld.push(field);
+    published[field] = null;
+  }
+  return { invocation: published, withheld };
+}
+
+/**
  * The identifier a ledger publishes for its source. An absolute path is never
  * published: a post-mortem record is read by people who did not run the
  * session, and a machine path is both useless to them and more than they were
@@ -252,6 +310,29 @@ export function toEvidenceLedger(reading, resolution = null) {
     entries.push({ anchor: event.anchor, kind, at: event.timestamp ?? null, detail });
   }
 
+  const skills = [];
+  for (const invocation of reading.skills.invocations) {
+    const { invocation: published, withheld } = publishableInvocation(invocation);
+    if (withheld.length > 0) {
+      limitations.push({
+        code: 'skill_detail_withheld',
+        anchor: published.anchor,
+        detail: `${withheld.join(', ')} held an unpublishable value and ${withheld.length === 1 ? 'was' : 'were'} not published for this skill invocation`,
+      });
+    }
+    skills.push(published);
+  }
+
+  // Completeness is decided last here for the same reason the reading decides
+  // it last: a ledger that withheld a field is not complete, whatever the
+  // reading it was built from called itself, and the contract refuses a
+  // complete ledger that carries a limitation. A compaction is a boundary this
+  // stage cannot undo, so it survives; every other verdict follows the
+  // limitations this ledger actually carries.
+  const completeness = reading.evidence_completeness === 'compacted'
+    ? 'compacted'
+    : (limitations.length === 0 ? 'complete' : 'partial');
+
   return {
     ledger_version: 1,
     provider: COPILOT_ADAPTER.id,
@@ -263,8 +344,8 @@ export function toEvidenceLedger(reading, resolution = null) {
       identity: resolution?.identity ?? null,
       identity_notes: resolution?.notes ?? [],
     },
-    completeness: reading.evidence_completeness,
-    confidence_cap: reading.confidence_cap,
+    completeness,
+    confidence_cap: completeness === 'complete' ? 'none' : 'moderate',
     counts: {
       operator_messages: reading.counts.operator_messages,
       agent_messages: reading.counts.agent_messages,
@@ -278,7 +359,7 @@ export function toEvidenceLedger(reading, resolution = null) {
       runtime_errors: reading.counts.session_errors,
     },
     entries,
-    skills: reading.skills.invocations,
+    skills,
     limitations,
     provider_native: { event_counts: publishableCounts(reading.counts.by_type) },
   };

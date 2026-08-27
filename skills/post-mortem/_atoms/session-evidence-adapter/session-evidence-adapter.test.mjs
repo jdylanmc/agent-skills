@@ -20,6 +20,7 @@ import {
   selectProvider,
   unsupportedProviderRecommendation,
 } from './session-evidence-adapter.mjs';
+import { UNPUBLISHABLE_SKILL_NAME } from '../copilot-session-events/copilot-session-events.mjs';
 
 const SEAM = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -684,6 +685,115 @@ test('an adapter reading a hostile log publishes no key it did not sanitize', ()
     assert.ok(!published.includes('/etc/passwd'));
     assert.ok(!published.includes(scheme));
     assert.equal(collected.ledger.provider_native.event_counts.other_event_types, 2);
+  });
+});
+
+/**
+ * The two hostile shapes that once cost a whole reading, exercised through the
+ * production path: a real log on disk, read by the seam, contract-checked by
+ * the seam. Both are fields an attacker or a misconfigured runtime chooses, and
+ * in both the designed outcome is the same - the field is withheld, the
+ * withholding is stated, and everything else the session recorded survives.
+ */
+test('a skill invocation named by a filesystem path is withheld, and the rest of the ledger survives', () => {
+  withRoot((root) => {
+    const hostileName = '/Users/someone/.copilot/skills/roast';
+    const logPath = copilotLog(
+      root,
+      event('subagent.started', { toolCallId: 'c1', agentName: 'explore' }),
+      event('skill.invoked', { name: hostileName, source: 'project', trigger: 'user' }),
+      event('subagent.completed', { toolCallId: 'c1', agentName: 'explore' }),
+    );
+
+    const collected = collectSessionEvidence({
+      harness: 'copilot',
+      explicitPath: logPath,
+      environment: {},
+    });
+
+    // One unpublishable field costs that field, never the reading.
+    assert.equal(collected.status, 'collected');
+    assert.deepEqual(assertLedgerContract(collected.ledger), []);
+
+    const { ledger } = collected;
+    assert.equal(ledger.counts.skill_invocations, 1);
+    assert.deepEqual(ledger.skills, [{
+      anchor: 'E3',
+      name: UNPUBLISHABLE_SKILL_NAME,
+      source: 'project',
+      trigger: 'user',
+      within_subagent: 'explore',
+    }], 'the invocation keeps its anchor and every field that was publishable');
+
+    const invoked = ledger.entries.find((entry) => entry.kind === 'skill_invoked');
+    assert.equal(invoked.detail.name, undefined, 'the entry withholds the same field');
+    assert.equal(invoked.detail.source, 'project');
+
+    const withheld = ledger.limitations.filter((entry) => entry.code === 'skill_detail_withheld');
+    assert.deepEqual(withheld.map((entry) => entry.anchor), ['E3'], 'stated against the invocation');
+    assert.match(withheld[0].detail, /^name /);
+    assert.equal(ledger.completeness, 'partial');
+    assert.equal(ledger.confidence_cap, 'moderate');
+
+    const published = JSON.stringify(collected);
+    assert.ok(!published.includes(hostileName), 'the hostile name never reaches the ledger');
+    assert.ok(!published.includes('/Users/someone'));
+    assert.ok(!published.includes(root), 'and no other path does either');
+  });
+});
+
+test('a neutral detail holding a path is withheld, and the ledger stops calling itself complete', () => {
+  withRoot((root) => {
+    const hostileAgent = '/Users/someone/agents/explore';
+    const logPath = copilotLog(
+      root,
+      event('subagent.started', { toolCallId: 'c1', agentName: hostileAgent }),
+      event('subagent.completed', { toolCallId: 'c1', agentName: 'explore' }),
+    );
+
+    const collected = collectSessionEvidence({
+      harness: 'copilot',
+      explicitPath: logPath,
+      environment: {},
+    });
+
+    assert.equal(collected.status, 'collected');
+    assert.deepEqual(assertLedgerContract(collected.ledger), []);
+
+    const { ledger } = collected;
+    const started = ledger.entries.find((entry) => entry.kind === 'subagent_started');
+    assert.equal(started.detail.agent, undefined, 'the path-shaped agent name is withheld');
+    assert.equal(ledger.counts.subagent_calls, 1, 'the rest of the ledger is preserved');
+
+    // The reading itself was clean, so this limitation was raised at the ledger
+    // stage. A completeness verdict copied from the reading would have said
+    // complete while carrying it, which the contract refuses.
+    assert.deepEqual(ledger.limitations.map((entry) => entry.code), ['detail_withheld']);
+    assert.equal(ledger.limitations[0].anchor, started.anchor);
+    assert.equal(ledger.completeness, 'partial');
+    assert.equal(ledger.confidence_cap, 'moderate');
+
+    const published = JSON.stringify(collected);
+    assert.ok(!published.includes(hostileAgent), 'the hostile agent name never reaches the ledger');
+    assert.ok(!published.includes('/Users/someone'));
+    assert.ok(!published.includes(root));
+  });
+});
+
+test('a reading with nothing to withhold is still complete, and caps nothing', () => {
+  withRoot((root) => {
+    const logPath = copilotLog(root, event('skill.invoked', { name: 'roast', source: 'project' }));
+
+    const { ledger } = collectSessionEvidence({
+      harness: 'copilot',
+      explicitPath: logPath,
+      environment: {},
+    });
+
+    assert.deepEqual(ledger.limitations, []);
+    assert.equal(ledger.completeness, 'complete');
+    assert.equal(ledger.confidence_cap, 'none');
+    assert.deepEqual(ledger.skills.map((entry) => entry.name), ['roast']);
   });
 });
 
