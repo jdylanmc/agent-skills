@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 
 import { redactText } from '../../../_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.mjs';
@@ -73,6 +74,12 @@ const READ_CHUNK_BYTES = 262_144;
 export const MAX_EVENT_TYPES = 100;
 export const MAX_OPEN_OPERATIONS = 5_000;
 export const MAX_ANCHOR_LIST = 200;
+/** How many distinct tool names are named before the rest are counted together. */
+export const MAX_TOOL_NAMES = 100;
+/** How deep a nested subagent stack is tracked before nesting stops being claimed. */
+export const MAX_SUBAGENT_DEPTH = 100;
+/** Counted together when a tool name is unpublishable or past the budget. */
+export const OTHER_TOOL_NAMES = 'other_tools';
 /**
  * How many times one kind of limitation is listed before it is summarized.
  * A log with five thousand unfinished tool calls has one problem, not five
@@ -220,10 +227,27 @@ export function toEvidenceLedger(reading, resolution = null) {
       continue;
     }
     const detail = {};
+    let withheld = 0;
     for (const field of NEUTRAL_DETAIL_FIELDS) {
-      if (event[field] !== undefined && event[field] !== null) {
-        detail[field] = event[field];
+      const value = event[field];
+      if (value === undefined || value === null) {
+        continue;
       }
+      // A detail value that turns out to be a filesystem location is withheld
+      // rather than published, and withholding it costs one field instead of
+      // the whole ledger.
+      if (isPathShaped(value)) {
+        withheld += 1;
+        continue;
+      }
+      detail[field] = value;
+    }
+    if (withheld > 0) {
+      limitations.push({
+        code: 'detail_withheld',
+        anchor: event.anchor,
+        detail: `${withheld} detail field(s) held a filesystem path and were not published`,
+      });
     }
     entries.push({ anchor: event.anchor, kind, at: event.timestamp ?? null, detail });
   }
@@ -269,6 +293,13 @@ export function publishableCounts(byType) {
   const published = {};
   let folded = 0;
   for (const [key, count] of Object.entries(byType ?? {})) {
+    if (key === OTHER_EVENT_TYPES) {
+      // The reader may already have folded types into this bucket. Adding to it
+      // rather than assigning keeps both foldings, instead of one erasing the
+      // other and understating what the log held.
+      folded += count;
+      continue;
+    }
     if (isPublishableCountKey(key) && Object.keys(published).length < MAX_EVENT_TYPES) {
       published[key] = count;
       continue;
@@ -276,7 +307,7 @@ export function publishableCounts(byType) {
     folded += count;
   }
   if (folded > 0) {
-    published[OTHER_EVENT_TYPES] = folded;
+    published[OTHER_EVENT_TYPES] = (published[OTHER_EVENT_TYPES] ?? 0) + folded;
   }
   return published;
 }
@@ -549,6 +580,10 @@ function openRegularFile(resolved, selectedPath) {
  * running, by way of an in-use lock naming a live process. A stale lock, a
  * session with no log, and a directory that cannot be read are all simply not
  * candidates: this function never ranks, and never breaks a tie.
+ *
+ * Candidates are sessions, not locks. One session may be held by several live
+ * processes - a client and its helper, a resumed window - and counting those
+ * holders separately would invent an ambiguity between a session and itself.
  */
 function liveSessions(root, isAlive, maxSessions) {
   let entries;
@@ -562,7 +597,7 @@ function liveSessions(root, isAlive, maxSessions) {
     return { error: 'session_root_too_large', candidates: [], scanned: directories.length };
   }
 
-  const candidates = [];
+  const bySession = new Map();
   for (const directory of directories) {
     const sessionDirectory = path.join(root, directory.name);
     let files;
@@ -581,10 +616,18 @@ function liveSessions(root, isAlive, maxSessions) {
       if (!Number.isInteger(pid) || !isAlive(pid) || !isReadableFile(logPath)) {
         continue;
       }
-      candidates.push({ sessionId: directory.name, pid, path: logPath });
+      const existing = bySession.get(directory.name);
+      if (existing) {
+        existing.pids.push(pid);
+      } else {
+        bySession.set(directory.name, { sessionId: directory.name, pids: [pid], path: logPath });
+      }
     }
   }
-  return { error: null, candidates: candidates.sort((a, b) => a.sessionId.localeCompare(b.sessionId)) };
+  const candidates = [...bySession.values()]
+    .map((candidate) => ({ ...candidate, pids: [...candidate.pids].sort((a, b) => a - b) }))
+    .sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+  return { error: null, candidates };
 }
 
 /**
@@ -680,12 +723,16 @@ export function resolveSessionSelection({
     code: 'identity_rests_on_process_id',
     detail: 'a session was identified by a live in-use lock, and a process id can be reused after a process exits',
   };
-  const mine = candidates.filter((candidate) => lineagePids.has(candidate.pid));
+  const mine = candidates.filter(
+    (candidate) => candidate.pids.some((pid) => lineagePids.has(pid)),
+  );
   if (mine.length === 1) {
+    const held = mine[0].pids.find((pid) => lineagePids.has(pid));
     return selected(mine[0].path, {
       kind: 'live-process-lock',
       session_id: mine[0].sessionId,
-      pid: mine[0].pid,
+      pid: held,
+      holders: mine[0].pids.length,
     }, [pidNote]);
   }
   if (mine.length > 1) {
@@ -698,7 +745,12 @@ export function resolveSessionSelection({
   if (candidates.length === 1) {
     return selected(
       candidates[0].path,
-      { kind: 'sole-live-session', session_id: candidates[0].sessionId, pid: candidates[0].pid },
+      {
+        kind: 'sole-live-session',
+        session_id: candidates[0].sessionId,
+        pid: candidates[0].pids[0],
+        holders: candidates[0].pids.length,
+      },
       [
         {
           code: 'session_identity_from_sole_live_session',
@@ -880,6 +932,7 @@ export function extractSessionEvidence({
   let sawAbort = false;
   let sawCompaction = false;
   let unforgottenOperations = 0;
+  let untrackedNesting = 0;
 
   const materialize = (anchor, type, timestamp, fields) => {
     projection.push({ anchor, type, timestamp, ...fields });
@@ -1059,7 +1112,21 @@ export function extractSessionEvidence({
       }
       case 'tool.execution_start': {
         const toolCallId = safeString(at(record, 'data.toolCallId'));
-        const toolName = safeString(at(record, 'data.toolName')) ?? 'unnamed';
+        const observedName = safeString(at(record, 'data.toolName')) ?? 'unnamed';
+        // A tool name comes from the log, so it is bucketed unless it is a
+        // publishable name, and the set of names is bounded like every other
+        // collection built from untrusted input.
+        const known = Object.prototype.hasOwnProperty.call(tools.by_tool, observedName);
+        const publishable = isPublishableCountKey(observedName)
+          && (known || Object.keys(tools.by_tool).length < MAX_TOOL_NAMES);
+        const toolName = publishable ? observedName : OTHER_TOOL_NAMES;
+        if (!publishable) {
+          notes.add(
+            'tool_name_budget_exhausted',
+            anchor,
+            `a tool name was not published; at most ${MAX_TOOL_NAMES} publishable names are named`,
+          );
+        }
         tools.calls += 1;
         tools.by_tool[toolName] = (tools.by_tool[toolName] ?? 0) + 1;
         if (toolCallId !== null && openTools.size < MAX_OPEN_OPERATIONS) {
@@ -1110,7 +1177,16 @@ export function extractSessionEvidence({
         if (toolCallId !== null && openSubagents.size < MAX_OPEN_OPERATIONS) {
           openSubagents.set(toolCallId, span);
         }
-        subagentStack.push({ toolCallId, agent, span });
+        if (subagentStack.length < MAX_SUBAGENT_DEPTH) {
+          subagentStack.push({ toolCallId, agent, span });
+        } else {
+          untrackedNesting += 1;
+          notes.add(
+            'subagent_depth_budget_exhausted',
+            anchor,
+            `subagents nest deeper than ${MAX_SUBAGENT_DEPTH}; deeper ones are counted, not tracked`,
+          );
+        }
         materialize(anchor, type, timestamp, { agent, within_subagent: enclosingSubagent });
         break;
       }
@@ -1252,10 +1328,6 @@ export function extractSessionEvidence({
     }
   }
 
-  const completeness = sawCompaction
-    ? 'compacted'
-    : (notes.entries.length === 0 ? 'complete' : 'partial');
-
   // The log claims a session identity; discovery may have proved one. When they
   // disagree the proof wins and the disagreement is stated, because the claim is
   // the untrusted half: a file can say anything about which session it is.
@@ -1282,6 +1354,14 @@ export function extractSessionEvidence({
   const publishedClaim = isPathShaped(claimedSessionId) ? null : claimedSessionId;
 
   notes.finalize();
+
+  // Completeness is decided last, after every limitation this reading can
+  // raise - including the ones about identity. Deciding it earlier is how a
+  // reading that later discovered it might be about another session altogether
+  // still called itself complete and carried no cap.
+  const completeness = sawCompaction
+    ? 'compacted'
+    : (notes.entries.length === 0 ? 'complete' : 'partial');
 
   return {
     log_id: publishedLogId({ requestedLogId: logId, sessionId: publishedSessionId, sourcePath }),
@@ -1313,6 +1393,7 @@ export function extractSessionEvidence({
     subagents,
     skills,
     untracked_operations: unforgottenOperations,
+    untracked_nesting: untrackedNesting,
     events: projection.events,
     limitations: notes.entries,
     evidence_completeness: completeness,
@@ -1345,6 +1426,11 @@ export function extractSessionEvidenceFromText(text, options = {}) {
  */
 export function* streamLines(fd) {
   const buffer = Buffer.allocUnsafe(READ_CHUNK_BYTES);
+  // A chunk boundary lands wherever the file says it does, which is routinely
+  // in the middle of a multi-byte character. Decoding each chunk on its own
+  // would turn that character into replacement bytes and corrupt the record
+  // around it, so the decoder holds the partial sequence until the rest arrives.
+  const decoder = new StringDecoder('utf8');
   let remainder = '';
   let position = 0;
   let dropping = false;
@@ -1355,7 +1441,7 @@ export function* streamLines(fd) {
       break;
     }
     position += bytes;
-    remainder += buffer.toString('utf8', 0, bytes);
+    remainder += decoder.write(buffer.subarray(0, bytes));
 
     let newline = remainder.indexOf('\n');
     while (newline !== -1) {
@@ -1386,6 +1472,7 @@ export function* streamLines(fd) {
     yield { text: '', oversized: true, unterminated: true };
     return;
   }
+  remainder += decoder.end();
   if (remainder !== '') {
     yield { text: remainder, oversized: false, unterminated: true };
   }
@@ -1518,7 +1605,16 @@ function main(argv) {
     throw new SessionEvidenceError(resolution.reason.code, resolution.reason.detail);
   }
   if (parsed.resolveOnly) {
-    console.log(JSON.stringify(resolution, null, 2));
+    // The resolution names a file, and naming it in output is the same leak the
+    // reader refuses everywhere else. Publish what was decided, not where.
+    const { path: resolvedPath, ...published } = resolution;
+    console.log(JSON.stringify({
+      ...published,
+      log_id: publishedLogId({
+        sessionId: resolution.identity.session_id,
+        sourcePath: resolvedPath,
+      }),
+    }, null, 2));
     return EXIT_READ;
   }
 

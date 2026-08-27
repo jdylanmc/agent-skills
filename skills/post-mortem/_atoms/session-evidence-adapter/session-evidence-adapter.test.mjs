@@ -13,6 +13,7 @@ import {
   LEDGER_VERSION,
   assertLedgerContract,
   canonicalHarness,
+  buildEvidenceBundle,
   collectSessionEvidence,
   correlateRunLog,
   correlateSelectedRunLog,
@@ -563,6 +564,11 @@ test('the registry ships exactly the adapters this repository has validated', ()
   }
 });
 import { emitEvent, replayLog } from '../../../_base/_molecules/chronicler/chronicler.mjs';
+import {
+  assertLifecycleRecord,
+  assessRecurrence,
+  assignLifecycleState,
+} from '../reinforcement-assign-state/reinforcement-assign-state.mjs';
 
 test('the correlation command replays a selected run log and returns a verdict', () => {
   withRoot((root) => {
@@ -694,4 +700,227 @@ test('session evidence whose identity is contested cannot anchor a correlation',
   );
   assert.equal(verdict.status, 'unknown');
   assert.match(verdict.reason, /session_identity_contradiction/);
+});
+
+/**
+ * Two independent runs, each with its own session, reaching OBSERVED through the
+ * production path: Chronicle fixtures on disk, native session fixtures on disk,
+ * bundles built by the seam, and the lifecycle decided from those bundles
+ * unmodified.
+ */
+test('two independently selected bundles reach OBSERVED end to end', () => {
+  withRoot((root) => {
+    const stateRoot = path.join(root, 'session-state');
+    const runLogFor = (runId) => path.join(root, '.skill-log', `post-mortem.2026-01-01.${runId}.jsonl`);
+
+    const seedSession = (sessionId) => {
+      const directory = path.join(stateRoot, sessionId);
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(path.join(directory, 'events.jsonl'), [
+        event('session.start', { sessionId }),
+        event('skill.invoked', { name: 'post-mortem', source: 'project', trigger: 'user' }),
+        event('session.shutdown', { shutdownType: 'normal' }),
+      ].join('\n') + '\n');
+    };
+    const seedRun = (runId, sessionId, harness) => {
+      const logPath = runLogFor(runId);
+      const context = {
+        run_id: runId,
+        root_skill: 'post-mortem',
+        log_path: logPath,
+        harness,
+        session_id: sessionId,
+      };
+      emitEvent({ event: 'run', phase: 'before', summary: 'The run begins.' }, context);
+      emitEvent(
+        { event: 'run', phase: 'after', summary: 'The run produced a record.', outcome: 'succeeded' },
+        context,
+      );
+      return logPath;
+    };
+
+    seedSession('session-a');
+    seedSession('session-b');
+    // Deliberately different aliases for one runtime, to prove canonicalization
+    // happens before anything is compared.
+    const first = seedRun('run-1', 'session-a', 'copilot-cli');
+    const second = seedRun('run-2', 'session-b', 'copilot');
+
+    const bundles = [first, second].map(
+      (runLog) => buildEvidenceBundle(runLog, { stateRoot, environment: {} }),
+    );
+
+    for (const bundle of bundles) {
+      assert.equal(bundle.correlation, 'same-session', bundle.reason);
+      assert.equal(bundle.run_log.harness, 'copilot');
+      assert.equal(bundle.session_evidence.session_id, bundle.run_log.session_id);
+      assert.ok(!JSON.stringify(bundle).includes(root), 'a bundle publishes no path');
+    }
+
+    const recurrence = assessRecurrence(bundles);
+    assert.equal(recurrence.recurrence, true, recurrence.reason);
+    assert.equal(recurrence.independent_runs, 2);
+
+    const lifecycle = assignLifecycleState({ recurrence });
+    assert.equal(lifecycle.status, 'OBSERVED');
+    assert.equal(lifecycle.ready_for_promotion, false);
+    assert.deepEqual(assertLifecycleRecord(lifecycle), []);
+
+    // Two runs inside one session are two attempts at the same work.
+    const third = seedRun('run-3', 'session-a', 'copilot');
+    const sameSessionBundles = [
+      buildEvidenceBundle(first, { stateRoot, environment: {} }),
+      buildEvidenceBundle(third, { stateRoot, environment: {} }),
+    ];
+    const notIndependent = assessRecurrence(sameSessionBundles);
+    assert.equal(notIndependent.recurrence, false);
+    assert.match(notIndependent.reason, /one session/);
+    assert.equal(assignLifecycleState({ recurrence: notIndependent }).status, 'PROPOSED');
+  });
+});
+
+test('a bundle whose session cannot be read is unusable, and says which half failed', () => {
+  withRoot((root) => {
+    const stateRoot = path.join(root, 'session-state');
+    fs.mkdirSync(stateRoot, { recursive: true });
+    const runLog = path.join(root, '.skill-log', 'post-mortem.2026-01-01.run-1.jsonl');
+    emitEvent(
+      { event: 'run', phase: 'observation', summary: 'A run whose session is gone.' },
+      {
+        run_id: 'run-1',
+        root_skill: 'post-mortem',
+        log_path: runLog,
+        harness: 'copilot',
+        session_id: 'session-missing',
+      },
+    );
+
+    const bundle = buildEvidenceBundle(runLog, { stateRoot, environment: {} });
+    assert.equal(bundle.correlation, 'unknown');
+    assert.match(bundle.reason, /could not be read: session_id_not_found/);
+    assert.equal(bundle.run_log.run_id, 'run-1');
+    assert.equal(bundle.session_evidence, null);
+    assert.equal(assessRecurrence([bundle, bundle]).recurrence, false);
+  });
+});
+
+test('an uncorrelated run log names no evidence to pair with', () => {
+  withRoot((root) => {
+    const runLog = path.join(root, '.skill-log', 'post-mortem.2026-01-01.run-1.jsonl');
+    emitEvent(
+      { event: 'run', phase: 'observation', summary: 'No correlation recorded.' },
+      { run_id: 'run-1', root_skill: 'post-mortem', log_path: runLog },
+    );
+
+    const bundle = buildEvidenceBundle(runLog, { stateRoot: root, environment: {} });
+    assert.equal(bundle.correlation, 'unknown');
+    assert.match(bundle.reason, /names no evidence to pair with/);
+  });
+});
+
+test('the command line builds bundles and decides recurrence from them', () => {
+  withRoot((root) => {
+    const stateRoot = path.join(root, 'session-state');
+    const runLogs = [];
+    for (const [runId, sessionId] of [['run-1', 'session-a'], ['run-2', 'session-b']]) {
+      const directory = path.join(stateRoot, sessionId);
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(path.join(directory, 'events.jsonl'), [
+        event('session.start', { sessionId }),
+        event('session.shutdown', { shutdownType: 'normal' }),
+      ].join('\n') + '\n');
+
+      const logPath = path.join(root, '.skill-log', `post-mortem.2026-01-01.${runId}.jsonl`);
+      emitEvent(
+        { event: 'run', phase: 'observation', summary: 'A recorded run.' },
+        { run_id: runId, root_skill: 'post-mortem', log_path: logPath, harness: 'copilot-cli', session_id: sessionId },
+      );
+      runLogs.push(logPath);
+    }
+
+    const printed = execFileSync(
+      'node',
+      [SEAM, '--session-root', stateRoot, '--bundle', runLogs[0], '--bundle', runLogs[1]],
+      { encoding: 'utf8' },
+    );
+    const result = JSON.parse(printed);
+
+    assert.equal(result.bundles.length, 2);
+    assert.deepEqual(result.bundles.map((bundle) => bundle.correlation), ['same-session', 'same-session']);
+    assert.equal(result.recurrence.recurrence, true);
+    assert.equal(result.recurrence.independent_runs, 2);
+    assert.ok(!printed.includes(root), 'the command publishes no filesystem path');
+  });
+});
+
+test('a run log recording two different runtimes cannot say which session it belongs to', () => {
+  const ledger = { harness: 'copilot', source: { session_id: 'session-1' }, limitations: [] };
+
+  const aliased = correlateRunLog(
+    { harness: 'copilot-cli', harness_labels: ['copilot-cli', 'copilot'], session_id: 'session-1', defects: [] },
+    ledger,
+  );
+  assert.equal(aliased.status, 'same-session', 'aliases for one runtime are one runtime');
+
+  const mixed = correlateRunLog(
+    { harness: 'copilot', harness_labels: ['copilot', 'fictional-cli'], session_id: 'session-1', defects: [] },
+    ledger,
+  );
+  assert.equal(mixed.status, 'unknown');
+  assert.match(mixed.reason, /2 different runtimes/);
+});
+
+test('a ledger that reports a limitation may not call itself complete', () => {
+  const base = fictionalAdapter().read();
+
+  assert.deepEqual(
+    assertLedgerContract({
+      ...base,
+      completeness: 'complete',
+      confidence_cap: 'none',
+      limitations: [{ code: 'session_identity_contradiction', anchor: null, detail: 'claims another session' }],
+    }),
+    ['a ledger that reports a limitation is not complete'],
+  );
+
+  assert.deepEqual(
+    assertLedgerContract({
+      ...base,
+      completeness: 'partial',
+      confidence_cap: 'moderate',
+      limitations: [{ code: 'session_identity_contradiction', anchor: null, detail: 'claims another session' }],
+    }),
+    [],
+  );
+});
+
+test('an identity limitation caps the ledger it appears in, end to end', () => {
+  withRoot((root) => {
+    const stateRoot = path.join(root, 'session-state');
+    const directory = path.join(stateRoot, 'session-proved');
+    fs.mkdirSync(directory, { recursive: true });
+    // The directory says one session; the log inside claims another.
+    fs.writeFileSync(path.join(directory, 'events.jsonl'), [
+      event('session.start', { sessionId: 'session-claimed' }),
+      event('session.shutdown', { shutdownType: 'normal' }),
+    ].join('\n') + '\n');
+
+    const collected = collectSessionEvidence({
+      harness: 'copilot',
+      sessionId: 'session-proved',
+      stateRoot,
+      environment: {},
+    });
+
+    assert.equal(collected.status, 'collected');
+    assert.equal(collected.ledger.source.session_id, 'session-proved');
+    assert.equal(collected.ledger.completeness, 'partial');
+    assert.equal(collected.ledger.confidence_cap, 'moderate');
+    assert.ok(collected.ledger.limitations.some((entry) => entry.code === 'session_identity_contradiction'));
+    assert.deepEqual(assertLedgerContract(collected.ledger), []);
+    assert.equal(
+      correlateRunLog({ harness: 'copilot', session_id: 'session-proved', defects: [] }, collected.ledger).status,
+      'unknown',
+    );
+  });
 });

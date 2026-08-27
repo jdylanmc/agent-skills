@@ -1,6 +1,6 @@
 ---
 name: reinforcement-assign-state
-description: Apply the four-state reinforcement lifecycle, assigning PROPOSED, assigning OBSERVED only across independent operator-selected runs, and never assigning VALIDATED or PROMOTED.
+description: Apply the four-state reinforcement lifecycle, assigning PROPOSED, assigning OBSERVED only across independent evidence bundles - each a selected run log paired with the session it names - and never assigning VALIDATED or PROMOTED.
 level: atom
 allowed-tools: ["execute"]
 includes: ["post-mortem/_atoms/reinforcement-assign-state/reinforcement-assign-state.mjs"]
@@ -21,29 +21,41 @@ Decide how far a candidate is allowed to travel, and stop it there.
 | Input | Required | Meaning |
 | --- | --- | --- |
 | `candidate` | yes | One retained capability candidate or lesson. |
-| `recurrence` | no | Whether the same pattern appeared in two or more independent operator-selected runs. |
+| `bundles` | no | Evidence bundles: each an operator-selected Skill Run Log paired with the session evidence that run itself names. |
 
 ## Operation
 
 ```text
-node <atoms>/reinforcement-assign-state.mjs --runs '<selected runs as JSON>'
+node <atoms>/reinforcement-assign-state.mjs --runs '<evidence bundles as JSON>'
 ```
 
-Each selected run supplies its run identifier, its session identifier, and its
-correlation with the evidence being analyzed. The decision is arithmetic rather
-than judgement, because advancing a candidate always looks defensible in the
-moment it is being argued for:
+### Recurrence Is Measured in Bundles
 
-- no selected run, or one, is `PROPOSED`;
-- two logs recording one run is `PROPOSED`, since that is one attempt seen twice;
-- two runs inside one session is `PROPOSED`, since that is two attempts at the
-  same work;
-- a run that records no session, or belongs to a different session, cannot
-  establish independence and is `PROPOSED`;
-- two identified runs in two sessions may be `OBSERVED`.
+A bundle is one selected Skill Run Log paired with the native session evidence
+for **the session that run names**, and it counts only when the pair agrees.
+That pairing is the whole point: an earlier run belongs to an earlier session,
+so correlating it against the session being analyzed asks it a question it can
+only answer `different-session`. A rule built that way either never sees
+recurrence or learns to ignore the mismatch, and both are worse than saying
+`PROPOSED`.
+
+The decision is arithmetic rather than judgement, because advancing a candidate
+always looks defensible in the moment it is being argued for:
+
+- no selected bundle, or one, is `PROPOSED`;
+- a bundle whose run log and session evidence disagree, or whose session could
+  not be read, does not count;
+- two bundles recording one run is `PROPOSED`, since that is one attempt seen
+  twice;
+- two bundles inside one session is `PROPOSED`, since that is two attempts at
+  the same work;
+- two bundles with different runs in different sessions may be `OBSERVED`.
 
 `ready_for_promotion` is `false` in every result, and `human_approval_required`
 is `true` in every result.
+
+A rendered result is checked with `assertLifecycleRecord`, which refuses a
+record edited into a state this skill may not assign.
 
 ## States
 
@@ -59,8 +71,9 @@ This skill may assign `PROPOSED`. It cannot claim recurrence from repeated
 mentions within one session.
 
 It may assign `OBSERVED` only when the operator explicitly selected two or more
-independent Skill Run Logs and the same pattern appears in each, under the
-recurrence rule that governs those logs. It can never mark a candidate
+independent evidence bundles - each a run log paired with the evidence of the
+session that run names - and the same pattern appears in each, under the
+recurrence rule that governs those bundles. It can never mark a candidate
 `VALIDATED` or `PROMOTED`, and it can never write a durable artifact.
 
 Every proposed promotion recommendation must specify:

@@ -25,7 +25,7 @@ short of adopting any of them.
 | --- | --- | --- |
 | `diagnosis` | yes | Friction signals, gaps, and hypotheses with anchors. |
 | `package-root` | no | The repository containing this skill package, for prior-art grounding. |
-| `recurrence` | no | Whether independent operator-selected runs showed the same pattern. |
+| `recurrence` | no | Whether independent evidence bundles - each a selected run log paired with the session it names - showed the same pattern. |
 | `evidence-gaps` | no | Recommendations the evidence assembly already produced, such as a missing harness adapter. |
 
 ## Operation
@@ -39,7 +39,8 @@ short of adopting any of them.
    each carrying a confirming and a disconfirming observation.
 3. **Assign lifecycle state** with
    [Reinforcement lifecycle state](../../_atoms/reinforcement-assign-state/reinforcement-assign-state.md),
-   passing `recurrence`. Without independent runs, everything stays `PROPOSED`.
+   passing `recurrence`. Without independent bundles, everything stays
+   `PROPOSED`.
 4. **Carry forward an evidence gap** the assembly already identified. An
    unsupported harness arrives as a complete `PROPOSED` candidate with its
    traceability, evaluator, disconfirming observation, and validation

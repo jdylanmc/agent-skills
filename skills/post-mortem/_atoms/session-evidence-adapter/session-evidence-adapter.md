@@ -188,3 +188,24 @@ judges no severity, and holds no authority to add an adapter to itself.
 
 **Error recovery.** Every failure path returns a limitation with a stable code
 and no ledger, and the post-mortem continues on the evidence it can already see.
+
+## Evidence Bundles
+
+A bundle is one selected Skill Run Log paired with the native session evidence
+for **the session that run names**, plus the verdict on whether the pair agrees:
+
+```text
+node <atoms>/session-evidence-adapter.mjs --session-root <path> \
+    --bundle <run-log> [--bundle <run-log>]...
+```
+
+The pairing is what makes recurrence answerable. An earlier run belongs to an
+earlier session, so correlating it against the session being analyzed asks it a
+question it can only answer `different-session`. A bundle asks the question that
+can be settled - does this run agree with its own session's evidence - and the
+command reports the recurrence verdict across bundles, which is `OBSERVED` only
+for different runs in different sessions.
+
+A bundle whose run log records no correlation names no evidence to pair with,
+and a bundle whose session cannot be read says which half failed. Neither counts
+toward recurrence.

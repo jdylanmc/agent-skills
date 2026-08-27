@@ -10,9 +10,16 @@ import { fileURLToPath } from 'node:url';
  * skill most likely to drift under pressure, because advancing it always looks
  * defensible in the moment: the pattern really did appear twice, the operator
  * really did select two logs. So the rule is arithmetic rather than prose.
- * Recurrence requires two runs that are genuinely independent - different runs,
- * in different sessions, each correlated to the evidence being analyzed - and
- * anything short of that stays `PROPOSED` with the reason recorded.
+ *
+ * Recurrence is measured over **evidence bundles**. A bundle is one selected
+ * Skill Run Log paired with the native session evidence for the session that
+ * run itself names, and it counts only when that pair agrees. Two bundles are
+ * independent when they are different runs in different sessions. Anything
+ * short of that stays `PROPOSED` with the reason recorded.
+ *
+ * The alternative - correlating every selected run against the session being
+ * analyzed - asks each of them the wrong question, since an earlier run belongs
+ * to an earlier session and can only answer `different-session`.
  */
 
 export const LIFECYCLE_STATES = ['PROPOSED', 'OBSERVED'];
@@ -23,11 +30,22 @@ export const FORBIDDEN_STATES = ['VALIDATED', 'PROMOTED'];
 /** The only correlation verdict that makes a selected run usable as evidence. */
 export const USABLE_CORRELATION = 'same-session';
 
-function identityOf(run) {
+function identityOf(bundle) {
+  // A bundle carries its verdict and its two identities; a bare run object with
+  // the same fields is accepted so a caller can assemble one by hand.
+  const runLog = bundle?.run_log ?? bundle ?? {};
+  const evidence = bundle?.session_evidence ?? null;
+  const runId = typeof runLog.run_id === 'string' && runLog.run_id.trim() !== '' ? runLog.run_id : null;
+  const claimed = typeof runLog.session_id === 'string' && runLog.session_id.trim() !== ''
+    ? runLog.session_id
+    : null;
+  const native = typeof evidence?.session_id === 'string' && evidence.session_id.trim() !== ''
+    ? evidence.session_id
+    : claimed;
   return {
-    runId: typeof run?.run_id === 'string' && run.run_id.trim() !== '' ? run.run_id : null,
-    sessionId: typeof run?.session_id === 'string' && run.session_id.trim() !== '' ? run.session_id : null,
-    correlation: typeof run?.correlation === 'string' ? run.correlation : 'unknown',
+    runId,
+    sessionId: native,
+    correlation: typeof bundle?.correlation === 'string' ? bundle.correlation : 'unknown',
   };
 }
 
@@ -36,11 +54,11 @@ function identityOf(run) {
  * Returns the decision and the reason, because "no" is the common answer and a
  * reader is owed the grounds for it.
  */
-export function assessRecurrence(runs = []) {
-  if (!Array.isArray(runs)) {
+export function assessRecurrence(bundles = []) {
+  if (!Array.isArray(bundles)) {
     return { recurrence: false, independent_runs: 0, reason: 'no runs were selected' };
   }
-  const selected = runs.map(identityOf);
+  const selected = bundles.map(identityOf);
 
   if (selected.length === 0) {
     return {
@@ -68,7 +86,7 @@ export function assessRecurrence(runs = []) {
     return {
       recurrence: false,
       independent_runs: usable.length,
-      reason: 'fewer than two selected runs were positively correlated with the session they claim',
+      reason: 'fewer than two selected bundles held together: a run and the session it names must agree',
     };
   }
 
@@ -86,7 +104,7 @@ export function assessRecurrence(runs = []) {
     return {
       recurrence: false,
       independent_runs: distinctRuns.size,
-      reason: 'a selected run records no session, so independence cannot be established',
+      reason: 'a selected bundle names no session, so independence cannot be established',
     };
   }
   if (new Set(sessions).size < 2) {

@@ -161,6 +161,7 @@ test('discovery selects the one live session this process lineage holds', () => 
       kind: 'live-process-lock',
       session_id: 'session-mine',
       pid: 4242,
+      holders: 1,
     });
     assert.deepEqual(resolution.notes.map((note) => note.code), ['identity_rests_on_process_id']);
   });
@@ -607,5 +608,74 @@ test('a symbolic link to a session log is refused rather than followed', (t) => 
 
     // The real file, named directly, still reads.
     assert.equal(readSelectedSession(real).log_id, 'session:fixture');
+  });
+});
+
+test('one session held by several live processes is one candidate, not an ambiguity', () => {
+  withRoot((root) => {
+    makeSession(root, 'session-mine', { pids: [4242, 4243, 4244] });
+
+    const lineageMatch = resolveSessionSelection({
+      stateRoot: root,
+      environment: {},
+      isAlive: alive([4242, 4243, 4244]),
+      processLineage: lineage([99, 4243]),
+    });
+
+    assert.equal(lineageMatch.status, 'selected');
+    assert.equal(lineageMatch.identity.kind, 'live-process-lock');
+    assert.equal(lineageMatch.identity.session_id, 'session-mine');
+    assert.equal(lineageMatch.identity.pid, 4243, 'the holder in this lineage is the one reported');
+    assert.equal(lineageMatch.identity.holders, 3);
+
+    // With no lineage match it is still one running session, not three.
+    const sole = resolveSessionSelection({
+      stateRoot: root,
+      environment: {},
+      isAlive: alive([4242, 4243, 4244]),
+      processLineage: noLineage(),
+    });
+    assert.equal(sole.status, 'selected');
+    assert.equal(sole.identity.kind, 'sole-live-session');
+    assert.equal(sole.identity.holders, 3);
+
+    // A second session is what creates a real ambiguity.
+    makeSession(root, 'session-other', { pids: [5150] });
+    const ambiguous = resolveSessionSelection({
+      stateRoot: root,
+      environment: {},
+      isAlive: alive([4242, 4243, 4244, 5150]),
+      processLineage: noLineage(),
+    });
+    assert.equal(ambiguous.status, 'unavailable');
+    assert.equal(ambiguous.reason.code, 'session_identity_ambiguous');
+    assert.equal(ambiguous.candidates, 2, 'sessions are counted, not lock files');
+  });
+});
+
+test('the resolve command reports what was decided, never where the file is', () => {
+  withRoot((root) => {
+    makeSession(root, 'session-only', { pids: [process.pid] });
+
+    const resolved = JSON.parse(execFileSync(
+      'node',
+      [READER, '--session-root', root, '--resolve'],
+      { encoding: 'utf8' },
+    ));
+
+    assert.equal(resolved.status, 'selected');
+    assert.equal(resolved.identity.session_id, 'session-only');
+    assert.equal(resolved.log_id, 'session:session-only');
+    assert.equal(resolved.path, undefined, 'the resolution publishes no path');
+    assert.ok(!JSON.stringify(resolved).includes(root));
+
+    const named = JSON.parse(execFileSync(
+      'node',
+      [READER, path.join(root, 'session-only', 'events.jsonl'), '--resolve'],
+      { encoding: 'utf8' },
+    ));
+    assert.equal(named.identity.kind, 'explicit-path');
+    assert.match(named.log_id, /^sha256:[0-9a-f]{64}$/);
+    assert.ok(!JSON.stringify(named).includes(root));
   });
 });

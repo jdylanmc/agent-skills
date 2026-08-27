@@ -52,14 +52,14 @@ test('two runs that are two attempts at the same work leave a candidate PROPOSED
     run({ run_id: 'run-2', session_id: 'session-2' }),
   ]);
   assert.equal(unidentified.status, 'PROPOSED');
-  assert.match(unidentified.reason, /records no session, so independence cannot be established/);
+  assert.match(unidentified.reason, /names no session, so independence cannot be established/);
 
   const foreign = stateFor([
     run({ run_id: 'run-1', correlation: 'different-session' }),
     run({ run_id: 'run-2', session_id: 'session-2' }),
   ]);
   assert.equal(foreign.status, 'PROPOSED');
-  assert.match(foreign.reason, /fewer than two selected runs/);
+  assert.match(foreign.reason, /fewer than two selected bundles held together/);
 });
 
 test('a run that was not positively correlated is not evidence of anything', () => {
@@ -70,7 +70,7 @@ test('a run that was not positively correlated is not evidence of anything', () 
     ]);
 
     assert.equal(state.status, 'PROPOSED', `correlation ${String(correlation)} must not corroborate`);
-    assert.match(state.reason, /positively correlated with the session they claim/);
+    assert.match(state.reason, /a run and the session it names must agree/);
   }
 
   // One correlated run beside one uncorrelated run is still one run.
@@ -79,7 +79,7 @@ test('a run that was not positively correlated is not evidence of anything', () 
     run({ run_id: 'run-2', session_id: 'session-2', correlation: 'unknown' }),
   ]);
   assert.equal(mixed.status, 'PROPOSED');
-  assert.equal(mixed.reason.includes('positively correlated'), true);
+  assert.equal(mixed.reason.includes('a run and the session it names must agree'), true);
 });
 
 test('two genuinely independent runs support OBSERVED, and nothing further', () => {

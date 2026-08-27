@@ -10,6 +10,7 @@ import {
   isPublishableCountKey,
 } from '../copilot-session-events/copilot-session-events.mjs';
 import { replayLog } from '../../../_base/_molecules/chronicler/chronicler.mjs';
+import { assessRecurrence } from '../reinforcement-assign-state/reinforcement-assign-state.mjs';
 
 /**
  * The provider seam for session evidence.
@@ -511,6 +512,12 @@ export function assertLedgerContract(ledger) {
   if (ledger.completeness !== 'complete' && ledger.confidence_cap !== 'moderate') {
     problems.push('incomplete evidence must cap confidence');
   }
+  if (ledger.completeness === 'complete' && (ledger.limitations ?? []).length > 0) {
+    // A reading that raised a limitation is not complete, whatever it called
+    // itself. This is the one contract rule that catches an ordering mistake in
+    // an adapter rather than a missing field.
+    problems.push('a ledger that reports a limitation is not complete');
+  }
 
   checkSource(problems, ledger.source);
   checkSkills(problems, ledger.skills);
@@ -593,7 +600,20 @@ export function correlateRunLog(replayState, ledger, { adapters = DEFAULT_ADAPTE
   }
 
   const runSession = replayState?.session_id ?? null;
-  const runHarness = canonicalHarness(replayState?.harness ?? null, adapters);
+  // Every label the run log used, canonicalized. Aliases for one runtime are
+  // one harness; two genuinely different runtimes in one log mean the log
+  // cannot say which runtime its session belongs to.
+  const labels = Array.isArray(replayState?.harness_labels) && replayState.harness_labels.length > 0
+    ? replayState.harness_labels
+    : [replayState?.harness ?? null].filter((label) => label !== null);
+  const canonicalLabels = [...new Set(labels.map((label) => canonicalHarness(label, adapters)))];
+  if (canonicalLabels.length > 1) {
+    return {
+      status: 'unknown',
+      reason: `the run log records ${canonicalLabels.length} different runtimes, so its harness identity is undecided`,
+    };
+  }
+  const runHarness = canonicalLabels[0] ?? null;
   const ledgerSession = ledger?.source?.session_id ?? null;
   const ledgerHarness = canonicalHarness(ledger?.harness ?? null, adapters);
 
@@ -649,6 +669,7 @@ export function correlateSelectedRunLog(runLogPath, evidence, { adapters = DEFAU
       run_id: replayed.run_id,
       root_skill: replayed.root_skill,
       harness: canonicalHarness(replayed.harness, adapters),
+      harness_labels: replayed.harness_labels ?? [],
       session_id: replayed.session_id,
       complete: replayed.complete,
       defects: replayed.defects.map((defect) => defect.type),
@@ -662,9 +683,99 @@ export function correlateSelectedRunLog(runLogPath, evidence, { adapters = DEFAU
   };
 }
 
+/**
+ * Pairs one selected Skill Run Log with the native session evidence for the
+ * session *it* names, and reports whether that pair holds together.
+ *
+ * This is the unit recurrence is measured in. Correlating every historical run
+ * against the session being analyzed would compare each of them to the wrong
+ * thing: an earlier run belongs to an earlier session, so it can only ever come
+ * back `different-session`, and a rule built on that would either never see
+ * recurrence or would learn to ignore the mismatch. A bundle asks the question
+ * that can actually be answered - does this run log agree with its own session's
+ * evidence - and recurrence is then a comparison between bundles.
+ */
+export function buildEvidenceBundle(runLogPath, {
+  stateRoot = null,
+  environment = process.env,
+  adapters = DEFAULT_ADAPTERS,
+  readerOptions = {},
+} = {}) {
+  const empty = {
+    correlation: 'unknown',
+    reason: '',
+    run_log: null,
+    session_evidence: null,
+  };
+
+  if (typeof runLogPath !== 'string' || runLogPath.trim() === '') {
+    return { ...empty, reason: 'no run log was selected' };
+  }
+
+  let replayed;
+  try {
+    replayed = replayLog(runLogPath, { logId: `runlog:${path.basename(runLogPath)}` });
+  } catch (error) {
+    return { ...empty, reason: `the selected run log could not be replayed: ${error.code ?? 'log_unavailable'}` };
+  }
+
+  const runLog = {
+    log_id: replayed.log_id,
+    run_id: replayed.run_id,
+    root_skill: replayed.root_skill,
+    harness: canonicalHarness(replayed.harness, adapters),
+    harness_labels: replayed.harness_labels ?? [],
+    session_id: replayed.session_id,
+    complete: replayed.complete,
+    defects: replayed.defects.map((defect) => defect.type),
+  };
+
+  if (runLog.session_id === null || runLog.harness === null) {
+    return {
+      ...empty,
+      run_log: runLog,
+      reason: 'the run log records no session correlation, so it names no evidence to pair with',
+    };
+  }
+
+  // The run log names its own session. That name, not the current session, is
+  // what its native evidence is resolved from.
+  const evidence = collectSessionEvidence({
+    harness: runLog.harness,
+    sessionId: runLog.session_id,
+    stateRoot,
+    environment,
+    adapters,
+    readerOptions,
+  });
+  if (evidence.status !== 'collected') {
+    return {
+      ...empty,
+      run_log: runLog,
+      reason: `the session this run names could not be read: ${evidence.limitations[0]?.code ?? 'unavailable'}`,
+      session_evidence: null,
+    };
+  }
+
+  const verdict = correlateRunLog(replayed, evidence.ledger, { adapters });
+  return {
+    correlation: verdict.status,
+    reason: verdict.reason,
+    run_log: runLog,
+    session_evidence: {
+      provider: evidence.ledger.provider,
+      harness: evidence.ledger.harness,
+      session_id: evidence.ledger.source.session_id,
+      log_id: evidence.ledger.source.log_id,
+      completeness: evidence.ledger.completeness,
+    },
+  };
+}
+
 function main(argv) {
   const options = {};
   let runLogPath = null;
+  const bundlePaths = [];
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--probe') {
@@ -678,7 +789,15 @@ function main(argv) {
       })), null, 2));
       return 0;
     }
-    if (['--harness', '--session-id', '--session-root', '--transcript', '--path', '--correlate'].includes(argument)) {
+    if ([
+      '--harness',
+      '--session-id',
+      '--session-root',
+      '--transcript',
+      '--path',
+      '--correlate',
+      '--bundle',
+    ].includes(argument)) {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith('--')) {
         console.error(JSON.stringify({ error: { code: 'usage', message: `${argument} requires a value` } }));
@@ -687,6 +806,10 @@ function main(argv) {
       index += 1;
       if (argument === '--correlate') {
         runLogPath = value;
+        continue;
+      }
+      if (argument === '--bundle') {
+        bundlePaths.push(value);
         continue;
       }
       const field = {
@@ -701,6 +824,16 @@ function main(argv) {
     }
     console.error(JSON.stringify({ error: { code: 'usage', message: `unsupported option ${argument}` } }));
     return 1;
+  }
+
+  if (bundlePaths.length > 0) {
+    // Bundle mode answers a different question from evidence mode: each run log
+    // is paired with its own session, and recurrence is decided across pairs.
+    const bundles = bundlePaths.map((runLog) => buildEvidenceBundle(runLog, {
+      stateRoot: options.stateRoot ?? null,
+    }));
+    console.log(JSON.stringify({ bundles, recurrence: assessRecurrence(bundles) }, null, 2));
+    return 0;
   }
 
   const evidence = collectSessionEvidence(options);

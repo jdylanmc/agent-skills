@@ -276,7 +276,7 @@ const SCENARIOS = [
         run({ run_id: 'run-2', session_id: 'session-2', correlation: 'unknown' }),
       ]);
       assert.equal(uncorrelated.status, 'PROPOSED');
-      assert.match(uncorrelated.reason, /positively correlated/);
+      assert.match(uncorrelated.reason, /a run and the session it names must agree/);
 
       const independent = lifecycleFor([
         run({ run_id: 'run-1', session_id: 'session-1' }),

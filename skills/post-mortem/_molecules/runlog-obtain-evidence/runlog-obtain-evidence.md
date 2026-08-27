@@ -1,6 +1,6 @@
 ---
 name: runlog-obtain-evidence
-description: Obtain evidence from a Skill Run Log the operator explicitly named, replay it read-only, anchor its records in an L slot, declare its completeness, and decide whether independent runs establish recurrence.
+description: Obtain evidence from a Skill Run Log the operator explicitly named, replay it read-only, anchor its records in an L slot, declare its completeness, pair it with the session evidence that run names, and decide whether independent bundles establish recurrence.
 level: molecule
 includes: ["_base/_atoms/chronicle-replay/chronicle-replay.md","post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md","post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md"]
 composes: ["_base/_atoms/chronicle-replay/chronicle-replay.md","post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md","post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md"]
@@ -51,6 +51,25 @@ so an alias is never mistaken for another runtime, and returns `same-session`,
 log whose replay reported an identity defect, and session evidence whose own
 identity is contested, are both `unknown`: the thing a correlation would settle
 is exactly what is in doubt.
+
+## Recurrence Across Bundles
+
+A run log and the session evidence for **the session that run names** form one
+evidence bundle. Build one per selected run, and compare bundles:
+
+```text
+node <atoms>/session-evidence-adapter.mjs --session-root "$root" \
+  --bundle "$first_run_log" --bundle "$second_run_log"
+```
+
+Each bundle either holds together or does not, and the command reports the
+recurrence verdict across them. Two bundles support recurrence when they are
+different runs in different sessions; anything else keeps every candidate
+`PROPOSED` with the reason recorded.
+
+Do not correlate an earlier run against the session being analyzed. It belongs
+to an earlier session, so that comparison can only ever say `different-session`,
+which is a fact about the question rather than about the run.
 
 **The absence of a Skill Run Log is not evidence of a missing invocation.**
 Recording is best effort, so a run may be real and unrecorded. Report the
@@ -138,8 +157,8 @@ hypothesis unless an observation records it.
 
 ## Recurrence
 
-Two or more independently selected runs may support `OBSERVED` when the same
-pattern appears in each and the runs are not two attempts at the same work.
+Two or more independently selected bundles may support `OBSERVED` when the same
+pattern appears in each and they are not two attempts at the same work.
 
 Repetition inside one run is not recurrence. Repeated wording about one event is
 not corroboration. If independence cannot be established, keep the candidate
@@ -150,17 +169,19 @@ not corroboration. If independence cannot be established, keep the candidate
 | Field | Meaning |
 | --- | --- |
 | `selected_logs` | Each with its slot, log identifier, run identifier, and completeness. |
+| `bundles` | Each selected run paired with the evidence of the session it names, and whether that pair agreed. |
 | `correlation` | Per selected log: `same-session`, `different-session`, or `unknown`, with the reason. |
 | `anchors` | `L` anchors and ranges available for citation. |
 | `confidence_caps` | Per-log caps, to be compounded with the session cap. |
-| `recurrence` | Whether independent runs establish recurrence, and why not when they do not. |
+| `recurrence` | Whether independent bundles establish recurrence, and why not when they do not. |
 | `limitations` | Defects, absent logs, and declined selections. |
 
 ## Guarantees
 
 - No log is opened that the operator did not name.
 - No log is repaired, reordered, rewritten, or reconstructed.
-- Recurrence is established only across independent runs.
+- Recurrence is established only across independent bundles, each of which was
+  checked against its own session rather than against the current one.
 
 ## Boundaries
 

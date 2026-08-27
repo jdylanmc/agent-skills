@@ -12,7 +12,10 @@ import {
   MAX_FIELD_CHARS,
   MAX_MARKER_CHARS,
   MAX_OPEN_OPERATIONS,
+  MAX_SUBAGENT_DEPTH,
+  MAX_TOOL_NAMES,
   OTHER_EVENT_TYPES,
+  OTHER_TOOL_NAMES,
   SessionEvidenceError,
   extractSessionEvidence,
   extractSessionEvidenceFromText,
@@ -841,4 +844,132 @@ test('an instruction embedded in a session is carried as inert data, never as an
   assert.ok(invocation.name.length <= 120);
   assert.equal(result.evidence_completeness, 'complete');
   assert.deepEqual(result.limitations, []);
+});
+
+test('a multi-byte character split across a read boundary survives intact', () => {
+  withTemporaryDirectory((directory) => {
+    const selected = path.join(directory, 'events.jsonl');
+    // Pad so a four-byte character straddles the 256 KiB read boundary, which is
+    // where a per-chunk decode would replace it with question marks and corrupt
+    // the record it sits in.
+    const emoji = '\u{1F600}';
+    const marker = `session-${emoji}-name`;
+    const padding = event('session.warning', { warningType: 'mcp' });
+    const lines = [event('session.start', { sessionId: 'session-1' })];
+    let bytes = Buffer.byteLength(lines[0], 'utf8') + 1;
+    while (bytes < 262_144 - 40) {
+      lines.push(padding);
+      bytes += Buffer.byteLength(padding, 'utf8') + 1;
+    }
+    const straddling = event('skill.invoked', { name: `${'x'.repeat(Math.max(0, 262_144 - bytes - 34))}${marker}` });
+    lines.push(straddling, event('session.shutdown', { shutdownType: 'normal' }));
+    fs.writeFileSync(selected, `${lines.join('\n')}\n`);
+
+    const result = readSelectedSession(selected);
+    const published = JSON.stringify(result);
+
+    assert.equal(result.counts.skill_invocations, 1);
+    assert.ok(!published.includes('\uFFFD'), 'no replacement character reaches the reading');
+    assert.deepEqual(
+      result.limitations.filter((entry) => entry.code === 'malformed_record'),
+      [],
+      'a split character must not corrupt the record around it',
+    );
+  });
+});
+
+test('tool names are bounded and sanitized, with the rest counted together', () => {
+  const scheme = ['Bea', 'rer'].join('');
+  const many = Array.from(
+    { length: MAX_TOOL_NAMES + 5 },
+    (_, index) => event('tool.execution_start', { toolCallId: `c${index}`, toolName: `tool_${index}` }),
+  );
+  const hostile = [
+    event('tool.execution_start', { toolCallId: 'p1', toolName: '/usr/bin/curl' }),
+    event('tool.execution_start', { toolCallId: 'p2', toolName: `Authorization: ${scheme} abc123abc123` }),
+  ];
+  const result = extractSessionEvidence({
+    lines: [
+      event('session.start', { sessionId: 'session-1' }),
+      ...many,
+      ...hostile,
+      event('session.shutdown', { shutdownType: 'normal' }),
+    ],
+    maxNotes: 60,
+  });
+
+  const names = Object.keys(result.tools.by_tool);
+  assert.ok(names.length <= MAX_TOOL_NAMES + 1, `found ${names.length} tool names`);
+  assert.ok(names.includes(OTHER_TOOL_NAMES));
+  assert.equal(result.tools.by_tool[OTHER_TOOL_NAMES], 7, 'five over budget plus two unpublishable');
+  assert.ok(!JSON.stringify(result).includes('/usr/bin/curl'));
+  assert.ok(!JSON.stringify(result).includes(scheme));
+  assert.ok(result.limitations.some((entry) => entry.code === 'tool_name_budget_exhausted'));
+});
+
+test('subagent nesting is tracked to a bounded depth, and deeper nesting is counted', () => {
+  const deep = Array.from(
+    { length: MAX_SUBAGENT_DEPTH + 3 },
+    (_, index) => event('subagent.started', { toolCallId: `s${index}`, agentName: `agent_${index}` }),
+  );
+  const result = extractSessionEvidence({
+    lines: [event('session.start', { sessionId: 'session-1' }), ...deep],
+    maxNotes: 60,
+  });
+
+  assert.equal(result.counts.subagent_calls, MAX_SUBAGENT_DEPTH + 3);
+  assert.equal(result.untracked_nesting, 3);
+  assert.ok(result.limitations.some((entry) => entry.code === 'subagent_depth_budget_exhausted'));
+});
+
+test('an existing overflow bucket is added to rather than overwritten', () => {
+  const counts = publishableCounts({
+    'session.start': 2,
+    other_event_types: 5,
+    '/etc/passwd': 3,
+  });
+
+  assert.deepEqual(counts, { 'session.start': 2, other_event_types: 8 });
+});
+
+test('a completeness verdict accounts for the identity limitations raised last', () => {
+  const contradicted = extractSessionEvidenceFromText(
+    completeSession(),
+    { provenSessionId: 'session-proved' },
+  );
+
+  assert.equal(contradicted.evidence_completeness, 'partial');
+  assert.equal(contradicted.confidence_cap, 'moderate');
+  assert.ok(contradicted.limitations.some((entry) => entry.code === 'session_identity_contradiction'));
+
+  const unpublishable = extractSessionEvidenceFromText([
+    JSON.stringify({
+      type: 'session.start',
+      data: { sessionId: '/Users/someone/sessions/abc' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+    }),
+    event('session.shutdown', { shutdownType: 'normal' }),
+  ].join('\n') + '\n');
+
+  assert.equal(unpublishable.evidence_completeness, 'partial');
+  assert.equal(unpublishable.confidence_cap, 'moderate');
+});
+
+test('a detail field holding a path is withheld while the ledger survives', () => {
+  const reading = extractSessionEvidenceFromText(completeSession(event('skill.invoked', { name: 'roast' })));
+  reading.events.push({
+    anchor: 'E9',
+    type: 'skill.invoked',
+    timestamp: null,
+    name: 'roast',
+    source: '/Users/someone/.copilot/skills/roast',
+  });
+
+  const ledger = toEvidenceLedger(reading);
+  const withheld = ledger.entries.find((entry) => entry.anchor === 'E9');
+
+  assert.equal(withheld.detail.name, 'roast');
+  assert.equal(withheld.detail.source, undefined);
+  assert.ok(ledger.limitations.some((entry) => entry.code === 'detail_withheld'));
+  assert.ok(!JSON.stringify(ledger).includes('/Users/someone'));
 });

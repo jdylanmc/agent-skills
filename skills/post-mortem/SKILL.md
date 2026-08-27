@@ -64,8 +64,8 @@ deliverable is one fixed-schema record a person reads and decides on.
 4. Use [Skill Run Log evidence](./_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md)
    only when the operator asks about a recorded run. Analyze one selected run by
    default, and a comparison set only when the operator explicitly selects
-   independent runs. Never offer this source merely because session evidence is
-   incomplete.
+   independent runs, each paired with the session it names. Never offer this
+   source merely because session evidence is incomplete.
 
 5. Classify the outcome with
    [Session outcome classification](./_atoms/session-classify-outcome/session-classify-outcome.md):
@@ -159,7 +159,7 @@ limitations to report.
   changed, no artifact is published, and no follow-up skill or agent is invoked.
   A recommendation is disposed by a person, in a separate approved workflow.
 - **Nothing is promoted.** A candidate reaches `PROPOSED`, or `OBSERVED` across
-  independently selected runs. `VALIDATED` and `PROMOTED` are never assigned
+  independently selected evidence bundles. `VALIDATED` and `PROMOTED` are never assigned
   here, so `ready_for_promotion` is always empty.
 - **Identity is proved, never inferred.** The newest log is never chosen, an
   ambiguous root is refused rather than resolved, and a prior session is read
