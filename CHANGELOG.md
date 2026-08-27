@@ -81,6 +81,17 @@ below is unreleased and no comparison links are available.
 - **Explanation.** `sanity-check` re-pitches an explanation that did not land.
   `changelog` curates a changelog patch for whichever changelog file a
   repository, component, or package actually keeps.
+- **Session retrospectives.** `post-mortem` analyzes a session and returns one
+  fixed-schema record: what the session was for, whether it got there, where it
+  met friction, which execution gaps explain it, and a small number of testable
+  improvements worth proposing. Evidence is the session in front of it, plus a
+  Copilot session event log or a Skill Run Log you explicitly select — it never
+  searches for past sessions and never guesses which log you meant. A selected
+  runtime log is read through a bounded projection that publishes counts,
+  identities, and outcomes and never a prompt, a tool result, or the body of a
+  skill, and a damaged or unfinished log is reported as a limit on what can be
+  concluded rather than repaired. It diagnoses and recommends only: nothing is
+  edited, remembered, promoted, or handed to another skill to apply.
 - **Orchestration.** `cmux-orchestrate` coordinates work across panes.
 - **Stated intent.** Every skill carries a plain-language `intent.md` describing
   what it is for, written for a person rather than for a checker, and enforced

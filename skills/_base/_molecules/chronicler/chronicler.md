@@ -7,7 +7,7 @@ composes: ["_base/_atoms/chronicle-append/chronicle-append.md","_base/_atoms/chr
 ["changelog/SKILL.md", "cmux-orchestrate/SKILL.md", "create-skill/SKILL.md", "discovery/SKILL.md", "domain-mapping/SKILL.md", "handoff/SKILL.md", "interrogate/SKILL.md", "next-step-selection/SKILL.md", "optimize-prompt/SKILL.md", "orchestration-handoff/SKILL.md", "prompt-coach/SKILL.md", "proof-of-concept/SKILL.md", "roast/SKILL.md", "run-ci/SKILL.md", "sanity-check/SKILL.md", "shepherd/SKILL.md", "ship/SKILL.md", "skill-coach/SKILL.md"]
 c61b153 (Add changelog skill)
 allowed-tools: ["execute"]
-used-by: ["changelog/SKILL.md","cmux-orchestrate/SKILL.md","create-skill/SKILL.md","discovery/SKILL.md","domain-mapping/SKILL.md","handoff/SKILL.md","interrogate/SKILL.md","next-step-selection/SKILL.md","optimize-prompt/SKILL.md","orchestration-handoff/SKILL.md","prompt-coach/SKILL.md","proof-of-concept/SKILL.md","qa-design/SKILL.md","reinforce-skill/SKILL.md","roast/SKILL.md","run-ci/SKILL.md","sanity-check/SKILL.md","shepherd/SKILL.md","ship/SKILL.md","skill-coach/SKILL.md","spec/SKILL.md"]
+used-by: ["changelog/SKILL.md","cmux-orchestrate/SKILL.md","create-skill/SKILL.md","discovery/SKILL.md","domain-mapping/SKILL.md","handoff/SKILL.md","interrogate/SKILL.md","next-step-selection/SKILL.md","optimize-prompt/SKILL.md","orchestration-handoff/SKILL.md","post-mortem/SKILL.md","prompt-coach/SKILL.md","proof-of-concept/SKILL.md","qa-design/SKILL.md","reinforce-skill/SKILL.md","roast/SKILL.md","run-ci/SKILL.md","sanity-check/SKILL.md","shepherd/SKILL.md","ship/SKILL.md","skill-coach/SKILL.md","spec/SKILL.md"]
 ---
 
 # Chronicler

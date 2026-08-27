@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["execute"]
 includes: []
 composes: []
-used-by: ["_base/_molecules/chronicler/chronicler.md"]
+used-by: ["_base/_molecules/chronicler/chronicler.md","post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md"]
 ---
 
 # Chronicle Replay
