@@ -137,6 +137,57 @@ function assertState(state) {
   if (unknown.length) {
     throw new DecisionError('invalid_state', `unknown decision field(s): ${unknown.join(', ')}`);
   }
+
+  // Allow-listing key *names* is not enough: a state whose `decision` or
+  // `status` is an out-of-set string would otherwise fall through every branch
+  // that switches on it. Validate the values against their enums here, once, so
+  // no downstream gate has to re-check and none can be defeated by a fabricated
+  // enum value. `decision` may be null (undecided); no other unknown value is.
+  if (state.decision !== null && !DECISIONS.includes(state.decision)) {
+    throw new DecisionError(
+      'invalid_state',
+      `unrecognised decision "${state.decision}"; the decision is null or exactly one of ${DECISIONS.join(', ')}`,
+    );
+  }
+  if (!STATUSES.includes(state.status)) {
+    throw new DecisionError(
+      'invalid_state',
+      `unrecognised status "${state.status}"; it is one of ${STATUSES.join(', ')}`,
+    );
+  }
+
+  // `status === 'stored'` is a structural claim, not a label a caller may set.
+  // A legitimate stored state was produced by `applyEvent`'s store case, which
+  // always populates the three digests and records the operator's confirmation
+  // in `history`. Requiring that here means a fabricated `{status:'stored'}`
+  // with null digests is rejected before any release gate reads it, instead of
+  // passing because the disk verification was guarded by the truthiness of the
+  // very fields the fabrication left null.
+  if (state.status === 'stored') {
+    const requireStoredField = (value, label) => {
+      if (typeof value !== 'string' || value.trim() === '') {
+        throw new DecisionError(
+          'invalid_state',
+          `a stored intent decision requires a non-empty ${label}; this one reports status "stored" without it`,
+        );
+      }
+    };
+    requireStoredField(state.storedPath, 'storedPath');
+    requireStoredField(state.storedDigest, 'storedDigest');
+    requireStoredField(state.confirmedDigest, 'confirmedDigest');
+    const history = Array.isArray(state.history) ? state.history : [];
+    const confirmed = history.some(
+      (entry) => entry
+        && entry.type === 'operator-confirmed'
+        && entry.digest === state.confirmedDigest,
+    );
+    if (!confirmed) {
+      throw new DecisionError(
+        'invalid_state',
+        'a stored intent decision must record the operator-confirmation whose digest it stored; this one does not',
+      );
+    }
+  }
   return state;
 }
 
@@ -373,6 +424,11 @@ export function requireIntentDecision(state) {
   if (current.decision === null) {
     problems.push('the intent decision was never recorded, and it has no default');
   }
+  if (current.decision !== null && !DECISIONS.includes(current.decision)) {
+    problems.push(
+      `the intent decision is "${current.decision}", which is not one of ${DECISIONS.join(', ')}`,
+    );
+  }
   if (current.decision !== null && !current.reasoning) {
     problems.push('the intent decision carries no reasoning');
   }
@@ -385,7 +441,11 @@ export function requireIntentDecision(state) {
     if (current.confirmedDigest === null) {
       problems.push('no confirmation of the revised intent was ever recorded');
     }
-    if (current.storedPath && current.storedDigest) {
+    // `assertState` guarantees a `stored` state carries a non-empty storedPath
+    // and storedDigest, so the disk read is unconditional here rather than
+    // guarded by the truthiness of fields the state supplied. A run that never
+    // reached `stored` is already blocked above and never reaches this read.
+    if (current.status === 'stored') {
       if (!fs.existsSync(current.storedPath)) {
         problems.push(`the stored intent is missing from disk: ${current.storedPath}`);
       } else if (digestOf(fs.readFileSync(current.storedPath, 'utf8')) !== current.storedDigest) {
@@ -431,22 +491,27 @@ export function assertDiffMatchesDecision(state, changedPaths, { skill, reposito
   if (!Array.isArray(changedPaths)) {
     throw new DecisionError('invalid_change_set', 'changed paths must be an array');
   }
+  // Fail closed: without a repository root an absolute path to the intent file
+  // could only ever be classified "does not touch the intent", so the check
+  // that is supposed to catch an undisclosed intent edit would silently pass.
+  // The root is what makes an absolute and a relative path to the same file
+  // agree, so it is required, never an optional convenience.
+  if (repositoryRoot === undefined || repositoryRoot === null || repositoryRoot === '') {
+    throw new DecisionError(
+      'invalid_input',
+      'a repository root is required to check a change set against the intent path',
+    );
+  }
   const name = skill ?? current.skill;
   const intentPath = `skills/${name}/${INTENT_FILE_NAME}`;
 
-  // Normalize every candidate the same way `classifyWritePath` does. Without a
-  // repository root only separators and a leading `./` can be normalized, so an
-  // absolute path to the intent file would never match and would be silently
-  // treated as "does not touch the intent" — the exact undisclosed intent edit
-  // this check exists to catch. Given a root, an absolute and a relative path to
-  // the same file resolve to one relative form and agree.
-  const realRoot = repositoryRoot === undefined ? null : fs.realpathSync(repositoryRoot);
+  // Normalize every candidate the same way `classifyWritePath` does, through the
+  // real repository root, so an absolute and a relative path to the same intent
+  // file resolve to one relative form and agree.
+  const realRoot = fs.realpathSync(repositoryRoot);
   const normalize = (candidate) => {
     const raw = String(candidate);
-    if (realRoot) {
-      return path.relative(realRoot, path.resolve(realRoot, raw)).split(path.sep).join('/');
-    }
-    return raw.split(path.sep).join('/').replace(/^\.\//, '');
+    return path.relative(realRoot, path.resolve(realRoot, raw)).split(path.sep).join('/');
   };
   const touchesIntent = changedPaths.map(normalize).includes(intentPath);
 
@@ -454,6 +519,16 @@ export function assertDiffMatchesDecision(state, changedPaths, { skill, reposito
     throw new DecisionError(
       'undecided',
       'a change set cannot be published before the intent decision is recorded',
+    );
+  }
+  // The decision is one of exactly two values or it is not publishable. This is
+  // the `else` on the enum: an out-of-set decision that somehow reached here is
+  // a refusal, not a fall-through to "consistent". `assertState` already rejects
+  // such a value; this is the second, local line of defence.
+  if (!DECISIONS.includes(current.decision)) {
+    throw new DecisionError(
+      'unknown_decision',
+      `unrecognised decision "${current.decision}"; the decision is exactly one of ${DECISIONS.join(', ')}`,
     );
   }
   if (current.decision === 'preserves-intent' && touchesIntent) {
@@ -482,16 +557,21 @@ export function assertDiffMatchesDecision(state, changedPaths, { skill, reposito
     }
     // And the bytes on disk must be the bytes the gate stored. A file edited
     // after the confirmed store no longer matches the confirmation it claims.
-    const onDisk = realRoot
-      ? path.join(realRoot, 'skills', name, INTENT_FILE_NAME)
-      : current.storedPath;
-    if (onDisk && current.storedDigest && fs.existsSync(onDisk)) {
-      if (digestOf(fs.readFileSync(onDisk, 'utf8')) !== current.storedDigest) {
-        throw new DecisionError(
-          'undisclosed_intent_edit',
-          `the intent on disk is not the intent that was stored through the gate: ${onDisk}`,
-        );
-      }
+    // `assertState` guarantees a `stored` state carries storedDigest, and the
+    // root is required, so the read below is unconditional: the only way to skip
+    // it is for the file not to exist, which is itself surfaced as a mismatch.
+    const onDisk = path.join(realRoot, 'skills', name, INTENT_FILE_NAME);
+    if (!fs.existsSync(onDisk)) {
+      throw new DecisionError(
+        'undisclosed_intent_edit',
+        `the intent stored through the gate is missing from disk: ${onDisk}`,
+      );
+    }
+    if (digestOf(fs.readFileSync(onDisk, 'utf8')) !== current.storedDigest) {
+      throw new DecisionError(
+        'undisclosed_intent_edit',
+        `the intent on disk is not the intent that was stored through the gate: ${onDisk}`,
+      );
     }
   }
   return { status: 'consistent', decision: current.decision, touchesIntent };
@@ -524,15 +604,22 @@ export const USAGE = `Usage: intent-decision.mjs --state <path> [--event <path>]
 export function parseArguments(argv) {
   const args = {};
   const valueFlags = ['--state', '--event', '--root'];
+  const claim = (key, token) => {
+    if (Object.prototype.hasOwnProperty.call(args, key)) {
+      throw new DecisionError('usage', `${token} was given more than once\n${USAGE}`);
+    }
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === '--report' || token === '--probe' || token === '--require-decision') {
+      claim(token.slice(2), token);
       args[token.slice(2)] = true;
       continue;
     }
     if (!valueFlags.includes(token)) {
       throw new DecisionError('usage', `unknown argument: ${token}\n${USAGE}`);
     }
+    claim(token.slice(2), token);
     const value = argv[index + 1];
     if (value === undefined || value.startsWith('--')) {
       throw new DecisionError('usage', `${token} requires a value\n${USAGE}`);

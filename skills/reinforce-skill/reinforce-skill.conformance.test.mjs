@@ -303,11 +303,19 @@ test('the workflow edit is additive-only, proven by the function that enforces i
   const appended = `${previous}      skills/existing-skill/existing-skill.conformance.test.mjs\n`;
   const removed = previous.replace('      skills/roast/roast.conformance.test.mjs\n', '');
 
-  assert.deepEqual(assertWorkflowAdditive(previous, appended), { status: 'additive', removed: [] });
+  assert.deepEqual(assertWorkflowAdditive(previous, appended), { status: 'additive', removed: [], added: [] });
   assert.equal(
     codeOf(() => assertWorkflowAdditive(previous, removed)),
     FAILURES.workflowNotAdditive,
     'removing an existing registration is refused',
+  );
+  // Weakening by pure addition removes nothing yet is still refused: the check
+  // is bounded positively, so an added non-registration line fails it.
+  const disabled = previous.replace('  test:\n', '  test:\n    if: false\n');
+  assert.equal(
+    codeOf(() => assertWorkflowAdditive(previous, disabled)),
+    FAILURES.workflowNotAdditive,
+    'adding if: false is refused even though it removes nothing',
   );
 
   // And auditDiff carries that refusal: a workflow diff that drops a test line
@@ -390,7 +398,7 @@ test('intent decides first: the decision precedes implementation and has no defa
     'an undecided run cannot proceed to a pull request',
   );
   assert.equal(
-    codeOf(() => assertDiffMatchesDecision(undecided, [`skills/${FIXTURE_SKILL}/SKILL.md`])),
+    codeOf(() => assertDiffMatchesDecision(undecided, [`skills/${FIXTURE_SKILL}/SKILL.md`], { repositoryRoot: REPOSITORY_ROOT })),
     'undecided',
     'a change set cannot be published before the decision is recorded',
   );
@@ -499,7 +507,7 @@ test('the intent decision is a gate that refuses, not a step that can be skipped
   });
   let refusal = null;
   try {
-    assertDiffMatchesDecision(preserved, ['skills/reinforce-skill/intent.md']);
+    assertDiffMatchesDecision(preserved, ['skills/reinforce-skill/intent.md'], { repositoryRoot: REPOSITORY_ROOT });
   } catch (error) {
     refusal = error.code;
   }
@@ -519,7 +527,7 @@ test('the release check refuses a changes-intent run that hand-wrote the intent 
     { type: 'decide', decision: 'changes-intent', reasoning: 'the change alters what the skill is for' },
   );
   assert.equal(
-    codeOf(() => assertDiffMatchesDecision(decided, [`skills/${FIXTURE_SKILL}/intent.md`])),
+    codeOf(() => assertDiffMatchesDecision(decided, [`skills/${FIXTURE_SKILL}/intent.md`], { repositoryRoot: REPOSITORY_ROOT })),
     'unstored_intent_change',
     'a changes-intent diff that never reached stored is refused',
   );
@@ -658,11 +666,32 @@ test('a remediation correction may not wander into a neighbouring skill or a sha
     ])),
     'gate_weakened',
   );
+  // A workflow path with no before/after content cannot be proven a bare
+  // registration, so it fails closed rather than being assumed intact.
+  assert.equal(
+    code(() => reinforceRoast.assertReinforcementChangeSet(REPOSITORY_ROOT, 'reinforce-skill', [
+      'skills/reinforce-skill/SKILL.md',
+      '.github/workflows/validate-skills.yml',
+    ])),
+    'out_of_target',
+    'an unproven workflow edit is refused',
+  );
+  // Supplied with an additive before/after, the same change set is intact.
+  const previous = [
+    'run: node scripts/run-registered-tests.mjs',
+    '  skills/reinforce-skill/reinforce-skill.conformance.test.mjs',
+    '',
+  ].join('\n');
   assert.equal(
     reinforceRoast.assertReinforcementChangeSet(REPOSITORY_ROOT, 'reinforce-skill', [
       'skills/reinforce-skill/SKILL.md',
       '.github/workflows/validate-skills.yml',
-    ]).status,
+    ], {
+      workflow: {
+        previous,
+        next: `${previous}  skills/reinforce-skill/added.test.mjs\n`,
+      },
+    }).status,
     'intact',
   );
 });

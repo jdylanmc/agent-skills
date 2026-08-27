@@ -138,16 +138,54 @@ test('a remediation change set that weakens a repository gate is refused', () =>
   });
 });
 
-test('an in-target change set plus the additive test registration is intact', () => {
+test('an in-target change set plus a proven additive test registration is intact', () => {
   withFixture((root) => {
+    const previous = [
+      'run: node scripts/run-registered-tests.mjs',
+      `  skills/${SKILL}/${SKILL}.test.mjs`,
+      '',
+    ].join('\n');
+    const next = `${previous}  skills/${SKILL}/added.test.mjs\n`;
     const verdict = assertReinforcementChangeSet(root, SKILL, [
       `skills/${SKILL}/SKILL.md`,
       `skills/${SKILL}/intent.md`,
       WORKFLOW_FILE,
-    ]);
+    ], { workflow: { previous, next } });
     assert.equal(verdict.status, 'intact');
     assert.equal(verdict.checked, 3);
     assert.deepEqual(verdict.workflow, [WORKFLOW_FILE], 'the shared workflow edit is surfaced, never hidden');
+  });
+});
+
+test('a workflow edit whose content is not supplied is refused, not assumed additive', () => {
+  withFixture((root) => {
+    assert.equal(
+      code(() => assertReinforcementChangeSet(root, SKILL, [
+        `skills/${SKILL}/SKILL.md`,
+        WORKFLOW_FILE,
+      ])),
+      'out_of_target',
+      'an unproven workflow edit fails closed',
+    );
+  });
+});
+
+test('a workflow edit that weakens the job by addition is refused', () => {
+  withFixture((root) => {
+    const previous = [
+      'run: node scripts/run-registered-tests.mjs',
+      `  skills/${SKILL}/${SKILL}.test.mjs`,
+      '',
+    ].join('\n');
+    const weakened = previous.replace('run:', 'if: false\nrun:');
+    assert.equal(
+      code(() => assertReinforcementChangeSet(root, SKILL, [
+        `skills/${SKILL}/SKILL.md`,
+        WORKFLOW_FILE,
+      ], { workflow: { previous, next: weakened } })),
+      'out_of_target',
+      'a workflow weakened by a non-registration addition is refused',
+    );
   });
 });
 

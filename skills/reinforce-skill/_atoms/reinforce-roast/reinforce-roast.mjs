@@ -81,7 +81,7 @@ export {
  * with every refused path named, so a reviewer reads what was refused rather
  * than a bare verdict.
  */
-export function assertReinforcementChangeSet(repositoryRoot, skillName, changedPaths) {
+export function assertReinforcementChangeSet(repositoryRoot, skillName, changedPaths, { workflow } = {}) {
   if (!Array.isArray(changedPaths)) {
     throw new LedgerError('invalid_change_set', 'changed paths must be an array');
   }
@@ -90,14 +90,22 @@ export function assertReinforcementChangeSet(repositoryRoot, skillName, changedP
   // mode with the worst blast radius, so it is named first when both apply.
   assertGateIntegrity(changedPaths);
 
-  const audit = auditDiff(repositoryRoot, skillName, changedPaths);
+  // The workflow before/after content is threaded straight through: when the
+  // change set touches the shared workflow, `auditDiff` refuses it unless the
+  // edit is proven a bare test registration, and refuses an unproven one whose
+  // content was not supplied. So a workflow path here fails closed, exactly as
+  // an out-of-target path does.
+  const audit = auditDiff(repositoryRoot, skillName, changedPaths, { workflow });
   if (!audit.clean) {
+    const refusedPaths = audit.refused
+      .map((entry) => `${entry.path} (${entry.writeClass})`)
+      .sort();
+    if (audit.workflowViolation) {
+      refusedPaths.push(`${audit.workflowViolation.path} (${audit.workflowViolation.message})`);
+    }
     throw new LedgerError(
       'out_of_target',
-      `a reinforcement remediation stays inside skills/${skillName}; refused: ${audit.refused
-        .map((entry) => `${entry.path} (${entry.writeClass})`)
-        .sort()
-        .join(', ')}`,
+      `a reinforcement remediation stays inside skills/${skillName} and touches the workflow only as a proven test registration; refused: ${refusedPaths.join(', ')}`,
     );
   }
 
@@ -155,23 +163,32 @@ export function assertRoastComplete(state) {
 
 export const USAGE = `Usage: reinforce-roast.mjs --root <path> --skill <name> --changed <a,b,c>
 
-  --root     Repository root the reinforcement runs against.
-  --skill    The one skill being reinforced.
-  --changed  Comma-separated change set to audit.
-  --probe    Report availability and exit.`;
+  --root                Repository root the reinforcement runs against.
+  --skill               The one skill being reinforced.
+  --changed             Comma-separated change set to audit.
+  --workflow-previous   Path to the validation workflow before the edit.
+  --workflow-next       Path to the validation workflow after the edit.
+  --probe               Report availability and exit.`;
 
 export function parseArguments(argv) {
   const args = {};
-  const valueFlags = ['--root', '--skill', '--changed'];
+  const valueFlags = ['--root', '--skill', '--changed', '--workflow-previous', '--workflow-next'];
+  const claim = (key, token) => {
+    if (Object.prototype.hasOwnProperty.call(args, key)) {
+      throw new LedgerError('usage', `${token} was given more than once\n${USAGE}`);
+    }
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === '--probe') {
+      claim('probe', token);
       args.probe = true;
       continue;
     }
     if (!valueFlags.includes(token)) {
       throw new LedgerError('usage', `unknown argument: ${token}\n${USAGE}`);
     }
+    claim(token.slice(2), token);
     const value = argv[index + 1];
     if (value === undefined || value.startsWith('--')) {
       throw new LedgerError('usage', `${token} requires a value\n${USAGE}`);
@@ -192,8 +209,22 @@ export function run(argv, streams = process) {
     throw new LedgerError('usage', `--root, --skill, and --changed are required\n${USAGE}`);
   }
   const changed = args.changed.split(',').map((entry) => entry.trim()).filter(Boolean);
+  const hasPrevious = args['workflow-previous'] !== undefined;
+  const hasNext = args['workflow-next'] !== undefined;
+  if (hasPrevious !== hasNext) {
+    throw new LedgerError(
+      'usage',
+      `--workflow-previous and --workflow-next are supplied together or not at all\n${USAGE}`,
+    );
+  }
+  const workflow = hasPrevious
+    ? {
+      previous: fs.readFileSync(args['workflow-previous'], 'utf8'),
+      next: fs.readFileSync(args['workflow-next'], 'utf8'),
+    }
+    : undefined;
   streams.stdout.write(
-    `${JSON.stringify(assertReinforcementChangeSet(args.root, args.skill, changed), null, 2)}\n`,
+    `${JSON.stringify(assertReinforcementChangeSet(args.root, args.skill, changed, { workflow }), null, 2)}\n`,
   );
   return 0;
 }

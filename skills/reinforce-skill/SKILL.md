@@ -63,9 +63,12 @@ invokes it after a human has approved the recommendation it disposes.
 
 4. Open the pull request. Create a review branch, commit the target's changed
    files together with the changelog patch, and run the write-boundary guard's
-   diff audit over the actual change set; if any changed path is outside
-   `in-target` or `workflow`, stop and report it rather than opening a pull
-   request. Run the intent-decision release check
+   diff audit over the actual change set — supplying the validation workflow's
+   before/after content whenever the diff touches it, so the edit is proven a
+   bare test registration. The audit exits non-zero when it is not clean: if any
+   changed path is outside `in-target` or `workflow`, or a workflow edit cannot
+   be proven additive, stop and report it rather than opening a pull request.
+   Run the intent-decision release check
    (`intent-decision.mjs --state <path> --require-decision`) over the recorded
    decision; a `blocked` result — a `changes-intent` decision that never reached
    `stored`, or a stored intent that no longer matches the file on disk — stops

@@ -9,6 +9,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,11 +20,14 @@ import {
   FAILURES,
   WORKFLOW_FILE,
   WRITE_CLASS,
+  assertWorkflowAdditive,
   auditDiff,
   classifyWritePath,
   isWritableClass,
   resolveSkillTarget,
 } from './reinforcement-target.mjs';
+
+const CLI = fileURLToPath(new URL('./reinforcement-target.mjs', import.meta.url));
 
 const REPOSITORY_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -183,12 +187,22 @@ test('a symlinked in-target leaf is resolved and refused, not classified in-targ
 
 test('a diff audit refuses any out-of-target path and reports workflow edits separately', () => {
   withFixture((root) => {
+    const workflowContent = [
+      'run: node scripts/run-registered-tests.mjs',
+      '  skills/existing-skill/existing-skill.test.mjs',
+      '',
+    ].join('\n');
     const clean = auditDiff(root, 'existing-skill', [
       'skills/existing-skill/SKILL.md',
       'skills/existing-skill/intent.md',
       WORKFLOW_FILE,
-    ]);
-    assert.equal(clean.clean, true, 'an all-in-target-plus-workflow diff is clean');
+    ], {
+      workflow: {
+        previous: workflowContent,
+        next: `${workflowContent}  skills/existing-skill/added.test.mjs\n`,
+      },
+    });
+    assert.equal(clean.clean, true, 'an all-in-target-plus-proven-additive-workflow diff is clean');
     assert.equal(clean.refused.length, 0);
     assert.equal(clean.workflow.length, 1, 'the workflow edit is surfaced separately');
 
@@ -204,6 +218,132 @@ test('a diff audit refuses any out-of-target path and reports workflow edits sep
       [WRITE_CLASS.doctrine, WRITE_CLASS.foreignSkill, WRITE_CLASS.outside].sort(),
     );
   });
+});
+
+test('a workflow edit with no before/after content is refused, not waved through', () => {
+  withFixture((root) => {
+    const unproven = auditDiff(root, 'existing-skill', [
+      'skills/existing-skill/SKILL.md',
+      WORKFLOW_FILE,
+    ]);
+    assert.equal(unproven.clean, false, 'an unproven workflow edit fails closed');
+    assert.ok(unproven.workflowViolation, 'the unproven workflow edit is surfaced');
+    assert.match(unproven.workflowViolation.message, /cannot be proven/);
+  });
+});
+
+test('assertWorkflowAdditive refuses weakening by addition and removal (finding 5)', () => {
+  const previous = [
+    'jobs:',
+    '  test:',
+    '    run: node scripts/run-registered-tests.mjs',
+    '      skills/roast/roast.test.mjs',
+    '',
+  ].join('\n');
+
+  // Appending a registration is permitted.
+  const appended = `${previous}      skills/existing-skill/existing-skill.test.mjs\n`;
+  assert.deepEqual(assertWorkflowAdditive(previous, appended), { status: 'additive', removed: [], added: [] });
+
+  // Removing a registration is refused.
+  const removed = previous.replace('      skills/roast/roast.test.mjs\n', '');
+  assert.equal(code(() => assertWorkflowAdditive(previous, removed)), FAILURES.workflowNotAdditive);
+
+  // Adding a non-registration line — disabling the job — removes nothing and
+  // once passed a removal-only check. The positive bound refuses it.
+  const disabled = previous.replace('  test:\n', '  test:\n    if: false\n');
+  assert.equal(
+    code(() => assertWorkflowAdditive(previous, disabled)),
+    FAILURES.workflowNotAdditive,
+    'adding if: false is refused even though it removes nothing',
+  );
+
+  // Re-indenting a registration into a different job changes its exact line, so
+  // the old line disappears (a removal) and the new indent is refused too.
+  const moved = previous.replace(
+    '      skills/roast/roast.test.mjs',
+    '        skills/roast/roast.test.mjs',
+  );
+  assert.equal(
+    code(() => assertWorkflowAdditive(previous, moved)),
+    FAILURES.workflowNotAdditive,
+    'a re-indented registration is refused',
+  );
+});
+
+test('the audit CLI exits 2 on refusal and 0 when clean (finding 3)', () => {
+  const refuse = spawnSync(
+    process.execPath,
+    [
+      CLI,
+      '--root', REPOSITORY_ROOT,
+      '--skill', 'existing-skill',
+      '--audit', 'doctrine/code.doctrine.md,skills/existing-skill/SKILL.md',
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(refuse.status, 2, 'an out-of-target audit exits 2');
+  assert.match(refuse.stdout, /"clean": false/);
+
+  const ok = spawnSync(
+    process.execPath,
+    [CLI, '--root', REPOSITORY_ROOT, '--skill', 'existing-skill', '--audit', 'skills/existing-skill/SKILL.md'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(ok.status, 0, 'a clean audit exits 0');
+  assert.match(ok.stdout, /"clean": true/);
+});
+
+test('the audit CLI reaches the workflow-additive check through --workflow-* flags (finding 4)', () => {
+  const dir = fs.mkdtempSync(path.join(REPOSITORY_ROOT, '.reinforce-cli-fixture-'));
+  try {
+    const previous = [
+      'run: node scripts/run-registered-tests.mjs',
+      '  skills/existing-skill/existing-skill.test.mjs',
+      '',
+    ].join('\n');
+    const previousPath = path.join(dir, 'previous.yml');
+    const nextPath = path.join(dir, 'next.yml');
+    fs.writeFileSync(previousPath, previous);
+    // A next that weakens the job by addition must drive the CLI to exit 2.
+    fs.writeFileSync(nextPath, previous.replace('run:', 'if: false\nrun:'));
+    const weakened = spawnSync(
+      process.execPath,
+      [
+        CLI, '--root', REPOSITORY_ROOT, '--skill', 'existing-skill',
+        '--audit', WORKFLOW_FILE,
+        '--workflow-previous', previousPath,
+        '--workflow-next', nextPath,
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(weakened.status, 2, 'a weakening workflow edit exits 2 through the CLI');
+    assert.match(weakened.stdout, /"clean": false/);
+
+    // Supplying only one of the pair is a usage error.
+    const half = spawnSync(
+      process.execPath,
+      [
+        CLI, '--root', REPOSITORY_ROOT, '--skill', 'existing-skill',
+        '--audit', WORKFLOW_FILE, '--workflow-previous', previousPath,
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(half.status, 1);
+    assert.match(half.stderr, /supplied together/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a repeated flag is refused by the audit CLI (finding 8)', () => {
+  const dup = spawnSync(
+    process.execPath,
+    [CLI, '--root', REPOSITORY_ROOT, '--skill', 'roast', '--skill', 'existing-skill'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(dup.status, 1, 'a duplicated flag is refused, not last-wins');
+  assert.match(dup.stderr, /--skill was given more than once/);
 });
 
 test('the diff audit rejects a non-array change set', () => {

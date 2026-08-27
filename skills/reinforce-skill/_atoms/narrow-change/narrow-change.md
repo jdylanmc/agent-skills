@@ -30,21 +30,28 @@ Change the implementation to match the intent, and change nothing more.
    `foreign-skill`, or `outside` path is refused and reported, never written.
    The single disclosed exception is registering a new test file in the
    validation workflow, and that edit is **additive only** — a test-registration
-   line added or removed. It never changes the workflow's triggers, jobs,
-   commands, permissions, existing registrations, or the doctrine-digest step.
+   line added. It never removes a registration, never changes the workflow's
+   triggers, jobs, commands, permissions, existing registrations, or the
+   doctrine-digest step, and adds nothing but a `*.test.mjs` registration line.
 3. Before handing the change over for a pull request, audit the **actual**
    change set with the guard's `auditDiff` over the version-control diff, and
    cross-check it against the recorded intent decision with
-   `assertDiffMatchesDecision`. If any changed path falls outside `in-target` or
-   `workflow`, stop and report it; no pull request opens on an out-of-target
-   diff. A change scoped as `preserves-intent` whose diff edits `intent.md` is
-   refused on the same gate, which is what stops a narrow change from widening
-   into a change to what the skill is for. A change scoped as `changes-intent`
-   whose diff edits `intent.md` is refused unless that intent was stored through
-   the gate and the stored bytes still match the file on disk, so a hand-written
-   intent never publishes. Run the intent-decision release check,
-   `intent-decision.mjs --state <path> --require-decision`, as the publication
-   precondition; a `blocked` result stops the pull request.
+   `assertDiffMatchesDecision`, passing the repository root so an absolute path
+   to `intent.md` cannot slip past. When the change set touches the validation
+   workflow, pass the file's before/after content (`--workflow-previous <path>
+   --workflow-next <path>` on the CLI, or `{ workflow: { previous, next } }` in
+   process) so the edit is proven a bare registration; a workflow edit whose
+   content is not supplied is refused, not waved through. If any changed path
+   falls outside `in-target` or `workflow`, stop and report it; no pull request
+   opens on an out-of-target diff, and the `--audit` CLI exits non-zero when the
+   audit is unclean. A change scoped as `preserves-intent` whose diff edits
+   `intent.md` is refused on the same gate, which is what stops a narrow change
+   from widening into a change to what the skill is for. A change scoped as
+   `changes-intent` whose diff edits `intent.md` is refused unless that intent
+   was stored through the gate and the stored bytes still match the file on disk,
+   so a hand-written intent never publishes. Run the intent-decision release
+   check, `intent-decision.mjs --state <path> --require-decision`, as the
+   publication precondition; a `blocked` result stops the pull request.
 4. When the change adds or removes a unit, re-derive the graph with
    `node scripts/derive-skill-graph.mjs --write`, so `used-by` and molecule
    `allowed-tools` are regenerated and committed rather than hand-edited.

@@ -250,17 +250,27 @@ export function isWritableClass(writeClass) {
 /**
  * The `workflow` class is writable, but not unconditionally: the one edit a
  * reinforcement may make to the shared validation workflow is registering a new
- * test, and registration is line-preserving. It adds lines; it never removes or
- * rewrites one. So the only workflow edit permitted is one where every non-blank
- * line of the previous file still appears in the next. Deleting an existing
- * `*.test.mjs` registration or editing the doctrine-digest step is exactly the
- * gate-weakening move this refuses — the one path by which the package could
- * weaken a repository gate to make a change fit.
+ * test. That edit is bounded on both sides. Negatively, it removes nothing: every
+ * non-blank line of the previous file still appears in the next, so deleting an
+ * existing `*.test.mjs` registration is refused. Positively, every line it *adds*
+ * is a `*.test.mjs` registration path and nothing else, so adding `if: false` to
+ * a job, moving a registration to a re-indented position, or slipping in any
+ * other workflow line is refused even though it removes nothing.
+ *
+ * The two bounds together are what let this stand for "register a test, and do
+ * only that". A negative-only check was blind to weakening by pure addition; the
+ * positive bound closes that. What it does not prove is YAML *structure* — a line
+ * whose exact text and indentation are preserved but whose surrounding block
+ * changed is invisible to a line-level check, and that residue is caught by
+ * continuous integration re-running the gates over the diff and by the human who
+ * reads it, not by this function.
  *
  * Lines are compared with trailing whitespace trimmed, so a reflowed or
  * re-indented tail does not read as a removal; a genuinely removed or rewritten
- * registration does.
+ * registration, or a re-indented one, does.
  */
+const REGISTRATION_LINE = /^\S+\.test\.mjs$/;
+
 export function assertWorkflowAdditive(previousContent, nextContent) {
   if (typeof previousContent !== 'string' || typeof nextContent !== 'string') {
     throw new TargetError(
@@ -268,21 +278,41 @@ export function assertWorkflowAdditive(previousContent, nextContent) {
       'assertWorkflowAdditive requires the previous and next workflow contents',
     );
   }
-  const nextLines = new Set(nextContent.split('\n').map((line) => line.trimEnd()));
-  const removed = previousContent
-    .split('\n')
-    .map((line) => line.trimEnd())
+  const previousLines = previousContent.split('\n').map((line) => line.trimEnd());
+  const nextLines = nextContent.split('\n').map((line) => line.trimEnd());
+  const previousSet = new Set(previousLines);
+  const nextSet = new Set(nextLines);
+
+  const removed = previousLines
     .filter((line) => line.trim() !== '')
-    .filter((line) => !nextLines.has(line));
-  if (removed.length) {
+    .filter((line) => !nextSet.has(line));
+
+  // Every added non-blank line must be a test-registration path. This is the
+  // positive bound: a weakening that only *adds* lines — `if: false`, a moved or
+  // re-indented registration, a new step — leaves every previous line in place
+  // and would pass a removal-only check, so it is refused here instead.
+  const added = nextLines
+    .filter((line) => line.trim() !== '')
+    .filter((line) => !previousSet.has(line))
+    .filter((line) => !REGISTRATION_LINE.test(line.trim()));
+
+  if (removed.length || added.length) {
+    const reasons = [];
+    if (removed.length) {
+      reasons.push(`these lines were removed or rewritten: ${removed.join(' | ')}`);
+    }
+    if (added.length) {
+      reasons.push(`these added lines are not test registrations: ${added.join(' | ')}`);
+    }
     const error = new TargetError(
       FAILURES.workflowNotAdditive,
-      `the workflow edit is not additive; these lines were removed or rewritten: ${removed.join(' | ')}`,
+      `the workflow edit is not a bare test registration; ${reasons.join('; ')}`,
     );
     error.removed = removed;
+    error.added = added;
     throw error;
   }
-  return { status: 'additive', removed: [] };
+  return { status: 'additive', removed: [], added: [] };
 }
 
 /**
@@ -302,9 +332,15 @@ export function assertWorkflowAdditive(previousContent, nextContent) {
  * but nothing lands without passing this audit and the human review after it.
  *
  * When the run supplies the workflow file's before/after content in
- * `{ workflow: { previous, next } }`, the edit is additionally proven additive:
- * a removed registration or an edited doctrine-digest step is a `workflowViolation`
- * that makes the change set unclean, exactly as an out-of-target path does.
+ * `{ workflow: { previous, next } }`, the edit is additionally proven a bare test
+ * registration: a removed registration, an edited doctrine-digest step, or any
+ * added non-registration line is a `workflowViolation` that makes the change set
+ * unclean, exactly as an out-of-target path does.
+ *
+ * Fail closed: when the change set touches the workflow but the run supplied no
+ * before/after content, the edit cannot be proven a bare registration, so it is
+ * a `workflowViolation` and the change set is unclean. An unproven workflow edit
+ * is refused, never waved through.
  */
 export function auditDiff(repositoryRoot, skillName, changedPaths, { workflow: workflowDiff } = {}) {
   requireString(repositoryRoot, 'repositoryRoot');
@@ -321,23 +357,35 @@ export function auditDiff(repositoryRoot, skillName, changedPaths, { workflow: w
   const refused = classified.filter((entry) => !entry.writable);
   const workflow = classified.filter((entry) => entry.writeClass === WRITE_CLASS.workflow);
 
-  // A workflow file is writable only as an additive registration. When the run
-  // supplies the before/after content, prove the edit removed nothing; a removed
-  // registration or an edited doctrine-digest step makes the whole change set
-  // unclean, exactly as an out-of-target path does.
+  // A workflow file is writable only as an additive registration, and only when
+  // that can be proven. When the run supplies the before/after content, prove the
+  // edit is a bare registration. When it touches the workflow but supplies no
+  // content, the edit is unproven and therefore refused — the same fail-closed
+  // stance as an out-of-target path.
   let workflowViolation = null;
-  if (workflow.length && workflowDiff) {
-    try {
-      assertWorkflowAdditive(workflowDiff.previous, workflowDiff.next);
-    } catch (error) {
-      if (error.code !== FAILURES.workflowNotAdditive) {
-        throw error;
-      }
+  if (workflow.length) {
+    if (!workflowDiff) {
       workflowViolation = {
-        path: workflowDiff.path ?? WORKFLOW_FILE,
-        removed: error.removed ?? [],
-        message: error.message,
+        path: WORKFLOW_FILE,
+        reason: 'workflow content not supplied',
+        message:
+          'the change set edits the validation workflow but supplied no before/after content, '
+          + 'so the edit cannot be proven a bare test registration',
       };
+    } else {
+      try {
+        assertWorkflowAdditive(workflowDiff.previous, workflowDiff.next);
+      } catch (error) {
+        if (error.code !== FAILURES.workflowNotAdditive) {
+          throw error;
+        }
+        workflowViolation = {
+          path: workflowDiff.path ?? WORKFLOW_FILE,
+          removed: error.removed ?? [],
+          added: error.added ?? [],
+          message: error.message,
+        };
+      }
     }
   }
 
@@ -352,16 +400,23 @@ export function auditDiff(repositoryRoot, skillName, changedPaths, { workflow: w
 
 function parseArguments(argv) {
   const args = {};
-  const valueFlags = ['--root', '--skill', '--classify', '--audit'];
+  const valueFlags = ['--root', '--skill', '--classify', '--audit', '--workflow-previous', '--workflow-next'];
+  const claim = (key, token) => {
+    if (Object.prototype.hasOwnProperty.call(args, key)) {
+      throw new TargetError(FAILURES.usage, `${token} was given more than once`);
+    }
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === '--probe') {
+      claim('probe', token);
       args.probe = true;
       continue;
     }
     if (!valueFlags.includes(token)) {
       throw new TargetError(FAILURES.usage, `unknown argument: ${token}`);
     }
+    claim(token.slice(2), token);
     const value = argv[index + 1];
     if (value === undefined || value.startsWith('--')) {
       throw new TargetError(FAILURES.usage, `${token} requires a value`);
@@ -376,7 +431,7 @@ function main(argv) {
   const args = parseArguments(argv);
   if (args.probe) {
     process.stdout.write('reinforcement-target: available\n');
-    return;
+    return 0;
   }
   if (!args.root || !args.skill) {
     throw new TargetError(FAILURES.usage, '--root and --skill are required');
@@ -384,14 +439,36 @@ function main(argv) {
   if (args.classify) {
     const writeClass = classifyWritePath(args.root, args.skill, args.classify);
     process.stdout.write(`${JSON.stringify({ writeClass, writable: isWritableClass(writeClass) }, null, 2)}\n`);
-    return;
+    return 0;
   }
   if (args.audit) {
     const changed = args.audit.split(',').map((entry) => entry.trim()).filter(Boolean);
-    process.stdout.write(`${JSON.stringify(auditDiff(args.root, args.skill, changed), null, 2)}\n`);
-    return;
+    // A workflow edit is proven a bare registration only when both before and
+    // after are supplied. One without the other is a usage error, not a silent
+    // half-check.
+    const hasPrevious = args['workflow-previous'] !== undefined;
+    const hasNext = args['workflow-next'] !== undefined;
+    if (hasPrevious !== hasNext) {
+      throw new TargetError(
+        FAILURES.usage,
+        '--workflow-previous and --workflow-next are supplied together or not at all',
+      );
+    }
+    const workflow = hasPrevious
+      ? {
+        previous: fs.readFileSync(args['workflow-previous'], 'utf8'),
+        next: fs.readFileSync(args['workflow-next'], 'utf8'),
+      }
+      : undefined;
+    const result = auditDiff(args.root, args.skill, changed, { workflow });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    // A gate that reports `clean:false` and exits 0 is not a gate. Exit 2 on
+    // refusal, mirroring intent-decision.mjs --require-decision, so publication
+    // cannot proceed past an unclean audit on a success-shaped exit.
+    return result.clean ? 0 : 2;
   }
   process.stdout.write(`${JSON.stringify(resolveSkillTarget(args.root, args.skill), null, 2)}\n`);
+  return 0;
 }
 
 function isDirectInvocation() {
@@ -407,7 +484,7 @@ function isDirectInvocation() {
 
 if (isDirectInvocation()) {
   try {
-    main(process.argv.slice(2));
+    process.exitCode = main(process.argv.slice(2));
   } catch (error) {
     process.stderr.write(`${JSON.stringify({
       error: { code: error.code ?? FAILURES.usage, message: error.message },

@@ -138,12 +138,15 @@ node <atoms>/intent-decision/intent-decision.mjs \
 ```
 
 Exit `0` reports `satisfied`. Exit `2` reports `blocked` and names every reason.
-It blocks when no decision was recorded, when a decision carries no reasoning,
-when a `changes-intent` decision never reached `stored`, when no confirmation of
-the revised intent was ever recorded, and when the stored file is missing or no
-longer matches the confirmed text. There is no route through it that reports
-`satisfied` for a reinforcement whose intent change was hand-written rather than
-confirmed and stored.
+It blocks when no decision was recorded, when the decision is not one of the two
+allowed values, when a decision carries no reasoning, when a `changes-intent`
+decision never reached `stored`, when no confirmation of the revised intent was
+ever recorded, and when the stored file is missing or no longer matches the
+confirmed text. A record that merely *labels* itself `stored` without the
+digests and operator-confirmation a real store leaves behind is rejected as
+unusable rather than read as satisfied. There is no route through it that
+reports `satisfied` for a reinforcement whose intent change was hand-written
+rather than confirmed and stored.
 
 A `blocked` result is not a warning to carry into the report. It means the
 reinforcement may not open a pull request yet. Stop, say which reason applies,

@@ -21,7 +21,9 @@ import {
   assertDiffMatchesDecision,
   createDecision,
   decisionReport,
+  parseArguments,
   requireIntentDecision,
+  run,
 } from './intent-decision.mjs';
 import { digestOf } from '../../../create-skill/_atoms/intent-storage-gate/intent-storage-gate.mjs';
 
@@ -155,14 +157,39 @@ test('a narrow change that edits the intent anyway is refused at publication', (
     code(() => assertDiffMatchesDecision(preserved, [
       `skills/${SKILL}/SKILL.md`,
       `skills/${SKILL}/intent.md`,
-    ])),
+    ], { repositoryRoot: REPOSITORY_ROOT })),
     'undisclosed_intent_edit',
     'a preserves-intent run may not widen into an intent edit',
   );
 
-  const consistent = assertDiffMatchesDecision(preserved, [`skills/${SKILL}/SKILL.md`]);
+  const consistent = assertDiffMatchesDecision(
+    preserved,
+    [`skills/${SKILL}/SKILL.md`],
+    { repositoryRoot: REPOSITORY_ROOT },
+  );
   assert.equal(consistent.status, 'consistent');
   assert.equal(consistent.touchesIntent, false);
+});
+
+test('assertDiffMatchesDecision fails closed without a repository root', () => {
+  const preserved = applyEvent(createDecision({ skill: SKILL, priorIntent: PRIOR }), {
+    type: 'decide',
+    decision: 'preserves-intent',
+    reasoning: 'a bug fix that does not change what the skill is for',
+  });
+  // Omitting the root is not an opt-out of the check; it is a refusal. Without a
+  // root an absolute path to intent.md could never be recognised, so the check
+  // demands the root rather than passing silently.
+  assert.equal(
+    code(() => assertDiffMatchesDecision(preserved, [`skills/${SKILL}/intent.md`])),
+    'invalid_input',
+    'no root is a refusal, never a silent pass',
+  );
+  assert.equal(
+    code(() => assertDiffMatchesDecision(preserved, [`skills/${SKILL}/intent.md`], { repositoryRoot: '' })),
+    'invalid_input',
+    'an empty root is refused too',
+  );
 });
 
 test('a changes-intent run whose diff never edits the intent is refused too', () => {
@@ -172,7 +199,7 @@ test('a changes-intent run whose diff never edits the intent is refused too', ()
     reasoning: 'the change alters what the skill is for',
   });
   assert.equal(
-    code(() => assertDiffMatchesDecision(decided, [`skills/${SKILL}/SKILL.md`])),
+    code(() => assertDiffMatchesDecision(decided, [`skills/${SKILL}/SKILL.md`], { repositoryRoot: REPOSITORY_ROOT })),
     'missing_intent_edit',
   );
 });
@@ -180,7 +207,7 @@ test('a changes-intent run whose diff never edits the intent is refused too', ()
 test('a change set cannot be published before the decision exists', () => {
   const opened = createDecision({ skill: SKILL, priorIntent: PRIOR });
   assert.equal(
-    code(() => assertDiffMatchesDecision(opened, [`skills/${SKILL}/SKILL.md`])),
+    code(() => assertDiffMatchesDecision(opened, [`skills/${SKILL}/SKILL.md`], { repositoryRoot: REPOSITORY_ROOT })),
     'undecided',
   );
 });
@@ -393,5 +420,162 @@ test('a draft that is not plain requirements is refused before it is ever presen
   assert.equal(
     code(() => applyEvent(decided, { type: 'draft-presented', draft: wrongTitle })),
     'not_plain_intent',
+  );
+});
+
+test('an out-of-set decision value is refused by every release route, not just the keys', () => {
+  // assertState allow-listed field *names*; a decision like "maybe-later" once
+  // flowed through every branch because only the key was checked, never the
+  // value. Now the value is validated, so a fabricated decision fails closed on
+  // every route that reads the record.
+  const fabricated = {
+    version: 1,
+    skill: SKILL,
+    hadIntent: true,
+    priorDigest: digestOf(PRIOR),
+    decision: 'maybe-later',
+    reasoning: 'r',
+    status: 'undecided',
+    presentedDigest: null,
+    confirmedDigest: null,
+    storedDigest: null,
+    storedPath: null,
+    history: [],
+  };
+
+  assert.equal(
+    requireIntentDecision(fabricated).requirement,
+    'blocked',
+    'an out-of-set decision blocks the release check',
+  );
+  assert.equal(
+    code(() => assertDiffMatchesDecision(fabricated, [`skills/${SKILL}/intent.md`], { repositoryRoot: REPOSITORY_ROOT })),
+    'invalid_state',
+    'an out-of-set decision is refused by the diff cross-check',
+  );
+});
+
+test('a fabricated stored state with null digests fails closed', () => {
+  // Setting status to "stored" while leaving the digests null once skipped every
+  // disk verification, because each read was guarded by the truthiness of a
+  // field the fabrication left null. status:stored is now a structural invariant.
+  const fabricated = {
+    version: 1,
+    skill: SKILL,
+    hadIntent: true,
+    priorDigest: digestOf(PRIOR),
+    decision: 'changes-intent',
+    reasoning: 'r',
+    status: 'stored',
+    presentedDigest: null,
+    confirmedDigest: 'x',
+    storedDigest: null,
+    storedPath: null,
+    history: [],
+  };
+  assert.equal(
+    requireIntentDecision(fabricated).requirement,
+    'blocked',
+    'a stored state without its digests is unusable, not satisfied',
+  );
+  assert.equal(
+    code(() => assertDiffMatchesDecision(fabricated, [`skills/${SKILL}/intent.md`], { repositoryRoot: REPOSITORY_ROOT })),
+    'invalid_state',
+  );
+});
+
+test('a stored state that never recorded the operator confirmation is refused', () => {
+  const fabricated = {
+    version: 1,
+    skill: SKILL,
+    hadIntent: true,
+    priorDigest: digestOf(PRIOR),
+    decision: 'changes-intent',
+    reasoning: 'r',
+    status: 'stored',
+    presentedDigest: digestOf(REVISED),
+    confirmedDigest: digestOf(REVISED),
+    storedDigest: digestOf(REVISED),
+    storedPath: '/somewhere/intent.md',
+    history: [{ type: 'decide', decision: 'changes-intent', reasoning: 'r' }],
+  };
+  assert.equal(
+    requireIntentDecision(fabricated).requirement,
+    'blocked',
+    'a stored state must carry the operator-confirmation whose digest it stored',
+  );
+});
+
+/** A capturing stand-in for process.{stdout,stderr}. */
+function fakeStreams() {
+  const out = [];
+  const err = [];
+  return {
+    out,
+    err,
+    stdout: { write: (chunk) => out.push(chunk) },
+    stderr: { write: (chunk) => err.push(chunk) },
+  };
+}
+
+function withStateFile(run) {
+  const dir = fs.mkdtempSync(path.join(REPOSITORY_ROOT, '.intent-cli-fixture-'));
+  try {
+    run(path.join(dir, 'state.json'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('run() maps a satisfied record to exit 0 and a blocked one to exit 2 (finding 7)', () => {
+  withStateFile((statePath) => {
+    const blocked = createDecision({ skill: SKILL, priorIntent: PRIOR });
+    fs.writeFileSync(statePath, JSON.stringify(blocked));
+    const blockedStreams = fakeStreams();
+    assert.equal(run(['--state', statePath, '--require-decision'], blockedStreams), 2);
+    assert.match(blockedStreams.out.join(''), /"requirement": "blocked"/);
+
+    const satisfied = applyEvent(blocked, {
+      type: 'decide',
+      decision: 'preserves-intent',
+      reasoning: 'a bug fix that does not change what the skill is for',
+    });
+    fs.writeFileSync(statePath, JSON.stringify(satisfied));
+    const okStreams = fakeStreams();
+    assert.equal(run(['--state', statePath, '--require-decision'], okStreams), 0);
+    assert.match(okStreams.out.join(''), /"requirement": "satisfied"/);
+  });
+});
+
+test('run() refuses an awaiting-draft changes-intent record with exit 2 (finding 7)', () => {
+  withStateFile((statePath) => {
+    const decided = applyEvent(createDecision({ skill: SKILL, priorIntent: PRIOR }), {
+      type: 'decide',
+      decision: 'changes-intent',
+      reasoning: 'the change alters what the skill is for',
+    });
+    fs.writeFileSync(statePath, JSON.stringify(decided));
+    assert.equal(run(['--state', statePath, '--require-decision'], fakeStreams()), 2);
+  });
+});
+
+test('run() refuses --require-decision combined with --event or --report (finding 7)', () => {
+  withStateFile((statePath) => {
+    fs.writeFileSync(statePath, JSON.stringify(createDecision({ skill: SKILL, priorIntent: PRIOR })));
+    assert.equal(
+      code(() => run(['--state', statePath, '--require-decision', '--report'], fakeStreams())),
+      'usage',
+    );
+  });
+});
+
+test('a repeated flag is refused rather than silently taking the last (finding 8)', () => {
+  assert.equal(
+    code(() => parseArguments(['--state', 'a', '--state', 'b'])),
+    'usage',
+  );
+  assert.equal(
+    code(() => parseArguments(['--require-decision', '--require-decision'])),
+    'usage',
   );
 });

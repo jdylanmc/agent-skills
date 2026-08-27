@@ -50,6 +50,12 @@ detail nobody sees.
 6. Before the pull request opens, audit the **actual** change set with
    `auditDiff`: the real list of changed paths from the version-control diff,
    every one classified, and any path outside `in-target` or `workflow` refused.
+   When a `workflow` path is present, supply the file's before/after content so
+   the edit is proven a bare test registration; an unproven workflow edit is
+   refused. From the command line, `--audit <paths>` (with
+   `--workflow-previous <path> --workflow-next <path>` when the workflow is
+   touched) **exits 2 when the audit is unclean and 0 when it is clean**, so a
+   refusal is never a success-shaped exit that publication could step past.
 
 ## Write Classes
 
@@ -65,7 +71,10 @@ detail nobody sees.
 Only `in-target` and `workflow` are writable. `doctrine`, `base`,
 `foreign-skill`, and `outside` are refused. `workflow` is a shared file, so the
 audit reports it separately and it is writable only as an additive test
-registration — never treated as mechanically safe, and always surfaced for a
+registration: the edit removes no existing registration and adds nothing but a
+`*.test.mjs` registration line, proven from the before/after content the run
+supplies. A workflow edit whose content is not supplied cannot be proven and is
+refused. It is never treated as mechanically safe, and always surfaced for a
 human to read.
 
 ## What This Guard Does and Does Not Do
