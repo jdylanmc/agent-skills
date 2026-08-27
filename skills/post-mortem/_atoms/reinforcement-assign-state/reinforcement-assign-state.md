@@ -45,7 +45,7 @@ moment it is being argued for:
 `ready_for_promotion` is `false` in every result, and `human_approval_required`
 is `true` in every result.
 
-## Operation
+## States
 
 Use exactly these states:
 

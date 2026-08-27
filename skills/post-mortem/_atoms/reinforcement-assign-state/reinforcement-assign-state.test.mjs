@@ -5,6 +5,7 @@ import {
   FORBIDDEN_STATES,
   LIFECYCLE_STATES,
   assessRecurrence,
+  assertLifecycleRecord,
   assignLifecycleState,
 } from './reinforcement-assign-state.mjs';
 
@@ -61,6 +62,26 @@ test('two runs that are two attempts at the same work leave a candidate PROPOSED
   assert.match(foreign.reason, /fewer than two selected runs/);
 });
 
+test('a run that was not positively correlated is not evidence of anything', () => {
+  for (const correlation of ['unknown', 'different-session', undefined, null, '']) {
+    const state = stateFor([
+      run({ run_id: 'run-1', session_id: 'session-1', correlation }),
+      run({ run_id: 'run-2', session_id: 'session-2', correlation }),
+    ]);
+
+    assert.equal(state.status, 'PROPOSED', `correlation ${String(correlation)} must not corroborate`);
+    assert.match(state.reason, /positively correlated with the session they claim/);
+  }
+
+  // One correlated run beside one uncorrelated run is still one run.
+  const mixed = stateFor([
+    run({ run_id: 'run-1', session_id: 'session-1' }),
+    run({ run_id: 'run-2', session_id: 'session-2', correlation: 'unknown' }),
+  ]);
+  assert.equal(mixed.status, 'PROPOSED');
+  assert.equal(mixed.reason.includes('positively correlated'), true);
+});
+
 test('two genuinely independent runs support OBSERVED, and nothing further', () => {
   const observed = stateFor([
     run({ run_id: 'run-1', session_id: 'session-1' }),
@@ -99,6 +120,33 @@ test('a missing assessment is PROPOSED with the absence stated', () => {
 
   assert.equal(state.status, 'PROPOSED');
   assert.match(state.reason, /no recurrence assessment was supplied/);
+});
+
+test('a record edited into a state this skill may not assign is refused', () => {
+  const honest = stateFor([
+    run({ run_id: 'run-1', session_id: 'session-1' }),
+    run({ run_id: 'run-2', session_id: 'session-2' }),
+  ]);
+  assert.deepEqual(assertLifecycleRecord(honest), []);
+  assert.deepEqual(assertLifecycleRecord(stateFor([])), []);
+
+  for (const forbidden of FORBIDDEN_STATES) {
+    assert.deepEqual(
+      assertLifecycleRecord({ ...honest, status: forbidden }),
+      [`${forbidden} is not a state this skill may assign`],
+      `${forbidden} must be refused after the fact, not only at the decision`,
+    );
+  }
+
+  assert.deepEqual(
+    assertLifecycleRecord({ ...honest, ready_for_promotion: true }),
+    ['ready_for_promotion must be false'],
+  );
+  assert.deepEqual(
+    assertLifecycleRecord({ ...honest, validation_requirements: { human_approval_required: false } }),
+    ['human_approval_required must be true'],
+  );
+  assert.deepEqual(assertLifecycleRecord(null), ['a lifecycle record must be an object']);
 });
 
 test('malformed input is refused rather than counted as corroboration', () => {

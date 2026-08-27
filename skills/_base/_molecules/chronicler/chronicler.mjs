@@ -459,6 +459,7 @@ export function replayLog(logPath, options = {}) {
   let rootSkill = null;
   let harness = null;
   let sessionId = null;
+  const harnessLabels = new Set();
 
   lines.forEach((rawLine, index) => {
     const line = rawLine.trim();
@@ -508,15 +509,21 @@ export function replayLog(logPath, options = {}) {
     // A run that changes the session it claims to belong to cannot be
     // correlated with anything. Report it rather than keeping the first value
     // and letting a later reader treat the whole log as one session.
-    for (const [field, established] of [['harness', harness], ['session_id', sessionId]]) {
-      const observed = parsed[field] ?? null;
-      if (observed !== null && established !== null && observed !== established) {
-        defects.push({
-          type: 'session_identity_drift',
-          anchor,
-          detail: `run ${runId} changes ${field} from ${established} to ${observed}`,
-        });
-      }
+    const observedSession = parsed.session_id ?? null;
+    if (observedSession !== null && sessionId !== null && observedSession !== sessionId) {
+      defects.push({
+        type: 'session_identity_drift',
+        anchor,
+        detail: `run ${runId} changes session_id from ${sessionId} to ${observedSession}`,
+      });
+    }
+    // A harness label is not a session identity. Two names for one runtime are
+    // an alias question, and canonicalizing an alias belongs to the consumer
+    // that knows the adapters - not to Chronicle, which would otherwise call a
+    // benign relabelling an identity defect. Every label observed is reported
+    // so the consumer can resolve them itself.
+    if (parsed.harness) {
+      harnessLabels.add(parsed.harness);
     }
     harness ??= parsed.harness ?? null;
     sessionId ??= parsed.session_id ?? null;
@@ -596,6 +603,7 @@ export function replayLog(logPath, options = {}) {
     run_id: runId,
     root_skill: rootSkill,
     harness,
+    harness_labels: [...harnessLabels].sort(),
     session_id: sessionId,
     skills: [...new Set(events.map((event) => event.skill))].sort(),
     event_count: events.length,

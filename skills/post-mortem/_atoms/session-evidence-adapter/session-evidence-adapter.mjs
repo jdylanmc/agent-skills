@@ -1,14 +1,20 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { COPILOT_ADAPTER } from '../copilot-session-events/copilot-session-events.mjs';
+import {
+  COPILOT_ADAPTER,
+  isPathShaped,
+  isPublishableCountKey,
+} from '../copilot-session-events/copilot-session-events.mjs';
+import { replayLog } from '../../../_base/_molecules/chronicler/chronicler.mjs';
 
 /**
  * The provider seam for session evidence.
  *
- * A post-mortem is not about Copilot. It is about a session, and every agent
+ * A post-mortem is not about one product. It is about a session, and every agent
  * harness records one differently. So the harness-specific part is one adapter
  * behind this seam, and everything downstream - diagnosis, proposals, the
  * rendered record - reads the common ledger this module defines and never a
@@ -83,19 +89,14 @@ const MAX_HARNESS_CHARS = 60;
 const MAX_DETAIL_CHARS = 200;
 const MAX_DETAIL_KEYS = 24;
 const MAX_SKILL_ENTRIES = 500;
+const MAX_NATIVE_COUNT_KEYS = 200;
 const SOURCE_KINDS = ['session-log'];
 
 /** Defects that put a run log's session identity in doubt. */
 const IDENTITY_DEFECTS = ['session_identity_drift', 'foreign_run', 'run_identity_drift'];
 
-function isPathShaped(value) {
-  return typeof value === 'string'
-    && (value.startsWith('/')
-      || value.startsWith('\\')
-      || /^[A-Za-z]:[\\/]/.test(value)
-      || value.includes('/../')
-      || /^file:\/\//i.test(value));
-}
+/** Ledger limitations that make any correlation claim unsafe. */
+const CONTESTED_LEDGER_CODES = ['session_identity_contradiction', 'session_identity_unpublishable'];
 
 /** The adapters this repository has validated. One per harness, no fallback. */
 export const DEFAULT_ADAPTERS = [COPILOT_ADAPTER];
@@ -119,7 +120,7 @@ function slugify(value) {
 
 /**
  * Resolves a harness name to the adapter identity that owns it. An alias is a
- * label for one runtime, so `copilot-cli` and `copilot` must never look like
+ * label for one runtime, so two names for one runtime must never look like
  * two different sessions to anything downstream.
  */
 export function canonicalHarness(harness, adapters = DEFAULT_ADAPTERS) {
@@ -220,7 +221,7 @@ export function unsupportedProviderRecommendation(harness) {
     validation_requirements: {
       candidate: `session-evidence adapter for ${subject}`,
       independent_evidence_required: `A documented, stable event format for ${subject}, and at least one real session log to test the parser against.`,
-      minimum_trial_scope: 'One adapter, read only, behind the existing seam, with the same contract tests the Copilot adapter passes.',
+      minimum_trial_scope: 'One adapter, read only, behind the existing seam, with the same contract tests every registered adapter passes.',
       success_measure: 'The adapter returns the common evidence ledger, and the ledger contract check passes unchanged.',
       failure_or_retirement_condition: 'The format proves unstable or undocumented, or the adapter cannot bound its output without losing the evidence that made it worth reading.',
       human_approval_required: true,
@@ -304,7 +305,7 @@ export function collectSessionEvidence({
 
   let ledger;
   try {
-    ledger = provider.adapter.read({ ...resolution, harness: provider.harness }, readerOptions);
+    ledger = provider.adapter.read(resolution, readerOptions);
   } catch (error) {
     return {
       status: 'unavailable',
@@ -457,6 +458,10 @@ function checkProviderNative(problems, providerNative) {
   // Counts only, one level of grouping. A harness may say how many of its own
   // events it saw; it may not smuggle a payload through as "native detail".
   for (const [group, value] of Object.entries(providerNative)) {
+    if (!isPublishableCountKey(group)) {
+      problems.push(`provider_native key ${JSON.stringify(group)} is not a publishable name`);
+      continue;
+    }
     if (Number.isInteger(value)) {
       continue;
     }
@@ -464,7 +469,14 @@ function checkProviderNative(problems, providerNative) {
       problems.push(`provider_native.${group} must be a count or a group of counts`);
       continue;
     }
+    if (Object.keys(value).length > MAX_NATIVE_COUNT_KEYS) {
+      problems.push(`provider_native.${group} carries more than ${MAX_NATIVE_COUNT_KEYS} counts`);
+    }
     for (const [name, count] of Object.entries(value)) {
+      if (!isPublishableCountKey(name)) {
+        problems.push(`provider_native.${group} key ${JSON.stringify(name)} is not a publishable name`);
+        continue;
+      }
       if (!Number.isInteger(count) || count < 0) {
         problems.push(`provider_native.${group}.${name} must be a whole number`);
       }
@@ -482,6 +494,13 @@ export function assertLedgerContract(ledger) {
   }
   if (typeof ledger.provider !== 'string' || ledger.provider.trim() === '') {
     problems.push('provider must name the adapter that produced the ledger');
+  }
+  if (typeof ledger.harness !== 'string' || ledger.harness.trim() === '') {
+    problems.push('harness must name the runtime the ledger was read from');
+  } else if (ledger.harness !== ledger.provider) {
+    // The published harness is always the adapter's own identity. An alias here
+    // would reintroduce the two-names-one-runtime problem downstream.
+    problems.push('harness must be the canonical adapter identity, not an alias');
   }
   if (!COMPLETENESS_VALUES.includes(ledger.completeness)) {
     problems.push(`completeness must be one of ${COMPLETENESS_VALUES.join(', ')}`);
@@ -548,6 +567,19 @@ export function assertLedgerContract(ledger) {
  * unknown, which is a fact about the log and not a mismatch.
  */
 export function correlateRunLog(replayState, ledger, { adapters = DEFAULT_ADAPTERS } = {}) {
+  // A ledger whose own session identity is contested cannot anchor a
+  // correlation: the question a correlation answers is exactly the one the
+  // contradiction left open.
+  const contested = (ledger?.limitations ?? []).find(
+    (limitation) => CONTESTED_LEDGER_CODES.includes(limitation?.code),
+  );
+  if (contested) {
+    return {
+      status: 'unknown',
+      reason: `the session evidence reported ${contested.code}, so its identity cannot anchor a correlation`,
+    };
+  }
+
   // A replay that reported an identity defect cannot support a correlation
   // claim in either direction: the log's own account of which run and session
   // it belongs to is what is in doubt.
@@ -580,8 +612,59 @@ export function correlateRunLog(replayState, ledger, { adapters = DEFAULT_ADAPTE
   return { status: 'same-session', reason: 'the run log and the session evidence share one session identity' };
 }
 
+/**
+ * The production path for correlating one selected Skill Run Log with the
+ * session evidence this seam collected. It replays the log read-only through
+ * Chronicle, refuses to guess when replay cannot read it, and returns the
+ * verdict with the identities it was decided from.
+ */
+export function correlateSelectedRunLog(runLogPath, evidence, { adapters = DEFAULT_ADAPTERS } = {}) {
+  if (typeof runLogPath !== 'string' || runLogPath.trim() === '') {
+    return {
+      status: 'unknown',
+      reason: 'no run log was selected',
+      run_log: null,
+      session_evidence: null,
+    };
+  }
+
+  let replayed;
+  try {
+    replayed = replayLog(runLogPath, { logId: `runlog:${path.basename(runLogPath)}` });
+  } catch (error) {
+    return {
+      status: 'unknown',
+      reason: `the selected run log could not be replayed: ${error.code ?? 'log_unavailable'}`,
+      run_log: null,
+      session_evidence: null,
+    };
+  }
+
+  const ledger = evidence?.ledger ?? null;
+  const verdict = correlateRunLog(replayed, ledger, { adapters });
+  return {
+    ...verdict,
+    run_log: {
+      log_id: replayed.log_id,
+      run_id: replayed.run_id,
+      root_skill: replayed.root_skill,
+      harness: canonicalHarness(replayed.harness, adapters),
+      session_id: replayed.session_id,
+      complete: replayed.complete,
+      defects: replayed.defects.map((defect) => defect.type),
+    },
+    session_evidence: ledger === null ? null : {
+      provider: ledger.provider,
+      harness: ledger.harness,
+      session_id: ledger.source?.session_id ?? null,
+      log_id: ledger.source?.log_id ?? null,
+    },
+  };
+}
+
 function main(argv) {
   const options = {};
+  let runLogPath = null;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--probe') {
@@ -595,13 +678,17 @@ function main(argv) {
       })), null, 2));
       return 0;
     }
-    if (['--harness', '--session-id', '--session-root', '--transcript', '--path'].includes(argument)) {
+    if (['--harness', '--session-id', '--session-root', '--transcript', '--path', '--correlate'].includes(argument)) {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith('--')) {
         console.error(JSON.stringify({ error: { code: 'usage', message: `${argument} requires a value` } }));
         return 1;
       }
       index += 1;
+      if (argument === '--correlate') {
+        runLogPath = value;
+        continue;
+      }
       const field = {
         '--harness': 'harness',
         '--session-id': 'sessionId',
@@ -616,7 +703,15 @@ function main(argv) {
     return 1;
   }
 
-  console.log(JSON.stringify(collectSessionEvidence(options), null, 2));
+  const evidence = collectSessionEvidence(options);
+  if (runLogPath === null) {
+    console.log(JSON.stringify(evidence, null, 2));
+    return 0;
+  }
+  console.log(JSON.stringify({
+    evidence,
+    correlation: correlateSelectedRunLog(runLogPath, evidence),
+  }, null, 2));
   return 0;
 }
 

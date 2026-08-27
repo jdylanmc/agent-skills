@@ -502,7 +502,12 @@ test('the command line resolves a proved session and refuses an ambiguous root',
     if (process.platform !== 'win32') {
       assert.equal(read.identity.kind, 'live-process-lock');
     }
-    assert.equal(read.session_id, 'fixture');
+    // The fixture log claims to be session `fixture` while discovery proved
+    // `session-only`. The proof wins, the claim is preserved, and the
+    // disagreement is stated rather than resolved silently.
+    assert.equal(read.session_id, 'session-only');
+    assert.equal(read.claimed_session_id, 'fixture');
+    assert.ok(read.limitations.some((entry) => entry.code === 'session_identity_contradiction'));
 
     makeSession(root, 'session-rival', { pids: [process.ppid] });
     const refusal = (() => {
@@ -533,5 +538,74 @@ test('a named session identifier still wins over a root that would be ambiguous'
 
     assert.equal(resolution.status, 'selected');
     assert.equal(resolution.identity.kind, 'session-id');
+  });
+});
+
+test('the command never prints a filesystem path as the log identity', () => {
+  withRoot((root) => {
+    const identified = makeSession(root, 'session-a');
+    const anonymousDirectory = path.join(root, 'anonymous');
+    fs.mkdirSync(anonymousDirectory, { recursive: true });
+    const anonymous = path.join(anonymousDirectory, 'events.jsonl');
+    fs.writeFileSync(anonymous, `${JSON.stringify({
+      type: 'assistant.turn_start',
+      data: { turnId: 't1' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+    })}\n`);
+
+    const readJson = (args) => JSON.parse(execFileSync('node', [READER, ...args], { encoding: 'utf8' }));
+
+    // A named path whose log records a session identity.
+    const named = readJson([identified]);
+    assert.equal(named.log_id, 'session:fixture');
+    assert.ok(!JSON.stringify(named).includes(root));
+
+    // A named path whose log records none: a digest, never the path.
+    const digested = readJson([anonymous]);
+    assert.match(digested.log_id, /^sha256:[0-9a-f]{64}$/);
+    assert.ok(!JSON.stringify(digested).includes(anonymousDirectory));
+
+    // A runtime-named transcript is treated the same way.
+    const transcript = readJson(['--transcript', anonymous]);
+    assert.match(transcript.log_id, /^sha256:[0-9a-f]{64}$/);
+    assert.equal(transcript.identity.kind, 'runtime-transcript');
+    assert.ok(!JSON.stringify(transcript).includes(anonymousDirectory));
+
+    // And a caller that hands a path in as the "opaque" identity gets a digest.
+    const forced = readJson([anonymous, '--log-id', anonymous]);
+    assert.match(forced.log_id, /^sha256:[0-9a-f]{64}$/);
+    assert.ok(!JSON.stringify(forced).includes(anonymousDirectory));
+
+    const windowsShaped = readJson([anonymous, '--log-id', 'C:\\logs\\events.jsonl']);
+    assert.match(windowsShaped.log_id, /^sha256:[0-9a-f]{64}$/);
+    assert.ok(!JSON.stringify(windowsShaped).includes('C:\\logs'));
+
+    // An opaque identity the caller chose is respected as given.
+    assert.equal(readJson([anonymous, '--log-id', 'run-7']).log_id, 'run-7');
+  });
+});
+
+test('a symbolic link to a session log is refused rather than followed', (t) => {
+  withRoot((root) => {
+    const real = makeSession(root, 'session-a');
+    const link = path.join(root, 'link-to-events.jsonl');
+    try {
+      fs.symlinkSync(real, link);
+    } catch (error) {
+      // A platform that forbids unprivileged symbolic links cannot exercise
+      // this rule; the refusal it protects is asserted directly below.
+      t.diagnostic(`symbolic links unavailable: ${error.code}`);
+      assert.throws(() => readSelectedSession(path.join(root, 'session-a')), { code: 'not_a_file' });
+      return;
+    }
+
+    assert.throws(() => readSelectedSession(link), (error) => {
+      assert.equal(error.code, 'not_a_file');
+      return true;
+    });
+    assert.equal(resolveSessionSelection({ explicitPath: link, environment: {} }).reason.code, 'unreadable_selection');
+
+    // The real file, named directly, still reads.
+    assert.equal(readSelectedSession(real).log_id, 'session:fixture');
   });
 });

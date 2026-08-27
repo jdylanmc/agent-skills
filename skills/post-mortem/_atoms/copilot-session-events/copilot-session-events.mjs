@@ -64,6 +64,50 @@ const PARTIAL_MARKER = /\[[A-Z]*:?[a-z-]*$/;
 export const REDACT_INPUT_CHARS = 4_000;
 const READ_CHUNK_BYTES = 262_144;
 
+/**
+ * Cardinality budgets. A log is untrusted input, so every collection built
+ * from it is bounded: a session that invents ten thousand event types, or
+ * leaves ten thousand operations open, must cost a bounded amount of memory
+ * and produce a bounded record. Each budget reports itself when it binds.
+ */
+export const MAX_EVENT_TYPES = 100;
+export const MAX_OPEN_OPERATIONS = 5_000;
+export const MAX_ANCHOR_LIST = 200;
+/**
+ * How many times one kind of limitation is listed before it is summarized.
+ * A log with five thousand unfinished tool calls has one problem, not five
+ * thousand, and listing each one would push every other limitation out of a
+ * bounded record.
+ */
+export const MAX_NOTES_PER_CODE = 20;
+/** Native counts fold into this bucket once the type budget is spent. */
+export const OTHER_EVENT_TYPES = 'other_event_types';
+
+/** The one shape test for "this string is a filesystem location". */
+export function isPathShaped(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  return value.startsWith('/')
+    || value.startsWith('\\')
+    || value.startsWith('~/')
+    || /^[A-Za-z]:[\\/]/.test(value)
+    || /^[a-z][a-z0-9+.-]*:\/\//i.test(value)
+    || value.includes('/../')
+    || value.includes('\\..\\');
+}
+
+/**
+ * A key that may be published as a native count. Anything else - a path, a
+ * credential, a sentence, an unbounded identifier - folds into the opaque
+ * bucket rather than reaching the record as a label an attacker chose.
+ */
+const SAFE_COUNT_KEY = /^[A-Za-z][A-Za-z0-9._-]{0,59}$/;
+
+export function isPublishableCountKey(key) {
+  return typeof key === 'string' && SAFE_COUNT_KEY.test(key) && !isPathShaped(key);
+}
+
 /** Bounds the discovery scan, so a session root that grew without limit fails loudly. */
 export const MAX_SCANNED_SESSIONS = 5_000;
 const MAX_ANCESTOR_DEPTH = 32;
@@ -150,11 +194,6 @@ export function publishedLogId({ requestedLogId = null, sessionId = null, source
   return `sha256:${createHash('sha256').update(material, 'utf8').digest('hex')}`;
 }
 
-export function isPathShaped(value) {
-  return typeof value === 'string'
-    && (value.startsWith('/') || value.startsWith('\\') || /^[A-Za-z]:[\\/]/.test(value));
-}
-
 /**
  * Projects this adapter's reading into the provider-neutral evidence ledger.
  * Diagnosis and rendering read the ledger, never this adapter's vocabulary, so
@@ -191,8 +230,8 @@ export function toEvidenceLedger(reading, resolution = null) {
 
   return {
     ledger_version: 1,
-    provider: 'copilot',
-    harness: 'copilot',
+    provider: COPILOT_ADAPTER.id,
+    harness: COPILOT_ADAPTER.id,
     source: {
       kind: 'session-log',
       log_id: reading.log_id,
@@ -217,8 +256,29 @@ export function toEvidenceLedger(reading, resolution = null) {
     entries,
     skills: reading.skills.invocations,
     limitations,
-    provider_native: { event_counts: reading.counts.by_type },
+    provider_native: { event_counts: publishableCounts(reading.counts.by_type) },
   };
+}
+
+/**
+ * Folds raw event-type counts into publishable keys. An unrecognized type name
+ * comes from the log, so it is a label chosen by whatever wrote the file; it is
+ * counted, never reproduced, once it fails the key test or the budget.
+ */
+export function publishableCounts(byType) {
+  const published = {};
+  let folded = 0;
+  for (const [key, count] of Object.entries(byType ?? {})) {
+    if (isPublishableCountKey(key) && Object.keys(published).length < MAX_EVENT_TYPES) {
+      published[key] = count;
+      continue;
+    }
+    folded += count;
+  }
+  if (folded > 0) {
+    published[OTHER_EVENT_TYPES] = folded;
+  }
+  return published;
 }
 
 /**
@@ -237,7 +297,15 @@ export const COPILOT_ADAPTER = {
     return resolveSessionSelection(request);
   },
   read(resolution, options = {}) {
-    return toEvidenceLedger(readSelectedSession(resolution.path, options), resolution);
+    return toEvidenceLedger(
+      readSelectedSession(resolution.path, {
+        ...options,
+        // The proved identity travels with the read, so the reading publishes
+        // the identity that was established rather than the one the file claims.
+        provenSessionId: resolution.identity?.session_id ?? null,
+      }),
+      resolution,
+    );
   },
 };
 
@@ -322,6 +390,16 @@ function safeString(value) {
 
 function safeBoolean(value) {
   return typeof value === 'boolean' ? value : null;
+}
+
+/**
+ * An identifier that is safe to publish. A session identity read out of a log
+ * is untrusted input like any other field, so one shaped like a filesystem
+ * location is withheld rather than echoed into the record. The unpublishable
+ * value is still tracked internally, so the reading can say it was there.
+ */
+function publishableIdentity(value) {
+  return isPathShaped(value) ? null : value;
 }
 
 function at(record, dottedPath) {
@@ -414,10 +492,56 @@ function sessionRootFrom(stateRoot, environment) {
 
 function isReadableFile(candidate) {
   try {
-    return fs.statSync(candidate).isFile();
+    // `lstat`, not `stat`: a symbolic link to a session log is refused rather
+    // than followed, so the thing that was named is the thing that is read.
+    return fs.lstatSync(candidate).isFile();
   } catch {
     return false;
   }
+}
+
+/**
+ * Opens the selection once and verifies the descriptor, rather than checking a
+ * path and opening it afterwards. Between a check and an open, a path can be
+ * replaced; a descriptor cannot. `O_NOFOLLOW` refuses a symbolic link at open
+ * time where the platform provides it, and where it does not, the pre-open
+ * `lstat` plus the post-open `fstat` refuse anything that is not a regular
+ * file. Either way the failure is a refusal, never a read of something else.
+ */
+function openRegularFile(resolved, selectedPath) {
+  const { O_RDONLY, O_NOFOLLOW } = fs.constants;
+  const flags = typeof O_NOFOLLOW === 'number' ? O_RDONLY | O_NOFOLLOW : O_RDONLY;
+
+  if (!isReadableFile(resolved)) {
+    throw new SessionEvidenceError(
+      'not_a_file',
+      'the selection is not a regular file, or is a link to one',
+    );
+  }
+
+  let fd;
+  try {
+    fd = fs.openSync(resolved, flags);
+  } catch (error) {
+    throw new SessionEvidenceError(
+      error.code === 'ELOOP' ? 'not_a_file' : 'unreadable_selection',
+      error.code === 'ELOOP'
+        ? 'the selection is a symbolic link'
+        : `cannot read the selection: ${selectedPath}`,
+    );
+  }
+
+  try {
+    if (!fs.fstatSync(fd).isFile()) {
+      throw new SessionEvidenceError('not_a_file', 'the opened selection is not a regular file');
+    }
+  } catch (error) {
+    fs.closeSync(fd);
+    throw error instanceof SessionEvidenceError
+      ? error
+      : new SessionEvidenceError('unreadable_selection', `cannot inspect the selection: ${selectedPath}`);
+  }
+  return fd;
 }
 
 /**
@@ -607,6 +731,7 @@ class Notes {
     this.entries = [];
     this.exhausted = false;
     this.seen = new Set();
+    this.byCode = new Map();
   }
 
   add(code, anchor, detail, dedupeKey = null) {
@@ -615,6 +740,11 @@ class Notes {
         return;
       }
       this.seen.add(dedupeKey);
+    }
+    const occurrences = (this.byCode.get(code) ?? 0) + 1;
+    this.byCode.set(code, occurrences);
+    if (occurrences > MAX_NOTES_PER_CODE) {
+      return;
     }
     if (this.entries.length >= this.maxNotes) {
       if (!this.exhausted) {
@@ -628,6 +758,20 @@ class Notes {
       return;
     }
     this.entries.push({ code, anchor, detail });
+  }
+
+  /** Summarizes every limitation kind that occurred more often than it is listed. */
+  finalize() {
+    for (const [code, occurrences] of this.byCode) {
+      if (occurrences > MAX_NOTES_PER_CODE) {
+        this.entries.push({
+          code: 'repeated_limitation',
+          anchor: null,
+          detail: `${code} occurred ${occurrences} times; the first ${MAX_NOTES_PER_CODE} are listed`,
+        });
+      }
+    }
+    return this.entries;
   }
 }
 
@@ -693,6 +837,7 @@ export function extractSessionEvidence({
   lines,
   logId = null,
   sourcePath = null,
+  provenSessionId = null,
   endsWithNewline = true,
   maxEvents = DEFAULT_MAX_EVENTS,
   maxNotes = DEFAULT_MAX_NOTES,
@@ -734,6 +879,7 @@ export function extractSessionEvidence({
   let sawShutdown = false;
   let sawAbort = false;
   let sawCompaction = false;
+  let unforgottenOperations = 0;
 
   const materialize = (anchor, type, timestamp, fields) => {
     projection.push({ anchor, type, timestamp, ...fields });
@@ -783,7 +929,16 @@ export function extractSessionEvidence({
     }
 
     const { type } = record;
-    byType.set(type, (byType.get(type) ?? 0) + 1);
+    if (byType.has(type) || byType.size < MAX_EVENT_TYPES) {
+      byType.set(type, (byType.get(type) ?? 0) + 1);
+    } else {
+      byType.set(OTHER_EVENT_TYPES, (byType.get(OTHER_EVENT_TYPES) ?? 0) + 1);
+      notes.add(
+        'event_type_budget_exhausted',
+        anchor,
+        `more than ${MAX_EVENT_TYPES} distinct event types appear; the rest are counted together`,
+      );
+    }
     usableRecords += 1;
 
     const timestamp = safeString(record.timestamp);
@@ -793,10 +948,15 @@ export function extractSessionEvidence({
     }
 
     if (!SUPPORTED.has(type)) {
+      // The type name comes from the log. Report it only when it is a name a
+      // record may carry; otherwise say that one was there and count it.
+      const reportable = publishableIdentity(safeString(type));
       notes.add(
         'unrecognized_event',
         anchor,
-        `unsupported event type ${safeString(type) ?? 'unnamed'}`,
+        reportable !== null && isPublishableCountKey(reportable)
+          ? `unsupported event type ${reportable}`
+          : 'an unsupported event type that cannot be published as a name',
         `unknown:${type}`,
       );
       return;
@@ -816,7 +976,7 @@ export function extractSessionEvidence({
         sawStart = true;
         sessionId ??= observed;
         producer ??= safeString(at(record, 'data.producer'));
-        materialize(anchor, type, timestamp, { session_id: observed });
+        materialize(anchor, type, timestamp, { session_id: publishableIdentity(observed) });
         break;
       }
       case 'session.resume': {
@@ -872,8 +1032,15 @@ export function extractSessionEvidence({
           if (openTurns.has(turnId)) {
             turns.repeated.push(anchor);
             notes.add('duplicate_turn_start', anchor, 'a turn records its start more than once');
-          } else {
+          } else if (openTurns.size < MAX_OPEN_OPERATIONS) {
             openTurns.set(turnId, anchor);
+          } else {
+            unforgottenOperations += 1;
+            notes.add(
+              'open_operation_budget_exhausted',
+              anchor,
+              `more than ${MAX_OPEN_OPERATIONS} operations are open at once; later ones are counted, not tracked`,
+            );
           }
         }
         break;
@@ -895,8 +1062,15 @@ export function extractSessionEvidence({
         const toolName = safeString(at(record, 'data.toolName')) ?? 'unnamed';
         tools.calls += 1;
         tools.by_tool[toolName] = (tools.by_tool[toolName] ?? 0) + 1;
-        if (toolCallId !== null) {
+        if (toolCallId !== null && openTools.size < MAX_OPEN_OPERATIONS) {
           openTools.set(toolCallId, { anchor, toolName });
+        } else if (toolCallId !== null) {
+          unforgottenOperations += 1;
+          notes.add(
+            'open_operation_budget_exhausted',
+            anchor,
+            `more than ${MAX_OPEN_OPERATIONS} operations are open at once; later ones are counted, not tracked`,
+          );
         }
         break;
       }
@@ -933,7 +1107,7 @@ export function extractSessionEvidence({
         if (subagents.spans.length < maxEvents) {
           subagents.spans.push(span);
         }
-        if (toolCallId !== null) {
+        if (toolCallId !== null && openSubagents.size < MAX_OPEN_OPERATIONS) {
           openSubagents.set(toolCallId, span);
         }
         subagentStack.push({ toolCallId, agent, span });
@@ -1032,15 +1206,26 @@ export function extractSessionEvidence({
   }
 
   for (const anchor of openTurns.values()) {
-    turns.incomplete.push(anchor);
+    if (turns.incomplete.length < MAX_ANCHOR_LIST) {
+      turns.incomplete.push(anchor);
+    }
     notes.add('incomplete_turn', anchor, 'a turn starts and never ends in this log');
   }
   for (const opened of openTools.values()) {
-    tools.incomplete.push(opened.anchor);
+    if (tools.incomplete.length < MAX_ANCHOR_LIST) {
+      tools.incomplete.push(opened.anchor);
+    }
     notes.add('incomplete_tool_call', opened.anchor, 'a tool request records no result');
   }
   for (const span of openSubagents.values()) {
     notes.add('incomplete_subagent', span.anchor, 'a subagent starts and never completes in this log');
+  }
+  if (turns.incomplete.length >= MAX_ANCHOR_LIST || tools.incomplete.length >= MAX_ANCHOR_LIST) {
+    notes.add(
+      'anchor_list_budget_exhausted',
+      null,
+      `more than ${MAX_ANCHOR_LIST} unfinished operations were found; the rest are counted, not listed`,
+    );
   }
 
   if (projection.exhausted) {
@@ -1071,10 +1256,40 @@ export function extractSessionEvidence({
     ? 'compacted'
     : (notes.entries.length === 0 ? 'complete' : 'partial');
 
+  // The log claims a session identity; discovery may have proved one. When they
+  // disagree the proof wins and the disagreement is stated, because the claim is
+  // the untrusted half: a file can say anything about which session it is.
+  const claimedSessionId = sessionId;
+  let publishedSessionId = provenSessionId ?? claimedSessionId;
+  if (provenSessionId !== null && claimedSessionId !== null && provenSessionId !== claimedSessionId) {
+    notes.add(
+      'session_identity_contradiction',
+      null,
+      'the selected log claims a different session than the one whose identity was proved',
+    );
+    publishedSessionId = provenSessionId;
+  }
+  if (isPathShaped(publishedSessionId)) {
+    notes.add(
+      'session_identity_unpublishable',
+      null,
+      'the recorded session identity is a filesystem path and was not published',
+    );
+    publishedSessionId = null;
+  }
+  // The claim is preserved only when it is publishable. A path-shaped claim is
+  // reported by its limitation, never republished under another field name.
+  const publishedClaim = isPathShaped(claimedSessionId) ? null : claimedSessionId;
+
+  notes.finalize();
+
   return {
-    log_id: publishedLogId({ requestedLogId: logId, sessionId, sourcePath }),
-    requested_log_id: safeString(logId),
-    session_id: sessionId,
+    log_id: publishedLogId({ requestedLogId: logId, sessionId: publishedSessionId, sourcePath }),
+    // A caller may hand in a path as its "identifier". It is refused as the
+    // published identity above; echoing it back here would undo that.
+    requested_log_id: publishableIdentity(safeString(logId)),
+    session_id: publishedSessionId,
+    claimed_session_id: publishedClaim,
     producer,
     first_timestamp: firstTimestamp,
     last_timestamp: lastTimestamp,
@@ -1097,6 +1312,7 @@ export function extractSessionEvidence({
     tools,
     subagents,
     skills,
+    untracked_operations: unforgottenOperations,
     events: projection.events,
     limitations: notes.entries,
     evidence_completeness: completeness,
@@ -1189,34 +1405,23 @@ export function readSelectedSession(selectedPath, options = {}) {
   }
 
   const resolved = path.resolve(selectedPath);
-  let stats;
+  let directory = false;
   try {
-    stats = fs.statSync(resolved);
+    directory = fs.lstatSync(resolved).isDirectory();
   } catch {
     throw new SessionEvidenceError(
       'unreadable_selection',
       `cannot read the selection: ${selectedPath}`,
     );
   }
-  if (stats.isDirectory()) {
+  if (directory) {
     throw new SessionEvidenceError(
       'not_a_file',
-      'the selection is a directory; name the events.jsonl file itself',
+      'the selection is a directory; name the session log file itself',
     );
-  }
-  if (!stats.isFile()) {
-    throw new SessionEvidenceError('not_a_file', 'the selection is not a regular file');
   }
 
-  let fd;
-  try {
-    fd = fs.openSync(resolved, 'r');
-  } catch {
-    throw new SessionEvidenceError(
-      'unreadable_selection',
-      `cannot read the selection: ${selectedPath}`,
-    );
-  }
+  const fd = openRegularFile(resolved, selectedPath);
 
   try {
     return extractSessionEvidence({
@@ -1225,6 +1430,7 @@ export function readSelectedSession(selectedPath, options = {}) {
       lines: streamLines(fd),
       logId: options.logId ?? null,
       sourcePath: resolved,
+      provenSessionId: options.provenSessionId ?? null,
       maxEvents: options.maxEvents ?? DEFAULT_MAX_EVENTS,
       maxNotes: options.maxNotes ?? DEFAULT_MAX_NOTES,
       maxLines: options.maxLines ?? DEFAULT_MAX_LINES,
@@ -1316,11 +1522,15 @@ function main(argv) {
     return EXIT_READ;
   }
 
-  const result = readSelectedSession(resolution.path, parsed);
-  const logId = parsed.logId
-    ?? (resolution.identity.session_id ? `session:${resolution.identity.session_id}` : resolution.path);
+  // The reader already decided what may be published as this log's identity.
+  // Overriding it here is how an absolute path reaches output, so the command
+  // prints what the reader produced and adds only the resolution's own fields.
+  const result = readSelectedSession(resolution.path, {
+    ...parsed,
+    provenSessionId: resolution.identity.session_id ?? null,
+  });
   console.log(JSON.stringify(
-    { ...result, log_id: logId, identity: resolution.identity, identity_notes: resolution.notes },
+    { ...result, identity: resolution.identity, identity_notes: resolution.notes },
     null,
     2,
   ));

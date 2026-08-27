@@ -20,6 +20,9 @@ export const LIFECYCLE_STATES = ['PROPOSED', 'OBSERVED'];
 /** States this skill may never assign, whatever the evidence looks like. */
 export const FORBIDDEN_STATES = ['VALIDATED', 'PROMOTED'];
 
+/** The only correlation verdict that makes a selected run usable as evidence. */
+export const USABLE_CORRELATION = 'same-session';
+
 function identityOf(run) {
   return {
     runId: typeof run?.run_id === 'string' && run.run_id.trim() !== '' ? run.run_id : null,
@@ -54,12 +57,18 @@ export function assessRecurrence(runs = []) {
     };
   }
 
-  const usable = selected.filter((run) => run.runId !== null && run.correlation !== 'different-session');
+  // A run is evidence only when it was positively correlated with the session
+  // evidence it claims. `unknown` is the common case for an uncorrelated log,
+  // and treating it as corroboration is exactly how a recurrence claim gets
+  // made from two logs that might be the same run seen twice.
+  const usable = selected.filter(
+    (run) => run.runId !== null && run.correlation === USABLE_CORRELATION,
+  );
   if (usable.length < 2) {
     return {
       recurrence: false,
       independent_runs: usable.length,
-      reason: 'fewer than two selected runs could be identified as evidence about this work',
+      reason: 'fewer than two selected runs were positively correlated with the session they claim',
     };
   }
 
@@ -115,6 +124,33 @@ export function assignLifecycleState({ recurrence = null } = {}) {
       human_approval_required: true,
     },
   };
+}
+
+/**
+ * The gate a rendered lifecycle record must pass. It exists so a record cannot
+ * acquire a state this skill may not assign by being edited after the decision
+ * was made - the assertion is on the artifact, not on the code path that
+ * produced it.
+ */
+export function assertLifecycleRecord(record) {
+  const problems = [];
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return ['a lifecycle record must be an object'];
+  }
+  if (!LIFECYCLE_STATES.includes(record.status)) {
+    problems.push(
+      FORBIDDEN_STATES.includes(record.status)
+        ? `${record.status} is not a state this skill may assign`
+        : `status must be one of ${LIFECYCLE_STATES.join(', ')}`,
+    );
+  }
+  if (record.ready_for_promotion !== false) {
+    problems.push('ready_for_promotion must be false');
+  }
+  if (record.validation_requirements?.human_approval_required !== true) {
+    problems.push('human_approval_required must be true');
+  }
+  return problems;
 }
 
 function main(argv) {

@@ -8,12 +8,18 @@ import { fileURLToPath } from 'node:url';
 
 import {
   DEFAULT_MAX_EVENTS,
+  MAX_EVENT_TYPES,
   MAX_FIELD_CHARS,
   MAX_MARKER_CHARS,
+  MAX_OPEN_OPERATIONS,
+  OTHER_EVENT_TYPES,
   SessionEvidenceError,
   extractSessionEvidence,
   extractSessionEvidenceFromText,
+  isPathShaped,
+  isPublishableCountKey,
   parseArguments,
+  publishableCounts,
   readSelectedSession,
   toEvidenceLedger,
 } from './copilot-session-events.mjs';
@@ -599,6 +605,113 @@ test('the entry point reads a named log and refuses when identity cannot be prov
 test('the default event bound is a stated constant rather than an inline number', () => {
   assert.equal(typeof DEFAULT_MAX_EVENTS, 'number');
   assert.ok(DEFAULT_MAX_EVENTS > 0);
+});
+
+test('a native count key is published only when it is a safe, bounded name', () => {
+  const scheme = ['Bea', 'rer'].join('');
+  const counts = publishableCounts({
+    'session.start': 3,
+    '/etc/passwd': 5,
+    'C:\\windows\\system32': 2,
+    [`Authorization: ${scheme} ${'ab12'.repeat(6)}`]: 7,
+    'a name with spaces': 1,
+    [`${'x'.repeat(300)}`]: 4,
+    'https://example.invalid/path': 6,
+  });
+
+  assert.deepEqual(Object.keys(counts).sort(), ['other_event_types', 'session.start']);
+  assert.equal(counts['session.start'], 3);
+  assert.equal(counts[OTHER_EVENT_TYPES], 5 + 2 + 7 + 1 + 4 + 6, 'unsafe keys are counted, not named');
+  assert.ok(!JSON.stringify(counts).includes('passwd'));
+  assert.ok(!JSON.stringify(counts).includes(scheme));
+});
+
+test('the publishable-key test and the path test agree on what a name may be', () => {
+  for (const safe of ['session.start', 'tool.execution_complete', 'abort', 'other_event_types']) {
+    assert.equal(isPublishableCountKey(safe), true, safe);
+    assert.equal(isPathShaped(safe), false, safe);
+  }
+  for (const unsafe of ['/tmp/x', '\\\\server\\share', 'C:\\x', '~/logs', 'file:///x', 'a/../b', '', 'x'.repeat(61)]) {
+    assert.equal(isPublishableCountKey(unsafe), false, unsafe);
+  }
+  for (const pathish of ['/tmp/x', '\\\\server\\share', 'C:\\x', '~/logs', 'https://x/y', 'a/../b']) {
+    assert.equal(isPathShaped(pathish), true, pathish);
+  }
+});
+
+test('an unbounded parade of event types folds into one bucket and says so', () => {
+  const many = Array.from(
+    { length: MAX_EVENT_TYPES + 25 },
+    (_, index) => event(`invented.type_${index}`, {}),
+  );
+  const result = extractSessionEvidenceFromText(completeSession(...many), { maxNotes: 200 });
+
+  const types = Object.keys(result.counts.by_type);
+  assert.ok(types.length <= MAX_EVENT_TYPES + 1, `found ${types.length} type keys`);
+  assert.ok(types.includes(OTHER_EVENT_TYPES));
+  assert.ok(result.limitations.some((entry) => entry.code === 'event_type_budget_exhausted'));
+
+  const ledger = toEvidenceLedger(result);
+  assert.ok(Object.keys(ledger.provider_native.event_counts).length <= MAX_EVENT_TYPES + 1);
+});
+
+test('open operations are bounded, and the overflow is counted rather than tracked', () => {
+  const opens = Array.from(
+    { length: MAX_OPEN_OPERATIONS + 10 },
+    (_, index) => event('tool.execution_start', { toolCallId: `c${index}`, toolName: 'bash' }),
+  );
+  const result = extractSessionEvidence({
+    lines: [
+      event('session.start', { sessionId: 'session-1' }),
+      ...opens,
+      event('session.shutdown', { shutdownType: 'normal' }),
+    ],
+    maxNotes: 80,
+  });
+
+  assert.equal(result.counts.tool_calls, MAX_OPEN_OPERATIONS + 10);
+  assert.equal(result.untracked_operations, 10);
+  assert.ok(result.limitations.some((entry) => entry.code === 'open_operation_budget_exhausted'));
+  assert.ok(result.tools.incomplete.length <= 200);
+  assert.ok(result.limitations.some((entry) => entry.code === 'anchor_list_budget_exhausted'));
+});
+
+test('a session identity that is a path is dropped, and the rest of the evidence survives', () => {
+  const result = extractSessionEvidenceFromText(
+    [
+      JSON.stringify({
+        type: 'session.start',
+        data: { sessionId: '/Users/someone/.copilot/session-state/abc' },
+        timestamp: '2026-01-01T00:00:00.000Z',
+      }),
+      event('skill.invoked', { name: 'roast' }),
+      event('session.shutdown', { shutdownType: 'normal' }),
+    ].join('\n') + '\n',
+  );
+
+  assert.equal(result.session_id, null);
+  assert.ok(result.limitations.some((entry) => entry.code === 'session_identity_unpublishable'));
+  assert.equal(result.counts.skill_invocations, 1, 'the rest of the reading is kept');
+  assert.match(result.log_id, /^sha256:[0-9a-f]{64}$/);
+  assert.ok(!JSON.stringify(result).includes('/Users/someone'));
+});
+
+test('a proved identity outranks the identity the log claims, and the disagreement is stated', () => {
+  const agreeing = extractSessionEvidenceFromText(
+    completeSession(),
+    { provenSessionId: 'session-1' },
+  );
+  assert.equal(agreeing.session_id, 'session-1');
+  assert.deepEqual(agreeing.limitations, []);
+
+  const disagreeing = extractSessionEvidenceFromText(
+    completeSession(),
+    { provenSessionId: 'session-proved' },
+  );
+  assert.equal(disagreeing.session_id, 'session-proved', 'the proof wins');
+  assert.equal(disagreeing.claimed_session_id, 'session-1', 'the claim is preserved, not erased');
+  assert.equal(disagreeing.log_id, 'session:session-proved');
+  assert.ok(disagreeing.limitations.some((entry) => entry.code === 'session_identity_contradiction'));
 });
 
 test('lines are pulled one at a time, so an endless source is bounded rather than materialized', () => {

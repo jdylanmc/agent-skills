@@ -162,6 +162,12 @@ always shows which source it came from.
 | `unrecognized_event` | The event type is outside the supported vocabulary. |
 | `unmapped_event` | The adapter records the event but maps it to no neutral evidence kind. |
 | `schema_drift` | A supported event no longer carries a field the reader depends on. |
+| `session_identity_contradiction` | The log claims a different session than the one whose identity was proved. |
+| `session_identity_unpublishable` | The recorded session identity is a filesystem path and was withheld. |
+| `event_type_budget_exhausted` | More distinct event types appear than the budget names; the rest are counted together. |
+| `open_operation_budget_exhausted` | More operations are open at once than the budget tracks; the rest are counted. |
+| `anchor_list_budget_exhausted` | More unfinished operations exist than the record lists. |
+| `repeated_limitation` | One kind of limitation occurred more often than it is listed. |
 | `duplicate_turn_start` | A turn records its start more than once. |
 | `unmatched_turn_end` | A turn ends with no recorded start. |
 | `incomplete_turn` | A turn starts and never ends. |
@@ -246,3 +252,32 @@ and a caller that supplies a path as its "identifier" gets the digest instead.
 A published string is redacted before it is bounded and again afterwards, so a
 secret that begins inside the bound and runs past it is marked rather than
 truncated into a usable fragment, and a redaction marker is never split in half.
+
+**The log is the untrusted half of an identity.** When discovery proved which
+session this is and the log claims another, the proof wins, the claim is kept
+beside it, and `session_identity_contradiction` is reported. A recorded session
+identity shaped like a filesystem path is withheld rather than republished, and
+the reading continues with everything else it holds.
+
+**A name that came out of a log is not automatically publishable.** An event
+type, a session identity, or a caller-supplied identifier is published only when
+it is a short, safe name; otherwise it is counted or withheld, never echoed. The
+native counts a ledger carries therefore have sanitized keys, with everything
+unsafe or over the budget folded into `other_event_types`.
+
+## Bounds Against a Hostile Log
+
+Every collection built from a log is bounded, and every bound reports itself:
+at most 100 distinct event types are named, at most 5,000 operations are tracked
+as open, at most 200 unfinished operations are listed by anchor, and one kind of
+limitation is listed at most 20 times before it is summarized. A log that
+exceeds a budget still produces a usable reading; it produces a smaller one, and
+says so.
+
+## The File That Is Read Is the File That Was Named
+
+The selection is opened once and verified through the descriptor rather than
+checked and opened separately, because a path can be replaced between the two.
+A symbolic link is refused: `O_NOFOLLOW` refuses it at open time where the
+platform provides the flag, and where it does not, the link is refused before
+the open and the descriptor is confirmed to be a regular file afterwards.

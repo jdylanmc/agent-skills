@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,6 +15,7 @@ import {
   canonicalHarness,
   collectSessionEvidence,
   correlateRunLog,
+  correlateSelectedRunLog,
   selectProvider,
   unsupportedProviderRecommendation,
 } from './session-evidence-adapter.mjs';
@@ -56,7 +58,8 @@ function fictionalAdapter(overrides = {}) {
     read: () => ({
       ledger_version: LEDGER_VERSION,
       provider: 'fictional',
-      harness: 'fictional-cli',
+      // The published harness is always the adapter's own identity.
+      harness: 'fictional',
       source: { kind: 'session-log', log_id: 'fictional-run', session_id: 'session-9', identity: null, identity_notes: [] },
       completeness: 'complete',
       confidence_cap: 'none',
@@ -560,3 +563,135 @@ test('the registry ships exactly the adapters this repository has validated', ()
   }
 });
 import { emitEvent, replayLog } from '../../../_base/_molecules/chronicler/chronicler.mjs';
+
+test('the correlation command replays a selected run log and returns a verdict', () => {
+  withRoot((root) => {
+    const logPath = copilotLog(root, event('skill.invoked', { name: 'post-mortem' }));
+    const evidence = collectSessionEvidence({
+      harness: 'copilot-cli',
+      explicitPath: logPath,
+      environment: {},
+    });
+
+    const runLog = path.join(root, '.skill-log', 'post-mortem.2026-01-01.run-1.jsonl');
+    const context = {
+      run_id: 'run-1',
+      root_skill: 'post-mortem',
+      log_path: runLog,
+      harness: 'copilot-cli',
+      session_id: 'session-1',
+    };
+    emitEvent({ event: 'run', phase: 'observation', summary: 'A run in this session.' }, context);
+
+    const matched = correlateSelectedRunLog(runLog, evidence);
+    assert.equal(matched.status, 'same-session');
+    assert.equal(matched.run_log.harness, 'copilot', 'the alias is canonicalized in the report');
+    assert.equal(matched.run_log.session_id, 'session-1');
+    assert.equal(matched.session_evidence.session_id, 'session-1');
+    assert.deepEqual(matched.run_log.defects, []);
+    assert.ok(!JSON.stringify(matched).includes(root), 'the report publishes no path');
+
+    // A log that cannot be replayed is unknown, never assumed to match.
+    const absent = correlateSelectedRunLog(path.join(root, 'absent.jsonl'), evidence);
+    assert.equal(absent.status, 'unknown');
+    assert.match(absent.reason, /could not be replayed/);
+    assert.equal(correlateSelectedRunLog(null, evidence).status, 'unknown');
+  });
+});
+
+test('the command line correlates a selected run log against collected evidence', () => {
+  withRoot((root) => {
+    const logPath = copilotLog(root, event('skill.invoked', { name: 'post-mortem' }));
+    const runLog = path.join(root, '.skill-log', 'post-mortem.2026-01-01.run-1.jsonl');
+    emitEvent(
+      { event: 'run', phase: 'observation', summary: 'A run in this session.' },
+      {
+        run_id: 'run-1',
+        root_skill: 'post-mortem',
+        log_path: runLog,
+        harness: 'copilot',
+        session_id: 'session-1',
+      },
+    );
+
+    const printed = execFileSync(
+      'node',
+      [SEAM, '--harness', 'copilot-cli', '--path', logPath, '--correlate', runLog],
+      { encoding: 'utf8' },
+    );
+    const result = JSON.parse(printed);
+
+    assert.equal(result.evidence.status, 'collected');
+    assert.equal(result.correlation.status, 'same-session');
+    assert.equal(result.correlation.run_log.run_id, 'run-1');
+    assert.equal(result.evidence.ledger.harness, 'copilot');
+    assert.ok(!printed.includes(root), 'the command publishes no filesystem path');
+  });
+});
+
+test('a native count key that is a path, a credential, or a sentence is refused', () => {
+  const base = fictionalAdapter().read();
+  const scheme = ['Bea', 'rer'].join('');
+
+  for (const hostile of ['/etc/passwd', 'C:\\logs\\x', `Authorization: ${scheme} abc123abc123`, 'a name with spaces', 'x'.repeat(80)]) {
+    const problems = assertLedgerContract({
+      ...base,
+      provider_native: { event_counts: { [hostile]: 3 } },
+    });
+    assert.deepEqual(
+      problems,
+      [`provider_native.event_counts key ${JSON.stringify(hostile)} is not a publishable name`],
+      `key ${hostile} must be refused`,
+    );
+  }
+
+  assert.deepEqual(
+    assertLedgerContract({ ...base, provider_native: { '/etc/passwd': 1 } }),
+    ['provider_native key "/etc/passwd" is not a publishable name'],
+  );
+  assert.deepEqual(
+    assertLedgerContract({ ...base, provider_native: { event_counts: { 'session.start': 4, other_event_types: 9 } } }),
+    [],
+  );
+});
+
+test('an adapter reading a hostile log publishes no key it did not sanitize', () => {
+  withRoot((root) => {
+    const scheme = ['Bea', 'rer'].join('');
+    const logPath = path.join(root, 'events.jsonl');
+    fs.writeFileSync(logPath, [
+      event('session.start', { sessionId: 'session-1' }),
+      JSON.stringify({ type: '/etc/passwd', data: {}, timestamp: '2026-01-01T00:00:00.000Z' }),
+      JSON.stringify({ type: `Authorization: ${scheme} abc123abc123`, data: {}, timestamp: '2026-01-01T00:00:00.000Z' }),
+      event('session.shutdown', { shutdownType: 'normal' }),
+    ].join('\n') + '\n');
+
+    const collected = collectSessionEvidence({
+      harness: 'copilot',
+      explicitPath: logPath,
+      environment: {},
+    });
+
+    assert.equal(collected.status, 'collected');
+    assert.deepEqual(assertLedgerContract(collected.ledger), []);
+    const published = JSON.stringify(collected.ledger);
+    assert.ok(!published.includes('/etc/passwd'));
+    assert.ok(!published.includes(scheme));
+    assert.equal(collected.ledger.provider_native.event_counts.other_event_types, 2);
+  });
+});
+
+test('session evidence whose identity is contested cannot anchor a correlation', () => {
+  const contested = {
+    harness: 'copilot',
+    source: { session_id: 'session-1' },
+    limitations: [{ code: 'session_identity_contradiction', anchor: null, detail: 'claims another session' }],
+  };
+
+  const verdict = correlateRunLog(
+    { harness: 'copilot', session_id: 'session-1', defects: [] },
+    contested,
+  );
+  assert.equal(verdict.status, 'unknown');
+  assert.match(verdict.reason, /session_identity_contradiction/);
+});

@@ -2,8 +2,8 @@
 name: runlog-obtain-evidence
 description: Obtain evidence from a Skill Run Log the operator explicitly named, replay it read-only, anchor its records in an L slot, declare its completeness, and decide whether independent runs establish recurrence.
 level: molecule
-includes: ["_base/_atoms/chronicle-replay/chronicle-replay.md","post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md"]
-composes: ["_base/_atoms/chronicle-replay/chronicle-replay.md","post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md"]
+includes: ["_base/_atoms/chronicle-replay/chronicle-replay.md","post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md","post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md"]
+composes: ["_base/_atoms/chronicle-replay/chronicle-replay.md","post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md","post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md"]
 used-by: ["post-mortem/SKILL.md"]
 allowed-tools: ["execute"]
 ---
@@ -39,6 +39,19 @@ three it is. Two logs written around the same time are not thereby the same
 session, and a log with no correlation is uncorrelated rather than mismatched -
 it remains evidence about the run it describes.
 
+Decide that with the seam rather than by reading identifiers here:
+
+```text
+node <atoms>/session-evidence-adapter.mjs [--harness <id>] --correlate "$selected_run_log"
+```
+
+It replays the selected log read-only, canonicalizes the harness on both sides
+so an alias is never mistaken for another runtime, and returns `same-session`,
+`different-session`, or `unknown` with the identities the verdict came from. A
+log whose replay reported an identity defect, and session evidence whose own
+identity is contested, are both `unknown`: the thing a correlation would settle
+is exactly what is in doubt.
+
 **The absence of a Skill Run Log is not evidence of a missing invocation.**
 Recording is best effort, so a run may be real and unrecorded. Report the
 absence as a limitation and draw no conclusion from it.
@@ -46,7 +59,8 @@ absence as a limitation and draw no conclusion from it.
 ## Required References
 
 1. [Chronicle replay](../../../_base/_atoms/chronicle-replay/chronicle-replay.md)
-2. [Evidence anchor ledger](../../_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md)
+2. [Session evidence adapter seam](../../_atoms/session-evidence-adapter/session-evidence-adapter.md)
+3. [Evidence anchor ledger](../../_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md)
 
 ## Inputs
 

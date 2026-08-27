@@ -64,6 +64,11 @@ defective, and a record that declares an older version while carrying a
 correlation field is invalid. Nothing else about recording changes: a run
 without correlation records, replays, and pairs operations exactly as before.
 
+A run that changes the session it claims is a defect. A run recorded under two
+names for one runtime is not: which names mean the same runtime is knowledge
+Chronicle does not have, so replay reports every label observed and leaves the
+resolution to the consumer that holds it.
+
 ## Invocation Contract
 
 Apply this contract to every routable skill invocation:

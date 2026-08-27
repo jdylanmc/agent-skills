@@ -344,8 +344,12 @@ test('the package is provider-neutral: one seam, one neutral vocabulary downstre
   // subset, so a new unit cannot quietly reintroduce a vendor name.
   // The adapter itself, and the seam's registry section, are the two places a
   // harness may be named. Everywhere else in the package is neutral.
+  // The adapter implementation and the seam's registry are the two places a
+  // harness may be named; the sweep covers documents and implementation code
+  // alike, so a vendor name cannot slip in through a module either.
   const adapterDirectories = ['_atoms/copilot-session-events'];
   const registryFile = '_atoms/session-evidence-adapter/session-evidence-adapter.md';
+  const registryModule = '_atoms/session-evidence-adapter/session-evidence-adapter.mjs';
   const harnessTerms = ['Copilot', 'copilot', 'skill.invoked', 'tool.execution', 'events.jsonl', 'COPILOT_'];
   const packageRoot = path.join(SKILLS_ROOT, 'post-mortem');
   const offenders = [];
@@ -358,8 +362,19 @@ test('the package is provider-neutral: one seam, one neutral vocabulary downstre
       }
       if (entry.isDirectory()) {
         sweep(absolute);
-      } else if (entry.name.endsWith('.md') && relative !== registryFile) {
-        const body = fs.readFileSync(absolute, 'utf8');
+      } else if (
+        (entry.name.endsWith('.md') || (entry.name.endsWith('.mjs') && !entry.name.includes('.test.')))
+        && relative !== registryFile
+      ) {
+        let body = fs.readFileSync(absolute, 'utf8');
+        if (relative === registryModule) {
+          // The seam registers adapters, so its import and registry lines name
+          // them. Every other line of it must be neutral.
+          body = body
+            .split('\n')
+            .filter((line) => !/copilot-session-events|COPILOT_ADAPTER/.test(line))
+            .join('\n');
+        }
         for (const term of harnessTerms) {
           if (body.includes(term)) {
             offenders.push(`${relative}: ${term}`);

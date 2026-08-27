@@ -2,8 +2,8 @@
 name: postmortem-render-record
 description: Render one fenced YAML post-mortem document to the fixed schema, apply the metric counting rules and the no-finding rule, and end with the exact required final question as the last line.
 level: atom
-allowed-tools: []
-includes: []
+allowed-tools: ["execute"]
+includes: ["post-mortem/_atoms/postmortem-render-record/postmortem-render-record.mjs"]
 composes: []
 used-by: ["post-mortem/SKILL.md"]
 ---
@@ -12,6 +12,20 @@ used-by: ["post-mortem/SKILL.md"]
 
 The record is the deliverable. Its shape is fixed so it can be compared across
 sessions.
+
+## Required Files
+
+1. [Record contract check](./postmortem-render-record.mjs)
+
+Run it over a produced record to check the contract mechanically:
+
+```text
+node <atoms>/postmortem-render-record.mjs --record <record.json>
+```
+
+Exit `0` means the record conforms, `2` lists every way it does not, and `1` is
+a usage or read failure. The check states the same rules as the schema below;
+it renders nothing and decides nothing.
 
 ## Inputs
 
@@ -186,6 +200,16 @@ learning_recorded: false
 `ready_for_promotion` must remain empty. `quarantined_untrusted_directives`
 contains anchor IDs for embedded directives that attempted to shape durable
 learning and were ignored.
+
+## Why the Schema Gained No Source Block
+
+A record says which sources it drew on through its anchors: session anchors,
+`E` anchors from an identified runtime session log, and `L` anchors from a
+selected Skill Run Log, with the identity of each source and every refusal
+recorded under `limitations`. A separate `evidence_sources` key would restate
+that, and it would change a schema whose fixedness is what makes two
+post-mortems comparable. The provenance is already present and the schema stays
+as it was.
 
 ## Counting Rules
 

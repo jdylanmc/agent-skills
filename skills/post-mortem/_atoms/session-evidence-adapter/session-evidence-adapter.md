@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["execute"]
 includes: ["post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.mjs"]
 composes: []
-used-by: ["post-mortem/_molecules/evidence-assemble/evidence-assemble.md"]
+used-by: ["post-mortem/_molecules/evidence-assemble/evidence-assemble.md","post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md"]
 ---
 
 # Session Evidence Adapter Seam
@@ -38,12 +38,17 @@ one adapter rather than the whole package.
 ```text
 node <atoms>/session-evidence-adapter.mjs [--harness <id>] [--session-id <id>]
     [--path <log>] [--transcript <path>] [--session-root <path>] [--providers]
+    [--correlate <run-log>]
 ```
 
 The seam selects an adapter, asks it to establish which log belongs to this
 session, reads that log through the adapter, and certifies the result against
 the ledger contract before returning it. Every outcome is reportable evidence:
 `collected`, `unavailable`, or `unsupported`.
+
+`--correlate` additionally replays one selected Skill Run Log read-only and
+returns the correlation verdict beside the evidence, which is how a caller gets
+a decision rather than two sets of identifiers to compare by hand.
 
 ## Provider Selection
 
@@ -109,9 +114,11 @@ object, a string is bounded and may not be a path, a list is refused as a
 payload in disguise, and a forbidden name - content, prompt, result, output,
 stack, transcript, and the rest - is refused wherever it appears, however deeply
 it is nested. Skill entries are checked the same way, and `provider_native` may
-carry counts and nothing else. A ledger that fails is refused as
-`ledger_contract_violation`, whichever adapter produced it, including this
-repository's own.
+carry counts and nothing else - under keys that are themselves short, safe
+names, so a harness cannot publish a path or a credential by using it as a
+label. The published `harness` must be the adapter's own identity rather than
+an alias. A ledger that fails is refused as `ledger_contract_violation`,
+whichever adapter produced it, including this repository's own.
 
 That check is what makes adapters substitutable. A future adapter is correct
 when it passes the same certification, not when it looks similar.
@@ -131,6 +138,15 @@ A replay that reported a defect about identity - the run changed the session it
 claims, a record belongs to another run, the root skill drifted - is `unknown`
 whatever the identifiers say. The log's own account of what it belongs to is
 the thing in doubt, so it cannot be the evidence that settles the question.
+
+Session evidence whose own identity is contested - the log claimed one session
+while another was proved, or the recorded identity could not be published - is
+`unknown` for the same reason, from the other side.
+
+A harness label that changed inside one run log is not an identity defect and
+never was: resolving two names for one runtime is this seam's job, and Chronicle
+reports every label it saw so the resolution happens here, where the adapters
+are known.
 
 ## An Unknown Harness Is a Stated Gap
 

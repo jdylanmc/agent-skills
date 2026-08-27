@@ -146,6 +146,29 @@ test('a run that changes the session it claims is a defect, not a merged log', (
   assert.equal(state.event_count, 2, 'the record stays usable; only its correlation is in doubt');
 });
 
+test('two names for one runtime are labels to resolve, not an identity defect', (t) => {
+  const root = workspace(t);
+  const context = { ...contextFor(root), harness: 'copilot-cli', session_id: 'session-a' };
+
+  emitEvent({ event: 'run', phase: 'before', summary: 'Start.' }, context);
+  emitEvent(
+    { event: 'step', phase: 'observation', summary: 'Recorded under the other name.' },
+    { ...context, harness: 'copilot' },
+  );
+
+  const state = replayLog(context.log_path, { logId: 'run-a' });
+
+  assert.deepEqual(state.defects, [], 'a relabelled harness is not a session identity defect');
+  assert.equal(state.complete, true);
+  assert.equal(state.session_id, 'session-a');
+  assert.equal(state.harness, 'copilot-cli', 'the first label is reported as observed');
+  assert.deepEqual(
+    state.harness_labels,
+    ['copilot', 'copilot-cli'],
+    'every observed label is available for a consumer that knows the adapters',
+  );
+});
+
 test('logs written before session correlation existed stay readable', (t) => {
   const root = workspace(t);
   const context = contextFor(root);
