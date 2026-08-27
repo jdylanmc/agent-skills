@@ -126,3 +126,7 @@ jobs:
           skills/spec/_atoms/discovery-source/discovery-source.test.mjs
           skills/spec/_atoms/spec-outcome/spec-outcome.test.mjs
           skills/spec/_atoms/spec-pair/spec-pair.test.mjs
+          skills/reinforce-skill/reinforce-skill.conformance.test.mjs
+          skills/reinforce-skill/_atoms/reinforcement-target/reinforcement-target.test.mjs
+          skills/reinforce-skill/_atoms/intent-decision/intent-decision.test.mjs
+          skills/reinforce-skill/_atoms/reinforce-roast/reinforce-roast.test.mjs

@@ -19,6 +19,17 @@ below is unreleased and no comparison links are available.
   intent, coaching the idea before anything is written and refusing to call a
   package complete until adversarial review has run and its findings are
   resolved.
+- **Skill reinforcement.** `reinforce-skill` is the sanctioned way an existing
+  skill changes after it is created — the counterpart to `create-skill`. It
+  works on one skill at a time, reads that skill's plain-language intent as the
+  standard, and decides out loud whether the change alters what the skill is
+  for: when it does, the revised intent is confirmed with you and stored before
+  the implementation moves; when it does not, that review is recorded rather
+  than skipped. It then makes the smallest complete change, re-runs the
+  repository's real validation, roasts the result, records the change in the
+  changelog, and opens a pull request for you to review — it never merges,
+  never edits doctrine, and never widens a skill's permissions to make a change
+  fit.
 - **Adversarial review.** `roast` reviews an artifact or code change against
   repository doctrine and the reviewed package's own stated intent, returning
   findings with severity rather than a verdict.
