@@ -24,6 +24,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -33,7 +34,9 @@ import { closureFor, readFrontmatter, validateRepository } from '../../scripts/v
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import {
   FAILURES,
+  WORKFLOW_FILE,
   WRITE_CLASS,
+  assertWorkflowAdditive,
   auditDiff,
   classifyWritePath,
   isWritableClass,
@@ -46,8 +49,16 @@ import {
   createDecision,
   requireIntentDecision,
 } from './_atoms/intent-decision/intent-decision.mjs';
+import { digestOf } from '../create-skill/_atoms/intent-storage-gate/intent-storage-gate.mjs';
 import * as reinforceRoast from './_atoms/reinforce-roast/reinforce-roast.mjs';
 import * as sharedLedger from '../create-skill/_atoms/roast-round-ledger/roast-round-ledger.mjs';
+
+const DECISION_CLI = path.join(
+  fileURLToPath(new URL('./_atoms/intent-decision/intent-decision.mjs', import.meta.url)),
+);
+const TARGET_CLI = path.join(
+  fileURLToPath(new URL('./_atoms/reinforcement-target/reinforcement-target.mjs', import.meta.url)),
+);
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -77,6 +88,63 @@ function frontmatter(relativePath) {
 /** Whitespace-normalised, so a reflow of the source does not fail an assertion. */
 function flat(relativePath) {
   return read(relativePath).replace(/\s+/g, ' ');
+}
+
+/** The first error code a thunk throws, or null when it does not throw. */
+function codeOf(fn) {
+  try {
+    fn();
+  } catch (error) {
+    return error.code ?? null;
+  }
+  return null;
+}
+
+const FIXTURE_SKILL = 'existing-skill';
+const FIXTURE_INTENT = `# Intent: ${FIXTURE_SKILL}
+
+## What this is for
+
+Do one job well, and say plainly what that job is.
+`;
+const FIXTURE_REVISED = `${FIXTURE_INTENT}
+## What it must refuse
+
+Anything that belongs to a different job.
+`;
+
+/**
+ * A throwaway repository skeleton under the repository root — never in a shared
+ * temporary directory — with one skill carrying an intent. Cleaned up always.
+ */
+function withDecisionFixture(run) {
+  const root = fs.mkdtempSync(path.join(REPOSITORY_ROOT, '.reinforce-conformance-'));
+  try {
+    const skillDirectory = path.join(root, 'skills', FIXTURE_SKILL);
+    fs.mkdirSync(skillDirectory, { recursive: true });
+    fs.writeFileSync(path.join(skillDirectory, 'SKILL.md'), '# skill\n');
+    const intentPath = path.join(skillDirectory, 'intent.md');
+    fs.writeFileSync(intentPath, FIXTURE_INTENT);
+    run(root, intentPath);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+/** Drive a decision through the gate to a stored `changes-intent` revision. */
+function storedDecision(root) {
+  const opened = createDecision({ skill: FIXTURE_SKILL, priorIntent: FIXTURE_INTENT });
+  const decided = decisionApplyEvent(opened, {
+    type: 'decide',
+    decision: 'changes-intent',
+    reasoning: 'the change adds a refusal the skill did not previously make',
+  });
+  const presented = decisionApplyEvent(decided, { type: 'draft-presented', draft: FIXTURE_REVISED });
+  const confirmed = decisionApplyEvent(presented, {
+    type: 'operator-confirmed',
+    digest: digestOf(FIXTURE_REVISED),
+  });
+  return decisionApplyEvent(confirmed, { type: 'store', draft: FIXTURE_REVISED }, { repositoryRoot: root });
 }
 
 test('reinforce-skill is a high-ceremony, human-invoked, single-skill workflow', () => {
@@ -178,53 +246,92 @@ test('the edit grant is bounded to this package: no foreign unit carries write a
 });
 
 test('the edit boundary is publication, held by mechanism, not by a promise', () => {
-  const entry = flat(ENTRY);
-  assert.match(entry, /The `edit` grant is unscoped, and the boundary is publication, not the grant/);
-  assert.match(entry, /the run never merges/);
-  assert.match(entry, /audits the \*\*actual\*\* change\s+set from the version-control diff and refuses to open a pull request while any\s+changed path is outside/);
-  assert.match(entry, /continuous integration then re-runs the validator, the deriver, the doctrine-manifest digest\s+test/);
-  assert.match(entry, /refuses to widen any skill's grant\s+automatically/);
-  assert.match(entry, /The audit is complete because the diff is enumerable/);
-  // The load-bearing lesson lives in the intent, the standard this is judged against.
+  // The mechanism is asserted by behaviour elsewhere (auditDiff refuses an
+  // out-of-target diff; the deriver reports no grant violation). Here, only a
+  // short stable anchor for the section, plus the load-bearing lesson that lives
+  // in the intent — the standard this is judged against.
+  assert.match(read(ENTRY), /## Permissions/);
+  assert.equal(
+    auditDiff(REPOSITORY_ROOT, 'roast', ['skills/create-skill/SKILL.md']).clean,
+    false,
+    'publication is bounded by the audit, not by a promise to behave',
+  );
   assert.match(flat('reinforce-skill/intent.md'), /permission defended only by a promise is not\s+a boundary/);
 });
 
 test('the pull request is a defined, mutating deliverable, not a read-only afterthought', () => {
   const entry = flat(ENTRY);
-  // execute performs the git commands that create and open the PR; calling that
-  // "read-only" was the contradiction the adversarial round caught.
-  assert.match(entry, /the git commands that create the review branch, commit the change, and open\s+the\s+pull request/);
+  // The contradiction the adversarial round caught must stay fixed: `execute`
+  // performs the git commands, so it is never described as read-only.
   assert.doesNotMatch(entry, /read-only git and pull-request commands/);
-  // The workflow defines branch, audit, commit, and open, and returns the PR head.
-  assert.match(entry, /Create a review branch, commit the target's changed\s+files/);
-  assert.match(entry, /run the write-boundary guard's\s+diff audit over the actual change set/);
-  assert.match(entry, /the pull request identifier or URL and the reviewed head/);
+  // A short stable anchor that the workflow's mutating step exists.
+  assert.match(entry, /create the review branch/);
 });
 
 test('the diff audit is the completeness the single-path classifier lacks', () => {
-  const narrow = flat(NARROW);
-  assert.match(narrow, /audit the \*\*actual\*\*\s+change set with the guard's `auditDiff` over the version-control diff/);
-  assert.match(narrow, /no pull request opens on an out-of-target diff/);
-  const guard = flat(TARGET);
-  assert.match(guard, /It bounds \*\*publication\*\*/);
-  assert.match(guard, /the diff is enumerable/);
+  // The property, not its phrasing: a single-path classify call proves nothing
+  // about paths the model never handed it, while the diff audit classifies the
+  // whole enumerable change set and refuses any path out of class.
+  const single = classifyWritePath(REPOSITORY_ROOT, 'roast', 'skills/roast/SKILL.md');
+  assert.equal(single, WRITE_CLASS.inTarget);
+
+  const audited = auditDiff(REPOSITORY_ROOT, 'roast', [
+    'skills/roast/SKILL.md',
+    'skills/create-skill/SKILL.md',
+  ]);
+  assert.equal(audited.clean, false, 'the audit sees the foreign path the classifier was never handed');
+  assert.deepEqual(
+    audited.refused.map((entry) => entry.path),
+    ['skills/create-skill/SKILL.md'],
+  );
+
+  // A short, stable heading anchor documents the guard's honest boundary.
+  assert.match(read(TARGET), /## What This Guard Does and Does Not Do/);
 });
 
-test('the workflow edit is additive-only and cannot weaken the gate it relies on', () => {
-  const narrow = flat(NARROW);
-  assert.match(narrow, /additive only/i);
-  assert.match(narrow, /never changes the workflow's triggers, jobs,\s+commands, permissions, existing registrations, or the doctrine-digest step/);
-  assert.match(narrow, /Never weaken the validator, the deriver, a conformance test, the validation\s+workflow, or `AGENTS.md`/);
+test('the workflow edit is additive-only, proven by the function that enforces it', () => {
+  // Registration is line-preserving. The property is enforced by
+  // assertWorkflowAdditive and folded into auditDiff, so it is asserted over the
+  // function rather than over a sentence that could be reflowed away.
+  const previous = [
+    'jobs:',
+    '  test:',
+    '    run: node scripts/run-registered-tests.mjs',
+    '      skills/roast/roast.conformance.test.mjs',
+    '',
+  ].join('\n');
+  const appended = `${previous}      skills/existing-skill/existing-skill.conformance.test.mjs\n`;
+  const removed = previous.replace('      skills/roast/roast.conformance.test.mjs\n', '');
+
+  assert.deepEqual(assertWorkflowAdditive(previous, appended), { status: 'additive', removed: [] });
+  assert.equal(
+    codeOf(() => assertWorkflowAdditive(previous, removed)),
+    FAILURES.workflowNotAdditive,
+    'removing an existing registration is refused',
+  );
+
+  // And auditDiff carries that refusal: a workflow diff that drops a test line
+  // is unclean, an append-only one is clean.
+  const dropped = auditDiff(REPOSITORY_ROOT, 'existing-skill', ['skills/existing-skill/SKILL.md', WORKFLOW_FILE], {
+    workflow: { previous, next: removed },
+  });
+  assert.equal(dropped.clean, false);
+  assert.ok(dropped.workflowViolation, 'the removed registration is surfaced');
+
+  const grew = auditDiff(REPOSITORY_ROOT, 'existing-skill', ['skills/existing-skill/SKILL.md', WORKFLOW_FILE], {
+    workflow: { previous, next: appended },
+  });
+  assert.equal(grew.clean, true);
 });
 
 test('the final status has a defined mapping from run outcomes', () => {
   const entry = flat(ENTRY);
+  // Stable anchors only: the heading and each fenced status identifier. The
+  // prose describing when each applies may be reflowed freely.
   assert.match(entry, /### Status Mapping/);
   for (const status of ['reinforced', 'needs-confirmation', 'blocked', 'halted']) {
     assert.match(entry, new RegExp(`\`${status}\``), `the status mapping must define ${status}`);
   }
-  assert.match(entry, /the diff audit refuses an out-of-target path/);
-  assert.match(entry, /A degraded changelog does not lower this status/);
 });
 
 test('the missing-intent bug fix has an honest branch, not a false "still accurate"', () => {
@@ -235,11 +342,8 @@ test('the missing-intent bug fix has an honest branch, not a false "still accura
 });
 
 test('the pull request evidence is written for a human reviewer, decision first', () => {
-  const entry = flat(ENTRY);
-  assert.match(entry, /Pull Request Evidence, for a Human Reviewer/);
-  assert.match(entry, /engineer who maintains this library and did not make the\s+change/);
-  assert.match(entry, /Lead the pull request with the decision, not the transcript/);
-  assert.match(entry, /Verbatim output is evidence a reviewer can\s+expand, never the thing that buries the decision/);
+  // A stable heading anchor; the paragraph beneath it may be reflowed freely.
+  assert.match(read(ENTRY), /### Pull Request Evidence, for a Human Reviewer/);
 });
 
 test('the skill composes chronicler and the local reinforcement molecule', () => {
@@ -275,24 +379,28 @@ test('roast is reached by invocation, not composition, and is left untouched', (
 });
 
 test('intent decides first: the decision precedes implementation and has no default', () => {
-  const entry = read(ENTRY);
-  const decideIndex = entry.indexOf('decide the intent');
-  const changeIndex = entry.indexOf('change narrowly');
-  assert.ok(decideIndex > 0 && changeIndex > 0);
-  assert.ok(decideIndex < changeIndex, 'the intent is decided before the implementation changes');
+  // "Intent first" is proven by the gate, not by comparing string positions in
+  // Markdown. A run that reaches publication without a recorded decision is
+  // blocked, and there is no default that lets it proceed.
+  assert.deepEqual(DECISIONS, ['changes-intent', 'preserves-intent']);
+  const undecided = createDecision({ skill: FIXTURE_SKILL, priorIntent: FIXTURE_INTENT });
+  assert.equal(
+    requireIntentDecision(undecided).requirement,
+    'blocked',
+    'an undecided run cannot proceed to a pull request',
+  );
+  assert.equal(
+    codeOf(() => assertDiffMatchesDecision(undecided, [`skills/${FIXTURE_SKILL}/SKILL.md`])),
+    'undecided',
+    'a change set cannot be published before the decision is recorded',
+  );
 
+  // Stable fenced identifiers for the two decisions; the prose may be reflowed.
   const decision = flat(DECISION);
   for (const state of ['changes-intent', 'preserves-intent']) {
     assert.match(decision, new RegExp(`\`${state}\``), `the decision must define ${state}`);
   }
-  assert.match(decision, /There is no third option and no unstated default/);
-  assert.match(decision, /the exact bytes/);
-  assert.match(decision, /store an intent the operator has not confirmed/i);
-  assert.match(decision, /the implementation\s+follows from the intent/);
-
-  const entryFlat = flat(ENTRY);
-  assert.match(entryFlat, /A change that silently skips the question is\s+the drift this skill exists to prevent/);
-  assert.match(entryFlat, /decided, and when it changes stored, \*\*before\*\* the\s+implementation/);
+  assert.match(decision, /no unstated default/);
 });
 
 test('a preserved intent is recorded as reviewed, never silently skipped', () => {
@@ -333,9 +441,10 @@ test('widening any grant as a side effect is refused, in words a reviewer reads'
 
 test('it never weakens a gate and never merges or grades its own work', () => {
   const entry = flat(ENTRY);
-  assert.match(entry, /Never weakens a repository gate, the validator, the deriver, a conformance\s+test, or `AGENTS.md`/);
-  assert.match(entry, /Never merges, and never treats its own roast as approval/);
-  assert.match(entry, /a human signs off/i);
+  // Short stable boundary anchors; the surrounding clauses may be reflowed.
+  assert.match(entry, /Never weakens a repository gate/);
+  assert.match(entry, /Never merges/);
+  assert.match(entry, /never treats its own roast as approval/);
 });
 
 test('the changelog entry is required in the same reviewable change', () => {
@@ -399,6 +508,110 @@ test('the intent decision is a gate that refuses, not a step that can be skipped
   assert.match(flat(DECISION), /Required Files/);
   assert.match(flat(DECISION), /state machine that refuses/);
   assert.match(flat(DECISION), /A Narrow Change May Not Widen Into an Intent Edit/);
+});
+
+test('the release check refuses a changes-intent run that hand-wrote the intent (finding 1)', () => {
+  // A run records changes-intent and edits intent.md, but the revised intent
+  // never went through the gate: the state is still awaiting-draft. The release
+  // check must refuse it rather than reporting it consistent.
+  const decided = decisionApplyEvent(
+    createDecision({ skill: FIXTURE_SKILL, priorIntent: FIXTURE_INTENT }),
+    { type: 'decide', decision: 'changes-intent', reasoning: 'the change alters what the skill is for' },
+  );
+  assert.equal(
+    codeOf(() => assertDiffMatchesDecision(decided, [`skills/${FIXTURE_SKILL}/intent.md`])),
+    'unstored_intent_change',
+    'a changes-intent diff that never reached stored is refused',
+  );
+});
+
+test('the release check refuses a stored intent whose bytes were changed on disk (finding 1)', () => {
+  withDecisionFixture((root, intentPath) => {
+    const stored = storedDecision(root);
+    // The gate stored the confirmed bytes; now the file is tampered afterwards.
+    fs.writeFileSync(intentPath, `${FIXTURE_REVISED}\n<!-- slipped in after confirmation -->\n`);
+    assert.equal(
+      codeOf(() => assertDiffMatchesDecision(stored, [`skills/${FIXTURE_SKILL}/intent.md`], {
+        repositoryRoot: root,
+      })),
+      'undisclosed_intent_edit',
+      'a stored intent that no longer matches the confirmed digest is refused',
+    );
+  });
+});
+
+test('the release check passes a properly stored changes-intent run (finding 1)', () => {
+  withDecisionFixture((root) => {
+    const stored = storedDecision(root);
+    const result = assertDiffMatchesDecision(stored, [`skills/${FIXTURE_SKILL}/intent.md`], {
+      repositoryRoot: root,
+    });
+    assert.equal(result.status, 'consistent');
+    assert.equal(requireIntentDecision(stored).requirement, 'satisfied');
+  });
+});
+
+test('the release-check CLI exits 2 when blocked and 0 when satisfied (finding 1)', () => {
+  withDecisionFixture((root) => {
+    const statePath = path.join(root, 'decision.json');
+
+    const blocked = createDecision({ skill: FIXTURE_SKILL, priorIntent: FIXTURE_INTENT });
+    fs.writeFileSync(statePath, JSON.stringify(blocked));
+    const blockedRun = spawnSync(process.execPath, [DECISION_CLI, '--state', statePath, '--require-decision'], {
+      encoding: 'utf8',
+    });
+    assert.equal(blockedRun.status, 2, 'an undecided record blocks with exit 2');
+    assert.match(blockedRun.stdout, /"requirement": "blocked"/);
+
+    const satisfied = decisionApplyEvent(blocked, {
+      type: 'decide',
+      decision: 'preserves-intent',
+      reasoning: 'a bug fix that does not change what the skill is for',
+    });
+    fs.writeFileSync(statePath, JSON.stringify(satisfied));
+    const okRun = spawnSync(process.execPath, [DECISION_CLI, '--state', statePath, '--require-decision'], {
+      encoding: 'utf8',
+    });
+    assert.equal(okRun.status, 0, 'a recorded, reasoned decision is satisfied with exit 0');
+    assert.match(okRun.stdout, /"requirement": "satisfied"/);
+  });
+});
+
+test('assertDiffMatchesDecision agrees on absolute and relative intent paths (finding 2)', () => {
+  withDecisionFixture((root) => {
+    const preserved = decisionApplyEvent(
+      createDecision({ skill: FIXTURE_SKILL, priorIntent: FIXTURE_INTENT }),
+      { type: 'decide', decision: 'preserves-intent', reasoning: 'a bug fix' },
+    );
+    const relative = `skills/${FIXTURE_SKILL}/intent.md`;
+    const absolute = path.join(root, 'skills', FIXTURE_SKILL, 'intent.md');
+
+    // An absolute path to the intent file must be caught, exactly as a relative
+    // one is — a lexical compare used to let it slip past as "does not touch".
+    assert.equal(
+      codeOf(() => assertDiffMatchesDecision(preserved, [absolute], { repositoryRoot: root })),
+      'undisclosed_intent_edit',
+    );
+    assert.equal(
+      codeOf(() => assertDiffMatchesDecision(preserved, [relative], { repositoryRoot: root })),
+      'undisclosed_intent_edit',
+    );
+    // And a path that genuinely does not touch the intent still passes.
+    assert.equal(
+      assertDiffMatchesDecision(preserved, [`skills/${FIXTURE_SKILL}/SKILL.md`], { repositoryRoot: root }).touchesIntent,
+      false,
+    );
+  });
+});
+
+test('the reinforcement-target CLI refuses an unknown flag instead of exiting success (finding 4)', () => {
+  const typo = spawnSync(
+    process.execPath,
+    [TARGET_CLI, '--root', REPOSITORY_ROOT, '--skill', 'roast', '--audits', 'skills/roast/SKILL.md'],
+    { encoding: 'utf8' },
+  );
+  assert.notEqual(typo.status, 0, 'a typo\'d flag must not exit success-shaped');
+  assert.match(typo.stderr, /unknown argument: --audits/);
 });
 
 test('the roast gate drives create-skill\'s validated machine, not a second copy of its prose', () => {

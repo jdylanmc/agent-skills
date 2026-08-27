@@ -117,6 +117,38 @@ the paths actually changed. A `preserves-intent` run whose diff contains
 its own change, and both are refusals. A `changes-intent` run whose diff does
 not contain `intent.md` is refused on the same evidence.
 
+The mirror is refused too. A `changes-intent` run whose diff *does* edit
+`intent.md` but whose gate never reached `stored`, or whose stored bytes are not
+the bytes now on disk, hand-wrote the intent instead of confirming and storing
+it. So "the intent was stored through the gate before the implementation landed"
+is a computed precondition of publication, not a promise. Every candidate path
+is normalized through the repository root first, so an absolute path to the
+intent file cannot slip past a lexical compare as "does not touch the intent".
+
+## The Release Check
+
+Deciding first is a precondition of there being a reinforcement to publish, not
+a step near the top of a list that later steps could carry on without. So the
+question "may this reinforcement proceed to a pull request?" is answered
+mechanically, from this record and from the file on disk:
+
+```text
+node <atoms>/intent-decision/intent-decision.mjs \
+  --state "$absolute_state_path" --require-decision
+```
+
+Exit `0` reports `satisfied`. Exit `2` reports `blocked` and names every reason.
+It blocks when no decision was recorded, when a decision carries no reasoning,
+when a `changes-intent` decision never reached `stored`, when no confirmation of
+the revised intent was ever recorded, and when the stored file is missing or no
+longer matches the confirmed text. There is no route through it that reports
+`satisfied` for a reinforcement whose intent change was hand-written rather than
+confirmed and stored.
+
+A `blocked` result is not a warning to carry into the report. It means the
+reinforcement may not open a pull request yet. Stop, say which reason applies,
+and say what the operator would need to answer for the work to continue.
+
 ## Output
 
 Return the decision, the reasoning, and — for `changes-intent` — the confirmed

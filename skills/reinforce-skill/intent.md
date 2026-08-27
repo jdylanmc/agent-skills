@@ -81,13 +81,12 @@ gets corrected here rather than introduced here.
 - **A missing intent is reported and never blocks.** A skill made some other way
   may honestly have none; that is not a reason to stop, and not a reason to
   invent one.
-- **The `edit` grant is unscoped, and what it can *land* is what is bounded** —
-  by never merging, by a human reviewing the whole diff, by a guard that audits
-  the actual change set and blocks the pull request on any out-of-target path,
-  and by continuous integration re-running every gate over that diff — not by
-  this skill promising to behave. A permission defended only by a promise is not
-  a boundary; this library learned that once already and does not intend to
-  relearn it.
+- **It may need broad authority to edit, so what bounds it is not a promise
+  about how it behaves but what its work has to survive to count.** Nothing it
+  does reaches the library until a person has read the whole change, and that
+  change is checked against every rule the library already enforces. A
+  permission defended only by a promise is not a boundary; this library learned
+  that once already and does not intend to relearn it.
 
 ## The judgement worth preserving
 

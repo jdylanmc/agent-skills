@@ -37,6 +37,7 @@ const FAILURES = {
   symlinkComponent: 'symlink_component',
   notASkill: 'not_a_skill',
   notADirectory: 'not_a_directory',
+  workflowNotAdditive: 'workflow_not_additive',
 };
 
 export class TargetError extends Error {
@@ -247,6 +248,44 @@ export function isWritableClass(writeClass) {
 }
 
 /**
+ * The `workflow` class is writable, but not unconditionally: the one edit a
+ * reinforcement may make to the shared validation workflow is registering a new
+ * test, and registration is line-preserving. It adds lines; it never removes or
+ * rewrites one. So the only workflow edit permitted is one where every non-blank
+ * line of the previous file still appears in the next. Deleting an existing
+ * `*.test.mjs` registration or editing the doctrine-digest step is exactly the
+ * gate-weakening move this refuses — the one path by which the package could
+ * weaken a repository gate to make a change fit.
+ *
+ * Lines are compared with trailing whitespace trimmed, so a reflowed or
+ * re-indented tail does not read as a removal; a genuinely removed or rewritten
+ * registration does.
+ */
+export function assertWorkflowAdditive(previousContent, nextContent) {
+  if (typeof previousContent !== 'string' || typeof nextContent !== 'string') {
+    throw new TargetError(
+      FAILURES.usage,
+      'assertWorkflowAdditive requires the previous and next workflow contents',
+    );
+  }
+  const nextLines = new Set(nextContent.split('\n').map((line) => line.trimEnd()));
+  const removed = previousContent
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() !== '')
+    .filter((line) => !nextLines.has(line));
+  if (removed.length) {
+    const error = new TargetError(
+      FAILURES.workflowNotAdditive,
+      `the workflow edit is not additive; these lines were removed or rewritten: ${removed.join(' | ')}`,
+    );
+    error.removed = removed;
+    throw error;
+  }
+  return { status: 'additive', removed: [] };
+}
+
+/**
  * Audit an actual change set — the real list of changed paths from the version
  * control diff — before a pull request opens.
  *
@@ -261,8 +300,13 @@ export function isWritableClass(writeClass) {
  * The gate this feeds is publication: no pull request opens while `refused` is
  * non-empty. It does not stop a write mid-run — nothing in one model run can —
  * but nothing lands without passing this audit and the human review after it.
+ *
+ * When the run supplies the workflow file's before/after content in
+ * `{ workflow: { previous, next } }`, the edit is additionally proven additive:
+ * a removed registration or an edited doctrine-digest step is a `workflowViolation`
+ * that makes the change set unclean, exactly as an out-of-target path does.
  */
-export function auditDiff(repositoryRoot, skillName, changedPaths) {
+export function auditDiff(repositoryRoot, skillName, changedPaths, { workflow: workflowDiff } = {}) {
   requireString(repositoryRoot, 'repositoryRoot');
   requireString(skillName, 'skillName');
   if (!Array.isArray(changedPaths)) {
@@ -277,24 +321,46 @@ export function auditDiff(repositoryRoot, skillName, changedPaths) {
   const refused = classified.filter((entry) => !entry.writable);
   const workflow = classified.filter((entry) => entry.writeClass === WRITE_CLASS.workflow);
 
+  // A workflow file is writable only as an additive registration. When the run
+  // supplies the before/after content, prove the edit removed nothing; a removed
+  // registration or an edited doctrine-digest step makes the whole change set
+  // unclean, exactly as an out-of-target path does.
+  let workflowViolation = null;
+  if (workflow.length && workflowDiff) {
+    try {
+      assertWorkflowAdditive(workflowDiff.previous, workflowDiff.next);
+    } catch (error) {
+      if (error.code !== FAILURES.workflowNotAdditive) {
+        throw error;
+      }
+      workflowViolation = {
+        path: workflowDiff.path ?? WORKFLOW_FILE,
+        removed: error.removed ?? [],
+        message: error.message,
+      };
+    }
+  }
+
   return {
     classified,
     refused,
     workflow,
-    clean: refused.length === 0,
+    workflowViolation,
+    clean: refused.length === 0 && workflowViolation === null,
   };
 }
 
 function parseArguments(argv) {
   const args = {};
+  const valueFlags = ['--root', '--skill', '--classify', '--audit'];
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === '--probe') {
       args.probe = true;
       continue;
     }
-    if (!token.startsWith('--')) {
-      throw new TargetError(FAILURES.usage, `unexpected argument: ${token}`);
+    if (!valueFlags.includes(token)) {
+      throw new TargetError(FAILURES.usage, `unknown argument: ${token}`);
     }
     const value = argv[index + 1];
     if (value === undefined || value.startsWith('--')) {

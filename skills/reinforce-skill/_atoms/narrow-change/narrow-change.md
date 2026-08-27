@@ -39,7 +39,12 @@ Change the implementation to match the intent, and change nothing more.
    `workflow`, stop and report it; no pull request opens on an out-of-target
    diff. A change scoped as `preserves-intent` whose diff edits `intent.md` is
    refused on the same gate, which is what stops a narrow change from widening
-   into a change to what the skill is for.
+   into a change to what the skill is for. A change scoped as `changes-intent`
+   whose diff edits `intent.md` is refused unless that intent was stored through
+   the gate and the stored bytes still match the file on disk, so a hand-written
+   intent never publishes. Run the intent-decision release check,
+   `intent-decision.mjs --state <path> --require-decision`, as the publication
+   precondition; a `blocked` result stops the pull request.
 4. When the change adds or removes a unit, re-derive the graph with
    `node scripts/derive-skill-graph.mjs --write`, so `used-by` and molecule
    `allowed-tools` are regenerated and committed rather than hand-edited.

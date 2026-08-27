@@ -414,17 +414,41 @@ export function requireIntentDecision(state) {
  * an intent edit that went around it. A `preserves-intent` run whose diff
  * contains `intent.md` did one of two things — changed what the skill is for
  * without asking, or mislabelled its own change — and both are refusals.
+ *
+ * The mirror image is also refused: a `changes-intent` run whose diff edits the
+ * intent but whose gate never reached `stored`, or whose stored bytes are not
+ * the bytes now on disk, hand-wrote the intent instead of confirming and storing
+ * it. So "the intent was stored through the gate before the implementation
+ * landed" is a computed precondition of publication here, not a prose promise.
+ *
+ * Candidate paths are normalized through the repository root, so an absolute and
+ * a relative path to the same intent file resolve to one form and agree — a
+ * lexical compare would let an absolute path slip past as "does not touch the
+ * intent".
  */
-export function assertDiffMatchesDecision(state, changedPaths, { skill } = {}) {
+export function assertDiffMatchesDecision(state, changedPaths, { skill, repositoryRoot } = {}) {
   const current = assertState(state);
   if (!Array.isArray(changedPaths)) {
     throw new DecisionError('invalid_change_set', 'changed paths must be an array');
   }
   const name = skill ?? current.skill;
   const intentPath = `skills/${name}/${INTENT_FILE_NAME}`;
-  const touchesIntent = changedPaths
-    .map((candidate) => String(candidate).split(path.sep).join('/').replace(/^\.\//, ''))
-    .includes(intentPath);
+
+  // Normalize every candidate the same way `classifyWritePath` does. Without a
+  // repository root only separators and a leading `./` can be normalized, so an
+  // absolute path to the intent file would never match and would be silently
+  // treated as "does not touch the intent" — the exact undisclosed intent edit
+  // this check exists to catch. Given a root, an absolute and a relative path to
+  // the same file resolve to one relative form and agree.
+  const realRoot = repositoryRoot === undefined ? null : fs.realpathSync(repositoryRoot);
+  const normalize = (candidate) => {
+    const raw = String(candidate);
+    if (realRoot) {
+      return path.relative(realRoot, path.resolve(realRoot, raw)).split(path.sep).join('/');
+    }
+    return raw.split(path.sep).join('/').replace(/^\.\//, '');
+  };
+  const touchesIntent = changedPaths.map(normalize).includes(intentPath);
 
   if (current.decision === null) {
     throw new DecisionError(
@@ -438,11 +462,37 @@ export function assertDiffMatchesDecision(state, changedPaths, { skill } = {}) {
       `this run recorded preserves-intent but the change set edits ${intentPath}; a narrow change may not widen into changing what the skill is for`,
     );
   }
-  if (current.decision === 'changes-intent' && !touchesIntent) {
-    throw new DecisionError(
-      'missing_intent_edit',
-      `this run recorded changes-intent but the change set does not edit ${intentPath}`,
-    );
+  if (current.decision === 'changes-intent') {
+    if (!touchesIntent) {
+      throw new DecisionError(
+        'missing_intent_edit',
+        `this run recorded changes-intent but the change set does not edit ${intentPath}`,
+      );
+    }
+    // The change set edits the intent, so the revised intent must have reached
+    // the file *through the gate*, not around it. A `changes-intent` state that
+    // never advanced to `stored` means the intent was hand-written rather than
+    // confirmed-and-stored — the drift this package exists to refuse — so the
+    // stored status is a computed precondition of publication, not a promise.
+    if (current.status !== 'stored') {
+      throw new DecisionError(
+        'unstored_intent_change',
+        `this run recorded changes-intent and edits ${intentPath}, but the revised intent was never stored through the gate; it stopped at ${current.status}`,
+      );
+    }
+    // And the bytes on disk must be the bytes the gate stored. A file edited
+    // after the confirmed store no longer matches the confirmation it claims.
+    const onDisk = realRoot
+      ? path.join(realRoot, 'skills', name, INTENT_FILE_NAME)
+      : current.storedPath;
+    if (onDisk && current.storedDigest && fs.existsSync(onDisk)) {
+      if (digestOf(fs.readFileSync(onDisk, 'utf8')) !== current.storedDigest) {
+        throw new DecisionError(
+          'undisclosed_intent_edit',
+          `the intent on disk is not the intent that was stored through the gate: ${onDisk}`,
+        );
+      }
+    }
   }
   return { status: 'consistent', decision: current.decision, touchesIntent };
 }
@@ -462,19 +512,21 @@ export function decisionReport(state) {
 }
 
 export const USAGE = `Usage: intent-decision.mjs --state <path> [--event <path>] [--root <path>] [--report]
+       intent-decision.mjs --state <path> --require-decision
 
-  --state   Absolute path to the decision state file.
-  --event   Absolute path to a JSON event to apply.
-  --root    Repository root, required to store a revised intent.
-  --report  Print the decision report and exit.
-  --probe   Report availability and exit.`;
+  --state             Absolute path to the decision state file.
+  --event             Absolute path to a JSON event to apply.
+  --root              Repository root, required to store a revised intent.
+  --report            Print the decision report and exit.
+  --require-decision  Answer whether this reinforcement may proceed to a pull request.
+  --probe             Report availability and exit.`;
 
 export function parseArguments(argv) {
   const args = {};
   const valueFlags = ['--state', '--event', '--root'];
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    if (token === '--report' || token === '--probe') {
+    if (token === '--report' || token === '--probe' || token === '--require-decision') {
       args[token.slice(2)] = true;
       continue;
     }
@@ -502,6 +554,22 @@ export function run(argv, streams = process) {
   }
   const exists = fs.existsSync(args.state);
   let state = exists ? JSON.parse(fs.readFileSync(args.state, 'utf8')) : null;
+
+  // The release check answers "may this reinforcement proceed to a pull
+  // request?" from the record, and applies nothing. Exit 0 is satisfied; exit 2
+  // is blocked and names every reason, mirroring intent-storage-gate's
+  // --require-stored convention.
+  if (args['require-decision']) {
+    if (args.event || args.report) {
+      throw new DecisionError(
+        'usage',
+        `--require-decision asks a question about the record and applies nothing; it takes no --event or --report\n${USAGE}`,
+      );
+    }
+    const result = requireIntentDecision(state);
+    streams.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return result.requirement === 'satisfied' ? 0 : 2;
+  }
 
   if (args.event) {
     const event = JSON.parse(fs.readFileSync(args.event, 'utf8'));

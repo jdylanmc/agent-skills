@@ -65,9 +65,14 @@ invokes it after a human has approved the recommendation it disposes.
    files together with the changelog patch, and run the write-boundary guard's
    diff audit over the actual change set; if any changed path is outside
    `in-target` or `workflow`, stop and report it rather than opening a pull
-   request. Otherwise open the pull request with the evidence — the intent
-   decision, the classified diff, the validation output, and the full roast
-   account — return its identifier and reviewed head, and **stop**. Never merge.
+   request. Run the intent-decision release check
+   (`intent-decision.mjs --state <path> --require-decision`) over the recorded
+   decision; a `blocked` result — a `changes-intent` decision that never reached
+   `stored`, or a stored intent that no longer matches the file on disk — stops
+   publication rather than opening a pull request. Otherwise open the pull
+   request with the evidence — the intent decision, the classified diff, the
+   validation output, and the full roast account — return its identifier and
+   reviewed head, and **stop**. Never merge.
 
 ## Intent Decides First, and This Ordering Is the Point
 
@@ -115,6 +120,9 @@ Return:
   verdict with its reasoning, and anything unresolved with a bounded way forward;
 - `Changelog: entered` with the proposed entry, or `Changelog: degraded` with
   the reason;
+- `Writing review: reviewed` with its findings, or `Writing review: degraded`
+  with the reason and a note that the prose surface was covered inside the roast
+  instead;
 - any grant the change required widened, stated as its own deliberate decision;
 - the pull request identifier or URL and the reviewed head, when one was opened;
 - any Chronicler log path or recording defect;
@@ -126,7 +134,7 @@ Each run ends in exactly one status:
 
 | Status | When |
 | --- | --- |
-| `reinforced` | The change is made, validation passed, `/roast` ran on the final head with every finding addressed, the pull request is open. A degraded changelog does not lower this status; it is reported. |
+| `reinforced` | The change is made, validation passed, `/roast` ran on the final head with every finding addressed, the pull request is open. A degraded changelog does not lower this status; it is reported. A degraded writing review does not lower it either; it is reported the same way. |
 | `needs-confirmation` | The intent changed but the operator has not confirmed the revised wording, or the three-round roast pause awaits his answer. Nothing is stored or merged. |
 | `blocked` | The target is not a routable existing skill, a dependency prevents the change, validation cannot pass, or the diff audit refuses an out-of-target path. |
 | `halted` | `/roast` refused or returned an unsynthesized result, or the loop reached its round limit without convergence. |
