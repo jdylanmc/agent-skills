@@ -21,6 +21,7 @@ const MOLECULES = [
 
 const ATOMS = [
   'post-mortem/_atoms/evidence-scope-session/evidence-scope-session.md',
+  'post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md',
   'post-mortem/_atoms/copilot-session-events/copilot-session-events.md',
   'post-mortem/_atoms/evidence-redact-untrusted/evidence-redact-untrusted.md',
   'post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md',
@@ -102,9 +103,10 @@ test('the routing description names the retrospective job and refuses the adjace
   const { description } = frontmatter(ENTRY);
 
   assert.match(description, /read-only, evidence-anchored post-mortem/);
-  assert.match(description, /Copilot session event log/);
+  assert.match(description, /the runtime's own session log/);
+  assert.match(description, /when the harness is supported/);
+  assert.match(description, /its identity can be proved/);
   assert.match(description, /Skill Run Log/);
-  assert.match(description, /when its identity can be proved/);
   assert.match(description, /explicitly selects/);
   assert.match(description, /Do not use for incident, outage, or production-failure reviews/);
   assert.match(description, /team or sprint retrospectives/);
@@ -252,7 +254,7 @@ test('the identity ladder and its refusals are documented as a fail-closed rule'
   assert.match(reader, /Ambiguity refuses\. Two possible current sessions produce no reading at all/);
   assert.match(
     assemble,
-    /A refused identity - ambiguous, absent, or unreadable - is recorded under limitations/,
+    /A refused identity - ambiguous, absent, or unreadable - and an unsupported harness are recorded under limitations/,
   );
   assert.match(assemble, /continues on the visible session alone rather than settling the ambiguity/);
 });
@@ -287,15 +289,74 @@ test('each evidence source owns a distinct anchor series', () => {
 test('the session-event reader is composed by the evidence molecule and grants only execute', () => {
   const assemble = frontmatter('post-mortem/_molecules/evidence-assemble/evidence-assemble.md');
   const reader = frontmatter('post-mortem/_atoms/copilot-session-events/copilot-session-events.md');
+  const seam = frontmatter('post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md');
 
   assert.ok(
     assemble.composes.includes('post-mortem/_atoms/copilot-session-events/copilot-session-events.md'),
+  );
+  assert.ok(
+    assemble.composes.includes('post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md'),
   );
   assert.deepEqual(reader.allowedTools, ['execute']);
   assert.deepEqual(reader.composes, []);
   assert.deepEqual(reader.includes, [
     'post-mortem/_atoms/copilot-session-events/copilot-session-events.mjs',
   ]);
+  assert.deepEqual(seam.allowedTools, ['execute']);
+  assert.deepEqual(seam.composes, []);
+});
+
+test('the package is provider-neutral: one seam, one neutral vocabulary downstream', () => {
+  const skill = flat(ENTRY);
+  const seam = flat('post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md');
+
+  assert.match(skill, /One Post-Mortem, Any Harness/);
+  assert.match(skill, /A harness's own event names never reach the analysis/);
+  assert.match(seam, /The Common Evidence Ledger/);
+  assert.match(seam, /Nothing downstream reads `provider_native`/);
+
+  // No harness event name leaks into diagnosis or rendering.
+  const downstream = [
+    'post-mortem/_molecules/postmortem-diagnose-session/postmortem-diagnose-session.md',
+    'post-mortem/_atoms/friction-detect-signals/friction-detect-signals.md',
+    'post-mortem/_atoms/gap-classify-taxonomy/gap-classify-taxonomy.md',
+    'post-mortem/_atoms/hypothesis-form-root-cause/hypothesis-form-root-cause.md',
+    'post-mortem/_atoms/postmortem-render-record/postmortem-render-record.md',
+    'post-mortem/_atoms/session-classify-outcome/session-classify-outcome.md',
+  ];
+  for (const unit of downstream) {
+    const body = read(unit);
+    for (const harnessTerm of ['Copilot', 'copilot', 'skill.invoked', 'tool.execution', 'events.jsonl']) {
+      assert.ok(
+        !body.includes(harnessTerm),
+        `${unit} must not name a harness or its event vocabulary; found ${harnessTerm}`,
+      );
+    }
+  }
+});
+
+test('an unreadable harness becomes a PROPOSED adapter recommendation, applied by nobody', () => {
+  const skill = flat(ENTRY);
+  const seam = flat('post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md');
+  const propose = flat('post-mortem/_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md');
+
+  assert.match(skill, /An unrecognized harness is a stated gap, not a best effort/);
+  assert.match(skill, /`unsupported_provider` limitation/);
+  assert.match(skill, /a separate `reinforce-skill` run adds the adapter/);
+  assert.match(skill, /never edits itself, never adds its own adapter, and never invokes reinforcement/);
+  assert.match(seam, /There is no generic fallback parser, deliberately/);
+  assert.match(seam, /`human_approval_required: true`/);
+  assert.match(seam, /Self-modification is not a shortcut this seam is permitted to take/);
+  assert.match(propose, /never adds a capability the analysis found missing/);
+});
+
+test('a Skill Run Log is correlated to session evidence by recorded identity', () => {
+  const runlog = flat('post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md');
+  const skill = flat(ENTRY);
+
+  assert.match(runlog, /Correlate by recorded identity, never by proximity/);
+  assert.match(runlog, /Two logs written around the same time are not thereby the same session/);
+  assert.match(skill, /correlated by those identities, not by timestamps/);
 });
 
 test('the package intent states the analyze-recommend-apply-nothing boundary', () => {

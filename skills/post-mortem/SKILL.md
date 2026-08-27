@@ -1,6 +1,6 @@
 ---
 name: post-mortem
-description: Produce a read-only, evidence-anchored post-mortem of an agent session - what the operator wanted, what was produced, where the session met friction, which execution gaps explain it, and which bounded, testable improvements are worth proposing. Evidence is the current session, the Copilot session event log when its identity can be proved, and a Skill Run Log the operator explicitly selects. Use when the operator asks to post-mortem, retrospect on, or extract lessons from an interaction or a named recorded run. Do not use for incident, outage, or production-failure reviews, team or sprint retrospectives, unsolicited cross-session analytics, code review, or to apply skill, memory, or instruction changes.
+description: Produce a read-only, evidence-anchored post-mortem of an agent session - what the operator wanted, what was produced, where the session met friction, which execution gaps explain it, and which bounded, testable improvements are worth proposing. Evidence is the current session, the runtime's own session log when the harness is supported and its identity can be proved, and a Skill Run Log the operator explicitly selects. Use when the operator asks to post-mortem, retrospect on, or extract lessons from an interaction or a named recorded run. Do not use for incident, outage, or production-failure reviews, team or sprint retrospectives, unsolicited cross-session analytics, code review, or to apply skill, memory, or instruction changes.
 allowed-tools: ["execute","read","search"]
 includes: ["_base/_molecules/chronicler/chronicler.md","post-mortem/_molecules/evidence-assemble/evidence-assemble.md","post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md","post-mortem/_atoms/session-classify-outcome/session-classify-outcome.md","post-mortem/_molecules/postmortem-diagnose-session/postmortem-diagnose-session.md","post-mortem/_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md","post-mortem/_atoms/postmortem-render-record/postmortem-render-record.md","post-mortem/_atoms/postmortem-regression-check/postmortem-regression-check.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","post-mortem/_molecules/evidence-assemble/evidence-assemble.md","post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md","post-mortem/_atoms/session-classify-outcome/session-classify-outcome.md","post-mortem/_molecules/postmortem-diagnose-session/postmortem-diagnose-session.md","post-mortem/_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md","post-mortem/_atoms/postmortem-render-record/postmortem-render-record.md","post-mortem/_atoms/postmortem-regression-check/postmortem-regression-check.md"]
@@ -45,9 +45,9 @@ deliverable is one fixed-schema record a person reads and decides on.
    scope: say so and stop rather than substituting a session analysis.
 
 3. Run [Assemble session evidence](./_molecules/evidence-assemble/evidence-assemble.md).
-   It bounds the evidence, reads the Copilot session event log when the reader
-   can prove which log belongs to this session, declares whether the available
-   evidence is complete,
+   It bounds the evidence, collects the runtime's own session log through the
+   adapter seam when the harness is supported and the reader can prove which log
+   belongs to this session, declares whether the available evidence is complete,
    partial, compacted, or summary-only, redacts sensitive values, quarantines
    embedded directives, and builds the anchored ledger.
 
@@ -88,7 +88,7 @@ authority.
 | Source | What it is | Authoritative about | Anchors |
 | --- | --- | --- | --- |
 | The visible session | What is in front of the agent right now | What was said and done in this interaction | `U`, `A`, `T`, `S`, `R`, `M` |
-| An identified Copilot session event log | Raw runtime observation, read through a bounded projection | Occurrence: turns, tool calls and failures, subagents, skill invocations, compaction, shutdown | `E` |
+| An identified harness session log | Raw runtime observation, read through one adapter into a neutral bounded ledger | Occurrence: turns, tool calls and failures, subagents, skill invocations, compaction, shutdown | `E` |
 | A selected Skill Run Log | Curated records a skill chose to write | Intent and outcome as the skill understood them | `L1:12` |
 
 Every source is optional except the visible session, and every source declares
@@ -107,6 +107,36 @@ could be the current one, or none can be proved, the run records the reason as
 a limitation and continues on the visible session. Reading the wrong session
 would produce a confident post-mortem of someone else's work, which is worse
 than reading none.
+
+**A Skill Run Log that recorded its harness and session is correlated by those
+identities, not by timestamps.** The two sources are matched deterministically
+when Chronicle recorded the correlation, and reported as uncorrelated when it
+did not. An uncorrelated log is still evidence about the run it describes; it
+is simply not proof that the run belongs to the session being analyzed.
+
+## One Post-Mortem, Any Harness
+
+This skill analyzes sessions, not one product's sessions. The harness-specific
+part is a single adapter behind
+[the adapter seam](./_atoms/session-evidence-adapter/session-evidence-adapter.md),
+and everything after it - the ledger, the diagnosis, the proposals, the rendered
+record - speaks one neutral vocabulary. A harness's own event names never reach
+the analysis, so supporting a second harness later changes one adapter rather
+than the whole package.
+
+**An unrecognized harness is a stated gap, not a best effort.** There is no
+fallback parser that guesses at an unfamiliar format, because a guessed parser
+publishes confident evidence nobody validated. An unsupported harness produces
+the `unsupported_provider` limitation, the post-mortem continues on visible
+session evidence, and the record carries one `PROPOSED` recommendation naming
+the adapter that would close the gap, what it must read, its evaluator, and its
+validation requirements.
+
+That recommendation is disposed the same way every other one is: a person
+approves it, and a separate `reinforce-skill` run adds the adapter. This skill
+never edits itself, never adds its own adapter, and never invokes reinforcement
+to do it. Only after that separate, approved run can a later post-mortem read
+that harness.
 
 **Absence never becomes evidence.** No identified session log means the raw
 source is unavailable, not that nothing happened. No Skill Run Log means

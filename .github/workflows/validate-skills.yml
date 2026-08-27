@@ -133,3 +133,4 @@ jobs:
           skills/post-mortem/post-mortem.conformance.test.mjs
           skills/post-mortem/_atoms/copilot-session-events/copilot-session-events.test.mjs
           skills/post-mortem/_atoms/copilot-session-events/copilot-session-events.selection.test.mjs
+          skills/post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.test.mjs

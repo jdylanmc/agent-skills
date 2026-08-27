@@ -40,9 +40,29 @@ once:
 - `root_skill` - the routable skill that owns the run;
 - `log_path` - one absolute path, `<repository>/.skill-log/<root-skill>.<UTC-date>.<run-id>.jsonl`.
 
-Pass all three values unchanged to every nested skill or agent. A nested
+It may also carry, when the runtime makes them available:
+
+- `harness` - an opaque identity for the runtime the run executes in, such as
+  `copilot-cli`;
+- `session_id` - an opaque identifier for that runtime's session.
+
+Pass every value unchanged to every nested skill or agent. A nested
 participant adds only its own `--skill` name. Never re-derive the path from the
 current directory or worktree, and never infer a run from the newest file.
+
+### Session Correlation
+
+`harness` and `session_id` are optional and additive. They exist so a Skill Run
+Log can be matched to the runtime's own session record deterministically, rather
+than by lining up timestamps and hoping. Both are opaque identifiers, so an
+absolute machine path is refused rather than recorded, and a published log
+carries no filesystem location for the session it belongs to.
+
+Correlation is recorded from schema version 3. Logs written at version 1 or 2
+stay readable unchanged, a log with no correlation is uncorrelated rather than
+defective, and a record that declares an older version while carrying a
+correlation field is invalid. Nothing else about recording changes: a run
+without correlation records, replays, and pairs operations exactly as before.
 
 ## Invocation Contract
 

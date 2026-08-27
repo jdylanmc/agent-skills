@@ -16,6 +16,8 @@ const FLAGS = new Map([
   ['--log', 'log_path'],
   ['--run', 'run_id'],
   ['--root-skill', 'root_skill'],
+  ['--harness', 'harness'],
+  ['--session', 'session_id'],
   ['--skill', 'skill'],
   ['--event', 'event'],
   ['--phase', 'phase'],
@@ -26,7 +28,8 @@ const FLAGS = new Map([
 
 const USAGE = `Usage: chronicle-append.mjs --log <path> --run <id> --root-skill <name> \\
   --event <name> --phase <before|after|observation> --summary <text> \\
-  [--skill <name>] [--operation <id>] [--outcome <id>] [--evidence <ref>]...`;
+  [--skill <name>] [--harness <id>] [--session <id>] \\
+  [--operation <id>] [--outcome <id>] [--evidence <ref>]...`;
 
 export function parseArguments(argv) {
   const values = {};
@@ -73,6 +76,8 @@ export function parseArguments(argv) {
       run_id: values.run_id,
       root_skill: values.root_skill,
       log_path: values.log_path,
+      harness: values.harness,
+      session_id: values.session_id,
     },
     input: {
       skill: values.skill ?? values.root_skill,

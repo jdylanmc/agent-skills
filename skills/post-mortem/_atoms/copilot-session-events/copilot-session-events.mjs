@@ -71,6 +71,123 @@ export const IDENTITY_KINDS = [
 ];
 
 /**
+ * This adapter's native event types, mapped to the provider-neutral evidence
+ * kinds every adapter emits. The neutral vocabulary is owned by the adapter
+ * seam and deliberately not imported here: the seam holds the registry, so an
+ * import back the other way would make the two units mutually dependent. The
+ * seam's contract check is what proves this mapping stayed inside the
+ * vocabulary.
+ */
+const NEUTRAL_KINDS = new Map([
+  ['session.start', 'session_started'],
+  ['session.resume', 'session_resumed'],
+  ['session.shutdown', 'session_ended'],
+  ['session.compaction_start', 'context_compacted'],
+  ['session.compaction_complete', 'context_compacted'],
+  ['abort', 'session_aborted'],
+  ['session.error', 'runtime_error'],
+  ['session.warning', 'runtime_warning'],
+  ['tool.execution_complete', 'tool_failure'],
+  ['subagent.started', 'subagent_started'],
+  ['subagent.completed', 'subagent_ended'],
+  ['subagent.failed', 'subagent_ended'],
+  ['skill.invoked', 'skill_invoked'],
+  ['permission.completed', 'permission_denied'],
+]);
+
+/** The neutral detail fields an entry may carry. Everything else is dropped. */
+const NEUTRAL_DETAIL_FIELDS = [
+  'name',
+  'source',
+  'trigger',
+  'agent',
+  'outcome',
+  'within_subagent',
+  'start_anchor',
+  'request_anchor',
+  'tool_name',
+  'error_type',
+  'status_code',
+  'shutdown_type',
+  'warning_type',
+  'reason',
+  'session_id',
+];
+
+/**
+ * Projects this adapter's reading into the provider-neutral evidence ledger.
+ * Diagnosis and rendering read the ledger, never this adapter's vocabulary, so
+ * a second harness can be added without touching either of them.
+ */
+export function toEvidenceLedger(reading, resolution = null) {
+  const entries = [];
+  for (const event of reading.events) {
+    const kind = NEUTRAL_KINDS.get(event.type);
+    if (!kind) {
+      continue;
+    }
+    const detail = {};
+    for (const field of NEUTRAL_DETAIL_FIELDS) {
+      if (event[field] !== undefined && event[field] !== null) {
+        detail[field] = event[field];
+      }
+    }
+    entries.push({ anchor: event.anchor, kind, at: event.timestamp ?? null, detail });
+  }
+
+  return {
+    ledger_version: 1,
+    provider: 'copilot',
+    harness: resolution?.harness ?? 'copilot-cli',
+    source: {
+      kind: 'session-log',
+      log_id: reading.log_id,
+      session_id: reading.session_id,
+      identity: resolution?.identity ?? null,
+      identity_notes: resolution?.notes ?? [],
+    },
+    completeness: reading.evidence_completeness,
+    confidence_cap: reading.confidence_cap,
+    counts: {
+      operator_messages: reading.counts.operator_messages,
+      agent_messages: reading.counts.agent_messages,
+      turns_started: reading.counts.turns_started,
+      turns_completed: reading.counts.turns_completed,
+      tool_calls: reading.counts.tool_calls,
+      tool_failures: reading.counts.tool_failures,
+      subagent_calls: reading.counts.subagent_calls,
+      subagent_failures: reading.counts.subagent_failures,
+      skill_invocations: reading.counts.skill_invocations,
+      runtime_errors: reading.counts.session_errors,
+    },
+    entries,
+    skills: reading.skills.invocations,
+    limitations: reading.limitations,
+    provider_native: { event_counts: reading.counts.by_type },
+  };
+}
+
+/**
+ * The adapter contract the seam calls: how this harness is recognized, how a
+ * log is chosen for it, and how a reading becomes the common ledger.
+ */
+export const COPILOT_ADAPTER = {
+  id: 'copilot',
+  harnesses: ['copilot', 'copilot-cli', 'github-copilot', 'github-copilot-cli'],
+  detect(environment = {}) {
+    return ['COPILOT_SESSION_STATE_ROOT', 'COPILOT_HOME'].some(
+      (name) => typeof environment[name] === 'string' && environment[name].trim() !== '',
+    );
+  },
+  resolve(request = {}) {
+    return resolveSessionSelection(request);
+  },
+  read(resolution, options = {}) {
+    return toEvidenceLedger(readSelectedSession(resolution.path, options), resolution);
+  },
+};
+
+/**
  * The event vocabulary this reader understands. A type outside this set is
  * counted and reported as unrecognized rather than guessed at, because a
  * runtime that adds an event is a schema change, not a defect in the log.

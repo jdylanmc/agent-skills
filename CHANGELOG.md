@@ -85,7 +85,7 @@ below is unreleased and no comparison links are available.
   fixed-schema record: what the session was for, whether it got there, where it
   met friction, which execution gaps explain it, and a small number of testable
   improvements worth proposing. Evidence is the session in front of it, the
-  Copilot session event log when the right one can be identified, and a Skill
+  runtime's own session log when the right one can be identified, and a Skill
   Run Log you name. Identity is proved rather than guessed: a named path, a
   runtime-named transcript or session, or exactly one session the machine still
   shows running — never the newest file, and never a choice between two
@@ -94,8 +94,14 @@ below is unreleased and no comparison links are available.
   worthless. A runtime log is read through a bounded projection that publishes
   counts, identities, and outcomes and never a prompt, a tool result, or the
   body of a skill, and a damaged or unfinished log is reported as a limit on
-  what can be concluded rather than repaired. It diagnoses and recommends only:
-  nothing is edited, remembered, promoted, or handed to another skill to apply.
+  what can be concluded rather than repaired. It is not tied to one agent
+  harness: reading a harness is a single adapter behind a seam, everything after
+  that seam speaks one neutral vocabulary, and a harness with no adapter yields
+  a stated gap plus a proposal for the adapter that would close it rather than a
+  parser guessed from an unfamiliar format. It diagnoses and recommends only:
+  nothing is edited, remembered, promoted, or handed to another skill to apply —
+  including the adapter it just proposed, which a person approves and a separate
+  `reinforce-skill` run builds.
 - **Orchestration.** `cmux-orchestrate` coordinates work across panes.
 - **Stated intent.** Every skill carries a plain-language `intent.md` describing
   what it is for, written for a person rather than for a checker, and enforced
@@ -122,6 +128,16 @@ below is unreleased and no comparison links are available.
   compose, so the untrusted-data posture cannot drift between two copies. Each
   skill keeps its own vocabulary for what it does after intake, and review and
   rewrite remain separate jobs.
+- **A Skill Run Log can say which session it belongs to.** Chronicle run context
+  now carries two optional opaque identifiers — the harness a run executed in
+  and that harness's session identifier — and records them on each event. They
+  let a run log be matched to the runtime's own record of the same session
+  deterministically, instead of by lining up timestamps. Both are opaque, so an
+  absolute machine path is refused rather than written into a log that gets
+  published. Existing logs are unaffected: correlation is optional, logs written
+  before it stay readable unchanged, a log without it is uncorrelated rather
+  than defective, and nothing else about recording, replay, or operation pairing
+  changed.
 
 ### Removed
 

@@ -51,10 +51,11 @@ followed by a short redacted descriptor. Never paste verbatim operator text,
 file contents, or tool output into these lists.
 
 An anchor may come from any admitted source: the visible session (`U`, `A`,
-`T`, `S`, `R`, `M`), a selected Copilot session event log (`E`), or a selected
+`T`, `S`, `R`, `M`), an identified runtime session log (`E`), or a selected
 Skill Run Log (`L1:12`). A session-log record is anchored in the ledger as the
 kind of event it describes, so `evidence_ledger` keeps its existing `kind`
-values and gains no new one.
+values and gains no new one. The record uses the neutral evidence vocabulary the
+assembly produced, never a particular harness's event names.
 
 ```yaml
 evidence_ledger:

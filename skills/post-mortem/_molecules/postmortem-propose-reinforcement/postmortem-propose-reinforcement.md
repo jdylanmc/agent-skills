@@ -26,6 +26,7 @@ short of adopting any of them.
 | `diagnosis` | yes | Friction signals, gaps, and hypotheses with anchors. |
 | `package-root` | no | The repository containing this skill package, for prior-art grounding. |
 | `recurrence` | no | Whether independent operator-selected runs showed the same pattern. |
+| `evidence-gaps` | no | Recommendations the evidence assembly already produced, such as a missing harness adapter. |
 
 ## Operation
 
@@ -39,6 +40,13 @@ short of adopting any of them.
 3. **Assign lifecycle state** with
    [Reinforcement lifecycle state](../../_atoms/reinforcement-assign-state/reinforcement-assign-state.md),
    passing `recurrence`. Without independent runs, everything stays `PROPOSED`.
+4. **Carry forward an evidence gap** the assembly already identified. An
+   unsupported harness arrives as a complete `PROPOSED` candidate with its
+   traceability, evaluator, disconfirming observation, and validation
+   requirements already stated; record it as a candidate rather than restating
+   or re-deriving it, and never raise its lifecycle state. It does not count
+   against the retention limit for candidates discovered in this session,
+   because it was not discovered by judgement here.
 
 ## Output
 
@@ -55,8 +63,14 @@ short of adopting any of them.
 - Nothing is applied, written, validated, or promoted.
 - No proposal is manufactured to fill the record. An empty result is valid.
 - `ready_for_promotion` remains empty.
+- A missing capability the run actually hit, such as an unreadable harness, is
+  proposed rather than worked around.
 
 ## Boundaries
 
 Package design and edits belong to Skill Coach or create-skill in a separate,
 explicitly approved workflow.
+
+This molecule never adds a capability the analysis found missing. A proposed
+adapter is disposed by a person and built by a separate `reinforce-skill` run,
+which is the only path from a gap here to a capability later.

@@ -13,8 +13,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const SCHEMA_VERSION = 2;
-export const SUPPORTED_SCHEMA_VERSIONS = [1, 2];
+export const SCHEMA_VERSION = 3;
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3];
+
+/**
+ * Session correlation arrived in schema version 3. A version 1 or 2 record
+ * carries neither field and stays readable exactly as it was written; a record
+ * that claims an older version and carries one anyway is a defect, because the
+ * version is what tells a reader which fields to trust.
+ */
+export const SESSION_CORRELATION_SCHEMA_VERSION = 3;
+export const CORRELATION_FIELDS = ['harness', 'session_id'];
 export const MAX_SUMMARY_BYTES = 500;
 export const MAX_REFERENCE_BYTES = 200;
 export const MAX_IDENTIFIER_BYTES = 100;
@@ -31,6 +40,8 @@ const EVENT_FIELDS = [
   'run_id',
   'root_skill',
   'skill',
+  'harness',
+  'session_id',
   'sequence',
   'timestamp',
   'event',
@@ -46,7 +57,7 @@ const EVENT_FIELDS = [
 const CALLER_FIELDS = ['skill', 'event', 'phase', 'summary', 'operation', 'outcome', 'evidence'];
 
 /** What the inherited run context may carry. */
-const CONTEXT_FIELDS = ['run_id', 'root_skill', 'log_path'];
+const CONTEXT_FIELDS = ['run_id', 'root_skill', 'log_path', 'harness', 'session_id'];
 
 export class ChronicleError extends Error {
   constructor(code, message) {
@@ -160,6 +171,16 @@ export function buildEvent(input, context, now = new Date()) {
     summary: bounded.text,
   };
 
+  // Optional, opaque, and never a path. Two identifiers are enough to line one
+  // Skill Run Log up with the runtime session it ran inside, and an absolute
+  // machine path would leak the filesystem into evidence that gets published.
+  for (const field of CORRELATION_FIELDS) {
+    const value = context[field];
+    if (value !== undefined && value !== null && value !== '') {
+      event[field] = requireIdentifier(value, field);
+    }
+  }
+
   if (input.operation !== undefined && input.operation !== null && input.operation !== '') {
     event.operation = requireIdentifier(input.operation, 'operation');
   }
@@ -215,6 +236,20 @@ export function validateEvent(event) {
   }
   if (event.schema_version >= 2 && 'sequence' in event) {
     return 'sequence is not recorded from schema version 2';
+  }
+  for (const field of CORRELATION_FIELDS) {
+    if (!(field in event)) {
+      continue;
+    }
+    if (event.schema_version < SESSION_CORRELATION_SCHEMA_VERSION) {
+      return `${field} is not recorded before schema version ${SESSION_CORRELATION_SCHEMA_VERSION}`;
+    }
+    if (typeof event[field] !== 'string' || !IDENTIFIER_PATTERN.test(event[field])) {
+      return `invalid ${field}`;
+    }
+    if (byteLength(event[field]) > MAX_IDENTIFIER_BYTES) {
+      return `${field} exceeds ${MAX_IDENTIFIER_BYTES} bytes`;
+    }
   }
   for (const field of ['run_id', 'root_skill', 'skill', 'event']) {
     if (typeof event[field] !== 'string' || !IDENTIFIER_PATTERN.test(event[field])) {
@@ -413,6 +448,8 @@ export function replayLog(logPath, options = {}) {
 
   let runId = null;
   let rootSkill = null;
+  let harness = null;
+  let sessionId = null;
 
   lines.forEach((rawLine, index) => {
     const line = rawLine.trim();
@@ -441,6 +478,8 @@ export function replayLog(logPath, options = {}) {
     if (runId === null) {
       runId = parsed.run_id;
       rootSkill = parsed.root_skill;
+      harness = parsed.harness ?? null;
+      sessionId = parsed.session_id ?? null;
     } else if (parsed.run_id !== runId) {
       defects.push({
         type: 'foreign_run',
@@ -456,6 +495,22 @@ export function replayLog(logPath, options = {}) {
       });
       return;
     }
+
+    // A run that changes the session it claims to belong to cannot be
+    // correlated with anything. Report it rather than keeping the first value
+    // and letting a later reader treat the whole log as one session.
+    for (const [field, established] of [['harness', harness], ['session_id', sessionId]]) {
+      const observed = parsed[field] ?? null;
+      if (observed !== null && established !== null && observed !== established) {
+        defects.push({
+          type: 'session_identity_drift',
+          anchor,
+          detail: `run ${runId} changes ${field} from ${established} to ${observed}`,
+        });
+      }
+    }
+    harness ??= parsed.harness ?? null;
+    sessionId ??= parsed.session_id ?? null;
 
     const { sequence: _legacySequence, ...record } = parsed;
     // Physical log position is the only ordering, and it backs the L anchors.
@@ -531,6 +586,8 @@ export function replayLog(logPath, options = {}) {
     log_id: logId,
     run_id: runId,
     root_skill: rootSkill,
+    harness,
+    session_id: sessionId,
     skills: [...new Set(events.map((event) => event.skill))].sort(),
     event_count: events.length,
     events,

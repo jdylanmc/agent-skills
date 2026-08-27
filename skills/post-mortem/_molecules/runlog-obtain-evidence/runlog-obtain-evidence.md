@@ -31,6 +31,14 @@ attempted; a run log cannot say what else the session did. When both are
 selected, cite both anchors on a shared claim rather than counting one event
 twice, and prefer the raw log for occurrence and the run log for intent.
 
+**Correlate by recorded identity, never by proximity.** Chronicle records the
+harness and session a run belonged to when the runtime made them available, so a
+selected run log either shares the session identity of the raw evidence, belongs
+to a different session, or records no correlation at all. Report which of the
+three it is. Two logs written around the same time are not thereby the same
+session, and a log with no correlation is uncorrelated rather than mismatched -
+it remains evidence about the run it describes.
+
 **The absence of a Skill Run Log is not evidence of a missing invocation.**
 Recording is best effort, so a run may be real and unrecorded. Report the
 absence as a limitation and draw no conclusion from it.
@@ -128,6 +136,7 @@ not corroboration. If independence cannot be established, keep the candidate
 | Field | Meaning |
 | --- | --- |
 | `selected_logs` | Each with its slot, log identifier, run identifier, and completeness. |
+| `correlation` | Per selected log: `same-session`, `different-session`, or `unknown`, with the reason. |
 | `anchors` | `L` anchors and ranges available for citation. |
 | `confidence_caps` | Per-log caps, to be compounded with the session cap. |
 | `recurrence` | Whether independent runs establish recurrence, and why not when they do not. |

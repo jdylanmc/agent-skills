@@ -10,6 +10,7 @@ import {
   MAX_EVIDENCE_ITEMS,
   MAX_IDENTIFIER_BYTES,
   MAX_SUMMARY_BYTES,
+  SCHEMA_VERSION,
   buildEvent,
   emitEvent,
   replayLog,
@@ -49,14 +50,136 @@ test('injects attribution, timestamp, and schema for the caller', (t) => {
     context,
   );
 
-  assert.equal(event.schema_version, 2);
+  assert.equal(event.schema_version, SCHEMA_VERSION);
   assert.equal(event.run_id, context.run_id);
   assert.equal(event.root_skill, 'ship-with-squadron');
   assert.equal(event.skill, 'ship-with-squadron');
   assert.equal('sequence' in event, false, 'no writer-assigned sequence is persisted');
+  assert.equal('harness' in event, false, 'correlation is optional and absent unless supplied');
+  assert.equal('session_id' in event, false);
   assert.match(event.timestamp, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   assert.equal(event.event, 'run');
   assert.equal(event.phase, 'before');
+});
+
+test('a run context may carry the harness and session it ran inside', (t) => {
+  const context = {
+    ...contextFor(workspace(t)),
+    harness: 'copilot-cli',
+    session_id: '4749a42e-fa4c-4c52-82f0-479483ddabe0',
+  };
+
+  const event = emitEvent({ event: 'run', phase: 'before', summary: 'Start.' }, context);
+  assert.equal(event.harness, 'copilot-cli');
+  assert.equal(event.session_id, '4749a42e-fa4c-4c52-82f0-479483ddabe0');
+
+  const state = replayLog(context.log_path, { logId: 'run-a' });
+  assert.equal(state.harness, 'copilot-cli');
+  assert.equal(state.session_id, '4749a42e-fa4c-4c52-82f0-479483ddabe0');
+  assert.deepEqual(state.defects, []);
+});
+
+test('correlation identity is opaque: a path or a control character is refused', (t) => {
+  const root = workspace(t);
+
+  for (const hostile of [
+    { harness: '/Users/someone/.copilot' },
+    { session_id: '../../etc/passwd' },
+    { harness: 'copilot cli' },
+    { session_id: 'a'.repeat(MAX_IDENTIFIER_BYTES + 1) },
+  ]) {
+    assert.throws(
+      () => buildEvent(
+        { event: 'run', phase: 'before', summary: 'Start.' },
+        { ...contextFor(root), ...hostile },
+      ),
+      (error) => {
+        assert.ok(error instanceof ChronicleError);
+        assert.equal(error.code, 'invalid_input');
+        return true;
+      },
+    );
+  }
+});
+
+test('a run that changes the session it claims is a defect, not a merged log', (t) => {
+  const root = workspace(t);
+  const context = { ...contextFor(root), harness: 'copilot-cli', session_id: 'session-a' };
+
+  emitEvent({ event: 'run', phase: 'before', summary: 'Start.' }, context);
+  emitEvent(
+    { event: 'step', phase: 'observation', summary: 'Later step.' },
+    { ...context, session_id: 'session-b' },
+  );
+
+  const state = replayLog(context.log_path, { logId: 'run-a' });
+  assert.equal(state.session_id, 'session-a');
+  assert.deepEqual(
+    state.defects.map((defect) => [defect.type, defect.anchor]),
+    [['session_identity_drift', 'L2']],
+  );
+  assert.equal(state.complete, false);
+  assert.equal(state.event_count, 2, 'the record stays usable; only its correlation is in doubt');
+});
+
+test('logs written before session correlation existed stay readable', (t) => {
+  const root = workspace(t);
+  const context = contextFor(root);
+  fs.mkdirSync(path.dirname(context.log_path), { recursive: true });
+
+  const legacy = (schemaVersion, event) => JSON.stringify({
+    schema_version: schemaVersion,
+    run_id: context.run_id,
+    root_skill: 'ship-with-squadron',
+    skill: 'ship-with-squadron',
+    timestamp: '2026-08-20T12:00:00.000Z',
+    event,
+    phase: 'observation',
+    summary: 'A record written by an older Chronicle.',
+    ...(schemaVersion === 1 ? { sequence: 1 } : {}),
+  });
+  fs.writeFileSync(context.log_path, `${legacy(1, 'run')}\n${legacy(2, 'step')}\n`);
+
+  const state = replayLog(context.log_path, { logId: 'legacy' });
+  assert.deepEqual(state.defects, []);
+  assert.equal(state.event_count, 2);
+  assert.equal(state.harness, null);
+  assert.equal(state.session_id, null);
+
+  // And a new record appends onto that log without rewriting what is there.
+  emitEvent(
+    { event: 'step', phase: 'observation', summary: 'A newer record.' },
+    { ...context, harness: 'copilot-cli', session_id: 'session-a' },
+  );
+  const appended = replayLog(context.log_path, { logId: 'legacy' });
+  assert.deepEqual(appended.defects, []);
+  assert.equal(appended.event_count, 3);
+  assert.equal(appended.session_id, 'session-a', 'correlation starts where it was first recorded');
+});
+
+test('a record may not claim a correlation the schema it declares never had', (t) => {
+  const context = contextFor(workspace(t));
+  fs.mkdirSync(path.dirname(context.log_path), { recursive: true });
+  fs.writeFileSync(context.log_path, `${JSON.stringify({
+    schema_version: 2,
+    run_id: context.run_id,
+    root_skill: 'ship-with-squadron',
+    skill: 'ship-with-squadron',
+    harness: 'copilot-cli',
+    timestamp: '2026-08-20T12:00:00.000Z',
+    event: 'run',
+    phase: 'observation',
+    summary: 'A version 2 record carrying a version 3 field.',
+  })}\n`);
+
+  const state = replayLog(context.log_path, { logId: 'mixed' });
+  assert.deepEqual(
+    state.defects.map((defect) => [defect.type, defect.detail]),
+    [
+      ['invalid_record', 'harness is not recorded before schema version 3'],
+      ['no_usable_records', 'the log holds no usable event'],
+    ],
+  );
 });
 
 test('a nested skill inherits the run and shares one log with explicit attribution', (t) => {

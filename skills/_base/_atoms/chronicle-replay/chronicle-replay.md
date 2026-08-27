@@ -32,6 +32,8 @@ newest file on disk.
 
 - `log_id` - the selected path, or the opaque identifier supplied with `--log-id`;
 - `run_id` and `root_skill` - taken from the first usable record;
+- `harness` and `session_id` - the runtime and session the run recorded, or `null`
+  when the log carries no correlation;
 - `skills` - every skill that recorded an event;
 - `event_count` and `events` - usable events, each carrying an `Lnnn` anchor;
 - `operations` - each operation with its start anchor, completion anchor, and outcome;
@@ -52,6 +54,7 @@ An anchor is the physical line of the record in the selected log, written
 | `blank_record` | A blank line appears inside the log. |
 | `foreign_run` | The record belongs to a different run. |
 | `run_identity_drift` | The run identifier matches but the root skill changed. |
+| `session_identity_drift` | The run changed the harness or session it claims to belong to. |
 | `duplicate_operation_start` | An operation records intent more than once. |
 | `duplicate_operation_outcome` | An operation records an outcome more than once. |
 | `operation_out_of_order` | An operation records intent after its outcome. |
@@ -72,3 +75,6 @@ append path is reported rather than trusted.
   finding that depends on the affected records.
 - Report each defect rather than working around it.
 - Never write to a Skill Run Log while reading it.
+- Treat `harness` and `session_id` as correlation, not as evidence of what
+  happened. They say which runtime session a run belongs to; a log that carries
+  neither is simply uncorrelated, which is not a defect.
