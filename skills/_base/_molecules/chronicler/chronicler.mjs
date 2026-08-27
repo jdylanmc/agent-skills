@@ -17,6 +17,14 @@ export const SCHEMA_VERSION = 3;
 export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3];
 
 /**
+ * The version an event is written at when it carries no correlation. A record
+ * declares the contract it actually uses: a run with nothing to correlate stays
+ * a version 2 record, so a reader of an existing log sees no version churn and
+ * a version 3 record always means correlation is present.
+ */
+export const BASE_SCHEMA_VERSION = 2;
+
+/**
  * Session correlation arrived in schema version 3. A version 1 or 2 record
  * carries neither field and stays readable exactly as it was written; a record
  * that claims an older version and carries one anyway is a defect, because the
@@ -161,7 +169,7 @@ export function buildEvent(input, context, now = new Date()) {
   let truncated = bounded.truncated;
 
   const event = {
-    schema_version: SCHEMA_VERSION,
+    schema_version: BASE_SCHEMA_VERSION,
     run_id: runId,
     root_skill: rootSkill,
     skill,
@@ -178,6 +186,7 @@ export function buildEvent(input, context, now = new Date()) {
     const value = context[field];
     if (value !== undefined && value !== null && value !== '') {
       event[field] = requireIdentifier(value, field);
+      event.schema_version = SESSION_CORRELATION_SCHEMA_VERSION;
     }
   }
 

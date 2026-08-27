@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  BASE_SCHEMA_VERSION,
   ChronicleError,
   MAX_EVENT_BYTES,
   MAX_EVIDENCE_ITEMS,
@@ -50,7 +51,7 @@ test('injects attribution, timestamp, and schema for the caller', (t) => {
     context,
   );
 
-  assert.equal(event.schema_version, SCHEMA_VERSION);
+  assert.equal(event.schema_version, BASE_SCHEMA_VERSION, 'an uncorrelated run stays at the older contract');
   assert.equal(event.run_id, context.run_id);
   assert.equal(event.root_skill, 'ship-with-squadron');
   assert.equal(event.skill, 'ship-with-squadron');
@@ -70,6 +71,7 @@ test('a run context may carry the harness and session it ran inside', (t) => {
   };
 
   const event = emitEvent({ event: 'run', phase: 'before', summary: 'Start.' }, context);
+  assert.equal(event.schema_version, SCHEMA_VERSION, 'correlation is what raises the version');
   assert.equal(event.harness, 'copilot-cli');
   assert.equal(event.session_id, '4749a42e-fa4c-4c52-82f0-479483ddabe0');
 
@@ -77,6 +79,28 @@ test('a run context may carry the harness and session it ran inside', (t) => {
   assert.equal(state.harness, 'copilot-cli');
   assert.equal(state.session_id, '4749a42e-fa4c-4c52-82f0-479483ddabe0');
   assert.deepEqual(state.defects, []);
+});
+
+test('one log may hold both contract versions, and both replay cleanly', (t) => {
+  const context = contextFor(workspace(t));
+
+  const uncorrelated = emitEvent(
+    { event: 'run', phase: 'before', summary: 'Start without correlation.' },
+    context,
+  );
+  const correlated = emitEvent(
+    { event: 'step', phase: 'observation', summary: 'A later step, correlated.' },
+    { ...context, harness: 'copilot', session_id: 'session-a' },
+  );
+
+  assert.equal(uncorrelated.schema_version, BASE_SCHEMA_VERSION);
+  assert.equal(correlated.schema_version, SCHEMA_VERSION);
+
+  const state = replayLog(context.log_path, { logId: 'run-a' });
+  assert.deepEqual(state.defects, []);
+  assert.equal(state.event_count, 2);
+  assert.equal(state.session_id, 'session-a', 'correlation is picked up where it starts');
+  assert.equal(state.harness, 'copilot');
 });
 
 test('correlation identity is opaque: a path or a control character is refused', (t) => {

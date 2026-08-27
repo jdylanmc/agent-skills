@@ -2,8 +2,8 @@
 name: evidence-assemble
 description: Turn a raw session, and any harness session log whose identity was established, into one redacted, anchored evidence ledger with a declared completeness and the confidence cap that follows from it.
 level: molecule
-includes: ["post-mortem/_atoms/evidence-scope-session/evidence-scope-session.md","post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md","post-mortem/_atoms/copilot-session-events/copilot-session-events.md","post-mortem/_atoms/evidence-redact-untrusted/evidence-redact-untrusted.md","post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md"]
-composes: ["post-mortem/_atoms/evidence-scope-session/evidence-scope-session.md","post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md","post-mortem/_atoms/copilot-session-events/copilot-session-events.md","post-mortem/_atoms/evidence-redact-untrusted/evidence-redact-untrusted.md","post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md"]
+includes: ["post-mortem/_atoms/evidence-scope-session/evidence-scope-session.md","post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md","post-mortem/_atoms/evidence-redact-untrusted/evidence-redact-untrusted.md","post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md"]
+composes: ["post-mortem/_atoms/evidence-scope-session/evidence-scope-session.md","post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md","post-mortem/_atoms/evidence-redact-untrusted/evidence-redact-untrusted.md","post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md"]
 used-by: ["post-mortem/SKILL.md"]
 allowed-tools: ["execute"]
 ---
@@ -17,9 +17,8 @@ this molecule has bounded it, cleaned it, and named it.
 
 1. [Evidence scope for one session](../../_atoms/evidence-scope-session/evidence-scope-session.md)
 2. [Session evidence adapter seam](../../_atoms/session-evidence-adapter/session-evidence-adapter.md)
-3. [Copilot session event evidence](../../_atoms/copilot-session-events/copilot-session-events.md)
-4. [Untrusted and sensitive evidence](../../_atoms/evidence-redact-untrusted/evidence-redact-untrusted.md)
-5. [Evidence anchor ledger](../../_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md)
+3. [Untrusted and sensitive evidence](../../_atoms/evidence-redact-untrusted/evidence-redact-untrusted.md)
+4. [Evidence anchor ledger](../../_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md)
 
 ## Inputs
 
@@ -39,10 +38,10 @@ this molecule has bounded it, cleaned it, and named it.
    findings.
 2. **Collect raw session evidence** through
    [Session evidence adapter seam](../../_atoms/session-evidence-adapter/session-evidence-adapter.md),
-   which selects the adapter for this harness and returns the common evidence
-   ledger. In this repository that adapter is
-   [Copilot session event evidence](../../_atoms/copilot-session-events/copilot-session-events.md),
-   which also decides whether the identity of a log can be established at all.
+   which selects the adapter for this harness, has it establish whether the
+   identity of a log can be proved at all, and returns the common evidence
+   ledger. Which adapter that is belongs to the seam; this molecule never names
+   one, and nothing here changes when another is registered.
    Take the ledger's limitations and its cap as given. A refused identity -
    ambiguous, absent, or unreadable - and an unsupported harness are recorded
    under limitations with their codes, and the assembly continues on the visible

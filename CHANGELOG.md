@@ -134,10 +134,11 @@ below is unreleased and no comparison links are available.
   let a run log be matched to the runtime's own record of the same session
   deterministically, instead of by lining up timestamps. Both are opaque, so an
   absolute machine path is refused rather than written into a log that gets
-  published. Existing logs are unaffected: correlation is optional, logs written
-  before it stay readable unchanged, a log without it is uncorrelated rather
-  than defective, and nothing else about recording, replay, or operation pairing
-  changed.
+  published. Existing logs are unaffected: correlation is optional, a run with
+  nothing to correlate is still written at the previous schema version, logs
+  written before it stay readable unchanged, a log without it is uncorrelated
+  rather than defective, and nothing else about recording, replay, or operation
+  pairing changed.
 
 ### Removed
 

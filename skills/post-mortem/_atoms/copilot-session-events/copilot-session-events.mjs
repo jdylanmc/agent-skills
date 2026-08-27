@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,6 +49,19 @@ export const DEFAULT_MAX_NOTES = 100;
 export const DEFAULT_MAX_LINES = 500_000;
 export const MAX_RECORD_BYTES = 1_048_576;
 export const MAX_FIELD_CHARS = 120;
+/**
+ * A redaction marker is never split. Bounding a value that ends mid-marker
+ * would publish `[REDACTED` - a string that says nothing was removed - so the
+ * bound stretches by at most one marker to keep the statement intact.
+ */
+export const MAX_MARKER_CHARS = 32;
+const PARTIAL_MARKER = /\[[A-Z]*:?[a-z-]*$/;
+/**
+ * How much of a value the redaction floor sees before the bound is applied.
+ * Wider than the published bound so a secret that begins near the cut is still
+ * recognized as a secret rather than truncated into an unrecognizable fragment.
+ */
+export const REDACT_INPUT_CHARS = 4_000;
 const READ_CHUNK_BYTES = 262_144;
 
 /** Bounds the discovery scan, so a session root that grew without limit fails loudly. */
@@ -82,8 +96,8 @@ const NEUTRAL_KINDS = new Map([
   ['session.start', 'session_started'],
   ['session.resume', 'session_resumed'],
   ['session.shutdown', 'session_ended'],
-  ['session.compaction_start', 'context_compacted'],
-  ['session.compaction_complete', 'context_compacted'],
+  ['session.compaction_start', 'context_compaction_started'],
+  ['session.compaction_complete', 'context_compaction_completed'],
   ['abort', 'session_aborted'],
   ['session.error', 'runtime_error'],
   ['session.warning', 'runtime_warning'],
@@ -115,15 +129,55 @@ const NEUTRAL_DETAIL_FIELDS = [
 ];
 
 /**
+ * The identifier a ledger publishes for its source. An absolute path is never
+ * published: a post-mortem record is read by people who did not run the
+ * session, and a machine path is both useless to them and more than they were
+ * asked to be told. A session identity is the useful name; when there is none,
+ * a digest still lets two readings of the same file be recognized as one.
+ */
+export function publishedLogId({ requestedLogId = null, sessionId = null, sourcePath = null }) {
+  const requested = safeString(requestedLogId);
+  if (requested !== null && !isPathShaped(requested)) {
+    return requested;
+  }
+  const session = safeString(sessionId);
+  if (session !== null) {
+    return `session:${session}`;
+  }
+  const material = typeof sourcePath === 'string' && sourcePath !== ''
+    ? sourcePath
+    : String(requestedLogId ?? '');
+  return `sha256:${createHash('sha256').update(material, 'utf8').digest('hex')}`;
+}
+
+export function isPathShaped(value) {
+  return typeof value === 'string'
+    && (value.startsWith('/') || value.startsWith('\\') || /^[A-Za-z]:[\\/]/.test(value));
+}
+
+/**
  * Projects this adapter's reading into the provider-neutral evidence ledger.
  * Diagnosis and rendering read the ledger, never this adapter's vocabulary, so
  * a second harness can be added without touching either of them.
  */
 export function toEvidenceLedger(reading, resolution = null) {
   const entries = [];
+  const limitations = [...reading.limitations];
+  const unmapped = new Set();
   for (const event of reading.events) {
     const kind = NEUTRAL_KINDS.get(event.type);
     if (!kind) {
+      // A materialized event with no neutral kind is a mapping gap in this
+      // adapter. Dropping it silently would shrink the evidence without
+      // telling anyone the ledger is missing something the log recorded.
+      if (!unmapped.has(event.type)) {
+        unmapped.add(event.type);
+        limitations.push({
+          code: 'unmapped_event',
+          anchor: event.anchor,
+          detail: `this adapter records ${event.type} but maps it to no neutral evidence kind`,
+        });
+      }
       continue;
     }
     const detail = {};
@@ -138,7 +192,7 @@ export function toEvidenceLedger(reading, resolution = null) {
   return {
     ledger_version: 1,
     provider: 'copilot',
-    harness: resolution?.harness ?? 'copilot-cli',
+    harness: 'copilot',
     source: {
       kind: 'session-log',
       log_id: reading.log_id,
@@ -162,7 +216,7 @@ export function toEvidenceLedger(reading, resolution = null) {
     },
     entries,
     skills: reading.skills.invocations,
-    limitations: reading.limitations,
+    limitations,
     provider_native: { event_counts: reading.counts.by_type },
   };
 }
@@ -247,7 +301,23 @@ function safeString(value) {
   if (!collapsed) {
     return null;
   }
-  return redactText(collapsed.slice(0, MAX_FIELD_CHARS)).text;
+  // Redact first, then bound, then redact again. Bounding first can cut a
+  // credential in half so the pattern no longer matches, which would publish
+  // a fragment of the secret instead of a marker; redacting again catches a
+  // marker the bound itself split.
+  const redacted = redactText(collapsed.slice(0, REDACT_INPUT_CHARS)).text;
+  if (redacted.length <= MAX_FIELD_CHARS) {
+    return redacted;
+  }
+  let bounded = redacted.slice(0, MAX_FIELD_CHARS);
+  const partial = PARTIAL_MARKER.exec(bounded);
+  if (partial) {
+    const markerEnd = redacted.indexOf(']', partial.index);
+    bounded = markerEnd !== -1 && markerEnd - partial.index <= MAX_MARKER_CHARS
+      ? redacted.slice(0, markerEnd + 1)
+      : bounded.slice(0, partial.index);
+  }
+  return redactText(bounded).text;
 }
 
 function safeBoolean(value) {
@@ -288,16 +358,20 @@ export function defaultIsAlive(pid) {
 }
 
 /**
- * The current process and its ancestors. A session lock held by one of them is
- * this session, which is the only identity claim discovery is allowed to make
- * on its own. Where the lineage cannot be read - an unsupported platform, a
- * missing `ps` - the list is short and discovery falls through to the stricter
- * single-session rule rather than guessing.
+ * The current process and its ancestors, with an explicit statement of whether
+ * the walk actually succeeded. A session lock held by one of them is this
+ * session, which is the strongest identity claim discovery may make on its own.
+ *
+ * The walk uses `ps`, so it is POSIX-only. On Windows, and wherever `ps` is
+ * missing or refuses, the lineage is reported `unavailable` rather than
+ * returned short and silently treated as complete - the difference between
+ * "no ancestor holds a session" and "we could not ask" decides whether a
+ * non-match is evidence or ignorance, and callers must be able to tell.
  */
-export function defaultAncestorPids(startPid = process.pid) {
+export function defaultProcessLineage(startPid = process.pid) {
   const lineage = [startPid];
   if (process.platform === 'win32') {
-    return lineage;
+    return { pids: lineage, status: 'unavailable', reason: 'process lineage is not read on Windows' };
   }
   let current = startPid;
   for (let depth = 0; depth < MAX_ANCESTOR_DEPTH; depth += 1) {
@@ -308,15 +382,19 @@ export function defaultAncestorPids(startPid = process.pid) {
         10,
       );
     } catch {
-      return lineage;
+      return {
+        pids: lineage,
+        status: lineage.length > 1 ? 'walked' : 'unavailable',
+        reason: 'the process table could not be read',
+      };
     }
     if (!Number.isInteger(parent) || parent <= 1 || lineage.includes(parent)) {
-      return lineage;
+      return { pids: lineage, status: 'walked', reason: null };
     }
     lineage.push(parent);
     current = parent;
   }
-  return lineage;
+  return { pids: lineage, status: 'walked', reason: null };
 }
 
 function sessionRootFrom(stateRoot, environment) {
@@ -397,10 +475,19 @@ export function resolveSessionSelection({
   stateRoot = null,
   environment = process.env,
   isAlive = defaultIsAlive,
-  ancestorPids = defaultAncestorPids,
+  processLineage = defaultProcessLineage,
   maxSessions = MAX_SCANNED_SESSIONS,
 } = {}) {
   if (typeof explicitPath === 'string' && explicitPath.trim() !== '') {
+    // Checked the same way a runtime-named transcript is. A named path that is
+    // a directory or does not exist is a refusal here rather than an exception
+    // three steps later, so every identity kind fails in the same shape.
+    if (!isReadableFile(explicitPath)) {
+      return unavailable(
+        'unreadable_selection',
+        'the named session log is not a readable file',
+      );
+    }
     return selected(explicitPath, { kind: 'explicit-path', session_id: null, pid: null });
   }
 
@@ -454,14 +541,28 @@ export function resolveSessionSelection({
     );
   }
 
-  const lineage = new Set(ancestorPids());
-  const mine = candidates.filter((candidate) => lineage.has(candidate.pid));
+  const lineage = processLineage();
+  const lineagePids = new Set(Array.isArray(lineage) ? lineage : lineage.pids);
+  const lineageAvailable = Array.isArray(lineage) ? true : lineage.status === 'walked';
+  const lineageNote = lineageAvailable ? [] : [{
+    code: 'process_lineage_unavailable',
+    detail: (Array.isArray(lineage) ? null : lineage.reason)
+      ?? 'this platform does not expose the process lineage, so a lock held by an ancestor cannot be recognized',
+  }];
+  // Identity by lock is identity by process id, which an operating system may
+  // reuse after a process exits. A live lock plus a matching lineage is strong;
+  // the weaker claims below say so in their notes rather than in a comment.
+  const pidNote = {
+    code: 'identity_rests_on_process_id',
+    detail: 'a session was identified by a live in-use lock, and a process id can be reused after a process exits',
+  };
+  const mine = candidates.filter((candidate) => lineagePids.has(candidate.pid));
   if (mine.length === 1) {
     return selected(mine[0].path, {
       kind: 'live-process-lock',
       session_id: mine[0].sessionId,
       pid: mine[0].pid,
-    });
+    }, [pidNote]);
   }
   if (mine.length > 1) {
     return unavailable(
@@ -479,6 +580,8 @@ export function resolveSessionSelection({
           code: 'session_identity_from_sole_live_session',
           detail: 'identity rests on this being the only running session, not on process lineage',
         },
+        pidNote,
+        ...lineageNote,
       ],
     );
   }
@@ -486,13 +589,15 @@ export function resolveSessionSelection({
     return unavailable(
       'session_identity_unavailable',
       'no running session could be proved under the session root',
-      { candidates: 0 },
+      { candidates: 0, notes: lineageNote },
     );
   }
   return unavailable(
     'session_identity_ambiguous',
-    `${candidates.length} sessions are running and none is provably this one`,
-    { candidates: candidates.length },
+    lineageAvailable
+      ? `${candidates.length} sessions are running and none is provably this one`
+      : `${candidates.length} sessions are running and this platform cannot prove which is this one`,
+    { candidates: candidates.length, notes: lineageNote },
   );
 }
 
@@ -572,18 +677,26 @@ class Projection {
 }
 
 /**
- * Reads a sequence of already-separated log lines. `endsWithNewline` is the
- * difference between a session that was still being written and a file whose
- * last record is simply the last record, so the caller supplies it rather than
- * letting this function guess.
+ * Reads a sequence of already-separated log lines, pulling them one at a time.
+ *
+ * The sequence is consumed with a single record of lookahead and is never
+ * materialized: a session log is routinely hundreds of megabytes, so holding
+ * one in an array would make memory a function of how long the session ran.
+ * The lookahead exists because the last line means something different from
+ * every other line - an unterminated one was still being written - and that
+ * can only be known once the next line fails to arrive.
+ *
+ * `endsWithNewline` is the other half of that judgement and is supplied by the
+ * caller rather than guessed at here.
  */
 export function extractSessionEvidence({
   lines,
   logId = null,
+  sourcePath = null,
   endsWithNewline = true,
   maxEvents = DEFAULT_MAX_EVENTS,
   maxNotes = DEFAULT_MAX_NOTES,
-  budgetExhausted = null,
+  maxLines = Number.POSITIVE_INFINITY,
 } = {}) {
   if (lines === undefined || lines === null) {
     throw new SessionEvidenceError('no_selection', 'no session log was selected');
@@ -626,10 +739,10 @@ export function extractSessionEvidence({
     projection.push({ anchor, type, timestamp, ...fields });
   };
 
-  const allLines = [...lines];
-  for (const [index, rawLine] of allLines.entries()) {
-    const anchor = anchorFor(index + 1);
-    const isFinalLine = index === allLines.length - 1;
+  let lineBudgetExhausted = false;
+  let linesRead = 0;
+  const consume = (rawLine, lineNumber, isFinalLine) => {
+    const anchor = anchorFor(lineNumber);
     const entry = typeof rawLine === 'string' ? { text: rawLine, oversized: false } : rawLine;
     if (entry.oversized) {
       notes.add(
@@ -637,32 +750,36 @@ export function extractSessionEvidence({
         anchor,
         `the record exceeded ${MAX_RECORD_BYTES} bytes and was not read`,
       );
-      continue;
+      return;
     }
     const line = entry.text.replace(/\r$/, '');
+    // A line the reader knows was unterminated, or the last line of a text
+    // input that did not end with a newline. Either way it was still being
+    // written, which is a different fact from a malformed record.
+    const unterminated = entry.unterminated === true || (isFinalLine && !endsWithNewline);
 
     if (line.trim() === '') {
-      if (!(isFinalLine && !endsWithNewline)) {
+      if (!unterminated) {
         notes.add('blank_record', anchor, 'a blank line appears inside the log');
       }
-      continue;
+      return;
     }
 
     let record;
     try {
       record = JSON.parse(line);
     } catch {
-      if (isFinalLine && !endsWithNewline) {
+      if (unterminated) {
         notes.add('torn_final_record', anchor, 'the last record was still being written');
       } else {
         notes.add('malformed_record', anchor, 'the line is not valid JSON');
       }
-      continue;
+      return;
     }
 
     if (!isPlainObject(record) || typeof record.type !== 'string') {
       notes.add('invalid_record', anchor, 'the record carries no event type');
-      continue;
+      return;
     }
 
     const { type } = record;
@@ -682,7 +799,7 @@ export function extractSessionEvidence({
         `unsupported event type ${safeString(type) ?? 'unnamed'}`,
         `unknown:${type}`,
       );
-      continue;
+      return;
     }
 
     reportDrift(notes, type, record, anchor);
@@ -885,6 +1002,33 @@ export function extractSessionEvidence({
       default:
         break;
     }
+  };
+
+  // One record of lookahead: hold the previous line until the next one proves
+  // it was not the last, then process it. Nothing else is retained.
+  let pending = null;
+  let pendingNumber = 0;
+  for (const rawLine of lines) {
+    if (linesRead >= maxLines) {
+      lineBudgetExhausted = true;
+      break;
+    }
+    linesRead += 1;
+    if (pending !== null) {
+      consume(pending, pendingNumber, false);
+    }
+    pending = rawLine;
+    pendingNumber = linesRead;
+  }
+  if (pending !== null) {
+    consume(pending, pendingNumber, !lineBudgetExhausted);
+  }
+  if (lineBudgetExhausted) {
+    notes.add(
+      'line_budget_exhausted',
+      null,
+      `only the first ${maxLines} records were read`,
+    );
   }
 
   for (const anchor of openTurns.values()) {
@@ -905,9 +1049,6 @@ export function extractSessionEvidence({
       null,
       `more than ${maxEvents} material events were found; later ones are counted but not listed`,
     );
-  }
-  if (budgetExhausted) {
-    notes.add(budgetExhausted.code, null, budgetExhausted.detail);
   }
   if (usableRecords === 0) {
     notes.add('no_usable_records', null, 'the selection holds no usable event');
@@ -931,12 +1072,13 @@ export function extractSessionEvidence({
     : (notes.entries.length === 0 ? 'complete' : 'partial');
 
   return {
-    log_id: logId,
+    log_id: publishedLogId({ requestedLogId: logId, sessionId, sourcePath }),
+    requested_log_id: safeString(logId),
     session_id: sessionId,
     producer,
     first_timestamp: firstTimestamp,
     last_timestamp: lastTimestamp,
-    lines_read: allLines.length,
+    lines_read: linesRead,
     usable_records: usableRecords,
     counts: {
       by_type: Object.fromEntries([...byType.entries()].sort(([a], [b]) => a.localeCompare(b))),
@@ -977,21 +1119,19 @@ export function extractSessionEvidenceFromText(text, options = {}) {
 
 /**
  * Streams one selected file into separated lines without holding it in memory.
- * A Copilot session log is routinely hundreds of megabytes, so reading it whole
- * is not an option, and reading only its head would silently answer a question
- * about a session with a fact about its opening minutes.
+ * A session log is routinely hundreds of megabytes, so reading it whole is not
+ * an option, and reading only its head would silently answer a question about a
+ * session with a fact about its opening minutes.
+ *
+ * The generator marks an unterminated final line rather than reporting it out
+ * of band, because its consumer reads lazily and would otherwise decide whether
+ * the last record was torn before this function had reached the end of the file.
  */
-function* streamLines(fd, limits, state) {
+export function* streamLines(fd) {
   const buffer = Buffer.allocUnsafe(READ_CHUNK_BYTES);
   let remainder = '';
   let position = 0;
-  let emitted = 0;
   let dropping = false;
-
-  const emit = (value) => {
-    emitted += 1;
-    return value;
-  };
 
   for (;;) {
     const bytes = fs.readSync(fd, buffer, 0, READ_CHUNK_BYTES, position);
@@ -1005,21 +1145,13 @@ function* streamLines(fd, limits, state) {
     while (newline !== -1) {
       const line = remainder.slice(0, newline);
       remainder = remainder.slice(newline + 1);
-      if (emitted >= limits.maxLines) {
-        state.budgetExhausted = {
-          code: 'line_budget_exhausted',
-          detail: `only the first ${limits.maxLines} records were read`,
-        };
-        state.endsWithNewline = true;
-        return;
-      }
       if (dropping) {
         dropping = false;
-        yield emit({ text: '', oversized: true });
+        yield { text: '', oversized: true };
       } else if (Buffer.byteLength(line, 'utf8') > MAX_RECORD_BYTES) {
-        yield emit({ text: '', oversized: true });
+        yield { text: '', oversized: true };
       } else {
-        yield emit({ text: line, oversized: false });
+        yield { text: line, oversized: false };
       }
       newline = remainder.indexOf('\n');
     }
@@ -1035,13 +1167,11 @@ function* streamLines(fd, limits, state) {
   }
 
   if (dropping) {
-    state.endsWithNewline = false;
-    yield emit({ text: '', oversized: true });
+    yield { text: '', oversized: true, unterminated: true };
     return;
   }
   if (remainder !== '') {
-    state.endsWithNewline = false;
-    yield emit({ text: remainder, oversized: false });
+    yield { text: remainder, oversized: false, unterminated: true };
   }
 }
 
@@ -1078,9 +1208,6 @@ export function readSelectedSession(selectedPath, options = {}) {
     throw new SessionEvidenceError('not_a_file', 'the selection is not a regular file');
   }
 
-  const limits = { maxLines: options.maxLines ?? DEFAULT_MAX_LINES };
-  const state = { endsWithNewline: true, budgetExhausted: null };
-
   let fd;
   try {
     fd = fs.openSync(resolved, 'r');
@@ -1092,14 +1219,15 @@ export function readSelectedSession(selectedPath, options = {}) {
   }
 
   try {
-    const lines = [...streamLines(fd, limits, state)];
     return extractSessionEvidence({
-      lines,
-      logId: options.logId ?? selectedPath,
-      endsWithNewline: state.endsWithNewline,
+      // The generator is handed over unconsumed: the reader pulls one line at
+      // a time, so a log larger than memory is read the same way a small one is.
+      lines: streamLines(fd),
+      logId: options.logId ?? null,
+      sourcePath: resolved,
       maxEvents: options.maxEvents ?? DEFAULT_MAX_EVENTS,
       maxNotes: options.maxNotes ?? DEFAULT_MAX_NOTES,
-      budgetExhausted: state.budgetExhausted,
+      maxLines: options.maxLines ?? DEFAULT_MAX_LINES,
     });
   } finally {
     fs.closeSync(fd);

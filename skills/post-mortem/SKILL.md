@@ -40,6 +40,16 @@ deliverable is one fixed-schema record a person reads and decides on.
    the finding counts, and the final status. Continue when recording is
    unavailable; recording is best effort and weakens no boundary below.
 
+   **Correlate the run log with the session it runs inside.** When the adapter
+   seam has established a harness and a session identity, pass them into the run
+   context - `--harness <adapter identity>` and `--session <session identifier>`
+   - so this run's Skill Run Log can later be matched to the runtime's own
+   record deterministically rather than by timestamp. When no identity was
+   established, record nothing extra and report `Correlation: absent` with the
+   reason from the seam. Correlation is optional and its absence is stated, not
+   guessed at; identity is resolved once, before recording, and never a second
+   time to fill the field.
+
 2. Confirm the request is a retrospective on an agent session. An incident,
    outage, production-failure, team, sprint, or project post-mortem is out of
    scope: say so and stop rather than substituting a session analysis.
@@ -98,7 +108,7 @@ log, intent from the run log. One event seen in two sources is one event, cited
 twice, and never corroboration of itself.
 
 **Identity before evidence, and failure is closed.** A Skill Run Log is admitted
-only when the operator names it. A Copilot session log is admitted when the
+only when the operator names it. A harness session log is admitted when the
 reader can prove which log this session is: a named path, a runtime-named
 transcript or session identifier, or exactly one session the operating system
 still shows running - preferring the one held by this process's own lineage.
@@ -169,5 +179,5 @@ limitations to report.
 prior art in the repository containing this skill package. `execute` is limited
 to three deterministic commands: Chronicler invocation recording, Chronicle
 read-only replay of an operator-selected Skill Run Log, and the session-event
-reader, which resolves and reads at most one Copilot session log. It is never
+reader, which resolves and reads at most one harness session log. It is never
 used for anything else, and the package grants no `edit` and no `task`.

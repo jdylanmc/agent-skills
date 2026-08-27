@@ -22,7 +22,6 @@ const MOLECULES = [
 const ATOMS = [
   'post-mortem/_atoms/evidence-scope-session/evidence-scope-session.md',
   'post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md',
-  'post-mortem/_atoms/copilot-session-events/copilot-session-events.md',
   'post-mortem/_atoms/evidence-redact-untrusted/evidence-redact-untrusted.md',
   'post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md',
   'post-mortem/_atoms/session-classify-outcome/session-classify-outcome.md',
@@ -35,6 +34,9 @@ const ATOMS = [
   'post-mortem/_atoms/postmortem-render-record/postmortem-render-record.md',
   'post-mortem/_atoms/postmortem-regression-check/postmortem-regression-check.md',
 ];
+
+/** Adapters are implementations behind the seam, not steps in the workflow. */
+const PROVIDER_ADAPTERS = ['post-mortem/_atoms/copilot-session-events/copilot-session-events.md'];
 
 /**
  * The record schema is a contract, not a preference. Two post-mortems are only
@@ -84,6 +86,16 @@ function schemaBlock() {
   const match = /```yaml\n([\s\S]*?)```/.exec(body);
   assert.ok(match, 'the record atom must carry one fenced YAML schema');
   return match[1];
+}
+
+/** The body of one `##` section, so a scoped rule can be checked in isolation. */
+function sectionOf(relativePath, heading) {
+  const body = read(relativePath);
+  const start = body.indexOf(`## ${heading}\n`);
+  assert.notEqual(start, -1, `${relativePath} must have a "${heading}" section`);
+  const rest = body.slice(start + heading.length + 4);
+  const end = rest.indexOf('\n## ');
+  return end === -1 ? rest : rest.slice(0, end);
 }
 
 test('post-mortem is discoverable, user-invocable, and pinned to a read-only grant', () => {
@@ -292,11 +304,16 @@ test('the session-event reader is composed by the evidence molecule and grants o
   const seam = frontmatter('post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md');
 
   assert.ok(
-    assemble.composes.includes('post-mortem/_atoms/copilot-session-events/copilot-session-events.md'),
-  );
-  assert.ok(
     assemble.composes.includes('post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.md'),
   );
+  // The workflow composes the seam and nothing behind it. An adapter is reached
+  // through the seam's own registry, so registering another one changes no
+  // molecule and widens no skill.
+  assert.ok(
+    !assemble.composes.some((target) => PROVIDER_ADAPTERS.includes(target)),
+    'no molecule composes a provider adapter directly',
+  );
+  assert.deepEqual(reader.usedBy, [], 'an adapter is used by the seam in code, not in the unit graph');
   assert.deepEqual(reader.allowedTools, ['execute']);
   assert.deepEqual(reader.composes, []);
   assert.deepEqual(reader.includes, [
@@ -304,6 +321,12 @@ test('the session-event reader is composed by the evidence molecule and grants o
   ]);
   assert.deepEqual(seam.allowedTools, ['execute']);
   assert.deepEqual(seam.composes, []);
+
+  const seamSource = fs.readFileSync(
+    path.join(SKILLS_ROOT, 'post-mortem', '_atoms', 'session-evidence-adapter', 'session-evidence-adapter.mjs'),
+    'utf8',
+  );
+  assert.match(seamSource, /DEFAULT_ADAPTERS = \[COPILOT_ADAPTER\]/, 'registration lives in the seam');
 });
 
 test('the package is provider-neutral: one seam, one neutral vocabulary downstream', () => {
@@ -315,24 +338,74 @@ test('the package is provider-neutral: one seam, one neutral vocabulary downstre
   assert.match(seam, /The Common Evidence Ledger/);
   assert.match(seam, /Nothing downstream reads `provider_native`/);
 
-  // No harness event name leaks into diagnosis or rendering.
-  const downstream = [
-    'post-mortem/_molecules/postmortem-diagnose-session/postmortem-diagnose-session.md',
-    'post-mortem/_atoms/friction-detect-signals/friction-detect-signals.md',
-    'post-mortem/_atoms/gap-classify-taxonomy/gap-classify-taxonomy.md',
-    'post-mortem/_atoms/hypothesis-form-root-cause/hypothesis-form-root-cause.md',
-    'post-mortem/_atoms/postmortem-render-record/postmortem-render-record.md',
-    'post-mortem/_atoms/session-classify-outcome/session-classify-outcome.md',
-  ];
-  for (const unit of downstream) {
-    const body = read(unit);
-    for (const harnessTerm of ['Copilot', 'copilot', 'skill.invoked', 'tool.execution', 'events.jsonl']) {
-      assert.ok(
-        !body.includes(harnessTerm),
-        `${unit} must not name a harness or its event vocabulary; found ${harnessTerm}`,
-      );
+  // No harness name or harness event vocabulary appears anywhere in the package
+  // except inside a provider adapter, which is the one place it belongs. The
+  // sweep is over the whole documentation surface rather than a hand-listed
+  // subset, so a new unit cannot quietly reintroduce a vendor name.
+  // The adapter itself, and the seam's registry section, are the two places a
+  // harness may be named. Everywhere else in the package is neutral.
+  const adapterDirectories = ['_atoms/copilot-session-events'];
+  const registryFile = '_atoms/session-evidence-adapter/session-evidence-adapter.md';
+  const harnessTerms = ['Copilot', 'copilot', 'skill.invoked', 'tool.execution', 'events.jsonl', 'COPILOT_'];
+  const packageRoot = path.join(SKILLS_ROOT, 'post-mortem');
+  const offenders = [];
+  const sweep = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name);
+      const relative = path.relative(packageRoot, absolute).split(path.sep).join('/');
+      if (adapterDirectories.some((adapter) => relative === adapter || relative.startsWith(`${adapter}/`))) {
+        continue;
+      }
+      if (entry.isDirectory()) {
+        sweep(absolute);
+      } else if (entry.name.endsWith('.md') && relative !== registryFile) {
+        const body = fs.readFileSync(absolute, 'utf8');
+        for (const term of harnessTerms) {
+          if (body.includes(term)) {
+            offenders.push(`${relative}: ${term}`);
+          }
+        }
+      }
     }
+  };
+  sweep(packageRoot);
+
+  assert.deepEqual(offenders, [], `a harness name escaped its adapter: ${offenders.join(', ')}`);
+
+  // And the seam names a harness only where it registers one.
+  const registryUnit = `post-mortem/${registryFile}`;
+  const registrySection = sectionOf(registryUnit, 'Provider Selection');
+  const outsideRegistry = read(registryUnit).split(registrySection).join('');
+  for (const term of harnessTerms) {
+    assert.ok(
+      !outsideRegistry.includes(term),
+      `the seam may name ${term} only in its registry section`,
+    );
   }
+});
+
+test('the lifecycle gate is executable, and stops at OBSERVED by construction', () => {
+  const lifecycle = frontmatter('post-mortem/_atoms/reinforcement-assign-state/reinforcement-assign-state.md');
+
+  assert.deepEqual(lifecycle.includes, [
+    'post-mortem/_atoms/reinforcement-assign-state/reinforcement-assign-state.mjs',
+  ]);
+  assert.deepEqual(lifecycle.allowedTools, ['execute']);
+
+  const source = fs.readFileSync(
+    path.join(SKILLS_ROOT, 'post-mortem', '_atoms', 'reinforcement-assign-state', 'reinforcement-assign-state.mjs'),
+    'utf8',
+  );
+  assert.match(source, /LIFECYCLE_STATES = \['PROPOSED', 'OBSERVED'\]/);
+  assert.ok(!/status:\s*'(VALIDATED|PROMOTED)'/.test(source));
+});
+
+test('the run log records the session it ran inside, or says it could not', () => {
+  const skill = flat(ENTRY);
+
+  assert.match(skill, /Correlate the run log with the session it runs inside/);
+  assert.match(skill, /`--harness <adapter identity>` and `--session <session identifier>`/);
+  assert.match(skill, /report `Correlation: absent` with the reason from the seam/);
 });
 
 test('an unreadable harness becomes a PROPOSED adapter recommendation, applied by nobody', () => {

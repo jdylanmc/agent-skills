@@ -34,7 +34,8 @@ export const EVIDENCE_KINDS = [
   'session_resumed',
   'session_ended',
   'session_aborted',
-  'context_compacted',
+  'context_compaction_started',
+  'context_compaction_completed',
   'runtime_error',
   'runtime_warning',
   'tool_failure',
@@ -78,6 +79,23 @@ const FORBIDDEN_DETAIL_FIELDS = [
 ];
 
 const MAX_HARNESS_CHARS = 60;
+/** A published detail value is a short identifier or token, never a payload. */
+const MAX_DETAIL_CHARS = 200;
+const MAX_DETAIL_KEYS = 24;
+const MAX_SKILL_ENTRIES = 500;
+const SOURCE_KINDS = ['session-log'];
+
+/** Defects that put a run log's session identity in doubt. */
+const IDENTITY_DEFECTS = ['session_identity_drift', 'foreign_run', 'run_identity_drift'];
+
+function isPathShaped(value) {
+  return typeof value === 'string'
+    && (value.startsWith('/')
+      || value.startsWith('\\')
+      || /^[A-Za-z]:[\\/]/.test(value)
+      || value.includes('/../')
+      || /^file:\/\//i.test(value));
+}
 
 /** The adapters this repository has validated. One per harness, no fallback. */
 export const DEFAULT_ADAPTERS = [COPILOT_ADAPTER];
@@ -100,6 +118,24 @@ function slugify(value) {
 }
 
 /**
+ * Resolves a harness name to the adapter identity that owns it. An alias is a
+ * label for one runtime, so `copilot-cli` and `copilot` must never look like
+ * two different sessions to anything downstream.
+ */
+export function canonicalHarness(harness, adapters = DEFAULT_ADAPTERS) {
+  const named = safeHarnessName(harness);
+  if (named === null) {
+    return null;
+  }
+  const wanted = named.toLowerCase();
+  const matched = adapters.find(
+    (adapter) => adapter.id.toLowerCase() === wanted
+      || (adapter.harnesses ?? []).some((alias) => alias.toLowerCase() === wanted),
+  );
+  return matched ? matched.id : named;
+}
+
+/**
  * Chooses the adapter for a harness. A named harness matches by identity; an
  * unnamed one may be detected from the runtime environment, but only when
  * exactly one adapter recognizes it. Two claimants is an ambiguity to report,
@@ -114,12 +150,23 @@ export function selectProvider({ harness = null, environment = process.env, adap
         || (adapter.harnesses ?? []).some((alias) => alias.toLowerCase() === wanted),
     );
     if (matched.length === 1) {
-      return { status: 'selected', harness: named, adapter: matched[0] };
+      return {
+        status: 'selected',
+        harness: matched[0].id,
+        requested_harness: named,
+        adapter: matched[0],
+      };
     }
     if (matched.length > 1) {
-      return { status: 'ambiguous', harness: named, adapter: null, claimants: matched.length };
+      return {
+        status: 'ambiguous',
+        harness: null,
+        requested_harness: named,
+        adapter: null,
+        claimants: matched.length,
+      };
     }
-    return { status: 'unsupported', harness: named, adapter: null };
+    return { status: 'unsupported', harness: null, requested_harness: named, adapter: null };
   }
 
   const detected = adapters.filter((adapter) => {
@@ -130,12 +177,18 @@ export function selectProvider({ harness = null, environment = process.env, adap
     }
   });
   if (detected.length === 1) {
-    return { status: 'selected', harness: detected[0].id, adapter: detected[0], detected: true };
+    return {
+      status: 'selected',
+      harness: detected[0].id,
+      requested_harness: null,
+      adapter: detected[0],
+      detected: true,
+    };
   }
   if (detected.length > 1) {
-    return { status: 'ambiguous', harness: null, adapter: null, claimants: detected.length };
+    return { status: 'ambiguous', harness: null, requested_harness: null, adapter: null, claimants: detected.length };
   }
-  return { status: 'unsupported', harness: null, adapter: null };
+  return { status: 'unsupported', harness: null, requested_harness: null, adapter: null };
 }
 
 /**
@@ -295,6 +348,130 @@ export function collectSessionEvidence({
  * same shape, the same vocabulary, and the same guarantee that no raw content
  * came through.
  */
+function checkDetailValue(problems, where, key, value, depth) {
+  if (FORBIDDEN_DETAIL_FIELDS.includes(key)) {
+    problems.push(`${where} must not carry raw ${key}`);
+    return;
+  }
+  if (value === null || typeof value === 'boolean' || typeof value === 'number') {
+    return;
+  }
+  if (typeof value === 'string') {
+    if (value.length > MAX_DETAIL_CHARS) {
+      problems.push(`${where}.${key} exceeds ${MAX_DETAIL_CHARS} characters, which is payload rather than evidence`);
+    }
+    if (isPathShaped(value)) {
+      problems.push(`${where}.${key} publishes a filesystem path`);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    problems.push(`${where}.${key} must be a scalar; a list is a payload in disguise`);
+    return;
+  }
+  if (typeof value === 'object') {
+    if (depth >= 1) {
+      problems.push(`${where}.${key} nests deeper than the ledger permits`);
+      return;
+    }
+    checkDetailObject(problems, `${where}.${key}`, value, depth + 1);
+    return;
+  }
+  problems.push(`${where}.${key} is not a publishable value`);
+}
+
+function checkDetailObject(problems, where, detail, depth = 0) {
+  const keys = Object.keys(detail);
+  if (keys.length > MAX_DETAIL_KEYS) {
+    problems.push(`${where} carries more than ${MAX_DETAIL_KEYS} fields`);
+  }
+  for (const key of keys) {
+    checkDetailValue(problems, where, key, detail[key], depth);
+  }
+}
+
+function checkSource(problems, source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) {
+    problems.push('source must declare the kind of evidence it came from');
+    return;
+  }
+  if (!SOURCE_KINDS.includes(source.kind)) {
+    problems.push(`source.kind must be one of ${SOURCE_KINDS.join(', ')}`);
+  }
+  if (typeof source.log_id !== 'string' || source.log_id.trim() === '') {
+    problems.push('source.log_id must be an opaque identifier');
+  } else if (isPathShaped(source.log_id)) {
+    problems.push('source.log_id must not be a filesystem path');
+  } else if (source.log_id.length > MAX_DETAIL_CHARS) {
+    problems.push(`source.log_id exceeds ${MAX_DETAIL_CHARS} characters`);
+  }
+  if (source.session_id !== null && typeof source.session_id !== 'string') {
+    problems.push('source.session_id must be a string or null');
+  }
+  if (typeof source.session_id === 'string' && isPathShaped(source.session_id)) {
+    problems.push('source.session_id must not be a filesystem path');
+  }
+  if (source.identity !== null && source.identity !== undefined) {
+    if (typeof source.identity !== 'object' || Array.isArray(source.identity)) {
+      problems.push('source.identity must be an object or null');
+    } else {
+      checkDetailObject(problems, 'source.identity', source.identity);
+    }
+  }
+  if (source.identity_notes !== undefined && !Array.isArray(source.identity_notes)) {
+    problems.push('source.identity_notes must be an array');
+  }
+}
+
+function checkSkills(problems, skills) {
+  if (!Array.isArray(skills)) {
+    problems.push('skills must be an array');
+    return;
+  }
+  if (skills.length > MAX_SKILL_ENTRIES) {
+    problems.push(`skills exceeds ${MAX_SKILL_ENTRIES} entries`);
+  }
+  for (const skill of skills) {
+    if (!skill || typeof skill !== 'object' || Array.isArray(skill)) {
+      problems.push('every skill entry must be an object');
+      continue;
+    }
+    if (typeof skill.anchor !== 'string' || !/^[A-Z]\d+$/.test(skill.anchor)) {
+      problems.push(`skill anchor must be a source-scoped anchor; found ${String(skill.anchor)}`);
+    }
+    if (typeof skill.name !== 'string' || skill.name.trim() === '') {
+      problems.push('every skill entry must name a skill');
+    }
+    checkDetailObject(problems, 'skills entry', skill);
+  }
+}
+
+function checkProviderNative(problems, providerNative) {
+  if (providerNative === undefined) {
+    return;
+  }
+  if (!providerNative || typeof providerNative !== 'object' || Array.isArray(providerNative)) {
+    problems.push('provider_native must be an object of counts');
+    return;
+  }
+  // Counts only, one level of grouping. A harness may say how many of its own
+  // events it saw; it may not smuggle a payload through as "native detail".
+  for (const [group, value] of Object.entries(providerNative)) {
+    if (Number.isInteger(value)) {
+      continue;
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      problems.push(`provider_native.${group} must be a count or a group of counts`);
+      continue;
+    }
+    for (const [name, count] of Object.entries(value)) {
+      if (!Number.isInteger(count) || count < 0) {
+        problems.push(`provider_native.${group}.${name} must be a whole number`);
+      }
+    }
+  }
+}
+
 export function assertLedgerContract(ledger) {
   const problems = [];
   if (!ledger || typeof ledger !== 'object' || Array.isArray(ledger)) {
@@ -316,10 +493,9 @@ export function assertLedgerContract(ledger) {
     problems.push('incomplete evidence must cap confidence');
   }
 
-  const source = ledger.source;
-  if (!source || typeof source !== 'object' || typeof source.kind !== 'string') {
-    problems.push('source must declare the kind of evidence it came from');
-  }
+  checkSource(problems, ledger.source);
+  checkSkills(problems, ledger.skills);
+  checkProviderNative(problems, ledger.provider_native);
 
   if (!ledger.counts || typeof ledger.counts !== 'object') {
     problems.push('counts must be an object');
@@ -345,11 +521,14 @@ export function assertLedgerContract(ledger) {
       if (!EVIDENCE_KINDS.includes(entry.kind)) {
         problems.push(`entry kind ${String(entry.kind)} is outside the neutral vocabulary`);
       }
+      if (entry.at !== null && entry.at !== undefined && typeof entry.at !== 'string') {
+        problems.push('entry at must be a timestamp string or null');
+      }
       const detail = entry.detail ?? {};
-      for (const field of Object.keys(detail)) {
-        if (FORBIDDEN_DETAIL_FIELDS.includes(field)) {
-          problems.push(`entry detail must not carry raw ${field}`);
-        }
+      if (typeof detail !== 'object' || Array.isArray(detail)) {
+        problems.push('entry detail must be an object');
+      } else {
+        checkDetailObject(problems, 'entry detail', detail);
       }
     }
   }
@@ -368,11 +547,23 @@ export function assertLedgerContract(ledger) {
  * Chronicle records rather than adjacent timestamps. An uncorrelated log is
  * unknown, which is a fact about the log and not a mismatch.
  */
-export function correlateRunLog(replayState, ledger) {
+export function correlateRunLog(replayState, ledger, { adapters = DEFAULT_ADAPTERS } = {}) {
+  // A replay that reported an identity defect cannot support a correlation
+  // claim in either direction: the log's own account of which run and session
+  // it belongs to is what is in doubt.
+  const defects = Array.isArray(replayState?.defects) ? replayState.defects : [];
+  const identityDefect = defects.find((defect) => IDENTITY_DEFECTS.includes(defect?.type));
+  if (identityDefect) {
+    return {
+      status: 'unknown',
+      reason: `replay reported ${identityDefect.type}, so the run log's session identity is in doubt`,
+    };
+  }
+
   const runSession = replayState?.session_id ?? null;
-  const runHarness = replayState?.harness ?? null;
+  const runHarness = canonicalHarness(replayState?.harness ?? null, adapters);
   const ledgerSession = ledger?.source?.session_id ?? null;
-  const ledgerHarness = ledger?.harness ?? null;
+  const ledgerHarness = canonicalHarness(ledger?.harness ?? null, adapters);
 
   if (runSession === null) {
     return { status: 'unknown', reason: 'the run log records no session correlation' };

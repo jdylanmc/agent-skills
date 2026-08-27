@@ -2,8 +2,8 @@
 name: reinforcement-assign-state
 description: Apply the four-state reinforcement lifecycle, assigning PROPOSED, assigning OBSERVED only across independent operator-selected runs, and never assigning VALIDATED or PROMOTED.
 level: atom
-allowed-tools: []
-includes: []
+allowed-tools: ["execute"]
+includes: ["post-mortem/_atoms/reinforcement-assign-state/reinforcement-assign-state.mjs"]
 composes: []
 used-by: ["post-mortem/_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md"]
 ---
@@ -12,12 +12,38 @@ used-by: ["post-mortem/_molecules/postmortem-propose-reinforcement/postmortem-pr
 
 Decide how far a candidate is allowed to travel, and stop it there.
 
+## Required Files
+
+1. [Lifecycle decision](./reinforcement-assign-state.mjs)
+
 ## Inputs
 
 | Input | Required | Meaning |
 | --- | --- | --- |
 | `candidate` | yes | One retained capability candidate or lesson. |
 | `recurrence` | no | Whether the same pattern appeared in two or more independent operator-selected runs. |
+
+## Operation
+
+```text
+node <atoms>/reinforcement-assign-state.mjs --runs '<selected runs as JSON>'
+```
+
+Each selected run supplies its run identifier, its session identifier, and its
+correlation with the evidence being analyzed. The decision is arithmetic rather
+than judgement, because advancing a candidate always looks defensible in the
+moment it is being argued for:
+
+- no selected run, or one, is `PROPOSED`;
+- two logs recording one run is `PROPOSED`, since that is one attempt seen twice;
+- two runs inside one session is `PROPOSED`, since that is two attempts at the
+  same work;
+- a run that records no session, or belongs to a different session, cannot
+  establish independence and is `PROPOSED`;
+- two identified runs in two sessions may be `OBSERVED`.
+
+`ready_for_promotion` is `false` in every result, and `human_approval_required`
+is `true` in every result.
 
 ## Operation
 

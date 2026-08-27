@@ -18,7 +18,7 @@ claim it is and how well it is supported.
 | Input | Required | Meaning |
 | --- | --- | --- |
 | `admitted-evidence` | yes | Redacted evidence items in encounter order. |
-| `selected-session-log` | no | The projection returned for an operator-selected Copilot session event log. |
+| `selected-session-log` | no | The neutral evidence ledger returned for an identified runtime session log. |
 | `selected-log-slots` | no | Skill Run Log slots the operator selected, in selection order. |
 | `confidence-cap` | no | A cap imposed by the evidence boundary or by a selected log. |
 
@@ -34,7 +34,7 @@ claim it is and how well it is supported.
      notices.
 2. **Assign one `T` anchor per tool call**, covering both its request and its
    result.
-3. **Anchor a record from a selected Copilot session event log** by its physical
+3. **Anchor a record from an identified runtime session log** by its physical
    line, as `E12`, and a range as `E12-18`. These anchors are assigned by the
    session-event reader and never collide with session or Skill Run Log anchors.
 4. **Anchor a selected Skill Run Log record** as `<slot>:<line>`, for example

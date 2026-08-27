@@ -16,10 +16,10 @@ history analysis.
 
 ## Curated Evidence, Beside Raw Evidence
 
-A Skill Run Log and a Copilot session event log record different things, and
+A Skill Run Log and a runtime session log record different things, and
 neither is derived from the other.
 
-- A **Copilot session event log** is raw runtime observation: what the runtime
+- A **runtime session log** is raw runtime observation: what the runtime
   saw happen, whether or not any skill chose to record it. It is authoritative
   about occurrence - that a turn ran, a tool failed, a subagent returned.
 - A **Skill Run Log** is curated semantic evidence: what a skill declared it was

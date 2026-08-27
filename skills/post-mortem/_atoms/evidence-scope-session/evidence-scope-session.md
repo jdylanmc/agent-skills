@@ -19,7 +19,7 @@ thing declared and the last thing relaxed.
 | --- | --- | --- |
 | `session` | yes | The current interaction as it is visible right now. |
 | `runtime-metadata` | no | Current-session metadata the runtime provides. |
-| `selected-session-log` | no | One Copilot session event log whose identity the reader established. |
+| `selected-session-log` | no | One runtime session log whose identity the reader established. |
 
 ## Operation
 
@@ -30,7 +30,7 @@ thing declared and the last thing relaxed.
    - returned subagent results;
    - artifacts created or inspected during the session;
    - runtime-provided current-session metadata.
-2. **Admit** one Copilot session event log when the session-event reader
+2. **Admit** one runtime session log when the session-evidence reader
    established its identity: the operator or the runtime named it, or the reader
    proved exactly one running session. It is raw runtime evidence, and it
    carries its own completeness and its own cap. Never resolve the newest file,
@@ -75,7 +75,7 @@ thing declared and the last thing relaxed.
 
 Three sources sit outside this atom and do not widen the session boundary:
 
-- A Copilot session event log whose identity the reader established, which
+- A runtime session log whose identity the reader established, which
   carries its own completeness declaration and cap.
 - A Skill Run Log the operator explicitly selects, which carries its own
   completeness declaration and its own cap. Caps compound, and the most

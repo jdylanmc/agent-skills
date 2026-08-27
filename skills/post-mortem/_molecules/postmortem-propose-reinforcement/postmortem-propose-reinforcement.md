@@ -5,7 +5,7 @@ level: molecule
 includes: ["post-mortem/_atoms/candidate-gate-retention/candidate-gate-retention.md","post-mortem/_atoms/lesson-propose-testable/lesson-propose-testable.md","post-mortem/_atoms/reinforcement-assign-state/reinforcement-assign-state.md"]
 composes: ["post-mortem/_atoms/candidate-gate-retention/candidate-gate-retention.md","post-mortem/_atoms/lesson-propose-testable/lesson-propose-testable.md","post-mortem/_atoms/reinforcement-assign-state/reinforcement-assign-state.md"]
 used-by: ["post-mortem/SKILL.md"]
-allowed-tools: ["read","search"]
+allowed-tools: ["execute","read","search"]
 ---
 
 # Propose Reinforcement

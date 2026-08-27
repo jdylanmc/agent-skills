@@ -27,7 +27,7 @@ one adapter rather than the whole package.
 
 | Input | Required | Meaning |
 | --- | --- | --- |
-| `harness` | no | An opaque identity for the runtime, such as `copilot-cli`. |
+| `harness` | no | An opaque identity for the runtime, matching a registered adapter or one of its aliases. |
 | `session-id` | no | The runtime's identifier for the session. |
 | `explicit-path` | no | A session log path the operator or runtime named. |
 | `transcript-path` | no | An exact transcript path the runtime supplied. |
@@ -57,6 +57,15 @@ Registered adapters today:
 | --- | --- |
 | `copilot` | `copilot`, `copilot-cli`, `github-copilot`, `github-copilot-cli` |
 
+A harness name is a label, so every alias in that table resolves to its
+adapter's identity before anything is published or correlated. Two names for one
+runtime are one harness, never two sessions, and the identity that reaches the
+ledger and every correlation is always the adapter's own.
+
+Registration lives here, in the seam's own implementation. An adapter is a
+detail of how this seam does its job rather than a step in the workflow, so no
+molecule composes an adapter directly and nothing above the seam names one.
+
 There is no generic fallback parser, deliberately. A parser guessed from an
 unfamiliar format would publish confident evidence nobody validated, which is
 the failure this seam exists to prevent.
@@ -78,9 +87,13 @@ Every adapter returns the same shape:
 | `provider_native` | The harness's own counts, namespaced, for transparency only. |
 
 The neutral vocabulary is fixed: `session_started`, `session_resumed`,
-`session_ended`, `session_aborted`, `context_compacted`, `runtime_error`,
-`runtime_warning`, `tool_failure`, `subagent_started`, `subagent_ended`,
-`skill_invoked`, `permission_denied`.
+`session_ended`, `session_aborted`, `context_compaction_started`,
+`context_compaction_completed`, `runtime_error`, `runtime_warning`,
+`tool_failure`, `subagent_started`, `subagent_ended`, `skill_invoked`,
+`permission_denied`.
+
+A compaction has a distinct beginning and end so one compaction is one pair of
+entries rather than the same fact counted twice.
 
 Nothing downstream reads `provider_native`. It exists so a reader can see the
 harness's own accounting beside the neutral one, not so a consumer can key on it.
@@ -90,7 +103,13 @@ harness's own accounting beside the neutral one, not so a consumer can key on it
 Before a ledger is returned it is certified: the version, the provider, the
 completeness and its cap, whole-number counts for every neutral metric, an
 anchor and a vocabulary kind on every entry, a stable code on every limitation,
-and no raw content field on any entry detail. A ledger that fails is refused as
+and a source whose identity is opaque rather than a filesystem path. Entry
+details are checked to the leaf: a value is a scalar or one level of nested
+object, a string is bounded and may not be a path, a list is refused as a
+payload in disguise, and a forbidden name - content, prompt, result, output,
+stack, transcript, and the rest - is refused wherever it appears, however deeply
+it is nested. Skill entries are checked the same way, and `provider_native` may
+carry counts and nothing else. A ledger that fails is refused as
 `ledger_contract_violation`, whichever adapter produced it, including this
 repository's own.
 
@@ -104,6 +123,14 @@ matches it to session evidence by those recorded identities, and reports
 `same-session`, `different-session`, or `unknown`. Adjacent timestamps never
 establish correlation. A log with no recorded correlation is `unknown`, which is
 a fact about the log rather than a mismatch.
+
+Harness names are canonicalized on both sides first, so an alias never looks
+like a different runtime.
+
+A replay that reported a defect about identity - the run changed the session it
+claims, a record belongs to another run, the root skill drifted - is `unknown`
+whatever the identifiers say. The log's own account of what it belongs to is
+the thing in doubt, so it cannot be the evidence that settles the question.
 
 ## An Unknown Harness Is a Stated Gap
 

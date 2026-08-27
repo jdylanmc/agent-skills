@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["execute"]
 includes: ["post-mortem/_atoms/copilot-session-events/copilot-session-events.mjs"]
 composes: []
-used-by: ["post-mortem/_molecules/evidence-assemble/evidence-assemble.md"]
+used-by: []
 ---
 
 # Copilot Session Event Evidence
@@ -69,6 +69,29 @@ stale lock, a lockless directory, and a live session with no log are not
 candidates. Nothing is ranked: **the newest file is never the answer**, no
 pattern is expanded, and no tie is broken.
 
+A named path is checked the same way a runtime-named transcript is, so every
+identity fails in the same shape: a path that is a directory or does not exist
+is `unreadable_selection` here rather than an exception several steps later.
+
+### What Discovery Rests On, and Where It Stops
+
+Discovery is identity by process, so it inherits that mechanism's limits and
+states them rather than implying more certainty than it has:
+
+- **Process lineage is read with `ps`, so it is POSIX-only.** On Windows, and
+  wherever the process table cannot be read, the lineage is reported
+  unavailable rather than returned short and treated as complete. A
+  `live-process-lock` identity is therefore not available on Windows; discovery
+  degrades to the stricter sole-running-session rule, and with more than one
+  running session it refuses with `session_identity_ambiguous`, saying the
+  platform is why. It never silently downgrades a proof it did not have.
+- **A process identifier can be reused** after a process exits, so every
+  discovered identity carries the note `identity_rests_on_process_id`. A
+  `sole-live-session` identity carries a second note saying it rests on being
+  the only running session rather than on lineage, and a third when the platform
+  could not supply a lineage at all. The notes travel with the evidence so a
+  reader can weigh the claim rather than take it on trust.
+
 Anything else refuses, with a stable code the caller records as a limitation:
 
 | Code | Meaning |
@@ -101,7 +124,7 @@ Extracted, per supported event:
 | --- | --- |
 | `session.start`, `session.resume` | Session identity and producer. |
 | `session.shutdown` | That the session ended, and its shutdown type. |
-| `session.compaction_start`, `session.compaction_complete` | That context was compacted. |
+| `session.compaction_start`, `session.compaction_complete` | The beginning and the end of a context compaction, as two distinct neutral kinds so one compaction is never counted twice. |
 | `abort` | That the session was aborted, and the recorded reason. |
 | `session.error` | That the session raised an error, its error type, and its status code. |
 | `user.message`, `assistant.message` | Counts only. |
@@ -137,6 +160,7 @@ always shows which source it came from.
 | `blank_record` | A blank line appears inside the log. |
 | `invalid_record` | The record carries no event type. |
 | `unrecognized_event` | The event type is outside the supported vocabulary. |
+| `unmapped_event` | The adapter records the event but maps it to no neutral evidence kind. |
 | `schema_drift` | A supported event no longer carries a field the reader depends on. |
 | `duplicate_turn_start` | A turn records its start more than once. |
 | `unmatched_turn_end` | A turn ends with no recorded start. |
@@ -177,7 +201,7 @@ restrictive cap wins.
 
 | Field | Meaning |
 | --- | --- |
-| `log_id` | The selected path, or the supplied opaque identifier. |
+| `log_id` | An opaque identifier for the source; never a filesystem path. |
 | `identity` | How identity was established, with the session identifier and holding process. |
 | `identity_notes` | Caveats attached to the identity, such as a sole-live-session claim. |
 | `session_id`, `producer` | Session identity, when the log records it. |
@@ -192,7 +216,9 @@ restrictive cap wins.
 - No log is read whose identity was not established by one of the rules above.
 - Ambiguity refuses. Two possible current sessions produce no reading at all.
 - Recency is never evidence of identity.
+- A published identifier is opaque; no absolute path leaves the reader.
 - No prompt, tool result, or skill body appears in the output.
+- An event this adapter records but cannot map is reported, never dropped.
 - A defect is reported with its anchor rather than repaired, reordered, or
   inferred.
 - The same input produces the same output, with no clock, environment, or
@@ -209,3 +235,14 @@ run, because a session log and a Skill Run Log record different things.
 post-mortem continues on session evidence alone. A readable log with defects is
 used for the records that remain usable, with the cap applied and every defect
 listed.
+## Published Identity
+
+`log_id` is never a filesystem path. It is the session identity when the log
+records one, written `session:<session-id>`; otherwise it is a SHA-256 digest of
+the path, written `sha256:<hex>`, which still lets two readings of one file be
+recognized as the same source. A caller may supply its own opaque identifier,
+and a caller that supplies a path as its "identifier" gets the digest instead.
+
+A published string is redacted before it is bounded and again afterwards, so a
+secret that begins inside the bound and runs past it is marked rather than
+truncated into a usable fragment, and a redaction marker is never split in half.
