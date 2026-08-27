@@ -84,14 +84,18 @@ below is unreleased and no comparison links are available.
 - **Session retrospectives.** `post-mortem` analyzes a session and returns one
   fixed-schema record: what the session was for, whether it got there, where it
   met friction, which execution gaps explain it, and a small number of testable
-  improvements worth proposing. Evidence is the session in front of it, plus a
-  Copilot session event log or a Skill Run Log you explicitly select — it never
-  searches for past sessions and never guesses which log you meant. A selected
-  runtime log is read through a bounded projection that publishes counts,
-  identities, and outcomes and never a prompt, a tool result, or the body of a
-  skill, and a damaged or unfinished log is reported as a limit on what can be
-  concluded rather than repaired. It diagnoses and recommends only: nothing is
-  edited, remembered, promoted, or handed to another skill to apply.
+  improvements worth proposing. Evidence is the session in front of it, the
+  Copilot session event log when the right one can be identified, and a Skill
+  Run Log you name. Identity is proved rather than guessed: a named path, a
+  runtime-named transcript or session, or exactly one session the machine still
+  shows running — never the newest file, and never a choice between two
+  candidates. When identity is uncertain the run says so and works from what is
+  visible, because a post-mortem of the wrong session is confident and
+  worthless. A runtime log is read through a bounded projection that publishes
+  counts, identities, and outcomes and never a prompt, a tool result, or the
+  body of a skill, and a damaged or unfinished log is reported as a limit on
+  what can be concluded rather than repaired. It diagnoses and recommends only:
+  nothing is edited, remembered, promoted, or handed to another skill to apply.
 - **Orchestration.** `cmux-orchestrate` coordinates work across panes.
 - **Stated intent.** Every skill carries a plain-language `intent.md` describing
   what it is for, written for a person rather than for a checker, and enforced

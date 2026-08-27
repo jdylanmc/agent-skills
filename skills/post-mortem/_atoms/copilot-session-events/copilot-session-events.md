@@ -1,6 +1,6 @@
 ---
 name: copilot-session-events
-description: Read one explicitly selected Copilot session event log and return bounded, redacted, anchored evidence - skill invocations, turns, tool calls, subagents, failures, and shutdown - reporting every malformed, unknown, drifted, or unfinished record as a limitation. Read only, and never searches for a log.
+description: Resolve which Copilot session event log may be read - a named path, a runtime-named transcript or session, or exactly one session the operating system still proves is running - and return bounded, redacted, anchored evidence: skill invocations, turns, tool calls, subagents, failures, and shutdown. Refuses an ambiguous identity, never ranks by recency, and reports every malformed, unknown, drifted, or unfinished record as a limitation. Read only.
 level: atom
 allowed-tools: ["execute"]
 includes: ["post-mortem/_atoms/copilot-session-events/copilot-session-events.mjs"]
@@ -16,9 +16,9 @@ file that holds every prompt, every tool result, and the full text of every
 skill that was loaded. This atom exists so the first fact can be used without
 the second one leaking.
 
-It reads one log the operator explicitly selected and returns a projection:
-identities, kinds, outcomes, counts, and anchors. Content fields never leave
-the reader.
+It reads one log whose identity it can prove, and returns a projection:
+identities, kinds, outcomes, counts, and anchors. Content fields never leave the
+reader, and an identity it cannot prove is refused rather than guessed.
 
 ## Required Files
 
@@ -28,31 +28,70 @@ the reader.
 
 | Input | Required | Meaning |
 | --- | --- | --- |
-| `selected-path` | yes | One `events.jsonl` path the operator named. |
+| `selected-path` | no | One `events.jsonl` path the operator or the runtime named. |
+| `transcript-path` | no | An exact transcript path the runtime supplied. |
+| `session-id` | no | A session identifier to resolve under the session root. |
+| `session-root` | no | The session-state directory, when the runtime did not name it. |
 | `log-id` | no | An opaque identifier to publish instead of the path. |
 | `max-events` | no | The bound on listed material events. |
 
 ## Operation
 
 ```text
-node <atoms>/copilot-session-events.mjs "$selected_path" [--log-id <opaque-id>] [--max-events <n>]
+node <atoms>/copilot-session-events.mjs [<selected-path>] [--transcript <path>]
+    [--session-id <id>] [--session-root <path>] [--log-id <opaque-id>]
+    [--max-events <n>] [--resolve]
 ```
 
 Exit `0` prints the projection as JSON, including its limitations. A non-zero
 exit means the selection was refused, and prints one JSON failure object on
-standard error with a stable `code`: `no_selection`, `not_a_file`,
-`unreadable_selection`, or `usage`. Check availability with `--probe`.
+standard error with a stable `code`. Use `--resolve` to print the resolved
+identity without reading the log, and `--probe` to check availability.
 
-## Selection Is Explicit
+## Identity Is Proved, and Failure Is Closed
 
-The reader takes one path. It does not list a directory, expand a pattern, sort
-by modification time, or resolve a "current" or "latest" session, and no option
-asks it to. Selecting a session directory is refused rather than resolved to the
-`events.jsonl` inside it, because choosing the file is the operator's decision
-and the difference between a named log and a guessed one is the whole boundary.
+Reading the wrong session is worse than reading none, because a post-mortem
+built on another session's evidence is confidently wrong and nothing downstream
+can tell. So a log is read only when its identity is established, by exactly one
+of these, strongest first:
 
-A session the operator did not select is not evidence. Its absence is a
-limitation to report, never a reason to go looking.
+| Kind | Established by |
+| --- | --- |
+| `explicit-path` | The operator or the runtime named the file. |
+| `runtime-transcript` | The runtime supplied an exact transcript path that exists. |
+| `session-id` | A named session identifier resolved under the session root. |
+| `live-process-lock` | Exactly one running session under the root is held by this process or one of its ancestors. |
+| `sole-live-session` | Exactly one session under the whole root is still running, with no lineage match. |
+
+A session is a discovery candidate only when it carries an in-use lock naming a
+process the operating system still knows about, and holds a readable log. A
+stale lock, a lockless directory, and a live session with no log are not
+candidates. Nothing is ranked: **the newest file is never the answer**, no
+pattern is expanded, and no tie is broken.
+
+Anything else refuses, with a stable code the caller records as a limitation:
+
+| Code | Meaning |
+| --- | --- |
+| `session_identity_ambiguous` | More than one running session could be the current one. |
+| `session_identity_unavailable` | No running session could be proved. |
+| `session_root_unknown` | Neither the caller nor the runtime named a session root. |
+| `session_root_unreadable` | The named session root could not be read. |
+| `session_root_too_large` | The root holds more sessions than the scan bound. |
+| `session_id_not_found` | The named session has no readable log under the root. |
+| `session_id_invalid` | The identifier names more than one directory. |
+| `runtime_transcript_missing` | The runtime named a transcript that is not a readable file. |
+| `not_a_file`, `unreadable_selection`, `usage` | The selection itself could not be read. |
+
+The session root comes from the caller, from `COPILOT_SESSION_STATE_ROOT`, or
+from `COPILOT_HOME`. It is never guessed from the home directory, and a session
+identifier is used only when it was supplied, never read from the environment
+and hoped to match.
+
+A refusal is a designed outcome, not an error to work around. The caller records
+the code and continues on the evidence it can already see. A `sole-live-session`
+identity carries the note that it rests on being the only running session, so a
+reader can weigh it accordingly.
 
 ## What Is Extracted, and What Is Never Extracted
 
@@ -139,6 +178,8 @@ restrictive cap wins.
 | Field | Meaning |
 | --- | --- |
 | `log_id` | The selected path, or the supplied opaque identifier. |
+| `identity` | How identity was established, with the session identifier and holding process. |
+| `identity_notes` | Caveats attached to the identity, such as a sole-live-session claim. |
 | `session_id`, `producer` | Session identity, when the log records it. |
 | `counts` | Event counts by type, and the derived message, turn, tool, subagent, and skill counts. |
 | `turns`, `tools`, `subagents`, `skills` | Bounded per-kind evidence with anchors. |
@@ -148,7 +189,9 @@ restrictive cap wins.
 
 ## Guarantees
 
-- No log is read that the operator did not select, and no log is discovered.
+- No log is read whose identity was not established by one of the rules above.
+- Ambiguity refuses. Two possible current sessions produce no reading at all.
+- Recency is never evidence of identity.
 - No prompt, tool result, or skill body appears in the output.
 - A defect is reported with its anchor rather than repaired, reordered, or
   inferred.

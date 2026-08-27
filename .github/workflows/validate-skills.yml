@@ -132,3 +132,4 @@ jobs:
           skills/reinforce-skill/_atoms/reinforce-roast/reinforce-roast.test.mjs
           skills/post-mortem/post-mortem.conformance.test.mjs
           skills/post-mortem/_atoms/copilot-session-events/copilot-session-events.test.mjs
+          skills/post-mortem/_atoms/copilot-session-events/copilot-session-events.selection.test.mjs

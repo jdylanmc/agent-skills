@@ -104,6 +104,7 @@ test('the routing description names the retrospective job and refuses the adjace
   assert.match(description, /read-only, evidence-anchored post-mortem/);
   assert.match(description, /Copilot session event log/);
   assert.match(description, /Skill Run Log/);
+  assert.match(description, /when its identity can be proved/);
   assert.match(description, /explicitly selects/);
   assert.match(description, /Do not use for incident, outage, or production-failure reviews/);
   assert.match(description, /team or sprint retrospectives/);
@@ -211,16 +212,49 @@ test('the skill states its read-only boundary and invokes nothing afterwards', (
   assert.match(skill, /the package grants no `edit` and no `task`/);
 });
 
-test('every evidence source beyond the visible session is explicitly selected', () => {
+test('no evidence source beyond the visible session is admitted without proved identity', () => {
   const skill = flat(ENTRY);
   const reader = flat('post-mortem/_atoms/copilot-session-events/copilot-session-events.md');
   const runlog = flat('post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md');
   const scope = flat('post-mortem/_atoms/evidence-scope-session/evidence-scope-session.md');
 
-  assert.match(skill, /Prior sessions are never searched, the newest log is never inferred/);
-  assert.match(reader, /It does not list a directory, expand a pattern, sort by modification time/);
+  assert.match(skill, /Identity is proved, never inferred/);
+  assert.match(skill, /Identity before evidence, and failure is closed/);
+  assert.match(reader, /Identity Is Proved, and Failure Is Closed/);
+  assert.match(reader, /the newest file is never the answer/);
   assert.match(runlog, /Never infer a run from the newest file/);
-  assert.match(scope, /Never search for a log, never resolve the newest file/);
+  assert.match(scope, /Never resolve the newest file, never break a tie between two possible sessions/);
+});
+
+test('the identity ladder and its refusals are documented as a fail-closed rule', () => {
+  const reader = flat('post-mortem/_atoms/copilot-session-events/copilot-session-events.md');
+  const assemble = flat('post-mortem/_molecules/evidence-assemble/evidence-assemble.md');
+
+  for (const kind of [
+    'explicit-path',
+    'runtime-transcript',
+    'session-id',
+    'live-process-lock',
+    'sole-live-session',
+  ]) {
+    assert.match(reader, new RegExp(`\`${kind}\``));
+  }
+  for (const refusal of [
+    'session_identity_ambiguous',
+    'session_identity_unavailable',
+    'session_root_unknown',
+    'session_id_not_found',
+    'runtime_transcript_missing',
+  ]) {
+    assert.match(reader, new RegExp(`\`${refusal}\``));
+  }
+
+  assert.match(reader, /Ambiguity refuses\. Two possible current sessions produce no reading at all/);
+  assert.match(
+    assemble,
+    /A refused identity - ambiguous, absent, or unreadable - is recorded under limitations/,
+  );
+  assert.match(assemble, /continues on the visible session alone rather than settling the ambiguity/);
 });
 
 test('raw and curated evidence compose without either inheriting the other authority', () => {
@@ -271,4 +305,5 @@ test('the package intent states the analyze-recommend-apply-nothing boundary', (
   assert.match(intent, /^# Intent: post-mortem$/m);
   assert.match(intent, /Analyze the logs,\s*make recommendations, apply nothing/);
   assert.match(intent, /It cannot be declared\s*validated or adopted here, ever/);
+  assert.match(intent, /Be certain which session it is, or use none/);
 });

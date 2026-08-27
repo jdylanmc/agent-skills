@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,9 +20,12 @@ import { redactText } from '../../../_base/_molecules/persist-bounded-handoff/pe
  *
  * Two properties matter more than convenience here:
  *
- * - **Selection is explicit.** Nothing in this module lists a directory,
- *   globs, sorts by modification time, or resolves a "current" or "latest"
- *   session. A caller supplies one path or gets a refusal.
+ * - **Selection is proved, not guessed.** A log is read when its identity is
+ *   established: the operator named the file, the runtime named the file or the
+ *   session, or discovery found exactly one session the operating system can
+ *   still prove is running. Nothing here sorts by modification time or treats
+ *   the newest file as the current session, and an ambiguous root is refused
+ *   rather than resolved.
  * - **Damage is reported, never repaired.** A torn line, an unknown event, a
  *   drifted schema, or an unfinished session becomes a stated limitation. The
  *   reader never reorders, back-fills, or infers a record it did not read.
@@ -45,6 +49,26 @@ export const DEFAULT_MAX_LINES = 500_000;
 export const MAX_RECORD_BYTES = 1_048_576;
 export const MAX_FIELD_CHARS = 120;
 const READ_CHUNK_BYTES = 262_144;
+
+/** Bounds the discovery scan, so a session root that grew without limit fails loudly. */
+export const MAX_SCANNED_SESSIONS = 5_000;
+const MAX_ANCESTOR_DEPTH = 32;
+const IN_USE_LOCK = /^inuse\.(\d+)\.lock$/;
+const SESSION_LOG_NAME = 'events.jsonl';
+
+/**
+ * How the identity of a selected log was established, strongest first. The kind
+ * travels with the evidence, because "the operator named this file" and
+ * "one session was still running" are different grades of proof and a reader of
+ * the post-mortem is entitled to know which one it got.
+ */
+export const IDENTITY_KINDS = [
+  'explicit-path',
+  'runtime-transcript',
+  'session-id',
+  'live-process-lock',
+  'sole-live-session',
+];
 
 /**
  * The event vocabulary this reader understands. A type outside this set is
@@ -126,6 +150,233 @@ function at(record, dottedPath) {
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function unavailable(code, detail, extra = {}) {
+  return { status: 'unavailable', reason: { code, detail }, ...extra };
+}
+
+function selected(logPath, identity, notes = []) {
+  return { status: 'selected', path: logPath, identity, notes };
+}
+
+/** A process the operating system still knows about, including one we may not signal. */
+export function defaultIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}
+
+/**
+ * The current process and its ancestors. A session lock held by one of them is
+ * this session, which is the only identity claim discovery is allowed to make
+ * on its own. Where the lineage cannot be read - an unsupported platform, a
+ * missing `ps` - the list is short and discovery falls through to the stricter
+ * single-session rule rather than guessing.
+ */
+export function defaultAncestorPids(startPid = process.pid) {
+  const lineage = [startPid];
+  if (process.platform === 'win32') {
+    return lineage;
+  }
+  let current = startPid;
+  for (let depth = 0; depth < MAX_ANCESTOR_DEPTH; depth += 1) {
+    let parent;
+    try {
+      parent = Number.parseInt(
+        execFileSync('ps', ['-o', 'ppid=', '-p', String(current)], { encoding: 'utf8' }).trim(),
+        10,
+      );
+    } catch {
+      return lineage;
+    }
+    if (!Number.isInteger(parent) || parent <= 1 || lineage.includes(parent)) {
+      return lineage;
+    }
+    lineage.push(parent);
+    current = parent;
+  }
+  return lineage;
+}
+
+function sessionRootFrom(stateRoot, environment) {
+  if (typeof stateRoot === 'string' && stateRoot.trim() !== '') {
+    return stateRoot;
+  }
+  const configured = environment.COPILOT_SESSION_STATE_ROOT;
+  if (typeof configured === 'string' && configured.trim() !== '') {
+    return configured;
+  }
+  const home = environment.COPILOT_HOME;
+  if (typeof home === 'string' && home.trim() !== '') {
+    return path.join(home, 'session-state');
+  }
+  return null;
+}
+
+function isReadableFile(candidate) {
+  try {
+    return fs.statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Every session under the root that the operating system can still prove is
+ * running, by way of an in-use lock naming a live process. A stale lock, a
+ * session with no log, and a directory that cannot be read are all simply not
+ * candidates: this function never ranks, and never breaks a tie.
+ */
+function liveSessions(root, isAlive, maxSessions) {
+  let entries;
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return { error: 'session_root_unreadable', candidates: [] };
+  }
+  const directories = entries.filter((entry) => entry.isDirectory());
+  if (directories.length > maxSessions) {
+    return { error: 'session_root_too_large', candidates: [], scanned: directories.length };
+  }
+
+  const candidates = [];
+  for (const directory of directories) {
+    const sessionDirectory = path.join(root, directory.name);
+    let files;
+    try {
+      files = fs.readdirSync(sessionDirectory);
+    } catch {
+      continue;
+    }
+    const logPath = path.join(sessionDirectory, SESSION_LOG_NAME);
+    for (const file of files) {
+      const match = IN_USE_LOCK.exec(file);
+      if (!match) {
+        continue;
+      }
+      const pid = Number.parseInt(match[1], 10);
+      if (!Number.isInteger(pid) || !isAlive(pid) || !isReadableFile(logPath)) {
+        continue;
+      }
+      candidates.push({ sessionId: directory.name, pid, path: logPath });
+    }
+  }
+  return { error: null, candidates: candidates.sort((a, b) => a.sessionId.localeCompare(b.sessionId)) };
+}
+
+/**
+ * Decides which session log, if any, may be read, and refuses when identity
+ * cannot be established. Refusal is the designed outcome, not a failure: the
+ * post-mortem records the reason and continues on the session it can see.
+ */
+export function resolveSessionSelection({
+  explicitPath = null,
+  transcriptPath = null,
+  sessionId = null,
+  stateRoot = null,
+  environment = process.env,
+  isAlive = defaultIsAlive,
+  ancestorPids = defaultAncestorPids,
+  maxSessions = MAX_SCANNED_SESSIONS,
+} = {}) {
+  if (typeof explicitPath === 'string' && explicitPath.trim() !== '') {
+    return selected(explicitPath, { kind: 'explicit-path', session_id: null, pid: null });
+  }
+
+  if (typeof transcriptPath === 'string' && transcriptPath.trim() !== '') {
+    if (!isReadableFile(transcriptPath)) {
+      return unavailable(
+        'runtime_transcript_missing',
+        'the runtime named a transcript that is not a readable file',
+      );
+    }
+    return selected(transcriptPath, { kind: 'runtime-transcript', session_id: null, pid: null });
+  }
+
+  const root = sessionRootFrom(stateRoot, environment);
+
+  if (typeof sessionId === 'string' && sessionId.trim() !== '') {
+    if (root === null) {
+      return unavailable(
+        'session_root_unknown',
+        'a session identifier was supplied but no session root is known',
+      );
+    }
+    if (sessionId.includes('/') || sessionId.includes('\\') || sessionId.includes('..')) {
+      return unavailable('session_id_invalid', 'a session identifier names one directory');
+    }
+    const logPath = path.join(root, sessionId, SESSION_LOG_NAME);
+    if (!isReadableFile(logPath)) {
+      return unavailable(
+        'session_id_not_found',
+        'the supplied session identifier has no readable log under the session root',
+      );
+    }
+    return selected(logPath, { kind: 'session-id', session_id: sessionId, pid: null });
+  }
+
+  if (root === null) {
+    return unavailable(
+      'session_root_unknown',
+      'no session root was supplied and the runtime named none',
+    );
+  }
+
+  const { error, candidates, scanned } = liveSessions(root, isAlive, maxSessions);
+  if (error) {
+    return unavailable(
+      error,
+      error === 'session_root_too_large'
+        ? `the session root holds more than ${maxSessions} sessions (${scanned})`
+        : 'the session root could not be read',
+      { candidates: 0 },
+    );
+  }
+
+  const lineage = new Set(ancestorPids());
+  const mine = candidates.filter((candidate) => lineage.has(candidate.pid));
+  if (mine.length === 1) {
+    return selected(mine[0].path, {
+      kind: 'live-process-lock',
+      session_id: mine[0].sessionId,
+      pid: mine[0].pid,
+    });
+  }
+  if (mine.length > 1) {
+    return unavailable(
+      'session_identity_ambiguous',
+      `${mine.length} live sessions are held by this process lineage`,
+      { candidates: mine.length },
+    );
+  }
+  if (candidates.length === 1) {
+    return selected(
+      candidates[0].path,
+      { kind: 'sole-live-session', session_id: candidates[0].sessionId, pid: candidates[0].pid },
+      [
+        {
+          code: 'session_identity_from_sole_live_session',
+          detail: 'identity rests on this being the only running session, not on process lineage',
+        },
+      ],
+    );
+  }
+  if (candidates.length === 0) {
+    return unavailable(
+      'session_identity_unavailable',
+      'no running session could be proved under the session root',
+      { candidates: 0 },
+    );
+  }
+  return unavailable(
+    'session_identity_ambiguous',
+    `${candidates.length} sessions are running and none is provably this one`,
+    { candidates: candidates.length },
+  );
 }
 
 class Notes {
@@ -747,7 +998,18 @@ export function parseArguments(argv) {
       options.probe = true;
       continue;
     }
-    if (argument === '--log-id' || argument === '--max-events' || argument === '--max-lines') {
+    if (argument === '--resolve') {
+      options.resolveOnly = true;
+      continue;
+    }
+    if (
+      argument === '--log-id'
+      || argument === '--max-events'
+      || argument === '--max-lines'
+      || argument === '--session-id'
+      || argument === '--session-root'
+      || argument === '--transcript'
+    ) {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith('--')) {
         throw new SessionEvidenceError('usage', `${argument} requires a value`);
@@ -755,6 +1017,12 @@ export function parseArguments(argv) {
       index += 1;
       if (argument === '--log-id') {
         options.logId = value;
+      } else if (argument === '--session-id') {
+        options.sessionId = value;
+      } else if (argument === '--session-root') {
+        options.stateRoot = value;
+      } else if (argument === '--transcript') {
+        options.transcriptPath = value;
       } else {
         const parsed = Number.parseInt(value, 10);
         if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -767,7 +1035,7 @@ export function parseArguments(argv) {
     if (argument.startsWith('--')) {
       throw new SessionEvidenceError(
         'usage',
-        `unsupported option ${argument}; this reader takes one explicitly selected path`,
+        `unsupported option ${argument}; identity comes from a named path, a named session, or a proved live session`,
       );
     }
     positional.push(argument);
@@ -776,16 +1044,10 @@ export function parseArguments(argv) {
   if (options.probe) {
     return { probe: true };
   }
-  if (positional.length === 0) {
-    throw new SessionEvidenceError(
-      'no_selection',
-      'select one session log explicitly; this reader never searches for one',
-    );
-  }
   if (positional.length > 1) {
     throw new SessionEvidenceError('usage', 'select exactly one session log');
   }
-  return { ...options, selectedPath: positional[0] };
+  return { ...options, selectedPath: positional[0] ?? null };
 }
 
 function main(argv) {
@@ -794,7 +1056,29 @@ function main(argv) {
     console.log('copilot-session-events: available');
     return EXIT_READ;
   }
-  console.log(JSON.stringify(readSelectedSession(parsed.selectedPath, parsed), null, 2));
+
+  const resolution = resolveSessionSelection({
+    explicitPath: parsed.selectedPath,
+    transcriptPath: parsed.transcriptPath ?? null,
+    sessionId: parsed.sessionId ?? null,
+    stateRoot: parsed.stateRoot ?? null,
+  });
+  if (resolution.status !== 'selected') {
+    throw new SessionEvidenceError(resolution.reason.code, resolution.reason.detail);
+  }
+  if (parsed.resolveOnly) {
+    console.log(JSON.stringify(resolution, null, 2));
+    return EXIT_READ;
+  }
+
+  const result = readSelectedSession(resolution.path, parsed);
+  const logId = parsed.logId
+    ?? (resolution.identity.session_id ? `session:${resolution.identity.session_id}` : resolution.path);
+  console.log(JSON.stringify(
+    { ...result, log_id: logId, identity: resolution.identity, identity_notes: resolution.notes },
+    null,
+    2,
+  ));
   return EXIT_READ;
 }
 

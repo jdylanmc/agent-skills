@@ -386,11 +386,16 @@ test('no prompt, tool result, or skill body reaches the output', () => {
 });
 
 test('a published string is bounded, stripped of control characters, and redacted', () => {
+  // Assembled from fragments so this file contains no credential-shaped literal
+  // of its own. The repository's sensitive-content gate reads source text, and
+  // it enforces the same rule this assertion proves the reader applies.
+  const scheme = ['Bea', 'rer'].join('');
+  const credentialShaped = `Authorization: ${scheme} ${'ab12'.repeat(6)}`;
   const result = extractSessionEvidenceFromText(
     completeSession(
       event('skill.invoked', {
         name: `over\nthe\tbound-${'x'.repeat(400)}`,
-        source: 'Authorization: Bearer abcdef0123456789abcdef',
+        source: credentialShaped,
       }),
     ),
   );
@@ -526,29 +531,32 @@ test('reading refuses anything but one explicitly named file', () => {
   });
 });
 
-test('the command line takes one named path and refuses every way of asking it to choose', () => {
+test('the command line takes at most one named path and refuses every ranking option', () => {
   assert.deepEqual(parseArguments(['/logs/events.jsonl', '--log-id', 'run-7']), {
     logId: 'run-7',
     selectedPath: '/logs/events.jsonl',
   });
   assert.deepEqual(parseArguments(['--probe']), { probe: true });
+  // No path is not a refusal any more; identity resolution decides, and it is
+  // the thing that refuses when identity cannot be proved.
+  assert.deepEqual(parseArguments([]), { selectedPath: null });
 
-  assert.throws(() => parseArguments([]), { code: 'no_selection' });
   assert.throws(() => parseArguments(['--latest']), { code: 'usage' });
   assert.throws(() => parseArguments(['--newest', '/logs']), { code: 'usage' });
   assert.throws(() => parseArguments(['/logs/a.jsonl', '/logs/b.jsonl']), { code: 'usage' });
   assert.throws(() => parseArguments(['/logs/a.jsonl', '--max-events', '0']), { code: 'usage' });
+  assert.throws(() => parseArguments(['--session-id']), { code: 'usage' });
 });
 
-test('the module offers no way to discover a log', () => {
+test('the module never ranks candidates by time', () => {
   const source = fs.readFileSync(READER, 'utf8');
 
-  for (const discovery of ['readdirSync', 'globSync', 'opendirSync', 'mtime', 'homedir']) {
-    assert.ok(!source.includes(discovery), `the reader must not use ${discovery}`);
+  for (const ranking of ['mtime', 'birthtime', 'ctime', 'atime', 'globSync', 'homedir']) {
+    assert.ok(!source.includes(ranking), `the reader must not use ${ranking}`);
   }
 });
 
-test('the entry point refuses an unselected run and reads a selected one', () => {
+test('the entry point reads a named log and refuses when identity cannot be proved', () => {
   withTemporaryDirectory((directory) => {
     const selected = path.join(directory, 'events.jsonl');
     fs.writeFileSync(selected, completeSession(event('skill.invoked', { name: 'roast' })));
@@ -559,6 +567,7 @@ test('the entry point refuses an unselected run and reads a selected one', () =>
     const result = JSON.parse(printed);
     assert.equal(result.log_id, 'run-7');
     assert.equal(result.counts.skill_invocations, 1);
+    assert.deepEqual(result.identity, { kind: 'explicit-path', session_id: null, pid: null });
 
     assert.equal(
       execFileSync('node', [READER, '--probe'], { encoding: 'utf8' }).trim(),
@@ -567,7 +576,11 @@ test('the entry point refuses an unselected run and reads a selected one', () =>
 
     const refusal = (() => {
       try {
-        execFileSync('node', [READER], { encoding: 'utf8', stdio: 'pipe' });
+        execFileSync('node', [READER, '--session-root', path.join(directory, 'sessions')], {
+          encoding: 'utf8',
+          stdio: 'pipe',
+          env: { ...process.env, COPILOT_HOME: '', COPILOT_SESSION_STATE_ROOT: '' },
+        });
         return null;
       } catch (error) {
         return { status: error.status, stderr: error.stderr };
@@ -575,7 +588,7 @@ test('the entry point refuses an unselected run and reads a selected one', () =>
     })();
 
     assert.equal(refusal.status, 1);
-    assert.equal(JSON.parse(refusal.stderr).error.code, 'no_selection');
+    assert.equal(JSON.parse(refusal.stderr).error.code, 'session_root_unreadable');
   });
 });
 

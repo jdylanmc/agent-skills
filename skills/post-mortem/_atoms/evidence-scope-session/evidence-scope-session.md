@@ -19,7 +19,7 @@ thing declared and the last thing relaxed.
 | --- | --- | --- |
 | `session` | yes | The current interaction as it is visible right now. |
 | `runtime-metadata` | no | Current-session metadata the runtime provides. |
-| `selected-session-log` | no | One Copilot session event log the operator explicitly selected. |
+| `selected-session-log` | no | One Copilot session event log whose identity the reader established. |
 
 ## Operation
 
@@ -30,11 +30,13 @@ thing declared and the last thing relaxed.
    - returned subagent results;
    - artifacts created or inspected during the session;
    - runtime-provided current-session metadata.
-2. **Admit** one Copilot session event log only when the operator explicitly
-   selected it. It is raw runtime evidence about a session, read through the
-   session-event reader, and it carries its own completeness and its own cap.
-   Never search for a log, never resolve the newest file, and never open a log
-   the operator did not name.
+2. **Admit** one Copilot session event log when the session-event reader
+   established its identity: the operator or the runtime named it, or the reader
+   proved exactly one running session. It is raw runtime evidence, and it
+   carries its own completeness and its own cap. Never resolve the newest file,
+   never break a tie between two possible sessions, and never open a log whose
+   identity the reader refused. A refused or ambiguous identity is a limitation
+   to record, after which the analysis continues on visible session evidence.
 3. **Refuse** every reconstruction of earlier interactions. Do not query session
    history, memory stores, trackers, communications, repositories, or external
    systems. An operator-provided summary of earlier work is testimony in the
@@ -73,8 +75,8 @@ thing declared and the last thing relaxed.
 
 Three sources sit outside this atom and do not widen the session boundary:
 
-- A Copilot session event log the operator explicitly selects, which is read
-  through its own reader and carries its own completeness declaration and cap.
+- A Copilot session event log whose identity the reader established, which
+  carries its own completeness declaration and cap.
 - A Skill Run Log the operator explicitly selects, which carries its own
   completeness declaration and its own cap. Caps compound, and the most
   restrictive applicable cap wins.
@@ -82,8 +84,8 @@ Three sources sit outside this atom and do not widen the session boundary:
   the repository containing this skill package.
 
 Incomplete session evidence is a limitation to report. It is never a reason to
-reach for another evidence source, and never a reason to look for a log the
-operator did not select.
+reach for another evidence source, and never a reason to relax the identity rule
+that decides which log may be read.
 
 **Error recovery.** With no usable session evidence, do not stop silently:
 report `no_material_finding: true`, mark unavailable fields `not_observable`,
