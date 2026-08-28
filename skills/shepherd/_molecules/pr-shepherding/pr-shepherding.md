@@ -91,9 +91,10 @@ consumes, and the translation shapes live in the shared
    — a policy or administrative block no rebase can clear), its **merge-block
    state was observed** (not `unobserved`/`null`), and **no review decision
    blocks it** (the review is `approved` or `unobserved`, never
-   `changes-requested` or `review-required`). If any holds, do not return a
-   green no-op; fall through to observe state so the terminal classifier renders
-   `blocked`/`needs-human`.
+   `changes-requested` or `review-required`). If instead the change request is
+   explicitly blocked, its merge-block state is unobserved, or a review decision
+   blocks it, do not return a green no-op; fall through to observe state so the
+   terminal classifier renders `blocked`/`needs-human`.
 6. When a trigger exists, rebase the branch onto the fetched base SHA and report
    the commits that moved.
 7. If the rebase stops, use [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md).

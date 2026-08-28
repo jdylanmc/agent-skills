@@ -118,6 +118,12 @@ posture may be strengthened by a caller, never weakened.
   replies to a thread, resolves a thread, votes, approves, merges, or pushes.
 - Deciding what to do about a comment belongs to the caller. This unit supplies
   the conversation as evidence and no judgment about it.
-- Secrets and tokens are never accepted as input and never reproduced in output.
-  Authentication belongs to the official tool; report the tool and its condition
-  only.
+- Secrets and tokens are never accepted as input and never reproduced in
+  output: this unit holds no authentication material — authentication belongs to
+  the official tool, and only the tool and its condition are reported. A secret
+  a *reviewer* wrote into a comment body is different: that body is untrusted
+  third-party data, carried through verbatim and flagged (above), because a
+  conversation cannot be acted on unread. Containing a secret that appears inside
+  a comment is the consuming caller's enforced redaction responsibility, applied
+  when this evidence is surfaced; it is never met by weakening the verbatim,
+  flagged contract this unit guarantees.

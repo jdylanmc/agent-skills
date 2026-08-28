@@ -143,7 +143,7 @@ test('the read-only allow-list refuses a mutation document and every write shape
     () => assertReadOnlyCommand({
       tool: 'gh',
       args: [
-        'api', 'graphql', '--paginate',
+        'api', 'graphql', '--paginate', '--slurp',
         '-F', 'owner=example', '-F', 'name=repo', '-F', 'number=42',
         '-f', 'query=mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }',
       ],
@@ -181,7 +181,7 @@ test('a document sharing the sanctioned query prefix but tampered with a mutatio
     () => assertReadOnlyCommand({
       tool: 'gh',
       args: [
-        'api', 'graphql', '--paginate',
+        'api', 'graphql', '--paginate', '--slurp',
         '-F', 'owner=example', '-F', 'name=repo', '-F', 'number=42',
         '-f', `query=${tampered}`,
       ],

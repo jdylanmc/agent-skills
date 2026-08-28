@@ -78,9 +78,10 @@ Shepherd has two explicit layers:
    rebase cannot clear), that its **merge-block state was observed** (not
    `unobserved`/`null`, which is not clearance), and that **no review decision
    blocks it** — the review is `approved` or `unobserved`, never
-   `changes-requested` or `review-required`. If any of those holds, this is not
-   a green no-op; fall through to observe state and let the terminal classifier
-   render `blocked`/`needs-human`.
+   `changes-requested` or `review-required`. If instead the change request is
+   explicitly blocked, its merge-block state was not observed, or a review
+   decision blocks it, this is not a green no-op; fall through to observe state
+   and let the terminal classifier render `blocked`/`needs-human`.
 5. When a rebase trigger exists, rebase the pull request branch onto the fetched
    base SHA. Report the old base, new base, original head, final head, and moved
    commits.
