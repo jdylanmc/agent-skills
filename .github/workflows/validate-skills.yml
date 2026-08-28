@@ -97,6 +97,7 @@ jobs:
           skills/changelog/_atoms/changelog-target/changelog-target.test.mjs
           skills/interrogate/interrogate.conformance.test.mjs
           skills/discovery/discovery.conformance.test.mjs
+          skills/discovery/_atoms/uri-seed/uri-seed.test.mjs
           skills/proof-of-concept/proof-of-concept.conformance.test.mjs
           skills/next-step-selection/next-step-selection.conformance.test.mjs
           skills/sanity-check/sanity-check.conformance.test.mjs
