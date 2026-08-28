@@ -101,7 +101,7 @@ test('unsupported schemes are refused, never fetched', () => {
     'ftp://host/file',
     'data:text/html,<script>alert(1)</script>',
     'javascript:alert(1)',
-    'mailto:someone@example.com',
+    'mailto:someone@host',
     'ssh://git@host/repo.git',
     'about:blank',
     'vbscript:msgbox',
@@ -119,9 +119,9 @@ test('unsupported schemes are refused, never fetched', () => {
 
 test('credential-embedding URIs are refused before any routing, for any scheme', () => {
   for (const url of [
-    'https://user:pass@example.com/secret',
+    'https://user:pass@host/secret',
     'http://admin:hunter2@8.8.8.8/',
-    'https://token@example.com/x',
+    'https://token@host/x',
     'ftp://user:pass@host/x',
   ]) {
     assert.equal(classifyUriSeed(url).disposition, DISPOSITIONS.credentialed, url);
