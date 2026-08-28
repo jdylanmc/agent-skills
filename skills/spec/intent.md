@@ -77,3 +77,49 @@ amount of product intent a human must keep authoritative and the larger body of
 context an agent may need to work well. The full document can be regenerated
 from better evidence. The nano document changes only when product intent
 changes and a human approves it again.
+
+## Why approval is a merge, not a field
+
+A specification cannot be approved by the thing that wrote it. The same agent
+that renders a nano document can write "approved: true" inside it or beside it,
+and a permission guarded only by a promise is not guarded. A merge to the
+default branch is the boundary because it is something a human does and the
+agent cannot. The merge commit pins the exact bytes the human saw.
+
+## Why an approved specification holds when its source moves
+
+Discovery is a living foundation. Issue #119 will make it enriched on every
+run, so its whole-file digest moves constantly. If every digest change
+invalidated every specification derived from that source, approval would become
+meaningless — a human merges a specification, Discovery runs again, and the
+specification is immediately stale. In-flight delivery grounded on that
+specification would be orphaned.
+
+An approved specification holds when its source moves. It is not re-derived,
+not refused, and not blocked. The digest changed, but the approved product
+intent did not.
+
+## Why contradiction, not digest movement, is the signal to revisit
+
+Not all enrichment is relevant to every specification. A specification about
+checkout payments is not affected by new Discovery evidence about notification
+preferences. The signal to revisit an approved specification is not that the
+source changed — it is that the new material contradicts the approved intent.
+That detection is a separate concern (companion issue #123) and is deliberately
+not decided here.
+
+## Why the specification must be published
+
+Nothing can be approved that was never opened. A specification pair that lives
+on a branch with no change request is a pair no human can merge. Publication
+pushes the run's branch and opens a change request so approval is reachable.
+Publication never runs from or pushes to the default branch, because doing so
+would manufacture the approval the design depends on being human.
+
+## Why a specification cannot approve itself
+
+This run writes the pair, validates it, reviews it, and then publishes it. The
+next act — merging the change request — is the approval, and this run cannot
+perform it. That is the design. A newly written pair returns `needs-decision`
+awaiting the human merge. A later run observes the merge and resolves
+`approved`.
