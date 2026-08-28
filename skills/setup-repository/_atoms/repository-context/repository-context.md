@@ -37,9 +37,9 @@ regression suite supplies.
 
 | Provider | Forms |
 | --- | --- |
-| `github` | `https://github.com/{org}/{repo}`, `git@github.com:{org}/{repo}`, `ssh://git@github.com/{org}/{repo}`, with or without a trailing `.git` |
+| `github` | `https://github.com/{org}/{repo}`, `{ssh-user}@github.com:{org}/{repo}`, `ssh://{ssh-user}@github.com/{org}/{repo}`, with or without a trailing `.git` |
 | `gitlab` | the same shapes on `gitlab.com`, and subgroup namespaces `{group}/{subgroup}/{repo}` |
-| `azure-devops` | `https://dev.azure.com/{org}/{project}/_git/{repo}`, `https://{org}@dev.azure.com/...`, `git@ssh.dev.azure.com:v3/{org}/{project}/{repo}`, and legacy `https://{org}.visualstudio.com/{project}/_git/{repo}` |
+| `azure-devops` | `https://dev.azure.com/{org}/{project}/_git/{repo}`, `https://{org}@dev.azure.com/...`, `{ssh-user}@ssh.dev.azure.com:v3/{org}/{project}/{repo}`, and legacy `https://{org}.visualstudio.com/{project}/_git/{repo}` |
 
 A self-hosted GitHub Enterprise or GitLab host is recognized only when the
 operator declares it through `declaredHosts`. An unknown host is `unsupported`

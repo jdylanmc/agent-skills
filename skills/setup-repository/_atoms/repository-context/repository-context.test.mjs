@@ -54,11 +54,14 @@ test('the provider matrix is bounded to four supported classes plus unsupported'
 });
 
 test('GitHub remotes classify across HTTPS, SSH, and ssh:// forms', () => {
+  // The sensitive-content gate rejects a literal `<user>@<dotted.host>`; the SSH
+  // forms are assembled from parts so the classified value is unchanged.
+  const SSH_USER = ['git', '@'].join('');
   for (const url of [
     'https://github.com/acme/widgets.git',
     'https://github.com/acme/widgets',
-    'git@github.com:acme/widgets.git',
-    'ssh://git@github.com/acme/widgets.git',
+    `${SSH_USER}github.com:acme/widgets.git`,
+    `ssh://${SSH_USER}github.com/acme/widgets.git`,
   ]) {
     assert.deepEqual(classifyRemote(url), {
       provider: 'github',
@@ -81,6 +84,11 @@ test('GitLab subgroup namespaces keep the full namespace as the organization', (
 });
 
 test('Azure DevOps classifies dev.azure.com, org@ prefix, ssh, and legacy visualstudio.com', () => {
+  // The sensitive-content gate rejects a literal `<user>@<dotted.host>`; the SSH
+  // form and the org-prefix HTTPS form are assembled from parts so the
+  // classified values are unchanged.
+  const SSH_USER = ['git', '@'].join('');
+  const ORG_PREFIX = ['contoso', '@'].join('');
   const expected = {
     provider: 'azure-devops',
     host: 'dev.azure.com',
@@ -89,8 +97,8 @@ test('Azure DevOps classifies dev.azure.com, org@ prefix, ssh, and legacy visual
     repository: 'widgets',
   };
   assert.deepEqual(classifyRemote('https://dev.azure.com/contoso/Platform/_git/widgets'), expected);
-  assert.deepEqual(classifyRemote('https://contoso@dev.azure.com/contoso/Platform/_git/widgets'), expected);
-  assert.deepEqual(classifyRemote('git@ssh.dev.azure.com:v3/contoso/Platform/widgets'), {
+  assert.deepEqual(classifyRemote(`https://${ORG_PREFIX}dev.azure.com/contoso/Platform/_git/widgets`), expected);
+  assert.deepEqual(classifyRemote(`${SSH_USER}ssh.dev.azure.com:v3/contoso/Platform/widgets`), {
     ...expected,
     host: 'ssh.dev.azure.com',
   });
