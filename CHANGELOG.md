@@ -140,6 +140,14 @@ below is unreleased and no comparison links are available.
 - **Stated intent.** Every skill carries a plain-language `intent.md` describing
   what it is for, written for a person rather than for a checker, and enforced
   repository-wide.
+- **Repository context setup.** `setup-repository` materializes a repository's
+  agent context so later skills resolve tracker and domain configuration instead
+  of guessing. It detects the provider from the repository's remotes across
+  GitHub, GitLab, Azure DevOps, and local custom trackers, asks only for the
+  facts detection cannot settle, and writes `issue-tracker.md`, `domain.md`, and
+  `triage-labels.md` behind a preview and an explicit confirmation, refusing
+  unsafe or concurrently changed targets and reading every file back to prove
+  what landed.
 
 ### Changed
 
