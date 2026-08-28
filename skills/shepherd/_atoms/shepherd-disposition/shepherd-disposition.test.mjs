@@ -18,7 +18,7 @@ import test from 'node:test';
 
 import { detectProvider } from '../../../_base/_atoms/provider-detect/provider-detect.mjs';
 import { interpretMergeState, mergeStateCommand, normalizeMergeabilitySignal, resolveTargetCommand } from '../provider-state/provider-state.mjs';
-import { classifyTerminalDisposition } from './shepherd-disposition.mjs';
+import { classifyShepherdPlan, classifyTerminalDisposition } from './shepherd-disposition.mjs';
 
 const READY = { available: true, authenticated: true };
 const GITHUB = detectProvider({
@@ -158,4 +158,80 @@ test('the full chain from detection through a provider-native blocked payload la
   const result = classifyTerminalDisposition(greenSignalsWith(signal));
   assert.equal(result.disposition, 'needs-human');
   assert.notEqual(result.disposition, 'mergeable-and-green');
+});
+
+// The rebase planner is the parallel path to the terminal classifier: it too
+// can surface a terminal `no-op-mergeable-and-green`, so it must apply the same
+// block/review/unobserved-gate gate. A rebase cannot clear a policy block or a
+// blocking review, so a gated change request must fall through to
+// `watch-or-report`, never a green no-op.
+function greenPlanSignals(mergeabilityOverrides = {}) {
+  return {
+    provider: { status: 'supported-provider', provider: 'github' },
+    observedAt: '2026-08-28T00:00:00Z',
+    preflight: { status: 'ok' },
+    rebase: { status: 'completed', baseSha: BASE_SHA },
+    regeneration: { status: 'completed' },
+    localValidation: { status: 'passed', evidenceComplete: true },
+    push: { status: 'pushed-with-lease', headSha: HEAD_SHA },
+    remoteChecks: { checks: [{ name: 'validate', status: 'success' }] },
+    mergeability: {
+      state: 'mergeable',
+      isDraft: false,
+      baseSha: BASE_SHA,
+      headSha: HEAD_SHA,
+      ...mergeabilityOverrides,
+    },
+    base: { moved: true },
+    operatorRequest: { rebase: false },
+    requiredChecks: [{ name: 'validate', expired: false }],
+  };
+}
+
+test('the planner greens a base-moved clean change request', () => {
+  const result = classifyShepherdPlan(greenPlanSignals());
+  assert.equal(result.disposition, 'no-op-mergeable-and-green');
+  assert.equal(result.shouldRebase, false);
+});
+
+test('the planner does not green a blocked base-moved change request', () => {
+  const result = classifyShepherdPlan(greenPlanSignals({ blocked: true }));
+  assert.notEqual(result.disposition, 'no-op-mergeable-and-green');
+  assert.equal(result.disposition, 'watch-or-report');
+  assert.equal(result.shouldRebase, false);
+});
+
+test('the planner does not green an unobserved-merge-gate base-moved change request', () => {
+  const result = classifyShepherdPlan(greenPlanSignals({ blocked: null }));
+  assert.notEqual(result.disposition, 'no-op-mergeable-and-green');
+  assert.equal(result.disposition, 'watch-or-report');
+  assert.equal(result.shouldRebase, false);
+});
+
+test('the planner does not green a review-required base-moved change request', () => {
+  const result = classifyShepherdPlan(greenPlanSignals({ reviewDecision: 'review-required' }));
+  assert.notEqual(result.disposition, 'no-op-mergeable-and-green');
+  assert.equal(result.disposition, 'watch-or-report');
+  assert.equal(result.shouldRebase, false);
+});
+
+test('the planner does not green a changes-requested base-moved change request', () => {
+  const result = classifyShepherdPlan(greenPlanSignals({ reviewDecision: 'changes-requested' }));
+  assert.notEqual(result.disposition, 'no-op-mergeable-and-green');
+  assert.equal(result.disposition, 'watch-or-report');
+  assert.equal(result.shouldRebase, false);
+});
+
+test('the planner still greens a clean, approved base-moved change request', () => {
+  const result = classifyShepherdPlan(greenPlanSignals({ blocked: false, reviewDecision: 'approved' }));
+  assert.equal(result.disposition, 'no-op-mergeable-and-green');
+  assert.equal(result.shouldRebase, false);
+});
+
+test('the planner still greens a base-moved change request whose review is unobserved', () => {
+  // A repository requiring no review legitimately reports `unobserved`; gating
+  // it would break the common case, so it must remain a green no-op.
+  const result = classifyShepherdPlan(greenPlanSignals({ blocked: false, reviewDecision: 'unobserved' }));
+  assert.equal(result.disposition, 'no-op-mergeable-and-green');
+  assert.equal(result.shouldRebase, false);
 });

@@ -55,7 +55,11 @@ operator request, genuine conflict or unmergeable state, an expired required
 check, or a base that advanced while its own policy requires the branch to
 contain it. Base drift alone is not a trigger. When the base moved but the pull
 request is still mergeable and green, return `no-op-mergeable-and-green` and do
-not push.
+not push — unless a policy/administrative block, a required or changes-requested
+review, or an unobserved merge gate (`blocked` read as null) is reported. None
+of those is cleared by a rebase, so a change request carrying one falls through
+to `watch-or-report`; the terminal classifier then renders it `blocked` or
+`needs-human`.
 
 ## The Required Up-To-Date Policy
 

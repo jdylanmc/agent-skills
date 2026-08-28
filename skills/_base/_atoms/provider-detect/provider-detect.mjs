@@ -336,14 +336,22 @@ export function detectProvider({
     const provider = providerById(match.providerId);
     const host = canonicalizeEndpoint(transportHost);
     const tool = classifyTool(provider, toolAvailability, host);
+    // A `supported-provider` requires a canonical endpoint here too. A matched
+    // host that does not canonicalize (a malformed configured host) leaves tool
+    // readiness unestablished against any known endpoint, so the condition is
+    // `provider-tool-unobserved` rather than a clean result whose commands would
+    // silently target `github.com`.
+    const status = host === null && tool.status === 'supported-provider'
+      ? 'provider-tool-unobserved'
+      : tool.status;
     return {
-      status: tool.status,
+      status,
       provider: provider.id,
       tool: tool.tool,
       host,
       source: match.source,
       inspected,
-      observable: tool.status === 'supported-provider',
+      observable: status === 'supported-provider',
     };
   }
 

@@ -65,6 +65,20 @@ export function classifyShepherdPlan(signals = {}) {
   const behindStrictBase = behindUnderRequiredPolicy(signals);
   const receipt = freshnessReceipt(signals);
 
+  // A rebase cannot clear a policy/administrative block or a blocking review,
+  // and an unobserved merge gate (`blocked === null`) is not clearance either.
+  // So content that is mergeable and green must NOT read as a green no-op when
+  // any of these is reported: it falls through to watch-or-report, and the
+  // authoritative terminal classifier renders `blocked`/`needs-human`. Strict
+  // comparisons keep hand-built green signals (both fields `undefined`) and a
+  // real clean PR (`blocked: false`, review `approved`/`unobserved`) on the
+  // no-op path; only an explicit block, an explicit blocking review, or an
+  // explicitly-unobserved gate is excluded.
+  const blockedOrReviewGated = mergeability.blocked === true
+    || mergeability.blocked === null
+    || mergeability.reviewDecision === 'review-required'
+    || mergeability.reviewDecision === 'changes-requested';
+
   if (
     signals.base?.moved === true
     && mergeable
@@ -73,6 +87,7 @@ export function classifyShepherdPlan(signals = {}) {
     && !requiredCheckExpired
     && !conflicted
     && !behindStrictBase
+    && !blockedOrReviewGated
   ) {
     if (!receipt.complete) {
       return {

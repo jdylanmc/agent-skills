@@ -99,6 +99,34 @@ test('a configured enterprise host is recognized as its named provider', () => {
   assert.equal(detection.host, 'github.contoso-internal.example');
 });
 
+test('a configured malformed host matched by name has no resolvable endpoint and is unobserved', () => {
+  // The remote-URL branch matches the configured host, but the host does not
+  // canonicalize (a doubled dot is not a valid host), so the endpoint is null.
+  // The matched provider is retained, yet readiness cannot be established
+  // against a null endpoint, so the status is unobserved rather than a clean
+  // supported-provider whose commands would silently target github.com.
+  const detection = detectProvider({
+    remoteUrls: ['https://github..example/team/repo.git'],
+    hostProviders: { 'github..example': 'github' },
+    toolAvailability: { gh: READY },
+  });
+
+  assert.equal(detection.provider, 'github');
+  assert.equal(detection.host, null, 'a doubled-dot host is not a resolvable endpoint');
+  assert.equal(detection.status, 'provider-tool-unobserved');
+  assert.equal(canObserveProviderState(detection), false);
+
+  // A well-formed configured host is unaffected and still resolves cleanly.
+  const wellFormed = detectProvider({
+    remoteUrls: ['https://github.contoso-internal.example/platform/repo.git'],
+    hostProviders: { 'github.contoso-internal.example': 'github' },
+    toolAvailability: { gh: READY },
+  });
+  assert.equal(wellFormed.status, 'supported-provider');
+  assert.equal(wellFormed.host, 'github.contoso-internal.example');
+  assert.equal(wellFormed.provider, 'github');
+});
+
 test('an unconfigured host that merely looks like a known one is not guessed', () => {
   const detection = detectProvider({
     remoteUrls: ['https://github.contoso-internal.example/platform/repo.git'],
