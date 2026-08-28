@@ -965,10 +965,88 @@ test('a report grounds a run only when its admission was recorded', () => {
   // The strongest form of the rule is that there is nothing to proceed with:
   // an unrecorded admission returns no change request, so a caller cannot
   // continue on one by accident.
-  const entry = flat(ENTRY);
-  assert.match(entry, /\*\*`--state` is\s+required\*\*/);
-  assert.match(entry, /an admission recorded nowhere returns no change request/);
-  assert.match(flat(INTAKE), /`--report` requires `--state` and `--root`/);
+  assert.match(flat(INTAKE), /\*\*`--report` requires `--state` and `--root`\.\*\*/);
+  assert.match(flat(INTAKE), /an admission nobody wrote down cannot be re-derived/i);
+  assert.match(flat(ENTRY), /an admission is recorded, because step 4 re-derives it/);
+});
+
+test('report intake has exactly one owner and one invocation', () => {
+  // The molecule owns the ordering, and the wrapper does not re-run it. Two
+  // invocations would mean two admissions and two receipts, and publication
+  // would check whichever the run happened to keep.
+  const entry = read(ENTRY);
+  const flatEntry = flat(ENTRY);
+  const flatMolecule = flat(MOLECULE);
+
+  assert.ok(
+    !entry.includes('--approval'),
+    'the wrapper never invokes report intake itself; an approval is intake\'s argument, not its own',
+  );
+  for (const line of entry.split('\n').filter((candidate) => candidate.includes('--report'))) {
+    assert.ok(
+      line.includes('--require-admitted-state') || entry.includes('--require-admitted-state <receipt> --report'),
+      `the only --report the wrapper names belongs to the release check: ${line.trim()}`,
+    );
+  }
+  assert.match(entry, /Report intake is invoked there and nowhere else/);
+  assert.match(flatMolecule, /runs here and \*\*only\*\* here, once/);
+  assert.match(flatMolecule, /the target is resolved first, because the approval is checked against it/);
+
+  // The publication release check is the wrapper's own, and is a different
+  // command from the admission it verifies.
+  assert.match(entry, /--require-admitted-state/);
+
+  // Header pipeline and molecule pipeline agree on the order. Read from the
+  // fenced pipeline line itself, because the routing description restates the
+  // same phases in prose and would otherwise supply the earlier match.
+  const pipelineOf = (body) => body
+    .split('\n')
+    .find((line) => line.includes('->') && line.includes('ground on its intent'));
+  const order = ['resolve the target', 'admit the evidence', 'ground on its intent', 'decide the intent'];
+  for (const [label, pipeline] of [['the wrapper', pipelineOf(entry)], ['the molecule', pipelineOf(read(MOLECULE))]]) {
+    assert.ok(pipeline, `${label} declares a pipeline`);
+    let previous = -1;
+    for (const phase of order) {
+      const at = pipeline.indexOf(phase);
+      assert.ok(at > previous, `${label} runs ${phase} after everything before it`);
+      previous = at;
+    }
+  }
+
+});
+
+test('no numbered cross-reference points at a step that moved', () => {
+  // A numbered cross-reference is invalidated silently by any later insertion,
+  // which is exactly how the molecule once came to point at the wrong step.
+  const molecule = read(MOLECULE);
+  assert.doesNotMatch(molecule, /\bstep \d/, 'the molecule refers to steps by name, not by number');
+
+  // The wrapper keeps one, and it must resolve: step 4 is the pull request.
+  const workflow = read(ENTRY).split('## Core Workflow')[1].split('\n## ')[0];
+  const steps = [...workflow.matchAll(/^(\d)\. /gm)].map((match) => Number(match[1]));
+  assert.deepEqual(steps, [1, 2, 3, 4], 'the wrapper has exactly four numbered steps');
+  for (const referenced of [...read(ENTRY).matchAll(/step (\d)/g)].map((match) => Number(match[1]))) {
+    assert.ok(steps.includes(referenced), `step ${referenced} does not exist`);
+  }
+});
+
+test('every reported status has exactly one row that defines it', () => {
+  const table = read(ENTRY).split('### Status Mapping')[1].split('\n\n')[2];
+  const rows = table.split('\n').filter((line) => line.startsWith('| `'));
+  const statuses = rows.map((line) => line.split('`')[1]);
+
+  assert.deepEqual(
+    statuses,
+    ['reinforced', 'needs-confirmation', 'no-applicable-recommendations', 'blocked', 'halted'],
+  );
+  assert.equal(new Set(statuses).size, statuses.length, 'a status is defined once');
+
+  // And the output contract offers the same set, so nothing can be returned
+  // that the table does not define.
+  const contract = flat(ENTRY).match(/`status`: ([^;]+);/)[1];
+  for (const status of statuses) {
+    assert.ok(contract.includes(`\`${status}\``), `the output contract must offer ${status}`);
+  }
 });
 
 test('one file takes one proposal, and the ambiguous case goes back to the operator', () => {

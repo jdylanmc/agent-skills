@@ -487,6 +487,7 @@ test('an admitted report leaves a bounded receipt, and the release check re-deri
 
     const released = spawnSync(process.execPath, [
       INTAKE_CLI, '--require-admitted-state', statePath, '--report', reportPath, '--target', 'changelog',
+    '--root', fixture.repository,
     ], { encoding: 'utf8' });
     assert.equal(released.status, 0);
     assert.equal(JSON.parse(released.stdout).requirement, 'satisfied');

@@ -55,50 +55,39 @@ approves that exact digest and that one target for this run.
    final status. Continue when recording is unavailable; recording is best
    effort and weakens no boundary below.
 
-2. When the operator supplied a post-mortem recommendation report, it is
-   admitted before anything is edited — after the target resolves, since the
-   approval is checked against that target, and before the change is grounded.
-   Exactly one report grounds a run; the approval receipt is compared, not
-   interpreted — `grant` is the exact constant, `report_sha256` is the digest of
-   the report's own bytes, and `target_skill` is this run's target. Only the
-   recommendations naming this skill enter scope, and every other one is
-   reported and applied to nothing. A missing, ambiguous, malformed, unapproved,
-   digest-mismatched, target-mismatched, or self-contradicting report stops the
-   run:
+2. Run [Skill reinforcement](./_molecules/skill-reinforcement/skill-reinforcement.md).
+   It owns the order and every step in it: resolve the one existing skill;
+   **admit an approved report against that target, once, when one was
+   supplied**; ground on the skill's intent as the standard; decide explicitly
+   whether the intent changes and — when it does — confirm and store the new
+   intent **before** the implementation changes; make the smallest complete
+   change; re-derive the graph; run the repository's real validation; and roast
+   the result under `create-skill`'s rules.
 
-   ```text
-   node skills/reinforce-skill/_atoms/report-intake/report-intake.mjs \
-     --report <report.json> --target <skill> --approval <approval.json> \
-     --root <repository root> --state <run-owned receipt path>
-   ```
+   Report intake is invoked there and nowhere else. Invoking it again from here
+   would re-run the admission and rewrite its receipt, which is how a run comes
+   to hold two receipts and publish against whichever it happened to keep. The
+   command and its rules live with
+   [report intake](./_atoms/report-intake/report-intake.md); what matters at
+   this level is that an admission is recorded, because step 4 re-derives it.
 
-   Exit `2` is a refusal and is not a warning to carry forward. **`--state` is
-   required**, and an admission recorded nowhere returns no change request at
-   all: there is nothing for step 5 to re-derive, so there is nothing to ground
-   with. An approved report that applies to nothing here reports
-   `no-applicable-recommendations`, lists what it excluded, and the run stops —
-   before the intent decision, the changelog, and the pull request — because
-   there is no change to make.
+   Two outcomes end the run here rather than continuing:
 
-   Every proposed surface is canonicalized to a path inside the target skill,
-   and one file takes one proposal: identical proposals deduplicate, and two
-   different ones are an ambiguity for the operator rather than a guess here.
+   - a refused report — missing, ambiguous, malformed, unapproved,
+     digest-mismatched, target-mismatched, or self-contradicting — which stops
+     before anything is edited; and
+   - `no-applicable-recommendations`, an approved report that proposes nothing
+     for this skill. Its exclusions are reported, no change request exists, and
+     the run stops before the intent decision, the changelog, and the pull
+     request, because there is no change to make.
 
-   With no report, this step does not happen at all. Human guidance grounds
-   through the same command — `--guidance <text>`, `--guidance-file <path>`, or
+   With no report, intake does not run at all. Human guidance grounds through
+   the same command — `--guidance <text>`, `--guidance-file <path>`, or
    `--guidance -` for standard input — producing the same normalized shape with
    no report, no approval, and no receipt. No synthetic report is manufactured
    to fill the shape.
 
-3. Run [Skill reinforcement](./_molecules/skill-reinforcement/skill-reinforcement.md).
-   It resolves the one existing skill, admits an approved report against that
-   target when one was supplied, grounds on its intent as the standard,
-   decides explicitly whether the intent changes and — when it does — confirms
-   and stores the new intent **before** the implementation changes, makes the
-   smallest complete change, re-derives the graph, runs the repository's real
-   validation, and roasts the result under `create-skill`'s rules.
-
-4. **Record the change in the changelog.** Invoke `changelog` for an entry
+3. **Record the change in the changelog.** Invoke `changelog` for an entry
    describing what changed for someone who uses the skill, and place the
    returned patch in the same reviewable change as the reinforcement itself.
 
@@ -114,7 +103,7 @@ approves that exact digest and that one target for this run.
    target is ambiguous, or `changelog` cannot run, report `Changelog: degraded`
    with the reason and continue; do not create a changelog file as a side effect.
 
-5. Open the pull request. Create a review branch, commit the target's changed
+4. Open the pull request. Create a review branch, commit the target's changed
    files together with the changelog patch, and run the write-boundary guard's
    diff audit over the actual change set — supplying the validation workflow's
    before/after content whenever the diff touches it, so the edit is proven a
@@ -202,7 +191,8 @@ confirmed by him before anything is stored.
 
 Return:
 
-- `status`: `reinforced`, `needs-confirmation`, `blocked`, or `halted`;
+- `status`: `reinforced`, `no-applicable-recommendations`, `needs-confirmation`,
+  `blocked`, or `halted`;
 - the target skill and confirmation that it already existed as a routable
   package;
 - the change source: `human-guidance`, or `post-mortem-report` with its digest,
@@ -237,8 +227,8 @@ Each run ends in exactly one status:
 | --- | --- |
 | `reinforced` | The change is made, validation passed, `/roast` ran on the final head with every finding addressed, the pull request is open. A degraded changelog does not lower this status; it is reported. A degraded writing review does not lower it either; it is reported the same way. |
 | `needs-confirmation` | The intent changed but the operator has not confirmed the revised wording, or the three-round roast pause awaits his answer. Nothing is stored or merged. |
+| `no-applicable-recommendations` | An approved report proposed nothing for this skill. Its exclusions are reported, nothing is changed, and the run ends before the intent decision. It is neither a refusal nor a reinforcement, so it is its own status rather than a note attached to another one. |
 | `blocked` | The target is not a routable existing skill, a supplied report is refused by intake or admitted without a recorded receipt, the admission release check is blocked at publication, a dependency prevents the change, validation cannot pass, or the diff audit refuses an out-of-target path. |
-| `halted` | See below. A report that applies to nothing here also ends the run before any change is made, reported as `no-applicable-recommendations` with the exclusions listed. |
 | `halted` | `/roast` refused or returned an unsynthesized result, or the loop reached its round limit without convergence. |
 
 Never report a reinforcement `reinforced` unless `/roast` actually ran on the

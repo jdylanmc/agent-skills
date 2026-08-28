@@ -177,6 +177,27 @@ export const MAX_GUIDANCE_BYTES = 64 * 1024;
 export const MAX_SNIPPET_LENGTH = 80;
 
 /**
+ * The longest a whole refusal message may be, counted in UTF-16 code units -
+ * the unit JavaScript's `length` reports, so the bound is the one a reader of
+ * this code can check without converting anything. It is a display bound, not a
+ * storage bound; 400 is roughly four terminal lines and comfortably fits every
+ * message this module composes from fixed text.
+ */
+export const MAX_MESSAGE_LENGTH = 400;
+
+/** The most items any refusal message will enumerate before summarizing. */
+export const MAX_LISTED_ITEMS = 5;
+
+/**
+ * The most room the enumerated part of a list may take. A report controls both
+ * how many items it supplies and how long each one is, so capping the count
+ * alone is not a bound - five items of eighty characters each already exceeds
+ * what a message may be, and the `and N more` that carries the real information
+ * would be the part truncation removed.
+ */
+export const MAX_LIST_LENGTH = 200;
+
+/**
  * First path segments a proposed surface may never use. Each names a governance
  * boundary, and each is refused before any containment check runs, so a
  * recommendation cannot propose a change to doctrine or to another package by
@@ -209,8 +230,10 @@ export const REFUSALS = {
   contradictoryRecommendations: 'contradictory_recommendations',
   statePathPublished: 'state_path_published',
   statePathSymlink: 'state_path_symlink',
+  invalidStatePath: 'invalid_state_path',
   stateNotRecorded: 'state_not_recorded',
   oversizedGuidance: 'oversized_guidance',
+  unreadableGuidance: 'unreadable_guidance',
   stateUnwritable: 'state_unwritable',
   stateMissing: 'state_missing',
   malformedState: 'malformed_state',
@@ -268,6 +291,67 @@ export function snippet(value) {
   // readable rather than ending in a half-written escape.
   const cut = encoded.slice(0, MAX_SNIPPET_LENGTH).replace(/\\+$/, (run) => (run.length % 2 ? run.slice(0, -1) : run));
   return `"${cut}..."`;
+}
+
+/**
+ * Render a list of report-derived values for a refusal message.
+ *
+ * A report chooses how many recommendations it carries and how many anchors
+ * each one cites, so a message that enumerates them enumerates something the
+ * report controls the length of. Four hundred untrusted anchors is a plausible
+ * mistake and a trivial attack, and either way the refusal that names them all
+ * is useless to read. The count is the information; past a handful, the items
+ * are not.
+ */
+export function snippetList(values, { limit = MAX_LISTED_ITEMS, budget = MAX_LIST_LENGTH } = {}) {
+  const items = Array.isArray(values) ? values : [values];
+  if (items.length === 0) {
+    return 'nothing';
+  }
+  const shown = [];
+  let used = 0;
+  for (const value of items.slice(0, limit)) {
+    const rendered = snippet(value);
+    // Stop on the budget as well as the count, but always show at least one:
+    // a list rendered as nothing but "and 300 more" says less than it could.
+    if (shown.length > 0 && used + rendered.length + 2 > budget) {
+      break;
+    }
+    shown.push(rendered);
+    used += rendered.length + 2;
+  }
+  const remaining = items.length - shown.length;
+  return remaining > 0 ? `${shown.join(', ')} and ${remaining} more` : shown.join(', ');
+}
+
+/**
+ * The last thing that touches a refusal message before anyone reads it.
+ *
+ * Every message here is composed from fixed text and bounded snippets, so in
+ * principle this changes nothing. That is exactly why it exists: "in principle"
+ * is a property of the code as written today, and the next message somebody
+ * adds will interpolate a value directly, because that is the obvious way to
+ * write one. This makes the bound a property of the output instead - one place
+ * that cannot be forgotten, applied on the way out rather than remembered on
+ * the way in.
+ */
+export function sanitizeRefusalMessage(message) {
+  const text = typeof message === 'string' ? message : String(message ?? '');
+  const flattened = text
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return flattened.length > MAX_MESSAGE_LENGTH
+    ? `${flattened.slice(0, MAX_MESSAGE_LENGTH - 3)}...`
+    : flattened;
+}
+
+/** Apply the message bound to a whole list of refusals or reasons. */
+export function sanitizeRefusals(refusals) {
+  return (Array.isArray(refusals) ? refusals : []).map((entry) => ({
+    code: entry?.code ?? 'unknown',
+    message: sanitizeRefusalMessage(entry?.message),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -504,7 +588,7 @@ export function checkApproval(approval, { digest = null, target = null } = {}) {
   if (unknown.length) {
     refusals.push({
       code: REFUSALS.malformedApproval,
-      message: `an approval receipt carries only ${APPROVAL_KEYS.join(', ')}; found ${unknown.map(snippet).join(', ')}`,
+      message: `an approval receipt carries only ${APPROVAL_KEYS.join(', ')}; found ${snippetList(unknown)}`,
     });
   }
 
@@ -523,7 +607,7 @@ export function checkApproval(approval, { digest = null, target = null } = {}) {
   } else if (digest !== null && approval.report_sha256 !== digest) {
     refusals.push({
       code: REFUSALS.digestMismatch,
-      message: `the approval names report ${approval.report_sha256}, but the supplied report is ${digest}`,
+      message: `the approval names report ${snippet(approval.report_sha256)}, but the supplied report is ${snippet(digest)}`,
     });
   }
 
@@ -535,7 +619,7 @@ export function checkApproval(approval, { digest = null, target = null } = {}) {
   } else if (target !== null && approval.target_skill !== target) {
     refusals.push({
       code: REFUSALS.targetMismatch,
-      message: `the approval authorizes ${approval.target_skill}, but this run reinforces ${target}`,
+      message: `the approval authorizes ${snippet(approval.target_skill)}, but this run reinforces ${snippet(target)}`,
     });
   }
 
@@ -579,7 +663,7 @@ function checkRecommendation(recommendation, context) {
   if (selfApproving.length) {
     refusals.push({
       code: REFUSALS.selfApprovingReport,
-      message: `${label} carries ${selfApproving.map(snippet).join(', ')}; a report never approves itself`,
+      message: `${label} carries ${snippetList(selfApproving)}; a report never approves itself`,
     });
   }
   const unknown = keys
@@ -588,12 +672,12 @@ function checkRecommendation(recommendation, context) {
   if (unknown.length) {
     refusals.push({
       code: REFUSALS.malformedReport,
-      message: `${label} carries unknown field(s): ${unknown.map(snippet).join(', ')}`,
+      message: `${label} carries unknown field(s): ${snippetList(unknown)}`,
     });
   }
   const missing = RECOMMENDATION_KEYS.filter((key) => !keys.includes(key));
   if (missing.length) {
-    refusals.push({ code: REFUSALS.malformedReport, message: `${label} omits ${missing.join(', ')}` });
+    refusals.push({ code: REFUSALS.malformedReport, message: `${label} omits ${snippetList(missing)}` });
   }
 
   if (!nonEmptyString(recommendation.id)) {
@@ -648,7 +732,7 @@ function checkRecommendation(recommendation, context) {
     if (malformed.length) {
       refusals.push({
         code: REFUSALS.unanchoredEvidence,
-        message: `${label} cites ${malformed.map((anchor) => snippet(anchor)).join(', ')}; `
+        message: `${label} cites ${snippetList(malformed)}; `
           + 'a citation is an anchor identifier alone, never an identifier followed by prose',
       });
     }
@@ -657,7 +741,7 @@ function checkRecommendation(recommendation, context) {
     if (dangling.length) {
       refusals.push({
         code: REFUSALS.unanchoredEvidence,
-        message: `${label} cites ${dangling.map(snippet).join(', ')}, which the evidence ledger does not carry`,
+        message: `${label} cites ${snippetList(dangling)}, which the evidence ledger does not carry`,
       });
     }
     citations = [...new Set(recommendation.evidence.filter((anchor) => isAnchorCitation(anchor)))];
@@ -675,7 +759,7 @@ function checkRecommendation(recommendation, context) {
     if (unknownChange.length) {
       refusals.push({
         code: REFUSALS.malformedChange,
-        message: `${label} proposes a change with unknown field(s): ${unknownChange.map(snippet).join(', ')}`,
+        message: `${label} proposes a change with unknown field(s): ${snippetList(unknownChange)}`,
       });
     }
     if (!DIRECTIVES.includes(change.directive)) {
@@ -782,7 +866,7 @@ export function reconcileApplicable(applicable) {
     if (distinct.size > 1) {
       refusals.push({
         code: REFUSALS.contradictoryRecommendations,
-        message: `${group.map((entry) => snippet(entry.id)).join(', ')} propose ${distinct.size} different `
+        message: `${snippetList(group.map((entry) => entry.id))} propose ${distinct.size} different `
           + `changes to ${snippet(group[0].surface)}; one file takes one proposal, and which of them was `
           + 'meant is the operator\'s decision, not this run\'s guess',
       });
@@ -901,7 +985,7 @@ export function admitGuidance({ target = null, guidance = null } = {}) {
     return {
       status: 'refused',
       source: 'human-guidance',
-      refusals: [{ code: error.code, message: error.message }],
+      refusals: sanitizeRefusals([{ code: error.code, message: error.message }]),
       report: null,
       target: null,
       applicable: [],
@@ -998,7 +1082,7 @@ export function admitReport({
     if (selfApproving.length) {
       refusals.push({
         code: REFUSALS.selfApprovingReport,
-        message: `the report carries ${selfApproving.map(snippet).join(', ')}; authority comes from the operator's receipt, never from the report`,
+        message: `the report carries ${snippetList(selfApproving)}; authority comes from the operator's receipt, never from the report`,
       });
     }
     const unknown = keys
@@ -1007,12 +1091,12 @@ export function admitReport({
     if (unknown.length) {
       refusals.push({
         code: REFUSALS.malformedReport,
-        message: `the report carries unknown field(s): ${unknown.map(snippet).join(', ')}`,
+        message: `the report carries unknown field(s): ${snippetList(unknown)}`,
       });
     }
     const missing = REPORT_KEYS.filter((key) => !keys.includes(key));
     if (missing.length) {
-      refusals.push({ code: REFUSALS.malformedReport, message: `the report omits ${missing.join(', ')}` });
+      refusals.push({ code: REFUSALS.malformedReport, message: `the report omits ${snippetList(missing)}` });
     }
     if (envelope.schema !== REPORT_SCHEMA) {
       refusals.push({
@@ -1027,7 +1111,7 @@ export function admitReport({
     if (recordProblems.length) {
       refusals.push({
         code: REFUSALS.malformedRecord,
-        message: `the wrapped post-mortem record breaks its contract: ${recordProblems.join('; ')}`,
+        message: `the wrapped post-mortem record breaks its contract: ${snippetList(recordProblems)}`,
       });
     } else {
       record = envelope.post_mortem_record;
@@ -1096,7 +1180,7 @@ export function admitReport({
     return {
       status: 'refused',
       source: 'post-mortem-report',
-      refusals,
+      refusals: sanitizeRefusals(refusals),
       // A refused report validated nothing, so it declares nothing either: the
       // schema it *claimed* is as untrustworthy as the rest of it.
       report: { sha256: digest, schema: null },
@@ -1196,20 +1280,20 @@ export function assertStatePath(statePath, { repositoryRoot = null } = {}) {
   // absolute, and a refusal that echoes it back turns a boundary message into a
   // disclosure of somebody's home directory in a pull request.
   if (!nonEmptyString(statePath)) {
-    throw new IntakeError(REFUSALS.statePathPublished, 'an admission state path is required');
+    throw new IntakeError(REFUSALS.invalidStatePath, 'an admission state path is required');
   }
   if (!path.isAbsolute(statePath)) {
     throw new IntakeError(
-      REFUSALS.statePathPublished,
+      REFUSALS.invalidStatePath,
       'an admission state path is absolute; the supplied one is relative',
     );
   }
   if (statePath.split(/[\\/]/).includes('..')) {
-    throw new IntakeError(REFUSALS.statePathPublished, 'an admission state path may not traverse');
+    throw new IntakeError(REFUSALS.invalidStatePath, 'an admission state path may not traverse');
   }
   if (!nonEmptyString(repositoryRoot)) {
     throw new IntakeError(
-      REFUSALS.statePathPublished,
+      REFUSALS.invalidStatePath,
       'a repository root is required to prove an admission state path is unpublished',
     );
   }
@@ -1219,7 +1303,7 @@ export function assertStatePath(statePath, { repositoryRoot = null } = {}) {
   try {
     realRoot = fs.realpathSync(repositoryRoot);
   } catch (error) {
-    throw new IntakeError(REFUSALS.statePathPublished, `unreadable repository root: ${error.code}`);
+    throw new IntakeError(REFUSALS.invalidStatePath, `unreadable repository root: ${error.code}`);
   }
 
   // Containment is judged on the *real* location, not the spelling. The deepest
@@ -1231,7 +1315,7 @@ export function assertStatePath(statePath, { repositoryRoot = null } = {}) {
   while (!fs.existsSync(ancestor)) {
     const parent = path.dirname(ancestor);
     if (parent === ancestor) {
-      throw new IntakeError(REFUSALS.statePathPublished, 'an admission state path has no existing ancestor');
+      throw new IntakeError(REFUSALS.invalidStatePath, 'an admission state path has no existing ancestor');
     }
     segments.unshift(path.basename(ancestor));
     ancestor = parent;
@@ -1240,7 +1324,7 @@ export function assertStatePath(statePath, { repositoryRoot = null } = {}) {
   try {
     realAncestor = fs.realpathSync(ancestor);
   } catch (error) {
-    throw new IntakeError(REFUSALS.statePathPublished, `unreadable admission state path: ${error.code}`);
+    throw new IntakeError(REFUSALS.invalidStatePath, `unreadable admission state path: ${error.code}`);
   }
   const real = path.join(realAncestor, ...segments);
 
@@ -1249,8 +1333,11 @@ export function assertStatePath(statePath, { repositoryRoot = null } = {}) {
     && !lexicalRelative.startsWith(`..${path.sep}`)
     && !path.isAbsolute(lexicalRelative);
   if (lexicallyInside) {
-    // The same guard the write-boundary check uses, not a second copy of it:
-    // one definition of "no component of this path is a link".
+    // Component-by-component, for a path that *appears* to be in the
+    // repository - the same guard the write-boundary check uses, not a second
+    // copy of it. A path outside the repository is not walked component by
+    // component; its real location is what containment is decided on, which is
+    // the honest claim and the one the tests below check.
     try {
       assertNoSymlinkComponent(realRoot, lexical);
     } catch {
@@ -1372,7 +1459,7 @@ export function writeAdmissionState(statePath, receipt, { repositoryRoot = null 
  */
 export function requireAdmittedState({ state = null, report = null, target = null } = {}) {
   const reasons = [];
-  const blocked = () => ({ requirement: 'blocked', reasons });
+  const blocked = () => ({ requirement: 'blocked', reasons: sanitizeRefusals(reasons) });
 
   if (state === null || state === undefined) {
     reasons.push({ code: REFUSALS.stateMissing, message: 'no admission receipt was recorded for this run' });
@@ -1391,10 +1478,10 @@ export function requireAdmittedState({ state = null, report = null, target = nul
   const unknown = Object.keys(state).filter((key) => !ADMISSION_KEYS.includes(key)).sort();
   const missing = ADMISSION_KEYS.filter((key) => !Object.keys(state).includes(key));
   if (unknown.length) {
-    reasons.push({ code: REFUSALS.malformedState, message: `the receipt carries unknown field(s): ${unknown.map(snippet).join(', ')}` });
+    reasons.push({ code: REFUSALS.malformedState, message: `the receipt carries unknown field(s): ${snippetList(unknown)}` });
   }
   if (missing.length) {
-    reasons.push({ code: REFUSALS.malformedState, message: `the receipt omits ${missing.join(', ')}` });
+    reasons.push({ code: REFUSALS.malformedState, message: `the receipt omits ${snippetList(missing)}` });
   }
   if (reasons.length) {
     return blocked();
@@ -1404,6 +1491,18 @@ export function requireAdmittedState({ state = null, report = null, target = nul
     reasons.push({
       code: REFUSALS.stateRefused,
       message: `the recorded intake ended ${snippet(state.status)}; only an admitted report may publish`,
+    });
+    return blocked();
+  }
+  // Determinable before any re-derivation: the receipt's own approval must be
+  // the three known fields, and its grant must be the one accepted constant.
+  // Reporting that as `state_stale` would blame the report for a receipt that
+  // was never well formed.
+  const approvalProblems = checkApproval(state.approval, {});
+  if (approvalProblems.length) {
+    reasons.push({
+      code: REFUSALS.malformedState,
+      message: `the receipt records no usable approval: ${snippetList(approvalProblems.map((entry) => entry.code))}`,
     });
     return blocked();
   }
@@ -1423,7 +1522,7 @@ export function requireAdmittedState({ state = null, report = null, target = nul
   if (digest !== state.report_sha256) {
     reasons.push({
       code: REFUSALS.stateStale,
-      message: `the receipt admits report ${state.report_sha256}, but the report on disk is ${digest}`,
+      message: `the receipt admits report ${snippet(state.report_sha256)}, but the report on disk is ${snippet(digest)}`,
     });
     return blocked();
   }
@@ -1432,29 +1531,39 @@ export function requireAdmittedState({ state = null, report = null, target = nul
   if (readmitted.status !== 'admitted') {
     reasons.push({
       code: REFUSALS.stateStale,
-      message: `the report no longer admits under the recorded approval: ${readmitted.refusals.map((entry) => entry.code).join(', ')}`,
+      message: `the report no longer admits under the recorded approval: ${snippetList([...new Set(readmitted.refusals.map((entry) => entry.code))])}`,
     });
     return blocked();
   }
 
+  // Every field the pull request quotes is re-derived and compared. Comparing
+  // only the ones that felt load-bearing would leave the rest quotable from a
+  // receipt nothing checks - and `excluded_recommendations` is exactly the
+  // field a reviewer reads to decide that a recommendation was *deliberately*
+  // left alone, so an unchecked one is worse than an absent one.
   const recomputed = readmitted.lineage;
-  if (JSON.stringify(recomputed.applied_recommendation_ids) !== JSON.stringify(state.applied_recommendation_ids)) {
-    reasons.push({
-      code: REFUSALS.stateMismatch,
-      message: 'the recommendations that apply now are not the ones the receipt recorded',
-    });
-  }
-  if (JSON.stringify(recomputed.evidence_anchors) !== JSON.stringify(state.evidence_anchors)) {
-    reasons.push({
-      code: REFUSALS.stateMismatch,
-      message: 'the evidence anchors behind the applied recommendations are not the ones the receipt recorded',
-    });
-  }
-  if (recomputed.change_request_sha256 !== state.change_request_sha256) {
-    reasons.push({
-      code: REFUSALS.stateMismatch,
-      message: 'the grounding these recommendations produce is not the grounding the receipt recorded',
-    });
+  const canonical = (value) => JSON.stringify(value ?? null);
+  const quoted = [
+    ['report_schema', recomputed.schema, state.report_schema],
+    ['target_skill', recomputed.target_skill, state.target_skill],
+    ['approval', recomputed.approval_receipt, state.approval],
+    ['applied_recommendation_ids', recomputed.applied_recommendation_ids, state.applied_recommendation_ids],
+    ['excluded_recommendations', recomputed.excluded_recommendations, state.excluded_recommendations],
+    ['evidence_anchors', recomputed.evidence_anchors, state.evidence_anchors],
+    [
+      'quarantined_untrusted_directives',
+      recomputed.quarantined_untrusted_directives,
+      state.quarantined_untrusted_directives,
+    ],
+    ['change_request_sha256', recomputed.change_request_sha256, state.change_request_sha256],
+  ];
+  for (const [field, derived, recorded] of quoted) {
+    if (canonical(derived) !== canonical(recorded)) {
+      reasons.push({
+        code: REFUSALS.stateMismatch,
+        message: `the receipt records a ${field} this report no longer produces`,
+      });
+    }
   }
   if (reasons.length) {
     return blocked();
@@ -1590,16 +1699,83 @@ function readReport(candidate) {
  * not guidance. The limit is checked on bytes read, not on a promise about the
  * source.
  */
-export function readBoundedGuidance(source, { readFile = fs.readFileSync } = {}) {
-  const buffer = readFile(source === '-' ? 0 : source);
-  const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(String(buffer), 'utf8');
-  if (bytes.length > MAX_GUIDANCE_BYTES) {
-    throw new IntakeError(
-      REFUSALS.oversizedGuidance,
-      `guidance is bounded at ${MAX_GUIDANCE_BYTES} bytes; ${bytes.length} were supplied`,
-    );
+export function readBoundedGuidance(source, { fileSystem = fs } = {}) {
+  if (source !== '-') {
+    // Ask the filesystem how big it is before reading any of it. Reading first
+    // and measuring after is how a bounded field becomes an unbounded read: by
+    // the time the check runs, the process is already holding the thing the
+    // check exists to refuse.
+    let stats;
+    try {
+      stats = fileSystem.lstatSync(source);
+    } catch (error) {
+      throw new IntakeError(REFUSALS.unreadableGuidance, `guidance could not be read: ${error.code ?? 'unreadable'}`);
+    }
+    if (stats.isSymbolicLink()) {
+      throw new IntakeError(
+        REFUSALS.unreadableGuidance,
+        'a guidance file is read where it is named, never through a symbolic link',
+      );
+    }
+    if (!stats.isFile()) {
+      throw new IntakeError(REFUSALS.unreadableGuidance, 'guidance comes from a regular file');
+    }
+    if (stats.size > MAX_GUIDANCE_BYTES) {
+      throw new IntakeError(
+        REFUSALS.oversizedGuidance,
+        `guidance is bounded at ${MAX_GUIDANCE_BYTES} bytes; the named file holds ${stats.size}`,
+      );
+    }
+    let text;
+    try {
+      text = fileSystem.readFileSync(source, 'utf8');
+    } catch (error) {
+      throw new IntakeError(REFUSALS.unreadableGuidance, `guidance could not be read: ${error.code ?? 'unreadable'}`);
+    }
+    // A file can grow between the stat and the read, so the bound is checked
+    // again on what actually arrived rather than on what was promised.
+    const bytes = Buffer.byteLength(text, 'utf8');
+    if (bytes > MAX_GUIDANCE_BYTES) {
+      throw new IntakeError(
+        REFUSALS.oversizedGuidance,
+        `guidance is bounded at ${MAX_GUIDANCE_BYTES} bytes; ${bytes} arrived`,
+      );
+    }
+    return text;
   }
-  return bytes.toString('utf8');
+
+  // A stream has no size to ask for, so it is read in chunks and abandoned the
+  // moment it passes the bound. One byte over is enough to know; the rest is
+  // never buffered, and nothing waits for a producer that may never stop.
+  const chunks = [];
+  let total = 0;
+  const chunk = Buffer.alloc(16 * 1024);
+  for (;;) {
+    let read;
+    try {
+      read = fileSystem.readSync(0, chunk, 0, chunk.length, null);
+    } catch (error) {
+      if (error.code === 'EAGAIN') {
+        continue;
+      }
+      if (error.code === 'EOF') {
+        break;
+      }
+      throw new IntakeError(REFUSALS.unreadableGuidance, `guidance could not be read: ${error.code ?? 'unreadable'}`);
+    }
+    if (read === 0) {
+      break;
+    }
+    total += read;
+    if (total > MAX_GUIDANCE_BYTES) {
+      throw new IntakeError(
+        REFUSALS.oversizedGuidance,
+        `guidance is bounded at ${MAX_GUIDANCE_BYTES} bytes; standard input passed it and was abandoned unread`,
+      );
+    }
+    chunks.push(Buffer.from(chunk.subarray(0, read)));
+  }
+  return Buffer.concat(chunks, total).toString('utf8');
 }
 
 export function run(argv, streams = process) {
@@ -1635,21 +1811,25 @@ export function run(argv, streams = process) {
       try {
         guidance = readBoundedGuidance(parsed.guidanceFile ?? '-');
       } catch (error) {
-        if (error.code === REFUSALS.oversizedGuidance) {
-          streams.stdout.write(`${JSON.stringify({
-            status: 'refused',
-            source: 'human-guidance',
-            refusals: [{ code: error.code, message: error.message }],
-            report: null,
-            target: parsed.target,
-            applicable: [],
-            excluded: [],
-            lineage: null,
-            change_request: null,
-          }, null, 2)}\n`);
-          return 2;
-        }
-        return usageError(streams, `guidance could not be read: ${error.code ?? 'unreadable'}`);
+        // A guidance source that is too large, missing, or not a file is a
+        // refusal about the input, not a mistake in how the command was
+        // spelled. Reporting it as usage would send the operator to re-read the
+        // flags for a problem that has nothing to do with them.
+        streams.stdout.write(`${JSON.stringify({
+          status: 'refused',
+          source: 'human-guidance',
+          refusals: sanitizeRefusals([{
+            code: error.code === REFUSALS.oversizedGuidance ? error.code : REFUSALS.unreadableGuidance,
+            message: error.message,
+          }]),
+          report: null,
+          target: parsed.target,
+          applicable: [],
+          excluded: [],
+          lineage: null,
+          change_request: null,
+        }, null, 2)}\n`);
+        return 2;
       }
     }
     const grounded = admitGuidance({ target: parsed.target, guidance });
@@ -1661,14 +1841,35 @@ export function run(argv, streams = process) {
     if (parsed.reports.length !== 1) {
       return usageError(streams, '--require-admitted-state verifies exactly one --report');
     }
+    if (parsed.root === null) {
+      return usageError(
+        streams,
+        '--require-admitted-state requires --root, so the receipt it reads is proven to be run state',
+      );
+    }
+    // Reject rather than ignore. A command that silently drops a flag teaches
+    // the operator that the flag did something, and the next run relies on it.
+    if (parsed.approval !== null || parsed.state !== null) {
+      return usageError(
+        streams,
+        'the release check reads a recorded admission; it takes no --approval and no --state to write',
+      );
+    }
     const reasons = [];
     let state = null;
     try {
+      // The same boundary the write used: a receipt read from somewhere the
+      // repository publishes, or through a link, is not this run's state.
+      assertStatePath(parsed.requireState, { repositoryRoot: parsed.root });
       state = JSON.parse(fs.readFileSync(parsed.requireState, 'utf8'));
     } catch (error) {
       reasons.push({
-        code: error instanceof SyntaxError ? REFUSALS.malformedState : REFUSALS.stateMissing,
-        message: `the admission receipt could not be read: ${error.code ?? 'malformed'}`,
+        code: error instanceof SyntaxError
+          ? REFUSALS.malformedState
+          : (error instanceof IntakeError ? error.code : REFUSALS.stateMissing),
+        message: error instanceof IntakeError
+          ? error.message
+          : `the admission receipt could not be read: ${error.code ?? 'malformed'}`,
       });
     }
     const { text, refusal } = readReport(parsed.reports[0]);
@@ -1679,7 +1880,7 @@ export function run(argv, streams = process) {
       ? { requirement: 'blocked', reasons: [] }
       : requireAdmittedState({ state, report: text, target: parsed.target });
     const decided = result.requirement === 'blocked'
-      ? { requirement: 'blocked', reasons: [...reasons, ...result.reasons] }
+      ? { requirement: 'blocked', reasons: sanitizeRefusals([...reasons, ...result.reasons]) }
       : { requirement: 'satisfied', reasons: [], receipt: result.receipt };
     streams.stdout.write(`${JSON.stringify(decided, null, 2)}\n`);
     return decided.requirement === 'satisfied' ? 0 : 2;
@@ -1713,7 +1914,7 @@ export function run(argv, streams = process) {
   }
 
   const result = admitReport({ reports, approval, target: parsed.target });
-  const refusals = [...preRefusals, ...result.refusals];
+  const refusals = sanitizeRefusals([...preRefusals, ...result.refusals]);
   let decided = refusals.length
     ? {
       ...result,
@@ -1735,14 +1936,14 @@ export function run(argv, streams = process) {
     decided = {
       ...decided,
       status: decided.status === 'refused' ? 'refused' : 'admitted-unrecorded',
-      refusals: [
+      refusals: sanitizeRefusals([
         ...decided.refusals,
         {
           code: REFUSALS.stateNotRecorded,
           message: '--report requires --state and --root; an admission that is not recorded '
             + 'cannot be re-derived before publication, so no change request is returned',
         },
-      ],
+      ]),
       change_request: null,
     };
     streams.stdout.write(`${JSON.stringify({ ...decided, admission_state: 'not-recorded' }, null, 2)}\n`);
@@ -1759,7 +1960,7 @@ export function run(argv, streams = process) {
     decided = {
       ...decided,
       status: 'refused',
-      refusals: [...decided.refusals, { code: error.code, message: error.message }],
+      refusals: sanitizeRefusals([...decided.refusals, { code: error.code, message: error.message }]),
       applicable: [],
       excluded: [],
       lineage: null,

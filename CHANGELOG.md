@@ -155,8 +155,9 @@ below is unreleased and no comparison links are available.
   applied; the rest are reported and left for their own run. A missing,
   ambiguous, malformed, unapproved, edited-since-approval, wrong-skill, or
   self-contradicting report stops the run before anything is edited, and every
-  reason is listed at once, bounded and on one line so a directive embedded in a
-  report cannot ride out inside the refusal that rejected it. Every proposed
+  reason is listed at once — every one bounded, on one line, and summarizing a
+  long list by count, so a directive embedded in a report cannot ride out inside
+  the refusal that rejected it. Every proposed
   surface is canonicalized first and compared on file identity rather than
   spelling, so `SKILL.md`, `skills/<skill>/SKILL.md`, and `skill.md` are one
   file and a contradiction spelled two ways is still caught; a path naming
@@ -170,13 +171,15 @@ below is unreleased and no comparison links are available.
   report that turns out to apply to nothing here says so, lists what it
   excluded, and stops before anything is changed. The admission is recorded as a
   small machine receipt in run-owned, unpublished state — required, so an
-  admission nobody wrote down grounds nothing — and re-derived from the report
-  on disk before a pull request opens, so a report edited after you approved it
-  stops the run rather than shipping. The pull request quotes that receipt, and
+  admission nobody wrote down grounds nothing — and every field the pull request
+  quotes is re-derived from the report on disk and compared before that pull
+  request opens, so a report edited after you approved it, or a receipt edited
+  after the fact, stops the run rather than shipping. The pull request quotes that receipt, and
   says plainly that it binds bytes and choices rather than proving who was
   present. Nothing about the human-guidance path changed — it grounds through
-  the same command, from an argument, a file, or standard input, and needs no
-  report, approval, or receipt — `post-mortem` is untouched, and no report is
+  the same command, from an argument, a file, or standard input — measured
+  before it is read, and abandoned mid-stream once it passes the bound — and
+  needs no report, approval, or receipt; `post-mortem` is untouched, and no report is
   ever manufactured to satisfy a shape.
 
 ### Removed

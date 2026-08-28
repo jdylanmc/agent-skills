@@ -181,6 +181,22 @@ Windows silently strips a trailing dot or space from a name while POSIX keeps
 it, so `_atoms /x.md` is two different files depending on where it is applied,
 while `  SKILL.md  ` is one file, sloppily quoted.
 
+### The Accepted Prefix Is Matched the Way a Filesystem Matches It
+
+`skills/<target>/` is stripped case-insensitively, so `Skills/Changelog/` is the
+prefix and not a directory literally named `Skills`. The governance roots are
+refused the same way, so `Doctrine/manifest.md` and `.Git/config` do not slip
+through on capitalization.
+
+That is deliberately generous in one direction and strict in the other, and the
+policy is **fail closed across platforms**: a surface is refused whenever the
+file it names could differ between a case-sensitive and a case-insensitive
+checkout, or between POSIX and Windows. The cost is a false refusal on a
+case-sensitive filesystem that genuinely holds both `SKILL.md` and `skill.md` —
+a repository this library would not accept anyway — and the benefit is that a
+report cannot use capitalization to make one file look like two, or to make
+another package's path look target-relative.
+
 ### Identity Is Not Spelling
 
 Comparison runs on a **key** derived from the canonical surface: Unicode NFC,
@@ -277,10 +293,12 @@ winner, because picking is a decision that belongs to the operator.
 | `approval_not_required` | A recommendation rests on a requirement that does not require human approval. |
 | `contradictory_recommendations` | Two applicable recommendations cannot both be applied. |
 | `malformed_surface` | A proposed surface is not a target-relative path inside the target skill. |
+| `invalid_state_path` | The admission state path is missing, relative, traversing, or unreadable. |
 | `state_path_published` | The admission receipt would be written where the repository publishes it. |
 | `state_path_symlink` | A component of the admission state path is a symbolic link. |
 | `state_not_recorded` | A report was admitted with no `--state` to record it in. |
 | `oversized_guidance` | Guidance from a file or standard input exceeds the bound. |
+| `unreadable_guidance` | The named guidance is missing, not a regular file, or a link. |
 | `state_unwritable` | The admission receipt could not be recorded. |
 | `state_missing` | Publication was attempted with no recorded admission. |
 | `malformed_state` | The receipt is not this schema, or not its exact field set. |
@@ -358,14 +376,24 @@ The list is pinned against `.gitignore` by the conformance suite, so adding a
 root without ignoring it first fails the build rather than quietly publishing a
 receipt.
 
-**Containment is judged on the real location, not the spelling.** Every existing
-component of the path is checked for a symbolic link using the same guard the
-write-boundary check uses — one definition of "no component of this path is a
-link", not a second copy that would eventually disagree — and the deepest
-existing ancestor is resolved through every link before the remaining tail is
-rejoined. So a link inside `.skill-log/` pointing back at the repository, a link
-pointing out of it, and a link outside the repository resolving back into it are
-all refused, rather than one of them being judged on where it appeared to be.
+**Containment is judged on the real location, not the spelling.** Two checks do
+that, and they cover different paths:
+
+- For a path that *appears* to be inside the repository, every existing
+  component is checked for a symbolic link, using the same guard the
+  write-boundary check uses — one definition of "no component of this path is a
+  link", not a second copy that would eventually disagree.
+- For every path, inside or outside, the deepest existing ancestor is resolved
+  through all links and the not-yet-existing tail is rejoined to it, and
+  containment is decided on that.
+
+So a link inside `.skill-log/` pointing back at the repository and a link
+pointing out of it are refused by the first check, and a link outside the
+repository resolving back into it is refused by the second. What is *not*
+claimed is a per-component walk of an external path: a caller-owned workspace is
+the caller's to arrange, and a link inside it that stays outside the repository
+is not this seam's business. The boundary is where the write lands, not how
+tidily the caller's own directories are built.
 
 No refusal here quotes the path it refused. A state path is caller-supplied and
 usually absolute, and a boundary message that echoes it turns a refusal into a
@@ -375,10 +403,23 @@ disclosure of somebody's home directory in a pull request.
 the receipt with a refused one, so an earlier admission at the same path can
 never be replayed as this run's authority.
 
-The release check re-admits rather than reading a label. It recomputes the
+The release check validates the receipt's path on the same boundary the write
+used, before reading it: a receipt planted where the repository publishes, or
+reached through a link, is not this run's state. It takes `--root` for that
+reason, and it refuses `--approval` or `--state` rather than ignoring them —
+silently dropping a flag teaches an operator that the flag did something.
+
+It re-admits rather than reading a label. It recomputes the
 report's digest from disk, re-runs intake under the approval the receipt
-recorded, and compares the applied recommendation IDs, the evidence anchors, and
-the change-request digest against the receipt. A receipt that merely *says*
+recorded, and compares **every field the pull request quotes** against the
+receipt: the report schema, the target, the approval, the applied recommendation
+IDs, the excluded recommendations, the evidence anchors, the quarantined
+anchors, and the change-request digest. Comparing only the fields that felt
+load-bearing would leave the rest quotable from a receipt nothing checks — and
+`excluded_recommendations` is exactly what a reviewer reads to conclude that a
+recommendation was *deliberately* left alone. A receipt whose own approval is
+not the three known fields is a malformed receipt, reported as such rather than
+blamed on the report. A receipt that merely *says*
 `admitted` over a report that has since changed is refused on the arithmetic.
 Exit `0` is `satisfied`; exit `2` is `blocked` and names every reason.
 
@@ -403,6 +444,26 @@ refusal names its subject by position (`recommendations[2]`), never by the id
 the report chose for itself, and quotes a report-derived value only where the
 value is the information the reader needs — escaped to one line and truncated.
 Codes and indices are preferred to values throughout.
+
+A list is bounded twice, by item count and by rendered length, and reports the
+rest as `and N more`: a report chooses how many anchors it cites and how long
+each one is, so capping only the count is not a bound. And **every** message
+passes through one final sanitizer on the way out — control characters and line
+breaks collapsed, the whole message capped at 400 characters. That is redundant
+with the snippets today, which is the point: "every message is already bounded"
+is a property of the code as written, and the next message somebody adds will
+interpolate a value directly, because that is the obvious way to write one.
+
+### Guidance Is Bounded Before It Is Read
+
+A named guidance file is measured with `lstat` and refused on size before any of
+it is read — reading first and measuring after is how a bounded field becomes an
+unbounded read — and refused outright if it is a link or not a regular file. The
+bound is checked again on what actually arrived, because a file can grow between
+the measurement and the read. Standard input has no size to ask for, so it is
+read in chunks and abandoned the moment it passes the bound; the remainder is
+never buffered. An oversized or unreadable source is a refusal about the input,
+never a usage error about the flags.
 
 ## Output
 

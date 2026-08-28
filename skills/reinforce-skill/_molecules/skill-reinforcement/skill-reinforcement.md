@@ -37,8 +37,12 @@ describes it.
    resolves the one skill to reinforce, proves it already exists as a routable
    package, and refuses `_base`, a missing target, and a traversal. It reports
    whether the target has an intent to judge against.
-2. [Report intake](../../_atoms/report-intake/report-intake.md) runs **only**
-   when the operator supplied a post-mortem recommendation report. It admits at
+2. [Report intake](../../_atoms/report-intake/report-intake.md) runs here and
+   **only** here, once, and **only** when the operator supplied a post-mortem
+   recommendation report. This molecule owns the ordering — the target is
+   resolved first, because the approval is checked against it, and the change is
+   grounded afterwards on what intake returned — so nothing above re-runs it and
+   no second invocation rewrites the receipt. It admits at
    most one, binds authority to the operator's approval over that report's exact
    digest and this target, keeps the recommendations that name this skill and
    reports the rest unapplied, and refuses a missing, ambiguous, malformed,
@@ -83,9 +87,11 @@ describes it.
 A report changes where the change request came from and nothing else. There is
 no report branch through the steps above, no shortened path for an "already
 reviewed" recommendation, and no step a report's own confidence lets a run skip.
-Everything after step 2 sees one normalized change request and behaves
+Everything after intake sees one normalized change request and behaves
 identically, which is the only way a second input source stays cheap to reason
-about.
+about. The steps are described in order and not referred to by number: a number
+is a cross-reference that a later insertion silently invalidates, which is
+exactly how this paragraph once came to point at the wrong step.
 
 Evidence and authority stay separate the whole way through. The report supplies
 findings, proposed changes, and anchors; the operator's approval, bound to that
@@ -95,7 +101,7 @@ touch.
 
 ## Every Reinforcement Records Whether the Intent Changed
 
-The intent decision in step 3 is not optional and has no default. Every run ends
+The intent decision is not optional and has no default. Every run ends
 having recorded either a confirmed intent change or a reviewed-and-unchanged
 intent with its reasoning. A change that reaches implementation without that
 record is the drift this molecule exists to prevent, and it stops rather than
