@@ -34,9 +34,31 @@ allowed-tools: ["edit","execute","read","search"]
    shepherd reads change-request state today; a unit earns `_base` when a second
    skill composes it. Review threads are deliberately absent from this
    composition. The review-reading unit lives local to `ship`, and cross-skill
-   local composition is forbidden by the graph validator, so shepherd *cannot*
-   compose it: "shepherd holds no comment-handling authority" is a property the
-   validator enforces, not a promise in prose.
+   local **composition** is forbidden by the graph validator, so shepherd
+   cannot *compose* it: shepherd acquires no comment-handling authority by
+   composition. The validator governs composition, not code imports, so the
+   property enforced is that composing what shepherd needs grants it no
+   review-thread authority — not that imports are blocked.
+
+## Wiring The Adapter Reads Into The Disposition
+
+The molecule adapts each provider-state reading into the signals
+[Shepherd disposition](../../_atoms/shepherd-disposition/shepherd-disposition.md)
+consumes, and the translation shapes live in the shared
+[Landability vocabulary](../../../_base/_atoms/landability/landability.md):
+
+- **Mergeability signal.** Feed the `read-state` result from
+  [Provider state](../../_atoms/provider-state/provider-state.md) through
+  `normalizeMergeabilitySignal` (re-exported from provider-state) into the
+  disposition's `mergeability` signal. That mapping keeps content merge state,
+  the policy/administrative block, and the review decision in separate fields,
+  so a blocked or review-required change request reaches `needs-human` rather
+  than a green disposition, and a review block never triggers a rebase.
+- **Base up-to-date policy.** Source `basePolicy.upToDate` per provider from the
+  read that actually carries it: for GitHub, from the `read-state` result
+  (`mergeStateStatus: BEHIND`); for Azure DevOps, from the `read-checks` result,
+  whose policy list carries the up-to-date evaluation. A pull-request-show
+  response does not carry the Azure policy, so it is never sourced from there.
 
 ## Workflow
 

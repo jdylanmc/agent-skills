@@ -237,6 +237,106 @@ test('an explicitly named provider with no host has an explicitly unknown host, 
 
   assert.equal(detection.provider, 'github');
   assert.equal(detection.host, null, 'a missing host is unknown, never silently public');
+  // A supported-provider requires a canonical endpoint. Named without one, tool
+  // readiness cannot be established against any known host, so the condition is
+  // unobserved rather than a clean result whose commands would target github.com.
+  assert.equal(detection.status, 'provider-tool-unobserved');
+  assert.equal(canObserveProviderState(detection), false);
+});
+
+test('a probe that observed a different endpoint than the one queried is unobserved', () => {
+  // Tool readiness keyed by executable alone would accept a probe run against a
+  // different account or deployment. A probe that names its endpoint must agree
+  // with the endpoint this run targets.
+  const mismatched = detectProvider({
+    remoteUrls: ['https://github.com/example/repo.git'],
+    toolAvailability: { gh: { available: true, authenticated: true, host: 'github.enterprise.example' } },
+  });
+  assert.equal(mismatched.status, 'provider-tool-unobserved', 'a probe against another endpoint proves nothing here');
+
+  // A probe that names the matching endpoint is honoured.
+  const matched = detectProvider({
+    remoteUrls: ['https://github.com/example/repo.git'],
+    toolAvailability: { gh: { available: true, authenticated: true, endpoint: 'github.com' } },
+  });
+  assert.equal(matched.status, 'supported-provider');
+
+  // A probe that omits the endpoint stays permissive, as before.
+  const permissive = detectProvider({
+    remoteUrls: ['https://github.com/example/repo.git'],
+    toolAvailability: { gh: READY },
+  });
+  assert.equal(permissive.status, 'supported-provider');
+});
+
+test('an Azure SSH remote canonicalizes to the API endpoint and matches the organization URL', () => {
+  const detection = detectProvider({
+    remoteUrls: [sshRemote('git', 'ssh.dev.azure.com', 'v3/contoso/project/repo')],
+    toolAvailability: { az: READY },
+  });
+  assert.equal(detection.provider, 'azure-devops');
+  assert.equal(detection.host, 'dev.azure.com', 'the SSH transport host resolves to the canonical API endpoint');
+  // The transport host is preserved by the low-level parser; canonicalization
+  // happens in the detection layer, not in parseRemoteHost.
+  assert.equal(parseRemoteHost(sshRemote('git', 'ssh.dev.azure.com', 'v3/contoso/project/repo')), 'ssh.dev.azure.com');
+  // The API endpoint now matches the organization URL for the SSH checkout.
+  assert.deepEqual(
+    normalizeAzureRepository(
+      { organizationUrl: 'https://dev.azure.com/contoso', project: 'project', name: 'repo' },
+      detection,
+    ),
+    { organizationUrl: 'https://dev.azure.com/contoso', project: 'project', name: 'repo' },
+  );
+});
+
+test('a non-default port is preserved through detection and host matching', () => {
+  const detection = detectProvider({
+    remoteUrls: ['https://github.enterprise.example:8443/platform/repo.git'],
+    hostProviders: { 'github.enterprise.example:8443': 'github' },
+    toolAvailability: { gh: READY },
+  });
+  assert.equal(detection.status, 'supported-provider');
+  assert.equal(detection.host, 'github.enterprise.example:8443', 'the port is part of the canonical endpoint');
+  assert.equal(
+    normalizeGitHubRepository({ slug: 'platform/repo' }, detection),
+    'github.enterprise.example:8443/platform/repo',
+    'the ported endpoint round-trips into the --repo argument',
+  );
+  assert.equal(parseRemoteHost('https://github.enterprise.example:8443/platform/repo.git'), 'github.enterprise.example:8443');
+});
+
+test('inspected evidence carries only the host, never the raw remote URL', () => {
+  // A complete remote URL may carry `user:token@` userinfo, so the raw URL is
+  // never copied into evidence — only the parsed host.
+  const detection = detectProvider({
+    remoteUrls: ['https://git.example.invalid/team/repo.git'],
+  });
+  assert.deepEqual(detection.inspected, ['host:git.example.invalid']);
+  for (const entry of detection.inspected) {
+    assert.ok(!entry.includes('https://'), 'no raw URL scheme reaches the evidence label');
+    assert.ok(!entry.includes('/team/'), 'no URL path reaches the evidence label');
+  }
+});
+
+test('an Azure organization URL that smuggles credentials, a query, or a fragment is rejected', () => {
+  const detection = detectProvider({
+    remoteUrls: ['https://dev.azure.com/contoso/project/_git/repo'],
+    toolAvailability: { az: READY },
+  });
+  // Build a userinfo-bearing URL from parts so no address-shaped literal appears
+  // in committed source for the sensitive-content scanner to flag.
+  const withUserinfo = (userinfo, host, path) => `https://${userinfo}@${host}/${path}`;
+  for (const organizationUrl of [
+    withUserinfo('user:token', 'dev.azure.com', 'contoso'),
+    'https://dev.azure.com/contoso?token=secret',
+    'https://dev.azure.com/contoso#frag',
+  ]) {
+    assert.throws(
+      () => normalizeAzureRepository({ organizationUrl, project: 'project', name: 'repo' }, detection),
+      (error) => error instanceof ProviderCommandError && error.code === 'invalid-repository',
+      `${organizationUrl} must be rejected`,
+    );
+  }
 });
 
 test('an explicitly named provider nobody implements is unsupported, not assumed', () => {

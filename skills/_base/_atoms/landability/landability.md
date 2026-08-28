@@ -52,6 +52,33 @@ another sends them to the wrong one.
 refused, because that is the shape a provider client returns; anything else
 becomes `unobserved`.
 
+## The Mergeability Signal
+
+The disposition side does not consume a raw provider merge reading. It consumes
+a normalized **mergeability signal**, and the translation from what the
+change-request reader observed into that signal lives here, at the seam, because
+the reader and the disposition are in two different skills.
+
+| Field | Meaning |
+| --- | --- |
+| `observed` | Whether the merge reading was observed at all. |
+| `state` | The **content** merge state only: `mergeable`, `conflicted`, or `unobserved`. |
+| `blocked` | A policy or administrative block, carried explicitly. `true`, `false`, or `null` when unread. |
+| `behind` | Whether the branch is behind a base that must contain it. `true`, `false`, or `null`. |
+| `reviewDecision` | The review gate: `approved`, `changes-requested`, `review-required`, or `unobserved`. |
+| `isDraft` | Draft state when reported, else `null`. |
+| `baseSha` / `headSha` | The commits the reading was taken against. |
+| `upToDatePolicy` | The normalized up-to-date policy from the reading. |
+
+`state` is deliberately content-only. Whether the branch's content merges is a
+different question from whether policy or review permits it, so a policy block
+or a required review is **never** folded into `state`; each is carried in its
+own field. `normalizeMergeabilitySignal` performs the mapping, and an unobserved
+reading yields `state: 'unobserved'` with every blocking gate unobserved rather
+than reported as one that permits a merge. A disposition consuming this signal
+gates `blocked === true` and a `review-required` / `changes-requested` decision
+to `needs-human`, and rebasing is never treated as a way to clear either.
+
 ## The Freshness Receipt
 
 A disposition says a change request was landable against one base commit at one

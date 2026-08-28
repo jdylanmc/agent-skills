@@ -8,11 +8,12 @@
  * review reading into ship's review half. Until then it lands unconsumed and
  * deliberately says so.
  *
- * Keeping it local also makes a boundary enforceable rather than merely
- * promised. Cross-skill local composition is forbidden by the graph validator,
- * so a shepherd unit cannot compose this ship-local unit; "shepherd cannot
- * reach review threads" is therefore a property the validator checks, not a
- * sentence in a document.
+ * Keeping it local also makes a boundary enforceable by composition rather than
+ * merely promised. Cross-skill local composition is forbidden by the graph
+ * validator, so a shepherd unit cannot compose this ship-local unit. The
+ * validator governs the composition graph, not the code-dependency graph, so
+ * the guarantee is precisely that shepherd acquires no review-thread authority
+ * by composition — not that imports are prevented.
  *
  * Reading only. Nothing here replies to a thread, resolves a thread, votes,
  * approves, or merges. Every comment body that comes back is untrusted data:
@@ -47,7 +48,8 @@ export const GITHUB_REVIEW_THREADS_QUERY = `query($owner: String!, $name: String
           isOutdated
           path
           line
-          comments(first: 50) {
+          comments(first: 100) {
+            pageInfo { hasNextPage }
             nodes { id author { login } body createdAt url }
           }
         }
@@ -60,7 +62,7 @@ const GITHUB_REVIEW_FIELDS = [
   '-F', { prefix: 'owner=' },
   '-F', { prefix: 'name=' },
   '-F', { prefix: 'number=' },
-  '-f', { graphqlQuery: true },
+  '-f', { graphqlQueryEquals: `query=${GITHUB_REVIEW_THREADS_QUERY}` },
 ];
 
 /**
@@ -200,33 +202,72 @@ const AZURE_RESOLVED_STATUSES = new Set(['fixed', 'closed', 'wontFix', 'byDesign
  * An absent thread collection is unobserved. It is never normalized to an empty
  * list, because "no threads" and "threads not read" lead a caller to opposite
  * conclusions and only one of them is safe to act on.
+ *
+ * `gh api graphql --paginate` emits one JSON object per page, so the GitHub
+ * payload may be either a single page object or an array of them; the pages are
+ * aggregated here. A read is `complete` only when neither the outer
+ * `reviewThreads` connection nor any thread's nested `comments` connection was
+ * truncated. A truncated read keeps the threads it did read but reports
+ * `complete: false` and names what was truncated, so an incomplete read never
+ * masquerades as a complete one.
  */
 export function interpretReviewThreads(detection, payload) {
   const guard = requireObservableProvider(detection);
   if (!guard.ok) {
     return unobserved('provider-review-unobservable');
   }
-  if (payload === undefined || payload === null || typeof payload !== 'object') {
+  const isPage = (value) => value !== undefined && value !== null && typeof value === 'object';
+  if (!isPage(payload) && !Array.isArray(payload)) {
     return unobserved('response-absent');
   }
 
   if (detection.provider === 'github') {
-    const nodes = payload?.data?.repository?.pullRequest?.reviewThreads?.nodes;
-    if (!Array.isArray(nodes)) {
+    const pages = Array.isArray(payload) ? payload : [payload];
+    if (!pages.some(isPage)) {
+      return unobserved('response-absent');
+    }
+    const rawThreads = [];
+    let sawConnection = false;
+    let outerTruncated = false;
+    for (const page of pages) {
+      const connection = page?.data?.repository?.pullRequest?.reviewThreads;
+      if (!connection || !Array.isArray(connection.nodes)) {
+        continue;
+      }
+      sawConnection = true;
+      rawThreads.push(...connection.nodes);
+      // The final page carrying a connection settles outer completeness.
+      outerTruncated = connection.pageInfo?.hasNextPage === true;
+    }
+    if (!sawConnection) {
       return unobserved('review-threads-absent', ['data.repository.pullRequest.reviewThreads.nodes']);
     }
-    return {
-      observed: true,
-      operation: 'read-review-threads',
-      provider: 'github',
-      threads: nodes.map((thread) => ({
+
+    const incomplete = [];
+    const threads = rawThreads.map((thread) => {
+      if (thread?.comments?.pageInfo?.hasNextPage === true) {
+        incomplete.push({ threadId: text(thread?.id), truncated: 'comments' });
+      }
+      return {
         id: text(thread?.id),
         path: text(thread?.path),
         line: typeof thread?.line === 'number' ? thread.line : null,
         isResolved: typeof thread?.isResolved === 'boolean' ? thread.isResolved : null,
         isOutdated: typeof thread?.isOutdated === 'boolean' ? thread.isOutdated : null,
         comments: githubThreadComments(thread),
-      })),
+      };
+    });
+    if (outerTruncated) {
+      incomplete.push({ truncated: 'reviewThreads' });
+    }
+    const complete = incomplete.length === 0;
+    return {
+      observed: true,
+      operation: 'read-review-threads',
+      provider: 'github',
+      complete,
+      ...(complete ? {} : { incomplete }),
+      threads,
     };
   }
 
@@ -238,6 +279,7 @@ export function interpretReviewThreads(detection, payload) {
     observed: true,
     operation: 'read-review-threads',
     provider: 'azure-devops',
+    complete: true,
     threads: value.map((thread) => {
       const status = text(thread?.status);
       return {
@@ -260,7 +302,8 @@ export function interpretReviewThreads(detection, payload) {
  * A thread whose resolution state the provider did not report counts as
  * unresolved: an unknown blocking comment is treated as blocking. The return
  * value keeps `observed` so a caller cannot read an unobserved result as an
- * empty one.
+ * empty one, and it propagates `complete` so a caller cannot read a truncated
+ * conversation as a whole one.
  */
 export function unresolvedReviewThreads(review = {}) {
   if (review.observed !== true || !Array.isArray(review.threads)) {
@@ -274,6 +317,7 @@ export function unresolvedReviewThreads(review = {}) {
   return {
     observed: true,
     operation: 'unresolved-review-threads',
+    complete: review.complete === true,
     threads: review.threads.filter((thread) => thread.isResolved !== true),
   };
 }

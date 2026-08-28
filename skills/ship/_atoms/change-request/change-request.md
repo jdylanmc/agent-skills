@@ -103,9 +103,10 @@ push, so detection recognizes no provider. Say that rather than reporting a
 change request nobody can open.
 
 This seam is deliberately narrow: it opens one change request and reads back the
-identifier. It does not resolve merge state, read review threads, or watch
-checks. Those belong to `shepherd` and to later work, and a seam that could do
-them would make this atom the place a caller reaches for them.
+identifier. It does not resolve merge state or watch checks — those belong to
+`shepherd` — and it does not read review threads, which belong to `ship`'s own
+later review work rather than to `shepherd`. A seam that could do any of them
+would make this atom the place a caller reaches for them.
 
 The shared unit now supplies detection, so extracting it was a move rather than a
 rewrite. Its condition vocabulary is wider than the outcomes below and will grow.
@@ -156,8 +157,9 @@ hands the change request to somebody and cannot do that anonymously:
 
 Together these are the handoff target and its freshness receipt. They are plain
 git and publication facts, so recording them does not widen this seam: the base
-branch's own merge policy, its review state, and its checks stay unread here and
-belong to `shepherd`.
+branch's own merge policy, its review decision, and its checks stay unread here
+and belong to `shepherd`, while the review-thread conversation stays unread here
+and belongs to `ship`'s own later review work rather than to `shepherd`.
 
 ## Boundaries
 

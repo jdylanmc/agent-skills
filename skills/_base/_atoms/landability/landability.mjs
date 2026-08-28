@@ -67,6 +67,60 @@ export function requiresUpToDateBranch(value) {
   return normalizeUpToDatePolicy(value) === 'required';
 }
 
+/**
+ * Map an interpreted merge-state reading onto the mergeability signal the
+ * shepherding disposition consumes.
+ *
+ * `interpretMergeState`, produced by the shepherd-local provider-state unit,
+ * and `classifyTerminalDisposition`, which consumes it, sit on opposite sides
+ * of this seam, so the shape carried between them lives here once. The
+ * translation keeps three facts deliberately apart that must never be folded
+ * together:
+ *
+ *   - `state` is the *content* merge state only — `mergeable`, `conflicted`,
+ *     or `unobserved`. Whether the branch's content can merge is a different
+ *     question from whether policy or review permits it.
+ *   - `blocked` is a policy or administrative block, carried explicitly and
+ *     never hidden inside `state`. Rebasing cannot clear it.
+ *   - `reviewDecision` is the review gate, also carried explicitly.
+ *
+ * An unobserved reading yields an unobserved signal: `state: 'unobserved'`,
+ * with every blocking gate left unobserved rather than reported as one that
+ * permits a merge.
+ *
+ * @param {unknown} interpreted The result of `interpretMergeState`.
+ * @returns {{observed: boolean, state: 'mergeable'|'conflicted'|'unobserved', blocked: boolean|null, behind: boolean|null, reviewDecision: string, isDraft: boolean|null, baseSha: string|null, headSha: string|null, upToDatePolicy: string}}
+ */
+export function normalizeMergeabilitySignal(interpreted) {
+  if (interpreted === null || typeof interpreted !== 'object' || interpreted.observed !== true) {
+    return {
+      observed: false,
+      state: 'unobserved',
+      blocked: null,
+      behind: null,
+      reviewDecision: 'unobserved',
+      isDraft: null,
+      baseSha: null,
+      headSha: null,
+      upToDatePolicy: 'unobserved',
+    };
+  }
+  const contentState = interpreted.mergeState === 'mergeable' || interpreted.mergeState === 'conflicted'
+    ? interpreted.mergeState
+    : 'unobserved';
+  return {
+    observed: true,
+    state: contentState,
+    blocked: typeof interpreted.blocked === 'boolean' ? interpreted.blocked : null,
+    behind: typeof interpreted.behind === 'boolean' ? interpreted.behind : null,
+    reviewDecision: typeof interpreted.reviewDecision === 'string' ? interpreted.reviewDecision : 'unobserved',
+    isDraft: typeof interpreted.isDraft === 'boolean' ? interpreted.isDraft : null,
+    baseSha: nonEmptyString(interpreted.baseSha),
+    headSha: nonEmptyString(interpreted.headSha),
+    upToDatePolicy: normalizeUpToDatePolicy(interpreted.upToDatePolicy),
+  };
+}
+
 export function nonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }

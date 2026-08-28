@@ -331,21 +331,36 @@ test('Azure review state comes from reviewer votes on the pull request payload',
   assert.equal(noReviewers.reviewDecision, 'unobserved', 'no reviewer collection is unobserved, never approved');
 });
 
-test('an Azure up-to-date policy is required only when a matching policy evaluation is visible', () => {
-  const required = interpretMergeState(AZURE, {
-    mergeStatus: 'succeeded',
-    policyEvaluations: [{ configuration: { type: { displayName: 'Require branch to be up to date' } } }],
-  });
+test('an Azure up-to-date policy is read from the policy list, required only when a matching evaluation is visible', () => {
+  // The policy comes from `az repos pr policy list` (read-checks), which
+  // genuinely carries policy evaluations — not from a pull-request-show
+  // response, which never carried the field the old test fabricated onto it.
+  const required = interpretValidation(AZURE, [
+    { evaluationId: 'e1', status: 'approved', configuration: { isBlocking: true, type: { displayName: 'Require branch to be up to date' } } },
+  ]);
   assert.equal(required.upToDatePolicy, 'required');
 
-  const noEvidence = interpretMergeState(AZURE, {
-    mergeStatus: 'succeeded',
-    policyEvaluations: [{ configuration: { type: { displayName: 'Minimum number of reviewers' } } }],
-  });
-  assert.equal(noEvidence.upToDatePolicy, 'unobserved', 'an unrelated policy is not proof the up-to-date policy is absent');
+  // A readable list with no up-to-date policy is direct evidence of its absence.
+  const notRequired = interpretValidation(AZURE, [
+    { evaluationId: 'e1', status: 'approved', configuration: { isBlocking: true, type: { displayName: 'Minimum number of reviewers' } } },
+  ]);
+  assert.equal(notRequired.upToDatePolicy, 'not-required', 'a present list with no such policy proves it is absent');
 
-  const absent = interpretMergeState(AZURE, { mergeStatus: 'succeeded' });
-  assert.equal(absent.upToDatePolicy, 'unobserved');
+  // An unreadable list is unobserved: the read never produced a policy list.
+  const unreadable = interpretValidation(AZURE, { count: 3 });
+  assert.equal(unreadable.observed, false);
+  assert.equal(unreadable.upToDatePolicy, undefined);
+
+  // The Azure pull-request-show response no longer carries an up-to-date policy;
+  // read-state reports it unobserved regardless of any evaluations on the show.
+  const fromShow = interpretMergeState(AZURE, { mergeStatus: 'succeeded' });
+  assert.equal(fromShow.upToDatePolicy, 'unobserved');
+
+  // GitHub's status rollup proves nothing about branch policy.
+  const github = interpretValidation(GITHUB, {
+    statusCheckRollup: [{ name: 'validate', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+  });
+  assert.equal(github.upToDatePolicy, 'unobserved');
 });
 
 test('a provider that has not computed mergeability is unobserved, not mergeable', () => {
@@ -363,6 +378,69 @@ test('a provider that has not computed mergeability is unobserved, not mergeable
   const absent = interpretMergeState(GITHUB, { number: 42 });
   assert.equal(absent.observed, false);
   assert.equal(absent.reason, 'merge-state-absent');
+});
+
+test('Azure rejectedByPolicy is content-mergeable but blocked, not a conflict', () => {
+  // A policy rejection reported as a merge conflict would trigger a pointless
+  // rebase; a rebase cannot clear a policy block.
+  const rejected = interpretMergeState(AZURE, {
+    mergeStatus: 'rejectedByPolicy',
+    reviewers: [{ vote: 10 }],
+  });
+  assert.equal(rejected.observed, true);
+  assert.equal(rejected.mergeState, 'mergeable', 'the content still merges');
+  assert.equal(rejected.blocked, true, 'the block is carried explicitly, not folded into a conflict');
+});
+
+test('Azure failure to compute mergeability is unobserved, never a conflict', () => {
+  const failure = interpretMergeState(AZURE, { mergeStatus: 'failure' });
+  assert.equal(failure.observed, false);
+  assert.equal(failure.reason, 'provider-has-not-computed-mergeability');
+  assert.equal(failure.raw, 'failure');
+  assert.equal(failure.mergeState, undefined, 'a failed computation is not a conflict');
+});
+
+test('a resolved target surfaces head-repository identity and an observation timestamp', () => {
+  const github = interpretTarget(
+    GITHUB,
+    {
+      number: 42,
+      url: 'https://github.com/example/repo/pull/42',
+      headRefName: 'feature',
+      baseRefName: 'main',
+      headRefOid: 'aaaaaaa',
+      headRepositoryOwner: { login: 'contributor' },
+      headRepository: { name: 'repo', nameWithOwner: 'contributor/repo' },
+      isCrossRepository: true,
+      isDraft: false,
+    },
+    { observedAt: '2026-08-28T00:00:00Z' },
+  );
+  assert.equal(github.headRepository.owner, 'contributor');
+  assert.equal(github.headRepository.name, 'repo');
+  assert.equal(github.headRepository.nameWithOwner, 'contributor/repo');
+  assert.equal(github.headRepository.isCrossRepository, true);
+  assert.equal(github.headRepository.writable, 'unobserved', 'writability is not claimed from a read that cannot prove it');
+  assert.equal(github.observedAt, '2026-08-28T00:00:00Z');
+
+  // A same-repo change request reports no cross-repository indication and no
+  // fork owner, but still carries an observation timestamp.
+  const sameRepo = interpretTarget(GITHUB, {
+    headRefName: 'feature', baseRefName: 'main', headRefOid: 'aaaaaaa', isCrossRepository: false,
+  });
+  assert.equal(sameRepo.headRepository.isCrossRepository, false);
+  assert.ok(Number.isFinite(Date.parse(sameRepo.observedAt)), 'a default observation timestamp is a valid instant');
+
+  const azure = interpretTarget(AZURE, {
+    sourceRefName: 'refs/heads/feature',
+    targetRefName: 'refs/heads/main',
+    lastMergeSourceCommit: { commitId: 'bbbbbbb' },
+    forkSource: { repository: { name: 'fork', project: { name: 'contributor' } } },
+  });
+  assert.equal(azure.headRepository.isCrossRepository, true);
+  assert.equal(azure.headRepository.name, 'fork');
+  assert.equal(azure.headRepository.owner, 'contributor');
+  assert.equal(azure.headRepository.writable, 'unobserved');
 });
 
 test('validation results are normalized from each provider native output shape', () => {

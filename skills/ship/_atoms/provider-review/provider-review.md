@@ -25,14 +25,18 @@ once a second skill composes it, and today *no* skill composes this one: its
 consumer arrives with issue #102, which wires review reading into ship's review
 half. Until then it lands unconsumed, deliberately, and its `used-by` is empty.
 
-Keeping it local to `ship` is what makes a boundary enforceable rather than
-merely promised. `shepherd` reads merge and validation state through its own
-local `provider-state`, and cross-skill local composition is forbidden by the
-graph validator, so a shepherd unit *cannot* compose this ship-local unit.
-"Shepherd cannot reach review threads" is therefore a property the validator
-checks, not a sentence a reviewer has to trust. Promoting this unit to `_base`,
-or collapsing it into `provider-state`, would let any caller acquire
-comment-handling authority by composing what it already needed.
+Keeping it local to `ship` is what makes a boundary enforceable by composition
+rather than merely promised. `shepherd` reads merge and validation state through
+its own local `provider-state`, and cross-skill local **composition** is
+forbidden by the graph validator, so a shepherd unit cannot *compose* this
+ship-local unit. "Shepherd acquires no review-thread authority by composition"
+is therefore a property the composition graph enforces. The validator governs
+the composition graph, not the code-dependency graph — a unit's script may still
+`import` another's — so the guarantee is precisely that shepherd gains no
+review-thread authority by composing what it already needs, not that imports are
+prevented. Promoting this unit to `_base`, or collapsing it into
+`provider-state`, would let any caller acquire comment-handling authority by
+composing what it already needed.
 
 Use this only when detection reports `supported-provider`.
 
@@ -58,14 +62,26 @@ hand-rolls a call against a raw REST endpoint.
 | Situation | Result |
 | --- | --- |
 | Detection is not `supported-provider`. | Refused, carrying the detection condition. |
-| No response, or a response that is not an object. | `observed: false`, reason `response-absent`. |
+| No response, or a response that is not an object or an array of page objects. | `observed: false`, reason `response-absent`. |
 | A response with no thread collection. | `observed: false`, reason `review-threads-absent`, naming the missing field. |
 | A thread whose resolution state the provider did not report. | Counted as unresolved. |
+| A read whose outer thread page or a thread's nested comment page was truncated. | `observed: true` with `complete: false` and an `incomplete` list naming what was truncated. |
 
 "No threads" and "threads not read" lead a caller to opposite conclusions, and
 only one of them is safe to act on, so an unread result is never normalized to
 an empty list. A thread with unknown resolution state counts as unresolved,
 because an unknown blocking comment is treated as blocking.
+
+A partial read is its own case. `gh api graphql --paginate` emits one JSON
+object per page, so a GitHub response may be a single page object or an array of
+them; the pages are aggregated. Outer completeness comes from the final page's
+`reviewThreads.pageInfo.hasNextPage`, and each thread's nested `comments`
+connection carries its own `pageInfo.hasNextPage`. When either is truncated the
+threads that were read are kept, but the result reports `complete: false` and
+names the truncation in `incomplete`, and that `complete` flag propagates
+through `unresolved-review-threads`. A truncated read must never masquerade as a
+complete one, because "these are all the threads" and "these are the threads I
+managed to read" are different claims.
 
 ## Untrusted Data
 

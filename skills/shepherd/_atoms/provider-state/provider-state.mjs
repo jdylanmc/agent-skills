@@ -34,6 +34,7 @@ import {
   requireObservableProvider,
 } from '../../../_base/_atoms/provider-detect/provider-detect.mjs';
 import {
+  normalizeMergeabilitySignal,
   normalizeUpToDatePolicy,
   requiresUpToDateBranch,
 } from '../../../_base/_atoms/landability/landability.mjs';
@@ -41,14 +42,16 @@ import {
 export { ProviderCommandError };
 
 /**
- * The base's up-to-date requirement is shared vocabulary: the skill that reads
- * change-request state and the skill that publishes one consume the same three
- * values. One implementation lives in the shared landability unit and is
- * re-exported here so a caller keeps one import and the two sides cannot end up
- * disagreeing about what the value means. It is a field of `read-state`, not a
- * fourth operation.
+ * The base's up-to-date requirement and the mergeability signal are shared
+ * vocabulary: the skill that reads change-request state and the skill that
+ * publishes one consume the same normalized values. Their one implementation
+ * lives in the shared landability unit and is re-exported here so a caller
+ * keeps a single import and the two sides cannot end up disagreeing about what
+ * a value means. `normalizeUpToDatePolicy`/`requiresUpToDateBranch` normalize
+ * the up-to-date policy; `normalizeMergeabilitySignal` maps this unit's
+ * `interpretMergeState` output onto the signal the disposition consumes.
  */
-export { normalizeUpToDatePolicy, requiresUpToDateBranch };
+export { normalizeMergeabilitySignal, normalizeUpToDatePolicy, requiresUpToDateBranch };
 
 /**
  * The exact command shapes this unit is allowed to construct. A read-only guard
@@ -93,7 +96,7 @@ function command(detection, operation, tool, args) {
   });
 }
 
-const GITHUB_TARGET_FIELDS = 'number,url,headRefName,baseRefName,headRefOid,headRepositoryOwner,isDraft';
+const GITHUB_TARGET_FIELDS = 'number,url,headRefName,baseRefName,headRefOid,headRepositoryOwner,headRepository,isCrossRepository,isDraft';
 const GITHUB_MERGE_FIELDS = 'number,url,mergeable,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid,headRefOid';
 const GITHUB_CHECK_FIELDS = 'number,url,headRefOid,statusCheckRollup';
 
@@ -186,10 +189,50 @@ function present(value) {
 }
 
 /**
+ * Head-repository identity a run needs before it may push: the owner and name
+ * of the repository the change request's head lives in, and whether that repo
+ * differs from the base (a fork or cross-repository change request). This is
+ * the push-safety metadata that is genuinely observable from a resolve-target
+ * read. Writability is *not* observable from this read, so it is reported
+ * `unobserved` rather than claimed — a caller that needs a writable head fails
+ * closed on `unobserved`, it never treats it as writable.
+ */
+function githubHeadRepository(payload) {
+  const owner = payload?.headRepositoryOwner?.login;
+  const name = payload?.headRepository?.name;
+  const nameWithOwner = payload?.headRepository?.nameWithOwner;
+  return {
+    owner: present(owner) ? String(owner) : null,
+    name: present(name) ? String(name) : null,
+    nameWithOwner: present(nameWithOwner) ? String(nameWithOwner) : null,
+    isCrossRepository: typeof payload?.isCrossRepository === 'boolean' ? payload.isCrossRepository : null,
+    writable: 'unobserved',
+  };
+}
+
+function azureHeadRepository(payload) {
+  const fork = payload?.forkSource ?? null;
+  const repo = fork?.repository ?? null;
+  const name = repo?.name;
+  const owner = repo?.project?.name;
+  return {
+    owner: present(owner) ? String(owner) : null,
+    name: present(name) ? String(name) : null,
+    nameWithOwner: null,
+    isCrossRepository: fork ? true : null,
+    writable: 'unobserved',
+  };
+}
+
+/**
  * Normalizes a resolve-target response. A response that omits any of branch,
  * base, or head commit is unobserved, naming what was missing.
+ *
+ * `observedAt` is captured at interpretation time so the resolved target
+ * carries its own read timestamp; a caller may inject a clock for deterministic
+ * use.
  */
-export function interpretTarget(detection, payload) {
+export function interpretTarget(detection, payload, { observedAt = new Date().toISOString() } = {}) {
   const guard = requireObservableProvider(detection);
   if (!guard.ok) {
     return unobserved('resolve-target', 'provider-state-unobservable');
@@ -228,6 +271,8 @@ export function interpretTarget(detection, payload) {
     headSha: String(fields.headSha),
     url: present(fields.url) ? String(fields.url) : null,
     isDraft: typeof fields.isDraft === 'boolean' ? fields.isDraft : null,
+    headRepository: detection.provider === 'github' ? githubHeadRepository(payload) : azureHeadRepository(payload),
+    observedAt,
   };
 }
 
@@ -259,11 +304,19 @@ const GITHUB_REVIEW_DECISIONS = new Map([
   ['REVIEW_REQUIRED', 'review-required'],
 ]);
 
+/**
+ * Azure DevOps `mergeStatus` describes the *content* merge only, plus one
+ * policy outcome. `succeeded` and `conflicts` are content states. A
+ * `rejectedByPolicy` result is content-mergeable but administratively blocked —
+ * a policy block, not a merge conflict, so it must not be reported as
+ * `conflicted` (which would provoke a pointless rebase). A `failure` result is
+ * the provider stating it could not compute mergeability, so it is unobserved,
+ * carrying its raw value, never `conflicted`.
+ */
 const AZURE_MERGE_STATES = new Map([
-  ['succeeded', 'mergeable'],
-  ['conflicts', 'conflicted'],
-  ['failure', 'conflicted'],
-  ['rejectedByPolicy', 'conflicted'],
+  ['succeeded', { mergeState: 'mergeable', blocked: false }],
+  ['conflicts', { mergeState: 'conflicted', blocked: false }],
+  ['rejectedByPolicy', { mergeState: 'mergeable', blocked: true }],
 ]);
 
 /**
@@ -291,32 +344,15 @@ function azureReviewDecision(payload) {
 }
 
 /**
- * Azure DevOps up-to-date evidence: a visible "require branch up to date"-style
- * policy evaluation on the payload yields `required`. Nothing else in a pull
- * request show response proves the policy, so everything else is `unobserved`,
- * never `not-required`.
- */
-function azureUpToDateEvidence(payload) {
-  const evaluations = Array.isArray(payload?.policyEvaluations) ? payload.policyEvaluations : null;
-  if (!evaluations) {
-    return undefined;
-  }
-  const visible = evaluations.some((evaluation) => {
-    const type = evaluation?.configuration?.type ?? {};
-    return /up[\s-]?to[\s-]?date|require.*branch/i.test(String(type.displayName ?? type.id ?? ''));
-  });
-  return visible ? true : undefined;
-}
-
-/**
  * Normalizes merge state, review state, and the up-to-date policy.
  *
  * A provider value meaning "not computed yet" — GitHub's `UNKNOWN`, Azure
- * DevOps' `queued` or `notSet` — is unobserved, not mergeable and not
- * conflicted. The up-to-date policy is `required` only from evidence that
- * actually exists (GitHub's `BEHIND`, or a visible Azure DevOps up-to-date
- * policy) and `unobserved` for every other state, because nothing else in the
- * response proves the policy's presence or absence.
+ * DevOps' `queued`, `notSet`, or `failure` — is unobserved, not mergeable and
+ * not conflicted. The up-to-date policy here is `required` only from evidence a
+ * pull-request-show response actually carries: GitHub's `mergeStateStatus:
+ * BEHIND`. Azure DevOps' up-to-date policy is *not* readable from the show
+ * response, so it is `unobserved` here and is instead read from the
+ * policy-evaluation list in `read-checks`.
  */
 export function interpretMergeState(detection, payload) {
   const guard = requireObservableProvider(detection);
@@ -332,8 +368,17 @@ export function interpretMergeState(detection, payload) {
     return unobserved('read-state', 'merge-state-absent', ['mergeable']);
   }
 
-  const table = detection.provider === 'github' ? GITHUB_MERGE_STATES : AZURE_MERGE_STATES;
-  const mergeState = table.get(String(raw));
+  let mergeState;
+  let azureBlocked = null;
+  if (detection.provider === 'github') {
+    mergeState = GITHUB_MERGE_STATES.get(String(raw));
+  } else {
+    const azureState = AZURE_MERGE_STATES.get(String(raw));
+    if (azureState) {
+      mergeState = azureState.mergeState;
+      azureBlocked = azureState.blocked;
+    }
+  }
   if (!mergeState) {
     return {
       ...unobserved('read-state', 'provider-has-not-computed-mergeability'),
@@ -356,8 +401,11 @@ export function interpretMergeState(detection, payload) {
     reviewDecision = GITHUB_REVIEW_DECISIONS.get(String(payload.reviewDecision ?? '').toUpperCase()) ?? 'unobserved';
     upToDatePolicy = normalizeUpToDatePolicy(statusRaw === 'BEHIND' ? true : undefined);
   } else {
+    blocked = azureBlocked;
     reviewDecision = azureReviewDecision(payload);
-    upToDatePolicy = normalizeUpToDatePolicy(azureUpToDateEvidence(payload));
+    // The Azure up-to-date policy is not carried by a pull-request-show
+    // response; it is read from the policy list in `read-checks`.
+    upToDatePolicy = normalizeUpToDatePolicy(undefined);
   }
 
   return {
@@ -401,6 +449,23 @@ const AZURE_POLICY_STATUS = new Map([
   ['running', 'pending'],
   ['notApplicable', 'skipped'],
 ]);
+
+/**
+ * Reads the Azure DevOps up-to-date policy from a *policy list* — the
+ * `az repos pr policy list` response, which genuinely carries policy
+ * evaluations. A present, readable list is direct evidence in both directions:
+ * a visible "require branch up to date"-style blocking evaluation yields
+ * `required`, and a readable list with no such evaluation yields `not-required`
+ * (a present list is direct evidence of the policy's absence). Only an
+ * unreadable list is `unobserved`.
+ */
+function azureUpToDatePolicy(evaluations) {
+  const visible = evaluations.some((evaluation) => {
+    const type = evaluation?.configuration?.type ?? {};
+    return /up[\s-]?to[\s-]?date|require.*branch/i.test(String(type.displayName ?? type.id ?? ''));
+  });
+  return visible ? 'required' : 'not-required';
+}
 
 function githubCheck(entry) {
   const name = present(entry?.name) ? String(entry.name) : (present(entry?.context) ? String(entry.context) : null);
@@ -449,6 +514,11 @@ function azureCheck(entry) {
  * deliberately not `passing`: a change request with no reported checks has not
  * demonstrated anything. An unrecognized shape is `validation-status-absent`,
  * never an empty pass.
+ *
+ * For Azure DevOps this response is also where the base's up-to-date policy is
+ * read, because the policy list — unlike a pull-request-show response —
+ * genuinely carries policy evaluations. GitHub's `statusCheckRollup` proves
+ * nothing about branch policy, so `upToDatePolicy` stays `unobserved` there.
  */
 export function interpretValidation(detection, payload) {
   const guard = requireObservableProvider(detection);
@@ -487,6 +557,9 @@ export function interpretValidation(detection, payload) {
     operation: 'read-checks',
     provider: detection.provider,
     status,
+    upToDatePolicy: detection.provider === 'github'
+      ? normalizeUpToDatePolicy(undefined)
+      : normalizeUpToDatePolicy(azureUpToDatePolicy(rollup)),
     checks,
   };
 }

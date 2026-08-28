@@ -106,6 +106,7 @@ jobs:
           skills/next-step-selection/next-step-selection.conformance.test.mjs
           skills/sanity-check/sanity-check.conformance.test.mjs
           skills/shepherd/shepherd.conformance.test.mjs
+          skills/shepherd/_atoms/shepherd-disposition/shepherd-disposition.test.mjs
           skills/roast/_molecules/roast-intent/roast-intent.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-detect/cmux-detect.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-dispatch/cmux-dispatch.test.mjs

@@ -167,6 +167,24 @@ test('the read-only allow-list refuses a mutation document and every write shape
   assert.doesNotThrow(() => reviewThreadsCommand(AZURE, AZURE_TARGET));
 });
 
+test('a document sharing the sanctioned query prefix but tampered with a mutation is refused', () => {
+  // The guard sanctions the exact fixed query by equality, so a document that
+  // keeps the sanctioned prefix and appends a mutation does not match.
+  const tampered = `${GITHUB_REVIEW_THREADS_QUERY}\nmutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }`;
+  assert.throws(
+    () => assertReadOnlyCommand({
+      tool: 'gh',
+      args: [
+        'api', 'graphql', '--paginate',
+        '-F', 'owner=example', '-F', 'name=repo', '-F', 'number=42',
+        '-f', `query=${tampered}`,
+      ],
+    }),
+    (error) => error instanceof ProviderCommandError && error.code === 'mutating-command',
+    'only the exact sanctioned query document is a read',
+  );
+});
+
 test('a credential offered by a caller never reaches the command line', () => {
   for (const command of [
     reviewThreadsCommand(GITHUB, { ...GITHUB_TARGET, token: 'caller-supplied-credential-value' }),
@@ -240,12 +258,78 @@ test('a change request that genuinely has no threads is observed and empty', () 
   const none = interpretReviewThreads(GITHUB, githubResponse([]));
 
   assert.equal(none.observed, true);
+  assert.equal(none.complete, true, 'a fully-read empty response is complete');
   assert.deepEqual(none.threads, []);
   assert.deepEqual(unresolvedReviewThreads(none), {
     observed: true,
     operation: 'unresolved-review-threads',
+    complete: true,
     threads: [],
   });
+});
+
+test('a single fully-read page is complete', () => {
+  const read = interpretReviewThreads(GITHUB, githubResponse([
+    { id: 'T1', isResolved: false, path: 'src/app.ts', comments: { pageInfo: { hasNextPage: false }, nodes: [] } },
+  ]));
+  assert.equal(read.observed, true);
+  assert.equal(read.complete, true);
+  assert.equal(read.incomplete, undefined, 'a complete read names no truncation');
+});
+
+test('a truncated outer thread page is reported incomplete, never as a whole read', () => {
+  const truncated = {
+    data: {
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            pageInfo: { hasNextPage: true },
+            nodes: [{ id: 'T1', isResolved: false, comments: { pageInfo: { hasNextPage: false }, nodes: [] } }],
+          },
+        },
+      },
+    },
+  };
+  const read = interpretReviewThreads(GITHUB, truncated);
+  assert.equal(read.observed, true);
+  assert.equal(read.complete, false, 'a truncated outer page is not a complete read');
+  assert.ok(read.incomplete.some((entry) => entry.truncated === 'reviewThreads'));
+  // The truncation propagates to the unresolved view a caller acts on.
+  assert.equal(unresolvedReviewThreads(read).complete, false);
+});
+
+test('a thread whose nested comments are truncated is reported incomplete', () => {
+  const read = interpretReviewThreads(GITHUB, githubResponse([
+    {
+      id: 'T1',
+      isResolved: false,
+      comments: { pageInfo: { hasNextPage: true }, nodes: [{ id: 'C1', author: { login: 'r' }, body: 'first' }] },
+    },
+  ]));
+  assert.equal(read.complete, false, 'a thread with more comments than one page is not fully read');
+  assert.ok(read.incomplete.some((entry) => entry.truncated === 'comments' && entry.threadId === 'T1'));
+  // The comments actually read are still carried through.
+  assert.equal(read.threads[0].comments[0].body, 'first');
+});
+
+test('a multi-page --paginate array aggregates all threads and settles completeness on the final page', () => {
+  const pageOne = {
+    data: { repository: { pullRequest: { reviewThreads: {
+      pageInfo: { hasNextPage: true },
+      nodes: [{ id: 'T1', isResolved: true, comments: { pageInfo: { hasNextPage: false }, nodes: [] } }],
+    } } } },
+  };
+  const pageTwo = {
+    data: { repository: { pullRequest: { reviewThreads: {
+      pageInfo: { hasNextPage: false },
+      nodes: [{ id: 'T2', isResolved: false, comments: { pageInfo: { hasNextPage: false }, nodes: [] } }],
+    } } } },
+  };
+  const read = interpretReviewThreads(GITHUB, [pageOne, pageTwo]);
+  assert.equal(read.observed, true);
+  assert.deepEqual(read.threads.map((thread) => thread.id), ['T1', 'T2'], 'threads from every page are aggregated');
+  assert.equal(read.complete, true, 'the final page reports no further pages');
+  assert.deepEqual(unresolvedReviewThreads(read).threads.map((thread) => thread.id), ['T2']);
 });
 
 test('an unknown resolution state counts as unresolved', () => {

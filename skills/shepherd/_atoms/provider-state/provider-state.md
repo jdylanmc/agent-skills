@@ -38,9 +38,9 @@ with that condition attached rather than returning a result.
 
 | Operation | Input | Output |
 | --- | --- | --- |
-| `resolve-target` | Change-request identifier and repository address. | Branch, base, head commit, change-request URL, and draft state when reported. |
+| `resolve-target` | Change-request identifier and repository address. | Branch, base, head commit, change-request URL, draft state when reported, head-repository identity (owner, name, and cross-repository/fork indication) as push-safety metadata, and an observation timestamp. |
 | `read-state` | Change-request identifier and repository address. | Merge state, the blocking `mergeStateStatus` signal, review decision, draft state, the up-to-date policy, base/head commits, and the provider's raw value. |
-| `read-checks` | Change-request identifier and repository address. | Normalized validation results with the raw provider fields preserved. |
+| `read-checks` | Change-request identifier and repository address. | Normalized validation results with the raw provider fields preserved, plus the Azure DevOps up-to-date policy read from the policy list. |
 
 Commands are built as argument vectors for the official tool — `gh` for GitHub
 and `az` for Azure DevOps — never as a shell string. A change-request identifier
@@ -55,9 +55,9 @@ by a required review, or behind a base that must contain its current commit — 
 
 | Signal | Source | Meaning |
 | --- | --- | --- |
-| `mergeState` | GitHub `mergeable`; Azure DevOps `mergeStatus`. | `mergeable`, `conflicted`, or unobserved when the provider has not computed it. |
+| `mergeState` | GitHub `mergeable`; Azure DevOps `mergeStatus`. | `mergeable`, `conflicted`, or unobserved when the provider has not computed it. Azure `rejectedByPolicy` is content-`mergeable` with `blocked: true` — a policy block, not a conflict — and Azure `failure` is unobserved, never conflicted. |
 | `mergeStateStatus` | GitHub `mergeStateStatus`. | Normalized `clean`, `behind`, `blocked`, `dirty`, `draft`, `unstable`, `has-hooks`, or `unobserved` for `UNKNOWN` and absent. |
-| `blocked` / `behind` | GitHub `mergeStateStatus`. | Explicit signals a caller acts on; `null` when the status was `UNKNOWN` or absent, never `false`. |
+| `blocked` / `behind` | GitHub `mergeStateStatus`; Azure `mergeStatus`. | Explicit signals a caller acts on. GitHub sets both from `mergeStateStatus`; Azure sets `blocked` from `rejectedByPolicy`. `null` when the status was `UNKNOWN` or absent, never `false`. |
 | `reviewDecision` | GitHub `reviewDecision`; Azure DevOps reviewer votes. | `approved`, `changes-requested`, `review-required`, or `unobserved`. An absent decision is `unobserved`, never approved and never "no reviews required". |
 
 GitHub `UNKNOWN` is "the provider has not computed mergeability", not a state.
@@ -75,7 +75,7 @@ This is the property the unit exists to hold.
 | No response, or a response that is not an object. | `observed: false`, reason `response-absent`. |
 | A response missing branch, base, or head commit. | `observed: false`, reason `resolution-state-absent`, naming the missing fields. |
 | A response with no merge-state field. | `observed: false`, reason `merge-state-absent`. |
-| A provider value meaning "not computed yet" — GitHub `UNKNOWN`, Azure DevOps `queued` or `notSet`. | `observed: false`, reason `provider-has-not-computed-mergeability`, carrying the raw value. |
+| A provider value meaning "not computed yet" — GitHub `UNKNOWN`, Azure DevOps `queued`, `notSet`, or `failure`. | `observed: false`, reason `provider-has-not-computed-mergeability`, carrying the raw value. |
 | A response with no validation rollup — neither a top-level array nor an `evaluations` wrapper. | `observed: false`, reason `validation-status-absent`. |
 | A rollup that is present and empty. | `observed: true`, status `no-results` — deliberately not `passing`. |
 
@@ -96,8 +96,7 @@ results are not green.
 
 Some providers let a base branch refuse a change request that does not contain
 the base's current commit. That is hosted policy, not git state, so it is read
-here and reaches a caller only as a normalized value, surfaced on the
-interpreted `read-state` result.
+here and reaches a caller only as a normalized value.
 
 | Value | Meaning |
 | --- | --- |
@@ -105,24 +104,34 @@ interpreted `read-state` result.
 | `not-required` | The policy was read, and it imposes no such requirement. |
 | `unobserved` | The policy could not be read. |
 
-The policy is derived only from evidence that actually exists. GitHub reports
-`mergeStateStatus: BEHIND` exactly when the base requires the branch to contain
-it, so `BEHIND` is the evidence that yields `required`. For Azure DevOps a
-visible "require branch up to date"-style policy evaluation on the payload
-yields `required`. Every other state is `unobserved`, because nothing else in
-the response proves the policy's presence or absence — an omitted field is not
-proof that the policy is absent.
+The policy is derived only from evidence that actually exists, and the two
+providers surface it from different reads:
+
+- **GitHub** reports `mergeStateStatus: BEHIND` exactly when the base requires
+  the branch to contain it, so `BEHIND` on the `read-state` response yields
+  `required`. Nothing else on that response proves the policy, so every other
+  GitHub state is `unobserved` there — and GitHub `read-checks`
+  (`statusCheckRollup`) proves nothing about branch policy, so it stays
+  `unobserved` too.
+- **Azure DevOps** does *not* carry the policy on a pull-request-show response,
+  so `read-state` reports it `unobserved`. It is read instead from the
+  policy-evaluation list that `read-checks` (`az repos pr policy list`) already
+  fetches: a visible "require branch up to date"-style blocking evaluation
+  yields `required`, and a readable list with no such evaluation yields
+  `not-required` — a present list is direct evidence of the policy's absence.
+  Only an unreadable list is `unobserved`.
 
 `unobserved` is never reported as `not-required`. One says the policy imposes
 nothing; the other says nobody could look. Only `required` changes what a caller
 does, so an unreadable policy leaves existing behavior intact rather than
 causing a rebase on every base movement.
 
-This is a field of `read-state`, not a fourth operation. This unit still exposes
-exactly the three operations above. The vocabulary that normalizes the value is
-the shared one in `_base/_atoms/landability`, re-exported from this unit's helper
-so a caller keeps a single import and the producing and consuming skills cannot
-disagree about what the value means.
+The vocabulary that normalizes the value is the shared one in
+`_base/_atoms/landability`, re-exported from this unit's helper — alongside
+`normalizeMergeabilitySignal`, which maps this unit's `read-state` output onto
+the mergeability signal the disposition consumes — so a caller keeps a single
+import and the producing and consuming skills cannot disagree about what a value
+means. This unit still exposes exactly the three operations above.
 
 ## Read-Only By Allow-List
 

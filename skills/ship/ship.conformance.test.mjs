@@ -813,9 +813,11 @@ test('the provider seam is narrow, uses the official tool, and never fakes a cle
 
   // A wider seam is how shepherd's job, and the review-thread work that has
   // its own issue, would arrive here by convenience rather than by decision.
+  // Merge state and checks belong to shepherd; review threads belong to ship's
+  // own later review work, not to shepherd.
   assert.match(
     publish,
-    /It does not resolve merge state, read review threads, or watch\s+checks/,
+    /It does not resolve merge state or watch\s+checks[\s\S]*?it does not read review threads, which belong to `ship`'s own\s+later review work rather than to `shepherd`/,
   );
   assert.match(entry, /those belong to\s+`shepherd`/);
   assert.match(

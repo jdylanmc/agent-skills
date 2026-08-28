@@ -237,9 +237,10 @@ and a condition the adapter names and this skill does not enumerate is reported
 under the adapter's own name rather than mapped onto the nearest familiar one.
 
 The seam opens one change request and reads back its identifier. It does not
-resolve merge state, read review threads, or watch checks; those belong to
-`shepherd`. Keeping it that narrow is what let the shared `provider-detect` unit
-supply detection as a move rather than a rewrite.
+resolve merge state or watch checks — those belong to `shepherd` — and it does
+not read review threads, which belong to `ship`'s own later review work rather
+than to `shepherd`. Keeping it that narrow is what let the shared
+`provider-detect` unit supply detection as a move rather than a rewrite.
 
 ## The Handoff
 

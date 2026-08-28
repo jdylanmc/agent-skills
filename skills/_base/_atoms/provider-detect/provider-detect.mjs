@@ -97,7 +97,10 @@ export function parseRemoteHost(remoteUrl) {
 
   try {
     const url = new URL(value);
-    return url.hostname ? url.hostname.toLowerCase() : null;
+    // `URL.host` includes a non-default port; `URL.hostname` drops it. A ported
+    // endpoint must round-trip through host matching, so the port is preserved
+    // here as part of the transport host.
+    return url.host ? url.host.toLowerCase() : null;
   } catch {
     return null;
   }
@@ -134,6 +137,45 @@ export function providerForHost(host, hostProviders = {}) {
 }
 
 /**
+ * Transport hosts that are not the canonical API endpoint they belong to. An
+ * SSH remote or a `www.` alias reaches the same provider deployment as its API
+ * endpoint, so detection resolves it to that endpoint. Host matching downstream
+ * then compares one canonical endpoint against another rather than a transport
+ * alias against an API host.
+ */
+const TRANSPORT_TO_API_ENDPOINT = new Map([
+  ['ssh.dev.azure.com', 'dev.azure.com'],
+  ['ssh.github.com', 'github.com'],
+  ['www.github.com', 'github.com'],
+]);
+
+function splitHostPort(hostValue) {
+  const text = String(hostValue ?? '').toLowerCase();
+  const colon = text.lastIndexOf(':');
+  if (colon > 0 && /^[0-9]+$/.test(text.slice(colon + 1))) {
+    return { host: text.slice(0, colon), port: text.slice(colon + 1) };
+  }
+  return { host: text, port: null };
+}
+
+/**
+ * The canonical API endpoint for a transport host. A known SSH or alias host is
+ * mapped to its API endpoint; any port is preserved so a ported endpoint stays
+ * distinct. Returns null when there is no host to canonicalize.
+ */
+export function canonicalizeEndpoint(transportHost) {
+  if (!transportHost) {
+    return null;
+  }
+  const { host, port } = splitHostPort(transportHost);
+  if (!host) {
+    return null;
+  }
+  const canonicalHost = TRANSPORT_TO_API_ENDPOINT.get(host) ?? host;
+  return port ? `${canonicalHost}:${port}` : canonicalHost;
+}
+
+/**
  * Classifies tool readiness from a caller-supplied probe. Availability and
  * authentication are two independent observations, and each is only acted on
  * when it was actually reported:
@@ -148,13 +190,24 @@ export function providerForHost(host, hostProviders = {}) {
  * Collapsing an unreported field into an observed negative is the exact mistake
  * this unit exists to prevent: "not observed" and "observed false" send a
  * person to different places.
+ *
+ * A probe may optionally name the endpoint it observed (`host` or `endpoint`).
+ * When it does and that endpoint disagrees with the one this run targets, the
+ * probe observed a different account or deployment than the one being queried,
+ * so readiness against the queried endpoint is unobserved. A probe that omits
+ * the field stays permissive, so existing `{available,authenticated}` probes
+ * are unaffected.
  */
-function classifyTool(provider, toolAvailability) {
+function classifyTool(provider, toolAvailability, canonicalEndpoint = null) {
   if (!provider.cli) {
     return { status: 'provider-tool-unsupported', tool: null };
   }
   const probe = (toolAvailability ?? {})[provider.cli];
   if (probe === undefined || probe === null || typeof probe !== 'object') {
+    return { status: 'provider-tool-unobserved', tool: provider.cli };
+  }
+  const probedEndpoint = canonicalizeEndpoint(probe.host ?? probe.endpoint ?? null);
+  if (probedEndpoint !== null && canonicalEndpoint !== null && probedEndpoint !== canonicalEndpoint) {
     return { status: 'provider-tool-unobserved', tool: provider.cli };
   }
   if (probe.available === false) {
@@ -179,6 +232,17 @@ function unsupported(inspected, source) {
     inspected: [...inspected],
     observable: false,
   };
+}
+
+/**
+ * A redacted evidence label for one inspected remote. A complete remote URL may
+ * carry `user:token@` userinfo, so the raw URL is never copied into evidence;
+ * only the parsed host is reported, and an unparsable remote is recorded as
+ * `host:unparsed`. The redaction is centralized here so no evidence path can
+ * reintroduce the raw URL.
+ */
+function inspectedLabel(host) {
+  return host ? `host:${host}` : 'host:unparsed';
 }
 
 /**
@@ -207,32 +271,41 @@ export function detectProvider({
     if (!provider) {
       return unsupported([`explicit-provider:${explicitProvider}`], 'explicit-provider');
     }
-    const tool = classifyTool(provider, toolAvailability);
     // An operator who names a provider may also name its host. When they do not,
-    // the canonical host is explicitly unknown rather than assumed public, so a
-    // later command builder does not silently target `github.com`.
-    const host = typeof explicitHost === 'string' && explicitHost.trim() ? explicitHost.trim().toLowerCase() : null;
+    // the canonical endpoint is explicitly unknown rather than assumed public.
+    const host = canonicalizeEndpoint(
+      typeof explicitHost === 'string' && explicitHost.trim() ? explicitHost.trim() : null,
+    );
+    const tool = classifyTool(provider, toolAvailability, host);
+    // A `supported-provider` requires a canonical endpoint. Named without a
+    // resolvable endpoint, tool readiness cannot be established against any
+    // known host, so the condition is `provider-tool-unobserved` rather than a
+    // clean provider result whose commands would silently target `github.com`.
+    const status = host === null && tool.status === 'supported-provider'
+      ? 'provider-tool-unobserved'
+      : tool.status;
     return {
-      status: tool.status,
+      status,
       provider: provider.id,
       tool: tool.tool,
       host,
       source: 'explicit-provider',
       inspected: [`explicit-provider:${explicitProvider}`],
-      observable: tool.status === 'supported-provider',
+      observable: status === 'supported-provider',
     };
   }
 
   const inspected = [];
   for (const url of urls) {
-    const host = parseRemoteHost(url);
-    inspected.push(host ? `remote:${url} host:${host}` : `remote:${url} host:unparsed`);
-    const match = providerForHost(host, hostProviders);
+    const transportHost = parseRemoteHost(url);
+    inspected.push(inspectedLabel(transportHost));
+    const match = providerForHost(transportHost, hostProviders);
     if (!match) {
       continue;
     }
     const provider = providerById(match.providerId);
-    const tool = classifyTool(provider, toolAvailability);
+    const host = canonicalizeEndpoint(transportHost);
+    const tool = classifyTool(provider, toolAvailability, host);
     return {
       status: tool.status,
       provider: provider.id,
@@ -341,7 +414,7 @@ export function normalizeChangeRequestId(value) {
     if (!Number.isSafeInteger(value) || value < 1) {
       throw new ProviderCommandError(
         'invalid-change-request-identifier',
-        `not a change-request identifier: ${JSON.stringify(value)}`,
+        'a change-request identifier must be a positive integer',
       );
     }
     return String(value);
@@ -350,7 +423,7 @@ export function normalizeChangeRequestId(value) {
   if (!/^[1-9][0-9]*$/.test(text)) {
     throw new ProviderCommandError(
       'invalid-change-request-identifier',
-      `not a change-request identifier: ${JSON.stringify(value)}`,
+      'a change-request identifier must be a positive integer',
     );
   }
   return text;
@@ -366,7 +439,7 @@ export function normalizeGitHubRepository(repository, detection = {}) {
   const slug = typeof repository === 'string' ? repository : repository?.slug;
   const text = String(slug ?? '').trim();
   if (!/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})\/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$/.test(text)) {
-    throw new ProviderCommandError('invalid-repository', `not an owner/name repository: ${JSON.stringify(slug)}`);
+    throw new ProviderCommandError('invalid-repository', 'a GitHub repository must be an owner/name slug');
   }
   return isEnterpriseGitHubHost(detection) ? `${detectedHostOf(detection)}/${text}` : text;
 }
@@ -390,20 +463,32 @@ export function normalizeAzureRepository(repository, detection = {}) {
   const organizationUrl = String(repository?.organizationUrl ?? '').trim();
   const project = String(repository?.project ?? '').trim();
   const name = String(repository?.name ?? '').trim();
-  if (!/^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?(?:\/[^\s]*)?$/.test(organizationUrl) || !project || !name) {
+
+  // Parse with `URL` rather than a permissive regex so an organization URL that
+  // smuggles credentials in userinfo, or carries a query or fragment, is
+  // rejected instead of interpolated verbatim into the argv. Only a clean
+  // https origin with a path is accepted.
+  let parsed = null;
+  try {
+    parsed = new URL(organizationUrl);
+  } catch {
+    parsed = null;
+  }
+  const validOrganizationUrl = parsed !== null
+    && parsed.protocol === 'https:'
+    && parsed.username === ''
+    && parsed.password === ''
+    && parsed.search === ''
+    && parsed.hash === '';
+  if (!validOrganizationUrl || !project || !name) {
     throw new ProviderCommandError(
       'invalid-repository',
-      'an Azure DevOps repository needs an https organizationUrl, project, and name',
+      'an Azure DevOps repository needs an https organizationUrl without credentials, query, or fragment, plus a project and name',
     );
   }
   const detectedHost = detectedHostOf(detection);
   if (detectedHost) {
-    let organizationHost = null;
-    try {
-      organizationHost = new URL(organizationUrl).hostname.toLowerCase();
-    } catch {
-      organizationHost = null;
-    }
+    const organizationHost = canonicalizeEndpoint(parsed.host);
     if (organizationHost !== detectedHost) {
       throw new ProviderCommandError(
         'repository-host-mismatch',
@@ -451,6 +536,13 @@ function tokenMatches(spec, actual) {
   }
   if (spec.graphqlQuery) {
     return graphqlDocumentIsQuery(actual);
+  }
+  if (spec.graphqlQueryEquals !== undefined) {
+    // A fixed query document is sanctioned by exact equality, so a tampered
+    // document sharing the sanctioned prefix — a mutation appended after the
+    // query, for instance — does not match. The generic query check stays as
+    // defense in depth.
+    return actual === spec.graphqlQueryEquals && graphqlDocumentIsQuery(actual);
   }
   return false;
 }

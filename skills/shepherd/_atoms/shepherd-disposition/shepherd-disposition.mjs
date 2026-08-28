@@ -257,6 +257,18 @@ function classifyOutcome(signals, receipt) {
     return { disposition: 'needs-human', reason: `pull-request-${mergeability.state ?? 'not-mergeable'}`, defects };
   }
 
+  // A policy or administrative block and a required/changes-requested review are
+  // carried separately from content merge state, and neither is cleared by a
+  // rebase. Both send the change request to a person. These gates fire only on
+  // an explicit block (`blocked === true`) or an explicit blocking review
+  // decision, so a hand-built green signal that omits them is unaffected.
+  if (mergeability.blocked === true) {
+    return { disposition: 'needs-human', reason: 'pull-request-blocked', defects };
+  }
+  if (mergeability.reviewDecision === 'review-required' || mergeability.reviewDecision === 'changes-requested') {
+    return { disposition: 'needs-human', reason: `review-${mergeability.reviewDecision}`, defects };
+  }
+
   // Mergeable content and green checks are not landability when the base
   // refuses a behind branch. Under that policy the question has to be settled
   // rather than assumed: `behind === false` is the only answer that clears it,
