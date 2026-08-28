@@ -382,7 +382,23 @@ export function classifyUriSeed(input, { scope } = {}) {
     try {
       fsPath = fileURLToPath(url);
     } catch {
-      return { disposition: DISPOSITIONS.invalid, reason: 'file: URI is not a local path' };
+      // On Windows, fileURLToPath rejects a driveless absolute POSIX pathname
+      // (e.g. `file:///Users/x`) even though it is a legitimate local file
+      // reference, so reconstruct the native path from the URL pathname rather
+      // than discarding the seed. A pathname that begins with a second slash is
+      // a UNC-style authority and stays refused rather than resolving to a
+      // `\\server` remote share.
+      const pathname = url.pathname;
+      if (pathname.startsWith('//')) {
+        return { disposition: DISPOSITIONS.blockedAddress, reason: 'file: URI names a non-local host' };
+      }
+      let decoded;
+      try {
+        decoded = decodeURIComponent(pathname);
+      } catch {
+        return { disposition: DISPOSITIONS.invalid, reason: 'file: URI is not a local path' };
+      }
+      fsPath = path.normalize(decoded);
     }
     const resolved = path.resolve(fsPath);
     if (!localWithinScope(resolved, scope)) {
