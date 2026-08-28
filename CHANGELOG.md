@@ -145,6 +145,23 @@ below is unreleased and no comparison links are available.
   written before it stay readable unchanged, a log without it is uncorrelated
   rather than defective, and nothing else about recording, replay, or operation
   pairing changed.
+- **A post-mortem can now hand its findings to a reinforcement — with your
+  approval, never on its own.** `reinforce-skill` takes the change either from
+  your own words, exactly as before, or from one post-mortem recommendation
+  report. The report is inert until you approve it for this run: approval is a
+  receipt naming that report's SHA-256 and the one skill it authorizes, and a
+  report that was proposed, observed, or confident about itself is not approved.
+  Only the recommendations that explicitly name the skill being reinforced are
+  applied; the rest are reported and left for their own run. A missing,
+  ambiguous, malformed, unapproved, edited-since-approval, wrong-skill, or
+  self-contradicting report stops the run before anything is edited, and every
+  reason is listed at once. Applicable recommendations are reconciled into one
+  change request that joins the same intent-first workflow — the intent decision
+  is still yours to confirm, and an approved report never stands in for it — and
+  the pull request carries the whole chain from report digest and evidence
+  anchors through to the reviewed head. Nothing about the human-guidance path
+  changed, `post-mortem` is untouched, and no report is ever manufactured to
+  satisfy a shape.
 
 ### Removed
 

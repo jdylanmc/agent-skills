@@ -34,6 +34,7 @@ import { closureFor, readFrontmatter, validateRepository } from '../../scripts/v
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import {
   FAILURES,
+  SKILL_NAME_PATTERN,
   WORKFLOW_FILE,
   WRITE_CLASS,
   assertWorkflowAdditive,
@@ -42,6 +43,16 @@ import {
   isWritableClass,
   resolveSkillTarget,
 } from './_atoms/reinforcement-target/reinforcement-target.mjs';
+import {
+  REFUSALS as REPORT_REFUSALS,
+  admitReport,
+  groundingFromGuidance,
+} from './_atoms/report-intake/report-intake.mjs';
+import {
+  approvalFor,
+  conformingRecord,
+  reportText,
+} from './_atoms/report-intake/report-intake.fixtures.mjs';
 import {
   DECISIONS,
   applyEvent as decisionApplyEvent,
@@ -71,6 +82,7 @@ const GROUNDING = 'reinforce-skill/_atoms/change-grounding/change-grounding.md';
 const DECISION = 'reinforce-skill/_atoms/intent-decision/intent-decision.md';
 const NARROW = 'reinforce-skill/_atoms/narrow-change/narrow-change.md';
 const ROAST_ATOM = 'reinforce-skill/_atoms/reinforce-roast/reinforce-roast.md';
+const INTAKE = 'reinforce-skill/_atoms/report-intake/report-intake.md';
 
 /** The grant reinforce-skill was reviewed with. Nothing in the closure may widen it. */
 const PINNED_TOOLS = ['read', 'search', 'edit', 'execute', 'task'];
@@ -186,7 +198,17 @@ test('the routing description scopes to changing one existing skill and refuses 
   assert.match(description, /decide explicitly whether the intent changes/);
   assert.match(description, /record the change in the changelog/);
   assert.match(description, /open a pull request and stop/);
-  assert.match(description, /do not use to create a new skill, run a skill, refactor the library, edit doctrine, or widen another skill's permissions/i);
+  assert.match(description, /do not use to create a new skill, run a skill, refactor the library, edit doctrine, approve a report, or widen another skill's permissions/i);
+});
+
+test('the routing description names both ways a change arrives', () => {
+  // Discoverability, not decoration: a model routing an approved post-mortem
+  // recommendation to this skill has to see that it accepts one, and see in the
+  // same sentence that approving it is not this skill's job.
+  const { description } = frontmatter(ENTRY);
+  assert.match(description, /human-approved post-mortem recommendation report/);
+  assert.match(description, /the operator's own words/);
+  assert.match(description, /approve a report/i);
 });
 
 test('the grant is exactly what was reviewed, and nothing in the closure widens it', () => {
@@ -238,6 +260,7 @@ test('the edit grant is bounded to this package: no foreign unit carries write a
     '_base/_molecules/chronicler/chronicler.md',
     'reinforce-skill/SKILL.md',
     DECISION,
+    INTAKE,
     NARROW,
     ROAST_ATOM,
     TARGET,
@@ -362,14 +385,17 @@ test('the skill composes chronicler and the local reinforcement molecule', () =>
   ]);
 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
-  for (const unit of [MOLECULE, TARGET, GROUNDING, DECISION, NARROW, ROAST_ATOM]) {
+  for (const unit of [MOLECULE, TARGET, INTAKE, GROUNDING, DECISION, NARROW, ROAST_ATOM]) {
     assert.ok(closure.includes(unit), `${ENTRY} must reach ${unit}`);
   }
 });
 
-test('the molecule composes exactly the five reinforcement atoms', () => {
+test('the molecule composes exactly the six reinforcement atoms', () => {
   const parsed = frontmatter(MOLECULE);
-  assert.deepEqual(parsed.composes.sort(), [GROUNDING, DECISION, NARROW, ROAST_ATOM, TARGET].sort());
+  assert.deepEqual(
+    parsed.composes.sort(),
+    [GROUNDING, DECISION, INTAKE, NARROW, ROAST_ATOM, TARGET].sort(),
+  );
 });
 
 test('roast is reached by invocation, not composition, and is left untouched', () => {
@@ -753,6 +779,197 @@ test('the package carries a plain human-readable intent', () => {
   assert.match(normalized, /Intent first is the whole point/);
   assert.match(normalized, /A missing intent is reported and never blocks/);
   assert.match(normalized, /permission defended only by a promise is not a boundary/);
+});
+
+test('the intent carries the confirmed meaning: evidence from a report, authority from the operator', () => {
+  // The operator confirmed these exact words, and the whole feature rests on
+  // them. Anything that quietly softens "only the operator approval ... supplies
+  // authority" into "the report supplies authority" is the failure this pins.
+  const normalized = flat('reinforce-skill/intent.md');
+  assert.match(
+    normalized,
+    /Reinforce one existing skill from either unstructured human guidance or one exact human-approved post-mortem recommendation report\. The report supplies evidence and proposed changes; only the operator approval bound to its digest and target skill supplies authority\./,
+  );
+  assert.match(normalized, /Treating a report as its own approval/);
+  assert.match(normalized, /Editing the evidence it was handed/);
+  assert.match(normalized, /A report is data all the way down/);
+});
+
+test('a report is admitted only against an approval bound to its digest and this target', () => {
+  // Approval binding is a computed predicate, not a described one. Each mutation
+  // below changes exactly one field of an otherwise admissible run.
+  const report = reportText();
+  const approved = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+  assert.equal(approved.status, 'admitted');
+
+  const noGrant = admitReport({
+    report,
+    approval: approvalFor(report, 'changelog', { grant: true }),
+    target: 'changelog',
+  });
+  assert.equal(noGrant.status, 'refused', 'a truthy grant is not the grant');
+  assert.ok(noGrant.refusals.some((entry) => entry.code === REPORT_REFUSALS.unapprovedReport));
+
+  const wrongDigest = admitReport({
+    report,
+    approval: approvalFor(report, 'changelog', { report_sha256: 'a'.repeat(64) }),
+    target: 'changelog',
+  });
+  assert.ok(wrongDigest.refusals.some((entry) => entry.code === REPORT_REFUSALS.digestMismatch));
+
+  const wrongTarget = admitReport({
+    report,
+    approval: approvalFor(report, 'roast'),
+    target: 'changelog',
+  });
+  assert.ok(wrongTarget.refusals.some((entry) => entry.code === REPORT_REFUSALS.targetMismatch));
+
+  for (const refused of [noGrant, wrongDigest, wrongTarget]) {
+    assert.equal(refused.change_request, null, 'a refused report grounds nothing');
+  }
+});
+
+test('one run reinforces one skill, however many the report names', () => {
+  const report = reportText();
+  const admitted = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+
+  assert.deepEqual(admitted.applicable.map((entry) => entry.target_skill), ['changelog', 'changelog']);
+  assert.deepEqual(admitted.excluded.map((entry) => entry.target_skill), ['roast']);
+  assert.ok(
+    !JSON.stringify(admitted.change_request).includes('roast'),
+    "a foreign skill's recommendation never reaches this run's change request",
+  );
+});
+
+test('the report path threads into the one existing workflow, not a second one', () => {
+  const entry = flat(ENTRY);
+  const molecule = flat(MOLECULE);
+
+  assert.match(entry, /## Two Ways In, One Job/);
+  assert.match(entry, /## A Report Is Evidence; Only the Operator Is Authority/);
+  assert.match(molecule, /## One Workflow, However the Change Arrived/);
+
+  // The molecule reaches intake through composition, and intake is an atom of
+  // this package rather than a second routable entry point.
+  assert.ok(frontmatter(MOLECULE).composes.includes(INTAKE));
+  assert.equal(frontmatter(INTAKE).level, 'atom');
+  assert.deepEqual(frontmatter(INTAKE).composes, []);
+  assert.ok(
+    !fs.existsSync(path.join(SKILLS_ROOT, 'reinforce-skill', '_atoms', 'report-intake', 'SKILL.md')),
+    'report intake is a unit of this skill, never a second routable workflow',
+  );
+});
+
+test('reading a report widened no grant', () => {
+  // A second input source that needed a new permission would be a worse design
+  // than one that does not. The pinned grant is the proof.
+  assert.deepEqual(frontmatter(ENTRY).allowedTools, PINNED_TOOLS);
+  assert.deepEqual(frontmatter(INTAKE).allowedTools, ['read', 'execute']);
+  assert.match(flat(ENTRY), /The grant did not widen to read a report/);
+});
+
+test('the pull request preserves the whole lineage from report to reviewed head', () => {
+  const entry = flat(ENTRY);
+  for (const link of [
+    'report digest',
+    'post-mortem evidence anchors',
+    'applied recommendation IDs',
+    'approval receipt',
+    'intent decision',
+    'changed files',
+    'validation',
+    'roast',
+    'reviewed head',
+  ]) {
+    assert.ok(entry.includes(link), `the pull-request lineage must name ${link}`);
+  }
+
+  // And the lineage is produced, not merely described.
+  const report = reportText();
+  const { lineage } = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+  assert.deepEqual(Object.keys(lineage).sort(), [
+    'applied_recommendation_ids',
+    'approval_receipt',
+    'evidence_anchors',
+    'excluded_recommendations',
+    'quarantined_untrusted_directives',
+    'report_path',
+    'report_sha256',
+    'schema',
+    'target_skill',
+  ]);
+  assert.deepEqual(lineage.evidence_anchors, ['U1', 'T3']);
+});
+
+test('post-mortem is untouched: intake enforces its record contract without composing it', () => {
+  // The wrapped record is held to post-mortem's own contract. Proven by
+  // behaviour: a record that only post-mortem's rules would reject is rejected
+  // here, in post-mortem's own words.
+  const relaxed = conformingRecord();
+  relaxed.promotion_recommendations.ready_for_promotion = ['CS-1'];
+  const report = reportText({ record: relaxed });
+  const refused = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+
+  assert.equal(refused.status, 'refused');
+  assert.ok(refused.refusals.some((entry) => entry.code === REPORT_REFUSALS.malformedRecord));
+  assert.match(refused.refusals[0].message, /ready_for_promotion must be an empty list/);
+
+  // Composition still runs strictly downward: this is a code dependency, and no
+  // post-mortem unit is composed by this skill.
+  const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
+  for (const unit of closure) {
+    assert.ok(!unit.startsWith('post-mortem/'), `${ENTRY} must not compose ${unit}`);
+  }
+  assert.match(flat(INTAKE), /`skills\/post-mortem\/\*\*` is left exactly as it is/);
+});
+
+test('the human-guidance path is unchanged and needs no report at all', () => {
+  const request = groundingFromGuidance({
+    target: 'changelog',
+    guidance: 'the degraded path should say which reason applied',
+  });
+
+  assert.equal(request.source, 'human-guidance');
+  assert.equal(request.report_sha256, null);
+  assert.deepEqual(request.recommendation_ids, []);
+  assert.equal(request.changes[0].statement, 'the degraded path should say which reason applied');
+
+  const entry = flat(ENTRY);
+  assert.match(entry, /Human guidance stands alone/);
+  assert.match(entry, /no synthetic report is ever manufactured/);
+  assert.match(flat(GROUNDING), /Two Admissible Sources, One Grounding/);
+});
+
+test('the report is never approved, validated, or edited here', () => {
+  const entry = flat(ENTRY);
+  assert.match(entry, /Never approves, validates, or edits the evidence/);
+  assert.match(entry, /never mark(s)? a report approved|does not mark a\s+report approved/);
+  assert.match(entry, /anything under `skills\/post-mortem\//);
+  assert.match(flat(INTAKE), /It never marks a report approved/);
+
+  // The guard agrees: a post-mortem path is a foreign skill and is not writable.
+  assert.equal(
+    classifyWritePath(REPOSITORY_ROOT, 'reinforce-skill', 'skills/post-mortem/SKILL.md'),
+    WRITE_CLASS.foreignSkill,
+  );
+  assert.equal(isWritableClass(WRITE_CLASS.foreignSkill), false);
+});
+
+test('both units agree on what a routable skill name is', () => {
+  // Two definitions would eventually disagree, and the disagreement that
+  // matters is intake admitting a target the write-boundary guard refuses.
+  assert.ok(SKILL_NAME_PATTERN.test('changelog'));
+  for (const rejected of ['_base', 'Changelog', 'a/b', '../roast', '']) {
+    assert.ok(!SKILL_NAME_PATTERN.test(rejected), `${rejected} is not a routable name`);
+    assert.equal(
+      admitReport({
+        report: reportText(),
+        approval: approvalFor(reportText(), 'changelog'),
+        target: rejected,
+      }).status,
+      'refused',
+    );
+  }
 });
 
 test('every suite this package ships runs in continuous integration', () => {

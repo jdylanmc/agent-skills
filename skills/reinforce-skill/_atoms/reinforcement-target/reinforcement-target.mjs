@@ -53,6 +53,11 @@ export class TargetError extends Error {
  * `a/b`, an uppercase escape, and a leading-underscore `_base` all fail as
  * malformed rather than being caught later by a containment check that is
  * easier to get wrong.
+ *
+ * Exported as `SKILL_NAME_PATTERN` so report intake decides "is this a routable
+ * skill name?" with this definition rather than a second one. Two definitions
+ * would eventually disagree, and the disagreement that matters is intake
+ * admitting a target this guard would refuse.
  */
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -493,4 +498,4 @@ if (isDirectInvocation()) {
   }
 }
 
-export { FAILURES, WORKFLOW_FILE };
+export { FAILURES, SKILL_NAME as SKILL_NAME_PATTERN, WORKFLOW_FILE };

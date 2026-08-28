@@ -131,6 +131,8 @@ jobs:
           skills/spec/_atoms/spec-pair/spec-pair.test.mjs
           skills/reinforce-skill/reinforce-skill.conformance.test.mjs
           skills/reinforce-skill/_atoms/reinforcement-target/reinforcement-target.test.mjs
+          skills/reinforce-skill/_atoms/report-intake/report-intake.test.mjs
+          skills/reinforce-skill/_atoms/report-intake/report-intake.adversarial.test.mjs
           skills/reinforce-skill/_atoms/intent-decision/intent-decision.test.mjs
           skills/reinforce-skill/_atoms/reinforce-roast/reinforce-roast.test.mjs
           skills/post-mortem/post-mortem.conformance.test.mjs
