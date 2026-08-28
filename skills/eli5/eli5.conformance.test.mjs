@@ -12,10 +12,20 @@ import { fileURLToPath } from 'node:url';
  *
  * ENFORCED BEHAVIOURALLY — asserted against executed code or parsed structure,
  * so a real regression fails the test:
- *   - section count and order, concise style constraints (criteria 2, 3): read
- *     straight off the checker's exported constants and the parsed headings; and
+ *   - section count and order (criterion 2): read straight off the checker's
+ *     exported constants and the parsed headings; and
  *   - the read-only boundary (criteria 1, 9): read off the resolved tool grant
  *     and the pinned frontmatter, which a widening change would break.
+ *
+ * The behavioural enforcement of the concise style constraints (criterion 3)
+ * lives in the atom's own suite: explanation-ladder.test.mjs runs checkLadder
+ * and fails on section-too-long, line-too-long, and section-not-bulleted, so a
+ * checker that stopped enforcing the limits breaks there. What THIS file's
+ * criterion-3 test adds is narrower and does not call checkLadder: it is a
+ * consistency pin between the atom's documented limits and the checker's
+ * exported SECTION_WORD_LIMIT, LINE_WORD_LIMIT, and MINIMUM_BULLETS. It catches
+ * the doc text and the constants drifting apart; it does not, on its own, prove
+ * the checker still enforces them.
  *
  * PINNED AS A STATED CONTRACT — asserted only as authored prose in the atoms'
  * Markdown, so these are drift detectors on a promise, not proofs of behaviour:

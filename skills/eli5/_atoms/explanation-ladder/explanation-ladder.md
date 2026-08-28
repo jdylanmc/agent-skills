@@ -96,8 +96,10 @@ them is not concise.
 - No rung **restates** a line from another rung. That rule is a contract the
   drafting agent must honour; one explanation with three headings is the issue's
   explicit non-goal. What the checker actually catches is narrower: repeating a
-  line that differs only by **punctuation, emphasis, bullet style, or letter
-  case** is the failure it calls `content-repeated`. A genuinely **reworded**
+  line that differs only in **surface form — punctuation and other
+  non-alphanumeric symbols, emphasis markers, bullet style, whitespace, or
+  letter case** — is the failure it calls `content-repeated`. A genuinely
+  **reworded**
   restatement — the same point in different words — normalises differently and
   passes as `ladder-ok`, so keeping each rung distinct in substance is a
   judgement the checker cannot make, consistent with its "structure and
