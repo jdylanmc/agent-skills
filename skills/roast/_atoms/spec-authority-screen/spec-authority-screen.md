@@ -70,7 +70,7 @@ Markdown, and the regression suite derives both directions.
 | Category | Recorded when |
 | --- | --- |
 | `Missing pair evidence` | In the `envelope` phase, the evidence manifest has no entry naming a sibling, or names an absent sibling without its status. |
-| `Inverted authority` | A recommendation brings the nano specification into agreement with the full specification. |
+| `Inverted authority` | A recommendation brings the nano specification into agreement with the full specification, or an `Authority` field names anything except the nano locator alone. |
 | `Unattributed authority` | An entry rests on a disagreement between the layers and carries no `Authority` field. |
 | `Undeclared criterion citation` | An entry cites an acceptance-criterion identifier the staged nano specification does not declare. |
 
@@ -135,11 +135,12 @@ An entry that rests on a disagreement between the two layers carries:
 
 The field is the checkable part of this screen, and it exists for the same
 reason the intent screen requires a citation: a claim inferred from prose can
-be phrased around, and a claim stated in a field cannot. The field must name
-the nano locator, and only it. An entry naming any other locator as the
-authority is an `Inverted authority` defect regardless of how the surrounding
-sentences read — and so is an entry that names the nano locator but *also*
-names the full locator, because a field that resolves to both attributes
+be phrased around, and a claim stated in a field cannot. After stripping only
+incidental whole-field code-span quoting or a whole-field Markdown link, the
+field must equal the nano locator, and only it. An entry naming any other
+locator, any second locator, or any other trailing text as authority is an
+`Inverted authority` defect regardless of how the surrounding sentences read,
+because a field that resolves to more or less than the nano locator attributes
 nothing.
 
 An entry is treated as resting on a disagreement when it names a conflict term
@@ -168,6 +169,10 @@ to match the full specification" is still caught — and a negation that merely
 trails an inversion, "update the nano specification to match the full
 specification, rather than leaving the drift", reverses nothing and is still
 caught.
+
+Sentence splitting preserves path locators before applying this direction
+check, so "Update specs/checkout.nano.md to match specs/checkout.full.md" is
+screened the same way as the layer-name form.
 
 Recommending a change to the nano specification is otherwise entirely
 legitimate — an ambiguous criterion should be rewritten — so the screen does not

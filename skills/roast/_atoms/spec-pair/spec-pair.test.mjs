@@ -307,6 +307,23 @@ test('an absent link and a link that resolves elsewhere both break the pair', (t
   assert.ok(rules(broken).includes('broken-full-link'));
 });
 
+test('an absolute full-specification link is broken even when it points at the sibling', (t) => {
+  const root = workspace(t);
+  const fullPath = path.join(root, 'checkout-hold.full.md');
+  writePair(root, {
+    nano: CLEAN_NANO.replace('./checkout-hold.full.md', fullPath),
+  });
+
+  const record = stageSpecPair({
+    specPath: path.join(root, 'checkout-hold.nano.md'),
+    repositoryRoot: root,
+  });
+
+  assert.equal(record.link.status, 'Broken');
+  assert.equal(record.link.declared, fullPath);
+  assert.ok(rules(record).includes('broken-full-link'));
+});
+
 test('a full specification that restates a criterion differently conflicts with the authority', (t) => {
   const root = workspace(t);
   writePair(root, {
@@ -501,6 +518,59 @@ test('one specification identifier is never traced by another that shares its pr
     record.traceability.untracedRequirements.map((entry) => entry.section),
     ['Fraud screening'],
   );
+});
+
+test('a hyphenated specification identifier is traced only as an exact token', (t) => {
+  const unresolvedRoot = workspace(t);
+  writePair(unresolvedRoot, {
+    nano: CLEAN_NANO.replace('SPEC-CHECKOUT-HOLD', 'SPEC-CHECKOUT'),
+    full: [
+      '# In full',
+      '',
+      '## Fraud screening',
+      '',
+      'Traces to: SPEC-CHECKOUT-HOLD',
+      '',
+      'Every reservation must pass a fraud screen before it is confirmed.',
+      '',
+    ].join('\n'),
+  });
+
+  const unresolved = stageSpecPair({
+    specPath: path.join(unresolvedRoot, 'checkout-hold.nano.md'),
+    repositoryRoot: unresolvedRoot,
+  });
+
+  assert.equal(unresolved.specId, 'SPEC-CHECKOUT');
+  assert.ok(rules(unresolved).includes('unresolved-trace-reference'));
+  assert.ok(rules(unresolved).includes('untraced-requirement'));
+  assert.deepEqual(
+    unresolved.traceability.untracedRequirements.map((entry) => entry.section),
+    ['Fraud screening'],
+  );
+
+  const exactRoot = workspace(t);
+  writePair(exactRoot, {
+    nano: CLEAN_NANO.replace('SPEC-CHECKOUT-HOLD', 'SPEC-CHECKOUT'),
+    full: [
+      '# In full',
+      '',
+      '## Fraud screening',
+      '',
+      'Traces to: SPEC-CHECKOUT',
+      '',
+      'Every reservation must pass a fraud screen before it is confirmed.',
+      '',
+    ].join('\n'),
+  });
+
+  const exact = stageSpecPair({
+    specPath: path.join(exactRoot, 'checkout-hold.nano.md'),
+    repositoryRoot: exactRoot,
+  });
+
+  assert.deepEqual(exact.observations, []);
+  assert.deepEqual(exact.traceability.untracedRequirements, []);
 });
 
 test('an undeclared identifier alone never marks a section traced', (t) => {

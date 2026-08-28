@@ -82,6 +82,12 @@ function report({ manifest, findings } = {}) {
   ].join('\n');
 }
 
+function roastDocument(findings) {
+  return ['# Artifact Roast', '', '## Must Fix', '', findings, '', 'END ARTIFACT ROASTER REPORT'].join(
+    '\n',
+  );
+}
+
 function finding(fields = {}) {
   const merged = {
     Priority: 'Must fix',
@@ -146,6 +152,19 @@ test('bringing the nano specification into line with the full one is rejected', 
   assert.equal(result.status, 'Invalid');
   assert.deepEqual(categories(result), ['Inverted authority']);
   assert.match(result.defects[0].message, /the full artifact is what changes/);
+});
+
+test('bringing the nano locator into line with the full locator is rejected in both phases', () => {
+  const findings = finding({
+    Location: 'specs/checkout.nano.md:L12',
+    Recommendation: 'Update specs/checkout.nano.md to match specs/checkout.full.md.',
+  });
+
+  const envelope = screen(report({ findings }), pairRecord());
+  const roast = screenSpecReport(roastDocument(findings), pairRecord(), { phase: 'roast' });
+
+  assert.deepEqual(categories(envelope), ['Inverted authority']);
+  assert.deepEqual(categories(roast), ['Inverted authority']);
 });
 
 test('bringing the full specification into line with the nano one is clean', () => {
@@ -255,6 +274,43 @@ test('an Authority field that only contains the nano locator as a longer token i
   assert.deepEqual(categories(result), ['Inverted authority']);
 });
 
+test('an Authority field must normalize to exactly the nano locator', () => {
+  for (const Authority of [
+    'specs/checkout.nano.md and docs/source.md',
+    'specs/checkout.nano.md extra text',
+    '[Nano](specs/checkout.nano.md) and docs/source.md',
+  ]) {
+    const result = screen(
+      report({
+        findings: finding({
+          Authority,
+          Recommendation: 'Delete the contradicting passage.',
+        }),
+      }),
+      pairRecord(),
+    );
+    assert.deepEqual(categories(result), ['Inverted authority']);
+  }
+
+  for (const Authority of [
+    'specs/checkout.nano.md',
+    '`specs/checkout.nano.md`',
+    '[Nano authority](specs/checkout.nano.md)',
+  ]) {
+    const result = screen(
+      report({
+        findings: finding({
+          Evidence: 'The full specification contradicts the nano specification on the window.',
+          Authority,
+          Recommendation: 'Delete the contradicting passage.',
+        }),
+      }),
+      pairRecord(),
+    );
+    assert.equal(result.status, 'Valid');
+  }
+});
+
 test('a manifest line naming only a look-alike of the sibling is missing evidence (Finding 4)', () => {
   const result = screen(
     report({
@@ -279,6 +335,17 @@ test('a negation opening a clause is skipped but a trailing one does not suppres
     pairRecord(),
   );
   assert.equal(skipped.status, 'Valid');
+
+  const never = screen(
+    report({
+      findings: finding({
+        Location: 'specs/checkout.nano.md:L12',
+        Recommendation: 'Never update the nano specification to match the full specification.',
+      }),
+    }),
+    pairRecord(),
+  );
+  assert.equal(never.status, 'Valid');
 
   const trailing = screen(
     report({

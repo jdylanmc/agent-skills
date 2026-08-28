@@ -659,7 +659,7 @@ const PROFILES = {
       ' Both\n   siblings appear, each with the digest the spec pair record pinned, and the\n   record itself appears as `spec-pair:<packet-id>`.',
     envelopeExtraRules: [
       'Both siblings appear in `## Evidence Manifest`, and an absent one appears\n    there with its status rather than being omitted.',
-      'No entry recommends changing the nano specification so that it agrees with\n    the full specification. Every entry resting on a disagreement between the two\n    layers carries `- Authority: <nano locator>` and names the nano locator as the authority.\n    An entry naming any other locator as the authority fails this item however\n    its prose reads.',
+      'No entry recommends changing the nano specification so that it agrees with\n    the full specification. Every entry resting on a disagreement between the two\n    layers carries `- Authority: <nano locator>` and names exactly the nano locator\n    as the authority. An entry naming any other locator, a second locator, or trailing\n    text as the authority fails this item however its prose reads.',
       'Every entry citing an acceptance criterion cites an identifier the spec pair\n    record lists under `criteria`.',
     ],
     envelopeExtraChecks: [

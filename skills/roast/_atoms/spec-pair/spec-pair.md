@@ -95,7 +95,7 @@ in either direction.
 | --- | --- |
 | `missing-sibling` | One of the two files of the pair is absent. |
 | `unreadable-sibling` | A file of the pair exists and was not read: a symbolic link, a directory, or a failed read. |
-| `broken-full-link` | The nano artifact declares no relative link to its sibling, or declares one that does not resolve to it. |
+| `broken-full-link` | The nano artifact declares no relative link to its sibling, declares a non-relative link, or declares a relative link that does not resolve to it. |
 | `missing-spec-identifier` | The nano artifact declares no stable specification identifier. |
 | `no-acceptance-criteria` | The nano artifact declares no acceptance-criteria section, or none carrying a stable identifier. |
 | `duplicate-criterion-id` | Two nano criteria share one identifier, so a downstream citation is ambiguous. |
@@ -140,15 +140,19 @@ and with the label in bold markers. `Spec ID:` is the canonical label emitted by
 ### Trace references
 
 A **declared** criterion identifier on a material full-specification bullet or
-statement, an `[INTENT]` marker, the specification identifier, or a nearby line
-opening `Traces to:` or `Elaborates:` whose target resolves. A trace line
-applies only to the next material statement it introduces, not to every
-requirement later in the section.
+statement, an `[INTENT]` marker, the specification identifier as an exact
+identifier token, or a nearby line opening `Traces to:` or `Elaborates:` whose
+target resolves. A trace line applies only to the next material statement it
+introduces, not to every requirement later in the section.
 
 A trace line's target resolves when it names a declared criterion identifier,
 the specification identifier, or the nano intention:
 
 - `intention`
+
+The specification identifier is matched with identifier-token boundaries.
+Hyphen, underscore, and period are identifier characters for this comparison,
+so `SPEC-CHECKOUT` does not resolve `SPEC-CHECKOUT-HOLD`.
 
 `Traces to: AC-1 and AC-2` names two targets and resolves when either does. A
 target that resolves to none of the above is recorded as

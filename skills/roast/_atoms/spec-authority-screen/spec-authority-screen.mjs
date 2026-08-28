@@ -95,6 +95,8 @@ const FENCE = /^\s*(`{3,}|~{3,})/;
 const CRITERION_TOKEN = /\bAC-?\d+\b/gi;
 /** A locator counts only as a whole path token, never as part of a longer one. */
 const PATH_CHARACTER = /[A-Za-z0-9._\-/\\]/;
+const MARKDOWN_LINK_VALUE = /^\[[^\]\n]*\]\((?:<([^>\n]+)>|([^)\s]+))\)$/;
+const REPORT_TERMINATOR = /\s+END ARTIFACT (?:ROAST ENVELOPE|ROASTER REPORT)\s*$/;
 
 function normalizeCriterionId(raw) {
   return raw.toUpperCase().replace(/^AC-?/, 'AC-');
@@ -152,10 +154,28 @@ export function namesLocator(line, locator) {
 
 /** Splits a recommendation into the clauses direction is judged within. */
 function clausesOf(text) {
-  return text
-    .split(/[.;\n]/)
-    .map((clause) => clause.trim())
-    .filter((clause) => clause !== '');
+  const clauses = [];
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    const insidePathToken =
+      character === '.' &&
+      PATH_CHARACTER.test(text[index - 1] ?? '') &&
+      PATH_CHARACTER.test(text[index + 1] ?? '');
+    if (character !== '\n' && character !== ';' && (character !== '.' || insidePathToken)) {
+      continue;
+    }
+    const clause = text.slice(start, index).trim();
+    if (clause !== '') {
+      clauses.push(clause);
+    }
+    start = index + 1;
+  }
+  const tail = text.slice(start).trim();
+  if (tail !== '') {
+    clauses.push(tail);
+  }
+  return clauses;
 }
 
 function screenedClausesOf(text) {
@@ -221,6 +241,25 @@ export function manifestLines(report) {
 
 function entryText(entry) {
   return [...entry.fields.values()].map((field) => field.value).join('\n');
+}
+
+function stripCodeSpan(value) {
+  const trimmed = value.trim();
+  const opening = /^`+/.exec(trimmed)?.[0] ?? '';
+  if (opening === '' || !trimmed.endsWith(opening) || trimmed.length === opening.length) {
+    return trimmed;
+  }
+  return trimmed.slice(opening.length, trimmed.length - opening.length).trim();
+}
+
+function normalizeAuthorityValue(value) {
+  const withoutTerminator = value.replace(REPORT_TERMINATOR, '').trim();
+  const unquoted = stripCodeSpan(withoutTerminator);
+  const link = MARKDOWN_LINK_VALUE.exec(unquoted);
+  if (link) {
+    return stripCodeSpan(link[1] ?? link[2]).trim();
+  }
+  return unquoted;
 }
 
 function requireStagedPair(record) {
@@ -337,11 +376,7 @@ export function screenSpecReport(report, record, options = {}) {
 
     const recommendation = entry.fields.get('Recommendation')?.value ?? '';
     const declaredAuthority = entry.fields.get(AUTHORITY_FIELD)?.value?.trim() ?? '';
-    if (
-      declaredAuthority !== '' &&
-      (!namesLocator(declaredAuthority, nano.locator) ||
-        namesLocator(declaredAuthority, full.locator))
-    ) {
+    if (declaredAuthority !== '' && normalizeAuthorityValue(declaredAuthority) !== nano.locator) {
       defects.push({
         category: 'Inverted authority',
         entry: entry.id,

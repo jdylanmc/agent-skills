@@ -232,7 +232,7 @@ test('the resolved spec contract makes the nano authority a checked envelope rul
     contract,
     /^13\. No entry recommends changing the nano specification so that it agrees with$/m,
   );
-  assert.match(contract, /names the nano locator as the authority/);
+  assert.match(contract, /names exactly the nano locator\s+as the authority/);
   assert.match(
     contract,
     /^14\. Every entry citing an acceptance criterion cites an identifier the spec pair$/m,

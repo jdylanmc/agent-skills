@@ -109,6 +109,7 @@ const LIST_ITEM_LINE = /^\s*(?:[-*+]|\d+\.)\s+\S/;
 const MARKDOWN_LINK = /\[[^\]]*\]\(([^)\s]+)\)/g;
 const HEADING_LINE = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 const FENCE_LINE = /^\s*(`{3,}|~{3,})/;
+const SPEC_IDENTIFIER_CHARACTER = /[A-Za-z0-9._-]/;
 
 function normalizeCriterionId(raw) {
   return raw.toUpperCase().replace(/^AC-?/, 'AC-');
@@ -130,6 +131,28 @@ function normalizeCriterionText(text) {
 function containsPhrase(haystack, phrase) {
   const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
   return new RegExp(`(^|[^A-Za-z0-9])${escaped}([^A-Za-z0-9]|$)`, 'i').test(haystack);
+}
+
+function containsSpecIdentifier(haystack, specId) {
+  const lowered = haystack.toLowerCase();
+  const needle = specId.toLowerCase();
+  let from = 0;
+  for (;;) {
+    const index = lowered.indexOf(needle, from);
+    if (index === -1) {
+      return false;
+    }
+    const before = haystack[index - 1] ?? '';
+    const after = haystack[index + specId.length] ?? '';
+    if (!SPEC_IDENTIFIER_CHARACTER.test(before) && !SPEC_IDENTIFIER_CHARACTER.test(after)) {
+      return true;
+    }
+    from = index + 1;
+  }
+}
+
+function isAbsoluteLinkTarget(target) {
+  return path.isAbsolute(target) || path.posix.isAbsolute(target) || path.win32.isAbsolute(target);
 }
 
 /** Every declared criterion identifier a line names, normalized. */
@@ -162,7 +185,7 @@ function resolveTraceTarget(target, declaredIds, specId) {
       return true;
     }
   }
-  if (specId !== null && containsPhrase(target, specId)) {
+  if (specId !== null && containsSpecIdentifier(target, specId)) {
     return true;
   }
   return INTENTION_TARGETS.some((name) => containsPhrase(target, name));
@@ -474,16 +497,21 @@ function checkLink(records, nanoLocator, nanoAbsolute, fullAbsolute) {
       if (target === '') {
         continue;
       }
-      let resolved;
+      let decoded = target;
       try {
-        resolved = path.resolve(path.dirname(nanoAbsolute), decodeURIComponent(target));
+        decoded = decodeURIComponent(target);
       } catch {
-        resolved = path.resolve(path.dirname(nanoAbsolute), target);
+        decoded = target;
       }
-      candidates.push({ declared: target, resolved, line: record.number });
+      if (isAbsoluteLinkTarget(target) || isAbsoluteLinkTarget(decoded)) {
+        candidates.push({ declared: target, resolved: null, line: record.number, relative: false });
+        continue;
+      }
+      const resolved = path.resolve(path.dirname(nanoAbsolute), decoded);
+      candidates.push({ declared: target, resolved, line: record.number, relative: true });
     }
   }
-  const exact = candidates.find((candidate) => candidate.resolved === fullAbsolute);
+  const exact = candidates.find((candidate) => candidate.relative && candidate.resolved === fullAbsolute);
   if (exact) {
     return {
       link: { declared: exact.declared, line: exact.line, status: 'Resolved', reason: null },
@@ -497,14 +525,14 @@ function checkLink(records, nanoLocator, nanoAbsolute, fullAbsolute) {
         declared: nearMiss.declared,
         line: nearMiss.line,
         status: 'Broken',
-        reason: 'the declared full-specification link does not resolve to the sibling file',
+        reason: 'the declared full-specification link is not relative or does not resolve to the sibling file',
       },
       observations: [
         observation(
           'broken-full-link',
           nanoLocator,
           nearMiss.line,
-          `the nano specification links to "${nearMiss.declared}", which does not resolve to its full sibling`,
+          `the nano specification links to "${nearMiss.declared}", which is not a relative link to its full sibling`,
         ),
       ],
     };
@@ -655,7 +683,7 @@ function collectFull(records, locator, criteria, specId) {
     if (INTENT_MARKER.test(text)) {
       return true;
     }
-    if (specId !== null && containsPhrase(text, specId)) {
+    if (specId !== null && containsSpecIdentifier(text, specId)) {
       return true;
     }
     const targets = traceTargets(text);
