@@ -113,8 +113,36 @@ function firstPosition(haystack, phrases) {
   return found.length ? Math.min(...found) : -1;
 }
 
+function locatorPositionOf(haystack, locator) {
+  let from = 0;
+  for (;;) {
+    const index = haystack.indexOf(locator, from);
+    if (index === -1) {
+      return -1;
+    }
+    const before = index === 0 ? '' : haystack[index - 1];
+    const after = haystack[index + locator.length] ?? '';
+    if (!PATH_CHARACTER.test(before) && !PATH_CHARACTER.test(after)) {
+      return index;
+    }
+    from = index + 1;
+  }
+}
+
+function firstLayerPosition(haystack, phrases, locator) {
+  const found = [
+    ...phrases.map((phrase) => positionOf(haystack, phrase)),
+    locatorPositionOf(haystack, locator),
+  ].filter((index) => index !== -1);
+  return found.length ? Math.min(...found) : -1;
+}
+
 function mentions(haystack, phrases) {
   return firstPosition(haystack, phrases) !== -1;
+}
+
+function mentionsLayer(haystack, phrases, locator) {
+  return firstLayerPosition(haystack, phrases, locator) !== -1;
 }
 
 /**
@@ -137,19 +165,7 @@ function opensWith(clause, phrases) {
  * `checkout.nano.md`, which is the kind of pass that reads as a check.
  */
 export function namesLocator(line, locator) {
-  let from = 0;
-  for (;;) {
-    const index = line.indexOf(locator, from);
-    if (index === -1) {
-      return false;
-    }
-    const before = index === 0 ? '' : line[index - 1];
-    const after = line[index + locator.length] ?? '';
-    if (!PATH_CHARACTER.test(before) && !PATH_CHARACTER.test(after)) {
-      return true;
-    }
-    from = index + 1;
-  }
+  return locatorPositionOf(line, locator) !== -1;
 }
 
 /** Splits a recommendation into the clauses direction is judged within. */
@@ -322,8 +338,6 @@ export function screenSpecReport(report, record, options = {}) {
 
   const nano = record.files.nano;
   const full = record.files.full;
-  const nanoTerms = [...NANO_TERMS, nano.locator];
-  const fullTerms = [...FULL_TERMS, full.locator];
   const declared = new Set(record.criteria.map((entry) => normalizeCriterionId(entry.id)));
   const parsed = parseFindings(report, options.sections);
   const manifest = manifestLines(report);
@@ -387,7 +401,7 @@ export function screenSpecReport(report, record, options = {}) {
     }
 
     for (const clause of screenedClausesOf(recommendation)) {
-      const nanoAt = firstPosition(clause, nanoTerms);
+      const nanoAt = firstLayerPosition(clause, NANO_TERMS, nano.locator);
       if (nanoAt === -1) {
         continue;
       }
@@ -395,7 +409,7 @@ export function screenSpecReport(report, record, options = {}) {
       if (alignAt === -1) {
         continue;
       }
-      if (firstPosition(clause.slice(nanoAt + alignAt), fullTerms) === -1) {
+      if (firstLayerPosition(clause.slice(nanoAt + alignAt), FULL_TERMS, full.locator) === -1) {
         continue;
       }
       defects.push({
@@ -408,7 +422,7 @@ export function screenSpecReport(report, record, options = {}) {
       break;
     }
 
-    if (mentions(text, CONFLICT_TERMS) && mentions(text, fullTerms)) {
+    if (mentions(text, CONFLICT_TERMS) && mentionsLayer(text, FULL_TERMS, full.locator)) {
       authorityEntries += 1;
       if (declaredAuthority === '') {
         defects.push({

@@ -154,17 +154,29 @@ test('bringing the nano specification into line with the full one is rejected', 
   assert.match(result.defects[0].message, /the full artifact is what changes/);
 });
 
-test('bringing the nano locator into line with the full locator is rejected in both phases', () => {
+test('only exact sibling locators drive authority direction in both phases', () => {
   const findings = finding({
     Location: 'specs/checkout.nano.md:L12',
     Recommendation: 'Update specs/checkout.nano.md to match specs/checkout.full.md.',
   });
+  const lookalikeFindings = finding({
+    Location: 'specs/checkout.nano.md:L12',
+    Recommendation: 'Update specs/checkout.nano.md.bak to match specs/checkout.full.md.bak.',
+  });
 
   const envelope = screen(report({ findings }), pairRecord());
   const roast = screenSpecReport(roastDocument(findings), pairRecord(), { phase: 'roast' });
+  const lookalikeEnvelope = screen(report({ findings: lookalikeFindings }), pairRecord());
+  const lookalikeRoast = screenSpecReport(roastDocument(lookalikeFindings), pairRecord(), {
+    phase: 'roast',
+  });
 
   assert.deepEqual(categories(envelope), ['Inverted authority']);
   assert.deepEqual(categories(roast), ['Inverted authority']);
+  assert.equal(lookalikeEnvelope.status, 'Valid');
+  assert.deepEqual(categories(lookalikeEnvelope), []);
+  assert.equal(lookalikeRoast.status, 'Valid');
+  assert.deepEqual(categories(lookalikeRoast), []);
 });
 
 test('bringing the full specification into line with the nano one is clean', () => {
