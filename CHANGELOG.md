@@ -15,6 +15,23 @@ below is unreleased and no comparison links are available.
 
 ### Added
 
+- **Specification approval durability.** Approval of a specification is a merge
+  to the default branch, not a field the producing agent writes. The observation
+  is verified against git objects and refused when it disagrees, so a forged
+  `approved: true` field is refused rather than accepted. The provider's branch
+  protection is the real gate; the local remote-tracking ref is checkable rather
+  than tamper-proof, and the binding is that it reproduces against the provider.
+- **State-dependent specification freshness.** When an approved specification's
+  Discovery source moves, the specification is held rather than refused: it
+  remains valid, is not re-derived, and does not block in-flight delivery. A
+  draft specification with a moved source still refuses and re-derives, as
+  before. Contradiction detection (issue #123) is the seam for revisiting an
+  approved specification, not digest movement.
+- **Specification publication.** `/spec` now publishes the pair as a change
+  request so a human has something to merge. Publication pushes the run's own
+  branch and opens a change request through the provider's official
+  command-line tool. It never pushes to the default branch, because doing so
+  would manufacture the approval the design depends on being human.
 - **Explain like I'm five.** `/eli5 <subject>` explains one subject at three
   increasing depths — for a five-year-old, a junior in the subject's own field,
   and an expert — after grounding in the subject's own evidence when it is a

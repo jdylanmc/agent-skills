@@ -13,10 +13,12 @@ const ENTRY = 'spec/SKILL.md';
 const PINNED_TOOLS = ['edit', 'execute', 'read', 'search', 'task'];
 const UNITS = [
   'spec/_molecules/product-specification/product-specification.md',
+  'spec/_atoms/approval-state/approval-state.md',
   'spec/_atoms/discovery-source/discovery-source.md',
   'spec/_atoms/product-requirements/product-requirements.md',
   'spec/_atoms/spec-outcome/spec-outcome.md',
   'spec/_atoms/spec-pair/spec-pair.md',
+  'spec/_atoms/spec-publication/spec-publication.md',
 ];
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 const flat = (relative) => read(relative).replace(/\s+/g, ' ');
@@ -42,6 +44,7 @@ test('composition reaches chronicler and every local unit without widening the g
   const parsed = frontmatter(ENTRY);
   assert.deepEqual(parsed.composes, [
     '_base/_molecules/chronicler/chronicler.md',
+    'spec/_atoms/spec-publication/spec-publication.md',
     'spec/_molecules/product-specification/product-specification.md',
   ]);
 
@@ -98,9 +101,13 @@ test('composition is local-first and includes the required chronicler', () => {
   const skill = read('skills/spec/SKILL.md');
   const molecule = read('skills/spec/_molecules/product-specification/product-specification.md');
   assert.match(skill, /_base\/_molecules\/chronicler\/chronicler\.md/);
-  for (const atom of ['discovery-source', 'product-requirements', 'spec-outcome', 'spec-pair']) {
+  // spec-publication is composed by the skill directly, not the molecule
+  assert.match(skill, /spec\/_atoms\/spec-publication\/spec-publication\.md/);
+  for (const atom of ['approval-state', 'discovery-source', 'product-requirements', 'spec-outcome', 'spec-pair']) {
     assert.match(molecule, new RegExp(`spec/_atoms/${atom}/${atom}\\.md`));
   }
+  // spec-publication must NOT be in the molecule's composes/includes
+  assert.doesNotMatch(molecule, /spec-publication/);
 });
 
 test('human-confirmed intent is present and treated as the source', () => {
@@ -109,4 +116,240 @@ test('human-confirmed intent is present and treated as the source', () => {
   assert.match(intent, /tracker issue/);
   assert.match(intent, /product requirements documents/i);
   assert.match(intent, /The nano document is intentionally smaller/);
+});
+
+test('approval is documented as a merge to the default branch, not a field', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  const approvalAtom = flat('skills/spec/_atoms/approval-state/approval-state.md');
+  assert.match(skill, /merge to the default branch/);
+  assert.match(skill, /field the producing agent writes is not/);
+  assert.match(approvalAtom, /merge to the default branch/);
+  assert.match(approvalAtom, /same agent that wrote the specification writes the claim/);
+  assert.match(approvalAtom, /permission guarded only by a promise is not guarded/);
+});
+
+test('freshness table documents both draft-stale and approved-held states', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  assert.match(skill, /draft.*stale.*refuse and re-derive/i);
+  assert.match(skill, /approved.*held.*specification remains valid/i);
+});
+
+test('held appears in the status vocabulary', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  assert.match(skill, /`held`/);
+  assert.match(skill, /approved specification stands/);
+});
+
+test('publication refuses the default branch', () => {
+  const pubAtom = flat('skills/spec/_atoms/spec-publication/spec-publication.md');
+  assert.match(pubAtom, /default-branch-refused/);
+  assert.match(pubAtom, /manufacture its own approval/i);
+  assert.match(pubAtom, /never pushes to the default branch/i);
+});
+
+test('the intent records the reasoning for approval, freshness, contradiction, and publication', () => {
+  const intent = flat('skills/spec/intent.md');
+  assert.match(intent, /approval is a merge/i);
+  assert.match(intent, /approved specification holds/i);
+  assert.match(intent, /contradiction.*signal to revisit/i);
+  assert.match(intent, /specification must be published/i);
+  assert.match(intent, /specification cannot approve itself/i);
+});
+
+test('the trust chain is documented with all four layers', () => {
+  const approvalAtom = flat('skills/spec/_atoms/approval-state/approval-state.md');
+  // (1) the merge is an act the agent cannot perform, provider enforces
+  assert.match(approvalAtom, /merge itself is an act the agent cannot perform/i);
+  assert.match(approvalAtom, /provider.*enforces/i);
+  // (2) the observation is verified against git objects
+  assert.match(approvalAtom, /verified against git objects/i);
+  assert.match(approvalAtom, /checkable rather than tamper-proof/i);
+  // (3) observedWith records commands for re-derivation
+  assert.match(approvalAtom, /observedWith.*records.*commands/i);
+  // (4) residual limitation stated plainly: local ref is writable, receipt is checkable
+  assert.match(approvalAtom, /residual limitation/i);
+  assert.match(approvalAtom, /writable by anything with shell access/i);
+  assert.match(approvalAtom, /reproduces against the provider/i);
+});
+
+test('the approval atom does not overclaim the boundary', () => {
+  const approvalAtom = flat('skills/spec/_atoms/approval-state/approval-state.md');
+  // Must not claim the atom uses "evidence the producing agent cannot manufacture"
+  assert.doesNotMatch(approvalAtom, /evidence the producing agent cannot manufacture/i);
+  // Must not claim the ref "cannot be moved"
+  assert.doesNotMatch(approvalAtom, /this run cannot move/i);
+  // The SKILL.md approval durability section states the provider enforces the boundary
+  const skill = flat('skills/spec/SKILL.md');
+  assert.match(skill, /provider.*enforces/i);
+  assert.doesNotMatch(skill, /evidence.*cannot manufacture/i);
+});
+
+test('slug vocabulary agrees between approval-state and spec-pair', () => {
+  const approvalAtom = flat('skills/spec/_atoms/approval-state/approval-state.md');
+  const specPair = flat('skills/spec/_atoms/spec-pair/spec-pair.md');
+  // Both must accept alphanumeric slugs
+  assert.match(approvalAtom, /alphanumeric/i);
+  assert.match(specPair, /lowercase ASCII words/i);
+  // Verify through the code: import both and test a digit-bearing slug
+  // (behavioral test is in approval-state.test.mjs)
+});
+
+test('the approval-state atom exports a verification capability', async () => {
+  const mod = await import('./_atoms/approval-state/approval-state.mjs');
+  assert.equal(typeof mod.verifyApprovalObservation, 'function');
+  assert.match(mod.USAGE, /--verify/);
+  assert.match(mod.USAGE, /--root/);
+});
+
+test('publication documents the exact command to determine the current branch', () => {
+  const pubAtom = flat('skills/spec/_atoms/spec-publication/spec-publication.md');
+  assert.match(pubAtom, /git rev-parse --abbrev-ref HEAD/);
+  assert.match(pubAtom, /provider.*branch protection/i);
+});
+
+// F1: verification is the only route to held
+test('verification is documented as the only route to held', () => {
+  const ds = flat('skills/spec/_atoms/discovery-source/discovery-source.md');
+  assert.match(ds, /verification is the only route to held/i);
+  assert.match(ds, /verifyApprovalObservation/);
+  assert.match(ds, /repositoryRoot/);
+  assert.match(ds, /seam exists.*tests.*deterministic/i);
+  assert.match(ds, /shipped command-line path uses git/i);
+});
+
+// F2: the approval is bound to source and revision
+test('the approval is bound to the exact source and revision via published bytes', () => {
+  const ds = flat('skills/spec/_atoms/discovery-source/discovery-source.md');
+  assert.match(ds, /Source.*Source revision.*provenance/i);
+  assert.match(ds, /approval cannot be replayed/i);
+  assert.match(ds, /binding is proved by bytes a human merged/i);
+});
+
+// F3: the trust chain and its residual limitation are documented accurately
+test('the trust chain states the local ref is checkable, not tamper-proof', () => {
+  const approvalAtom = flat('skills/spec/_atoms/approval-state/approval-state.md');
+  const skill = flat('skills/spec/SKILL.md');
+  // The approval atom documents the writable ref
+  assert.match(approvalAtom, /writable by anything with shell access/i);
+  assert.match(approvalAtom, /checkable rather than tamper-proof/i);
+  // The SKILL.md documents the same residual limitation
+  assert.match(skill, /checkable rather than tamper-proof/i);
+  assert.match(skill, /reproduces against the provider/i);
+  // Neither claims the ref cannot be moved
+  assert.doesNotMatch(approvalAtom, /this run cannot move/i);
+  assert.doesNotMatch(skill, /this run cannot move/i);
+});
+
+// F4: git failures are classified, not silently swallowed
+test('git failure classification is documented in the approval atom', () => {
+  const approvalAtom = flat('skills/spec/_atoms/approval-state/approval-state.md');
+  assert.match(approvalAtom, /structured result/i);
+  assert.match(approvalAtom, /recognizable missing-path failure/i);
+  assert.match(approvalAtom, /repository corruption.*permissions error/i);
+});
+
+// F5: publication is composed by the skill, not the molecule
+test('publication is composed by the skill and not the molecule', () => {
+  const skill = frontmatter(ENTRY);
+  const molecule = frontmatter('spec/_molecules/product-specification/product-specification.md');
+  assert.ok(
+    skill.composes.includes('spec/_atoms/spec-publication/spec-publication.md'),
+    'skill must directly compose spec-publication',
+  );
+  assert.ok(
+    !molecule.composes.includes('spec/_atoms/spec-publication/spec-publication.md'),
+    'molecule must not compose spec-publication',
+  );
+  assert.ok(
+    !molecule.includes.includes('spec/_atoms/spec-publication/spec-publication.md'),
+    'molecule must not include spec-publication',
+  );
+});
+
+// F6: the Inputs rule is state-dependent
+test('the Inputs section documents the state-dependent freshness rule', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  // Must state draft refuses, approved holds
+  assert.match(skill, /refused when the specification is a draft/i);
+  assert.match(skill, /approved.*held rather than refused/i);
+  // Must not state the old unconditional rule
+  assert.doesNotMatch(skill, /a source whose current revision differs from its confirmed revision is refused(?!\s+when)/i);
+});
+
+// F7: escalated contradiction produces needs-decision on every applicable path
+test('escalated contradiction is documented as needs-decision on non-held non-blocked paths', () => {
+  const outcome = flat('skills/spec/_atoms/spec-outcome/spec-outcome.md');
+  assert.match(outcome, /escalated contradiction/i);
+  assert.match(outcome, /must never be silently dropped/i);
+});
+
+// --- Corrected guarantees pinned by this review ---
+
+// F1: the ref identity is proved rather than asserted
+test('the ref identity is proved by verification, not merely asserted by the caller', () => {
+  const approvalAtom = flat('skills/spec/_atoms/approval-state/approval-state.md');
+  // Must document that remote is proved configured
+  assert.match(approvalAtom, /git remote get-url/i);
+  // Must document that the ref resolves to remote-tracking namespace
+  assert.match(approvalAtom, /git rev-parse --symbolic-full-name/i);
+  assert.match(approvalAtom, /refs\/remotes\//i);
+  // Must document the remote's own default branch is proved
+  assert.match(approvalAtom, /git symbolic-ref refs\/remotes\//i);
+  assert.match(approvalAtom, /git remote set-head.*--auto/i);
+});
+
+// F2: verified === true is required for held
+test('verification requiring verified === true and state === approved is documented', () => {
+  const ds = flat('skills/spec/_atoms/discovery-source/discovery-source.md');
+  assert.match(ds, /verified === true/i);
+  assert.match(ds, /state === .approved./i);
+});
+
+// F3: provenance must be complete — both Source and Source revision
+test('complete provenance is documented as required for held', () => {
+  const ds = flat('skills/spec/_atoms/discovery-source/discovery-source.md');
+  assert.match(ds, /publishedSource.*publishedSourceRevision.*must be present/i);
+  assert.match(ds, /absent.*unparsable.*duplicated/i);
+});
+
+// F4: the binding includes specification identity via specNanoPath
+test('the three-part binding is documented: specification identity, source locator, source revision', () => {
+  const ds = flat('skills/spec/_atoms/discovery-source/discovery-source.md');
+  assert.match(ds, /specNanoPath/);
+  assert.match(ds, /three-part binding/i);
+  assert.match(ds, /specification identity/i);
+  assert.match(ds, /source locator/i);
+  assert.match(ds, /source revision/i);
+  assert.match(ds, /approval for one specification cannot hold another/i);
+});
+
+// F5: the held path routes through spec-outcome
+test('the held path routes through spec-outcome rather than returning directly', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
+  // Must NOT say "stop on held" anymore
+  assert.doesNotMatch(skill, /when the source is `held`, stop\b/i);
+  assert.doesNotMatch(molecule, /stop on `held`/i);
+  // Must route through spec-outcome
+  assert.match(skill, /route through.*deterministic resolver/i);
+  assert.match(molecule, /route through.*deterministic resolver/i);
+  // Must reference spec-outcome on the held path
+  assert.match(skill, /Specification outcome.*sourceStatus.*held/i);
+  assert.match(molecule, /Specification outcome.*sourceStatus.*held/i);
+});
+
+// F6: the molecule does not claim publication ownership
+test('the molecule does not claim to open a change request', () => {
+  const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
+  assert.doesNotMatch(molecule, /opens one change request for that pair/i);
+  assert.match(molecule, /publication belongs to the skill alone/i);
+});
+
+// F1: observedWith is a checked field
+test('observedWith is documented as a checked field', () => {
+  const approvalAtom = flat('skills/spec/_atoms/approval-state/approval-state.md');
+  assert.match(approvalAtom, /checked field/i);
+  assert.match(approvalAtom, /meaningful tokens/i);
+  // The text explicitly states it is checked, not merely an audit note
+  assert.match(approvalAtom, /observedWith.*records.*commands/i);
 });
