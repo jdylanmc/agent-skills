@@ -53,8 +53,18 @@ export class TargetError extends Error {
  * `a/b`, an uppercase escape, and a leading-underscore `_base` all fail as
  * malformed rather than being caught later by a containment check that is
  * easier to get wrong.
+ *
+ * Exported as `SKILL_NAME_PATTERN` so report intake decides "is this a routable
+ * skill name?" with this definition rather than a second one. Two definitions
+ * would eventually disagree, and the disagreement that matters is intake
+ * admitting a target this guard would refuse.
+ *
+ * The length bound is part of the definition rather than a separate check for
+ * the same reason. A name arriving from an untrusted document is bounded where
+ * the shape is decided, so nothing downstream inherits a fifty-kilobyte "skill
+ * name" it then has to remember to truncate.
  */
-const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SKILL_NAME = /^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** Where classified paths may land. Only these are edited in a reinforcement. */
 export const WRITE_CLASS = {
@@ -80,8 +90,13 @@ function requireString(value, name) {
  * Reject every symlink in the existing prefix of `absolute`, not just the leaf.
  * A symlinked parent redirects a write exactly as effectively as a symlinked
  * file and is easier to miss.
+ *
+ * Exported so report intake proves the same property about the path it records
+ * a run receipt at. One guard, not two: a second copy would eventually walk the
+ * prefix differently, and the difference that matters is one of them accepting
+ * a redirect the other refuses.
  */
-function assertNoSymlinkComponent(realRoot, absolute) {
+export function assertNoSymlinkComponent(realRoot, absolute) {
   const relative = path.relative(realRoot, absolute);
   let walked = realRoot;
   for (const segment of relative.split(path.sep).filter(Boolean)) {
@@ -493,4 +508,4 @@ if (isDirectInvocation()) {
   }
 }
 
-export { FAILURES, WORKFLOW_FILE };
+export { FAILURES, SKILL_NAME as SKILL_NAME_PATTERN, WORKFLOW_FILE };

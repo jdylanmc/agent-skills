@@ -145,6 +145,50 @@ below is unreleased and no comparison links are available.
   written before it stay readable unchanged, a log without it is uncorrelated
   rather than defective, and nothing else about recording, replay, or operation
   pairing changed.
+- **A post-mortem can now hand its findings to a reinforcement — with your
+  approval, never on its own.** `reinforce-skill` takes the change either from
+  your own words, exactly as before, or from one post-mortem recommendation
+  report. The report is inert until you approve it for this run: approval is a
+  receipt naming that report's SHA-256 and the one skill it authorizes, and a
+  report that was proposed, observed, or confident about itself is not approved.
+  Only the recommendations that explicitly name the skill being reinforced are
+  applied; the rest are reported and left for their own run. A missing,
+  ambiguous, malformed, unapproved, edited-since-approval, wrong-skill, or
+  self-contradicting report stops the run before anything is edited, and every
+  reason is listed at once — every one bounded, on one line, and summarizing a
+  long list by count, so a directive embedded in a report cannot ride out inside
+  the refusal that rejected it. Every proposed
+  surface is canonicalized first and compared on file identity rather than
+  spelling, so `SKILL.md`, `skills/<skill>/SKILL.md`, and `skill.md` are one
+  file and a contradiction spelled two ways is still caught; a path naming
+  another package, `doctrine/`, an absolute location, a URL, a name that resolves
+  differently on Windows than on Linux, or a name carrying a character nobody
+  can see — a soft hyphen, a zero-width space, a bidirectional override — is
+  refused rather than repaired, so an invisible character can never make one
+  file look like two.
+  One file takes one proposal: the same proposal made twice deduplicates, and
+  two different proposals about one file go back to you rather than being
+  guessed into compatibility. Recommendation identifiers are bounded to a plain
+  identifier grammar at intake rather than escaped wherever they land, so a
+  two-kilobyte id, a newline in one, or Markdown in one is refused before
+  admission and never reaches a receipt or a pull request. Applicable recommendations are reconciled into one
+  change request that joins the same intent-first workflow — the intent decision
+  is still yours to confirm, and an approved report never stands in for it. A
+  report that turns out to apply to nothing here says so, lists what it
+  excluded, and stops before anything is changed. The admission is recorded as a
+  small machine receipt in run-owned, unpublished state — required, so an
+  admission nobody wrote down grounds nothing — and every field the pull request
+  quotes is re-derived from the report on disk and compared before that pull
+  request opens, so a report edited after you approved it, or a receipt edited
+  after the fact, stops the run rather than shipping. The pull request quotes that receipt, and
+  says plainly that it binds bytes and choices rather than proving who was
+  present. Nothing about the human-guidance path changed — it grounds through
+  the same command — one place normalizes both sources, invoked exactly once a
+  run, with a report adding an admission subflow rather than a second path — from
+  an argument, a file, or standard input; every named input — report, approval, and guidance alike — is measured before it is read,
+  refused through a symbolic link, and abandoned mid-stream once it passes its
+  bound, and guidance needs no report, approval, or receipt; `post-mortem` is untouched, and no report is
+  ever manufactured to satisfy a shape.
 
 ### Removed
 
