@@ -105,3 +105,45 @@ test('probe reports availability without selecting a log', (t) => {
   assert.equal(runReplay(['--probe'], streams), 0);
   assert.match(streams.output(), /chronicle: available/);
 });
+
+test('replay reports the harness and session a run was correlated with', (t) => {
+  const logPath = path.join(workspace(t), '.skill-log', 'post-mortem.2026-08-20.run-9.jsonl');
+  const appended = captureStreams();
+  assert.equal(
+    runAppend(
+      [
+        '--log', logPath,
+        '--run', 'run-9',
+        '--root-skill', 'post-mortem',
+        '--harness', 'copilot-cli',
+        '--session', 'session-a',
+        '--event', 'run',
+        '--phase', 'observation',
+        '--summary', 'Run observed.',
+      ],
+      appended,
+    ),
+    0,
+    appended.errors(),
+  );
+
+  const streams = captureStreams();
+  assert.equal(runReplay([logPath, '--log-id', 'run-9'], streams), 0, streams.errors());
+  const state = JSON.parse(streams.output());
+
+  assert.equal(state.harness, 'copilot-cli');
+  assert.equal(state.session_id, 'session-a');
+  assert.equal(state.log_id, 'run-9');
+  assert.ok(!JSON.stringify(state).includes(logPath), 'an opaque log id keeps the path out of output');
+});
+
+test('replay of a log without correlation reports it as absent rather than guessed', (t) => {
+  const logPath = seededLog(t);
+  const streams = captureStreams();
+
+  assert.equal(runReplay([logPath], streams), 0, streams.errors());
+  const state = JSON.parse(streams.output());
+
+  assert.equal(state.harness, null);
+  assert.equal(state.session_id, null);
+});

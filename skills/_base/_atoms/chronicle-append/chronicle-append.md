@@ -23,6 +23,7 @@ marks its evidence incomplete, and continues delivering.
 node <atoms>/chronicle-append.mjs \
   --log "$log_path" --run "$run_id" --root-skill "$root_skill" \
   --skill "$emitting_skill" \
+  [--harness <id>] [--session <id>] \
   --event <stable-event-name> --phase <before|after|observation> \
   --summary "<short bounded summary>" \
   [--operation <operation-id>] [--outcome <outcome>] [--evidence <reference>]...
@@ -43,6 +44,23 @@ incomplete, and continue. Check availability with `--probe`.
 | `--operation` | no | A stable identifier that pairs a `before` event with its `after` event. |
 | `--outcome` | no | A short result token on an `after` or `observation` event, such as `succeeded` or `failed`. |
 | `--evidence` | no | A short external reference such as a pull-request number or commit. Repeatable. |
+| `--harness` | no | An opaque identity for the runtime the run executed in, such as `copilot-cli`. |
+| `--session` | no | An opaque identifier for that runtime's session. |
+
+## Session Correlation
+
+`--harness` and `--session` come from the run context, are optional, and change
+nothing else. They exist so a Skill Run Log can be lined up with the runtime's
+own record of the same session deterministically, instead of by guessing from
+timestamps.
+
+Both are opaque identifiers under the ordinary identifier rules, so an absolute
+machine path is refused rather than recorded. A log carries no filesystem
+location of the session it belongs to.
+
+Correlation is recorded from schema version 3. A record that declares an older
+version and carries either field is invalid, so a reader always knows which
+fields a version is entitled to.
 
 Names use letters, digits, and `.`, `_`, or `-`, and start with a letter or
 digit. Summaries carry no control characters.

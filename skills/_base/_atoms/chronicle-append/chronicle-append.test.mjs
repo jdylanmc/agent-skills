@@ -140,3 +140,78 @@ test('probe reports availability without touching the log', (t) => {
   assert.match(streams.output(), /chronicle: available/);
   assert.equal(fs.existsSync(path.dirname(logPath)), false);
 });
+
+test('records the harness and session the run belongs to when they are supplied', (t) => {
+  const logPath = logPathIn(workspace(t));
+  const streams = captureStreams();
+
+  assert.equal(
+    runAppend(
+      [
+        '--log', logPath,
+        '--run', 'run-1',
+        '--root-skill', 'ship-with-squadron',
+        '--harness', 'copilot-cli',
+        '--session', '4749a42e-fa4c-4c52-82f0-479483ddabe0',
+        '--event', 'run',
+        '--phase', 'before',
+        '--summary', 'Run started.',
+      ],
+      streams,
+    ),
+    0,
+    streams.errors(),
+  );
+
+  const record = JSON.parse(fs.readFileSync(logPath, 'utf8').split('\n')[0]);
+  assert.equal(record.harness, 'copilot-cli');
+  assert.equal(record.session_id, '4749a42e-fa4c-4c52-82f0-479483ddabe0');
+});
+
+test('omitting the correlation flags records no correlation fields at all', (t) => {
+  const logPath = logPathIn(workspace(t));
+  const streams = captureStreams();
+
+  assert.equal(
+    runAppend(
+      [
+        '--log', logPath,
+        '--run', 'run-1',
+        '--root-skill', 'ship-with-squadron',
+        '--event', 'run',
+        '--phase', 'before',
+        '--summary', 'Run started.',
+      ],
+      streams,
+    ),
+    0,
+    streams.errors(),
+  );
+
+  const record = JSON.parse(fs.readFileSync(logPath, 'utf8').split('\n')[0]);
+  assert.equal('harness' in record, false);
+  assert.equal('session_id' in record, false);
+});
+
+test('refuses a session identity that is a path rather than an opaque identifier', (t) => {
+  const logPath = logPathIn(workspace(t));
+  const streams = captureStreams();
+
+  assert.equal(
+    runAppend(
+      [
+        '--log', logPath,
+        '--run', 'run-1',
+        '--root-skill', 'ship-with-squadron',
+        '--session', '/Users/someone/.copilot/session-state/abc/events.jsonl',
+        '--event', 'run',
+        '--phase', 'before',
+        '--summary', 'Run started.',
+      ],
+      streams,
+    ),
+    1,
+  );
+  assert.match(streams.errors(), /invalid_input: session_id must be a non-empty identifier/);
+  assert.equal(fs.existsSync(logPath), false);
+});
