@@ -65,7 +65,7 @@ hand-rolls a call against a raw REST endpoint.
 | No response, or a response that is not an object or an array of page objects. | `observed: false`, reason `response-absent`. |
 | A response with no thread collection. | `observed: false`, reason `review-threads-absent`, naming the missing field. |
 | A thread whose resolution state the provider did not report. | Counted as unresolved. |
-| A read whose outer thread page or a thread's nested comment page was truncated. | `observed: true` with `complete: false` and an `incomplete` list naming what was truncated. |
+| A read whose outer thread page or a thread's nested comment page was truncated, or whose requested `pageInfo` completeness signal was absent or non-boolean. | `observed: true` with `complete: false` and an `incomplete` list naming what was truncated or left unconfirmed (`reason: 'completeness-unconfirmed'`). |
 
 "No threads" and "threads not read" lead a caller to opposite conclusions, and
 only one of them is safe to act on, so an unread result is never normalized to
@@ -76,12 +76,19 @@ A partial read is its own case. `gh api graphql --paginate` emits one JSON
 object per page, so a GitHub response may be a single page object or an array of
 them; the pages are aggregated. Outer completeness comes from the final page's
 `reviewThreads.pageInfo.hasNextPage`, and each thread's nested `comments`
-connection carries its own `pageInfo.hasNextPage`. When either is truncated the
-threads that were read are kept, but the result reports `complete: false` and
-names the truncation in `incomplete`, and that `complete` flag propagates
-through `unresolved-review-threads`. A truncated read must never masquerade as a
-complete one, because "these are all the threads" and "these are the threads I
-managed to read" are different claims.
+connection carries its own `pageInfo.hasNextPage`. Completeness is confirmed
+only by an explicit `hasNextPage === false`: a `true` is a truncated read, and
+an absent or non-boolean value on a connection the query requested `pageInfo`
+for is unconfirmed — not complete — so it too is added to `incomplete` with
+reason `completeness-unconfirmed`. When a connection is truncated or unconfirmed
+the threads that were read are kept, but the result reports `complete: false`
+and names it in `incomplete`, and that `complete` flag — with the `incomplete`
+list — propagates through `unresolved-review-threads`. An unread or unconfirmed
+read must never masquerade as a complete one, because "these are all the
+threads" and "these are the threads I managed to read" are different claims. The
+Azure DevOps branch sets `complete: true`: `az devops invoke` returns the whole
+thread collection without a cursor, so there is no completeness signal to
+confirm.
 
 ## Untrusted Data
 

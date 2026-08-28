@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { detectProvider } from '../../../_base/_atoms/provider-detect/provider-detect.mjs';
-import { interpretMergeState, normalizeMergeabilitySignal } from '../provider-state/provider-state.mjs';
+import { interpretMergeState, mergeStateCommand, normalizeMergeabilitySignal, resolveTargetCommand } from '../provider-state/provider-state.mjs';
 import { classifyTerminalDisposition } from './shepherd-disposition.mjs';
 
 const READY = { available: true, authenticated: true };
@@ -98,4 +98,64 @@ test('a genuinely clean, approved reading still reaches mergeable-and-green thro
 
   const result = classifyTerminalDisposition(greenSignalsWith(mergeability));
   assert.equal(result.disposition, 'mergeable-and-green');
+});
+
+test('a reading whose merge-block state is unobserved is blocked, never mergeable-and-green', () => {
+  // GitHub `mergeStateStatus: UNKNOWN` means the provider has not computed the
+  // merge gate, so `blocked` comes through as null. Content-mergeable, approved,
+  // and CI-green as it is, an unobserved merge-block state must not read as clean.
+  const mergeability = signalFor({
+    mergeable: 'MERGEABLE',
+    mergeStateStatus: 'UNKNOWN',
+    reviewDecision: 'APPROVED',
+    baseRefOid: BASE_SHA,
+    headRefOid: HEAD_SHA,
+  });
+
+  assert.equal(mergeability.state, 'mergeable');
+  assert.equal(mergeability.blocked, null, 'UNKNOWN leaves the merge-block state unobserved');
+  assert.equal(mergeability.reviewDecision, 'approved');
+
+  const result = classifyTerminalDisposition(greenSignalsWith(mergeability));
+  assert.equal(result.disposition, 'blocked');
+  assert.equal(result.reason, 'merge-block-state-unobserved');
+  assert.notEqual(result.disposition, 'mergeable-and-green');
+});
+
+test('the full chain from detection through a provider-native blocked payload lands on needs-human', () => {
+  // One test body spanning detection -> command -> provider-native response ->
+  // interpreter -> disposition, on real payload shapes.
+  const detection = detectProvider({
+    remoteUrls: ['https://github.contoso-internal.example/example/repo.git'],
+    hostProviders: { 'github.contoso-internal.example': 'github' },
+    toolAvailability: { gh: READY },
+  });
+  assert.equal(detection.status, 'supported-provider');
+  assert.equal(detection.host, 'github.contoso-internal.example');
+
+  const target = { changeRequest: 77, repository: { slug: 'example/repo' } };
+  for (const command of [mergeStateCommand(detection, target), resolveTargetCommand(detection, target)]) {
+    assert.equal(command.tool, 'gh');
+    const repoIndex = command.args.indexOf('--repo');
+    assert.ok(repoIndex >= 0, 'the read is scoped to a repository');
+    assert.ok(
+      command.args[repoIndex + 1].includes(detection.host),
+      'the canonical host is carried into the read command',
+    );
+  }
+
+  // A provider-native `gh pr view --json` payload: content merges, but the
+  // change request is blocked by a required review.
+  const payload = {
+    mergeable: 'MERGEABLE',
+    mergeStateStatus: 'BLOCKED',
+    reviewDecision: 'REVIEW_REQUIRED',
+    baseRefOid: BASE_SHA,
+    headRefOid: HEAD_SHA,
+    isDraft: false,
+  };
+  const signal = normalizeMergeabilitySignal(interpretMergeState(detection, payload));
+  const result = classifyTerminalDisposition(greenSignalsWith(signal));
+  assert.equal(result.disposition, 'needs-human');
+  assert.notEqual(result.disposition, 'mergeable-and-green');
 });

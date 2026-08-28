@@ -244,6 +244,41 @@ test('an explicitly named provider with no host has an explicitly unknown host, 
   assert.equal(canObserveProviderState(detection), false);
 });
 
+test('an explicit provider with a malformed host has no resolvable endpoint and is unobserved', () => {
+  // A canonical endpoint must be a plausible host. A scheme-carrying string or a
+  // free-text phrase is not a host, so it resolves to null and the explicit
+  // provider falls to the unobserved path rather than building commands against
+  // a garbage endpoint.
+  for (const explicitHost of ['https://github.com', 'not a host']) {
+    const detection = detectProvider({
+      explicitProvider: 'github',
+      explicitHost,
+      toolAvailability: { gh: READY },
+    });
+    assert.equal(detection.provider, 'github');
+    assert.equal(detection.host, null, `${explicitHost} is not a resolvable endpoint`);
+    assert.equal(detection.status, 'provider-tool-unobserved');
+    assert.equal(canObserveProviderState(detection), false);
+  }
+
+  // A probe that names a malformed endpoint likewise proves nothing against the
+  // queried run, so readiness stays unobserved.
+  const probeMalformed = detectProvider({
+    remoteUrls: ['https://github.com/example/repo.git'],
+    toolAvailability: { gh: { available: true, authenticated: true, host: 'https://github.com' } },
+  });
+  assert.equal(probeMalformed.status, 'provider-tool-unobserved');
+
+  // A valid host with a valid port still resolves cleanly.
+  const ported = detectProvider({
+    explicitProvider: 'github',
+    explicitHost: 'github.com:8443',
+    toolAvailability: { gh: { available: true, authenticated: true, host: 'github.com:8443' } },
+  });
+  assert.equal(ported.status, 'supported-provider');
+  assert.equal(ported.host, 'github.com:8443');
+});
+
 test('a probe that observed a different endpoint than the one queried is unobserved', () => {
   // Tool readiness keyed by executable alone would accept a probe run against a
   // different account or deployment. A probe that names its endpoint must agree

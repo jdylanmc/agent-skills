@@ -159,17 +159,39 @@ function splitHostPort(hostValue) {
 }
 
 /**
+ * Whether a string is a plausible DNS hostname. Accepts single-label hosts
+ * (`githost`) and dotted hosts (`github.com`, `ssh.dev.azure.com`), each label
+ * alphanumeric with interior hyphens. Rejects anything carrying a scheme,
+ * slash, whitespace, at-sign, or other non-hostname character, so a URL or a
+ * free-text phrase never passes for a host.
+ */
+function isPlausibleHostname(host) {
+  if (typeof host !== 'string' || host.length === 0 || host.length > 253) {
+    return false;
+  }
+  return host.split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label));
+}
+
+/**
  * The canonical API endpoint for a transport host. A known SSH or alias host is
  * mapped to its API endpoint; any port is preserved so a ported endpoint stays
- * distinct. Returns null when there is no host to canonicalize.
+ * distinct. Returns null when there is no host to canonicalize, or when the
+ * host part is not a plausible hostname or the port is out of range — a
+ * malformed endpoint is unresolvable rather than passed through as a target.
  */
 export function canonicalizeEndpoint(transportHost) {
   if (!transportHost) {
     return null;
   }
   const { host, port } = splitHostPort(transportHost);
-  if (!host) {
+  if (!isPlausibleHostname(host)) {
     return null;
+  }
+  if (port !== null) {
+    const portNumber = Number(port);
+    if (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) {
+      return null;
+    }
   }
   const canonicalHost = TRANSPORT_TO_API_ENDPOINT.get(host) ?? host;
   return port ? `${canonicalHost}:${port}` : canonicalHost;
@@ -206,7 +228,15 @@ function classifyTool(provider, toolAvailability, canonicalEndpoint = null) {
   if (probe === undefined || probe === null || typeof probe !== 'object') {
     return { status: 'provider-tool-unobserved', tool: provider.cli };
   }
-  const probedEndpoint = canonicalizeEndpoint(probe.host ?? probe.endpoint ?? null);
+  const rawProbeEndpoint = probe.host ?? probe.endpoint ?? null;
+  const probedEndpoint = canonicalizeEndpoint(rawProbeEndpoint);
+  // A probe that names an endpoint which does not resolve to a plausible host
+  // cannot be confirmed to match the queried endpoint, so readiness is
+  // unobserved rather than assumed. A probe that omits the field entirely stays
+  // permissive.
+  if (rawProbeEndpoint !== null && rawProbeEndpoint !== undefined && probedEndpoint === null) {
+    return { status: 'provider-tool-unobserved', tool: provider.cli };
+  }
   if (probedEndpoint !== null && canonicalEndpoint !== null && probedEndpoint !== canonicalEndpoint) {
     return { status: 'provider-tool-unobserved', tool: provider.cli };
   }

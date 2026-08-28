@@ -269,6 +269,18 @@ function classifyOutcome(signals, receipt) {
     return { disposition: 'needs-human', reason: `review-${mergeability.reviewDecision}`, defects };
   }
 
+  // Content merged and neither an explicit block nor a blocking review is not
+  // yet clearance: the provider may not have computed the merge gate at all.
+  // A merge-block state read as `null` — GitHub `mergeStateStatus` UNKNOWN or
+  // absent, carried through as `blocked: null` — is unobserved, not permissive,
+  // and an unobserved block must never read as green. The check is strict
+  // `=== null`: a hand-built green signal omits `blocked` entirely (`undefined`)
+  // and a real clean reading normalizes to `blocked: false`; only the genuinely
+  // unobserved `null` is gated here.
+  if (mergeability.blocked === null) {
+    return { disposition: 'blocked', reason: 'merge-block-state-unobserved', defects };
+  }
+
   // Mergeable content and green checks are not landability when the base
   // refuses a behind branch. Under that policy the question has to be settled
   // rather than assumed: `behind === false` is the only answer that clears it,

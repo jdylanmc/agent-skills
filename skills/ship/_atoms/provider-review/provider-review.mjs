@@ -205,11 +205,14 @@ const AZURE_RESOLVED_STATUSES = new Set(['fixed', 'closed', 'wontFix', 'byDesign
  *
  * `gh api graphql --paginate` emits one JSON object per page, so the GitHub
  * payload may be either a single page object or an array of them; the pages are
- * aggregated here. A read is `complete` only when neither the outer
- * `reviewThreads` connection nor any thread's nested `comments` connection was
- * truncated. A truncated read keeps the threads it did read but reports
- * `complete: false` and names what was truncated, so an incomplete read never
- * masquerades as a complete one.
+ * aggregated here. A read is `complete` only when every connection our query
+ * requested `pageInfo` for confirms it with `hasNextPage === false`. A
+ * `hasNextPage === true` is a truncated read; an absent or non-boolean
+ * `hasNextPage` on a requested connection is unconfirmed, which is not a
+ * complete read either. A read that is truncated or unconfirmed keeps the
+ * threads it did read but reports `complete: false` and names what was
+ * truncated or left unconfirmed, so an incomplete read never masquerades as a
+ * complete one.
  */
 export function interpretReviewThreads(detection, payload) {
   const guard = requireObservableProvider(detection);
@@ -228,7 +231,7 @@ export function interpretReviewThreads(detection, payload) {
     }
     const rawThreads = [];
     let sawConnection = false;
-    let outerTruncated = false;
+    let outerHasNextPage;
     for (const page of pages) {
       const connection = page?.data?.repository?.pullRequest?.reviewThreads;
       if (!connection || !Array.isArray(connection.nodes)) {
@@ -237,7 +240,7 @@ export function interpretReviewThreads(detection, payload) {
       sawConnection = true;
       rawThreads.push(...connection.nodes);
       // The final page carrying a connection settles outer completeness.
-      outerTruncated = connection.pageInfo?.hasNextPage === true;
+      outerHasNextPage = connection.pageInfo?.hasNextPage;
     }
     if (!sawConnection) {
       return unobserved('review-threads-absent', ['data.repository.pullRequest.reviewThreads.nodes']);
@@ -245,8 +248,14 @@ export function interpretReviewThreads(detection, payload) {
 
     const incomplete = [];
     const threads = rawThreads.map((thread) => {
-      if (thread?.comments?.pageInfo?.hasNextPage === true) {
+      // Completeness is confirmed only by an explicit `hasNextPage === false`.
+      // `=== true` is truncation; anything else on a connection our query asks
+      // pageInfo for is unconfirmed, which is incomplete, not complete.
+      const commentsHasNextPage = thread?.comments?.pageInfo?.hasNextPage;
+      if (commentsHasNextPage === true) {
         incomplete.push({ threadId: text(thread?.id), truncated: 'comments' });
+      } else if (commentsHasNextPage !== false) {
+        incomplete.push({ threadId: text(thread?.id), truncated: 'comments', reason: 'completeness-unconfirmed' });
       }
       return {
         id: text(thread?.id),
@@ -257,8 +266,10 @@ export function interpretReviewThreads(detection, payload) {
         comments: githubThreadComments(thread),
       };
     });
-    if (outerTruncated) {
+    if (outerHasNextPage === true) {
       incomplete.push({ truncated: 'reviewThreads' });
+    } else if (outerHasNextPage !== false) {
+      incomplete.push({ truncated: 'reviewThreads', reason: 'completeness-unconfirmed' });
     }
     const complete = incomplete.length === 0;
     return {
@@ -302,8 +313,9 @@ export function interpretReviewThreads(detection, payload) {
  * A thread whose resolution state the provider did not report counts as
  * unresolved: an unknown blocking comment is treated as blocking. The return
  * value keeps `observed` so a caller cannot read an unobserved result as an
- * empty one, and it propagates `complete` so a caller cannot read a truncated
- * conversation as a whole one.
+ * empty one, and it propagates `complete` — and, when incomplete, the
+ * `incomplete` list naming what was truncated or left unconfirmed — so a caller
+ * cannot read a truncated or unconfirmed conversation as a whole one.
  */
 export function unresolvedReviewThreads(review = {}) {
   if (review.observed !== true || !Array.isArray(review.threads)) {
@@ -318,6 +330,7 @@ export function unresolvedReviewThreads(review = {}) {
     observed: true,
     operation: 'unresolved-review-threads',
     complete: review.complete === true,
+    ...(review.complete === true ? {} : { incomplete: Array.isArray(review.incomplete) ? review.incomplete : [] }),
     threads: review.threads.filter((thread) => thread.isResolved !== true),
   };
 }
