@@ -57,6 +57,7 @@ jobs:
           skills/_base/_atoms/artifact-classify/artifact-classify.test.mjs
           skills/_base/_atoms/chronicle-append/chronicle-append.test.mjs
           skills/_base/_atoms/chronicle-replay/chronicle-replay.test.mjs
+          skills/_base/_atoms/contradiction-check/contradiction-check.test.mjs
           skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.test.mjs
           skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.adversarial.test.mjs
           skills/_base/_atoms/redact-sensitive/redact-sensitive.config.test.mjs

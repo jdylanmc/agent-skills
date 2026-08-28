@@ -353,3 +353,78 @@ test('observedWith is documented as a checked field', () => {
   // The text explicitly states it is checked, not merely an audit note
   assert.match(approvalAtom, /observedWith.*records.*commands/i);
 });
+
+// --- #123: the shared contradiction-check unit is the seam spec depends on ---
+
+// Criterion 1: one unit, composed by every consumer that needs the question
+// answered. spec is a current consumer, and it must reach the shared unit
+// rather than carry its own copy.
+test('spec reaches the shared contradiction-check unit through the molecule', () => {
+  const closure = closureFor(validateRepository(ROOT), ENTRY);
+  assert.ok(
+    closure.includes('_base/_atoms/contradiction-check/contradiction-check.md'),
+    'spec must reach the shared contradiction-check unit',
+  );
+  const molecule = frontmatter('spec/_molecules/product-specification/product-specification.md');
+  assert.ok(
+    molecule.composes.includes('_base/_atoms/contradiction-check/contradiction-check.md'),
+    'the molecule that owns the held path composes the shared unit',
+  );
+  const skill = frontmatter(ENTRY);
+  assert.ok(
+    !skill.composes.includes('_base/_atoms/contradiction-check/contradiction-check.md'),
+    'the skill reaches the unit through the molecule, not by direct composition',
+  );
+});
+
+// Criterion 1 (evidence): the unit's verdict is exactly what feeds spec-outcome
+// on the held path, and the values the unit produces are the ones spec-outcome
+// accepts. 'not-checked' is the caller's not-run value and is never produced by
+// the unit.
+test("the contradiction unit's verdict is what feeds spec-outcome on the held path", async () => {
+  const cc = await import('../_base/_atoms/contradiction-check/contradiction-check.mjs');
+  const so = await import('./_atoms/spec-outcome/spec-outcome.mjs');
+
+  const base = {
+    version: 1,
+    artifact: { id: 'spec-x', kind: 'nano-specification' },
+    assertions: [{ id: 'AC-001', kind: 'acceptance-criterion', text: 'write exactly one pair' }],
+    evidence: [{ ref: 'ev-1', text: 'the enriched foundation now writes two pairs' }],
+    accepted: [],
+  };
+  const none = cc.resolveContradictions({ ...base, findings: [] });
+  const escalated = cc.resolveContradictions({
+    ...base,
+    findings: [{ assertionId: 'AC-001', evidenceRef: 'ev-1', confidence: 'high', description: 'the pair count changed' }],
+  });
+  assert.equal(none.verdict, 'none');
+  assert.equal(escalated.verdict, 'escalated');
+  assert.notEqual(none.verdict, 'not-checked');
+  assert.notEqual(escalated.verdict, 'not-checked');
+
+  const outcome = (contradiction) => so.resolveSpecOutcome({
+    sourceStatus: 'held',
+    pairStatus: 'valid',
+    discoveryGaps: 0,
+    openDecisions: 0,
+    siblingConflicts: 0,
+    roastStatus: 'complete',
+    openMustFix: 0,
+    approval: 'approved',
+    contradiction,
+  });
+  assert.equal(outcome(none.verdict).status, 'held');
+  assert.equal(outcome(escalated.verdict).status, 'needs-decision');
+});
+
+// The held path now produces the verdict with the unit rather than passing
+// 'not-checked' because #123 was unimplemented.
+test('the held path produces the verdict with the unit, not a not-checked placeholder', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
+  assert.doesNotMatch(skill, /not-checked.{0,40}#123 is not yet implemented/i);
+  assert.doesNotMatch(molecule, /not-checked.{0,40}#123 is not yet implemented/i);
+  assert.match(molecule, /contradiction-check\/contradiction-check\.md/);
+  assert.match(molecule, /check contradiction/i);
+  assert.match(skill, /shared contradiction check/i);
+});

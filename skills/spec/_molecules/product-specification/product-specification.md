@@ -2,8 +2,8 @@
 name: product-specification
 description: Convert one confirmed Discovery source into a stable product-intent model, persist its authoritative nano and supporting full Product Requirements Documents beneath docs/agent/specs, and validate the reread pair.
 level: molecule
-includes: ["spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
-composes: ["spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
+includes: ["_base/_atoms/contradiction-check/contradiction-check.md","spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
+composes: ["_base/_atoms/contradiction-check/contradiction-check.md","spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
 used-by: ["spec/SKILL.md"]
 allowed-tools: ["edit","execute"]
 ---
@@ -15,7 +15,8 @@ artifact.
 
 ```text
 resolve approval state -> resolve source with state-dependent freshness
-                       -> on held: route through spec-outcome with contradiction verdict
+                       -> on held: check contradiction, then route through
+                          spec-outcome with the resulting verdict
                        -> preserve evidence distinctions -> formalize product intent
                        -> write nano/full pair -> reread -> validate
                        -> resolve status
@@ -23,11 +24,12 @@ resolve approval state -> resolve source with state-dependent freshness
 
 ## Required References
 
-1. [Approval state](../../_atoms/approval-state/approval-state.md)
-2. [Discovery source](../../_atoms/discovery-source/discovery-source.md)
-3. [Product requirements](../../_atoms/product-requirements/product-requirements.md)
-4. [Specification pair](../../_atoms/spec-pair/spec-pair.md)
-5. [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md)
+1. [Contradiction check](../../../_base/_atoms/contradiction-check/contradiction-check.md)
+2. [Approval state](../../_atoms/approval-state/approval-state.md)
+3. [Discovery source](../../_atoms/discovery-source/discovery-source.md)
+4. [Product requirements](../../_atoms/product-requirements/product-requirements.md)
+5. [Specification pair](../../_atoms/spec-pair/spec-pair.md)
+6. [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md)
 
 ## Operation
 
@@ -42,13 +44,19 @@ resolve approval state -> resolve source with state-dependent freshness
    When revisions match, the source is fresh. When revisions differ, the outcome
    depends on approval state: a draft refuses with `stale`; an approved
    specification is `held`.
-3. **On `held`, route through the deterministic resolver.** The approved
-   specification stands and nothing was re-derived or written. Run
+3. **On `held`, check contradiction, then route through the deterministic
+   resolver.** The approved specification stands and nothing was re-derived or
+   written. Run
+   [Contradiction check](../../../_base/_atoms/contradiction-check/contradiction-check.md)
+   over the approved artifact's assertion set and the enriched Discovery
+   evidence — `--bound` to hand judgement exactly the capped surface, then
+   `--resolve` on the judged findings — to produce the contradiction verdict
+   (`escalated` or `none`). Then run
    [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md) with
-   `sourceStatus: 'held'`, the approval state, and the contradiction verdict
-   (`not-checked` when #123 is not yet implemented). Return whatever it
-   resolves — `held` or `needs-decision`. Nothing else is derived, written,
-   roasted, or published on this path.
+   `sourceStatus: 'held'`, the approval state, and that verdict. Return whatever
+   it resolves — `held` when nothing new contradicts, `needs-decision` when the
+   contradiction escalated. Nothing else is derived, written, roasted, or
+   published on this path.
 4. Run
    [Product requirements](../../_atoms/product-requirements/product-requirements.md).
    Formalize only what the source supports. Preserve facts, claims, decisions,
