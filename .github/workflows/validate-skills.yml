@@ -116,6 +116,9 @@ jobs:
           skills/ship/_atoms/merge-gate/merge-gate.test.mjs
           skills/ship/_atoms/shepherd-handoff/shepherd-handoff.test.mjs
           skills/ship/ship.conformance.test.mjs
+          skills/eli5/_atoms/explanation-ladder/explanation-ladder.test.mjs
+          skills/eli5/_atoms/explanation-ladder/explanation-ladder.adversarial.test.mjs
+          skills/eli5/eli5.conformance.test.mjs
           skills/orchestration-handoff/orchestration-handoff.conformance.test.mjs
           skills/qa-design/qa-design.conformance.test.mjs
           skills/qa-design/_atoms/gherkin-design/gherkin-design.test.mjs

@@ -15,6 +15,12 @@ below is unreleased and no comparison links are available.
 
 ### Added
 
+- **Explain like I'm five.** `/eli5 <subject>` explains one subject at three
+  increasing depths — for a five-year-old, a junior in the subject's own field,
+  and an expert — after grounding in the subject's own evidence when it is a
+  local repository, file, or document. The three levels are concise and
+  bullet-heavy, each one deeper than the last, and it never edits or implements
+  the thing it explains.
 - **Skill authoring.** `create-skill` builds a new skill package from a captured
   intent, coaching the idea before anything is written and refusing to call a
   package complete until adversarial review has run and its findings are
