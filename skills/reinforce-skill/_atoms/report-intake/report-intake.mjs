@@ -1593,8 +1593,16 @@ export function writeAdmissionState(statePath, receipt, { repositoryRoot = null,
   } finally {
     // A failed rename leaves the part file behind, and a directory slowly
     // filling with half-receipts is the kind of litter nobody attributes to the
-    // run that made it.
-    fileSystem.rmSync(temporary, { force: true });
+    // run that made it. Tidying is best effort on purpose: an error thrown
+    // here would replace the receipt's own outcome - the thing the caller has
+    // to act on - with a complaint about a temporary file, and would report a
+    // raw errno where a refusal code belongs.
+    try {
+      fileSystem.rmSync(temporary, { force: true });
+    } catch {
+      // The part file outlives this run. What happened to the receipt is the
+      // answer this function owes its caller.
+    }
   }
   return real;
 }
