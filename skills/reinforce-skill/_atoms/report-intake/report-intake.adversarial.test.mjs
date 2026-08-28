@@ -1693,12 +1693,6 @@ function captureStreams() {
   };
 }
 
-/** Every refusal code a result carries is one this module defines. */
-function everyCodeIsARefusalCode(result) {
-  const known = new Set(Object.values(REFUSALS));
-  return codesOf(result).every((code) => known.has(code));
-}
-
 /** Whether the release check would let a run publish against a state path. */
 function releaseCheck(fixture, { statePath, reportPath }) {
   const checked = spawnSync(process.execPath, [
@@ -1709,27 +1703,40 @@ function releaseCheck(fixture, { statePath, reportPath }) {
   return { status: checked.status, ...JSON.parse(checked.stdout) };
 }
 
+/** Whether a result warns that an earlier receipt outlived the run. */
+function warnsOfAStaleReceipt(result) {
+  return result.refusals.some((entry) => entry.code === REFUSALS.stateUnwritable
+    && /an earlier receipt may still be present/.test(entry.message));
+}
+
 /**
- * Admit the fixture report for real, then refuse a second run whose receipt
- * cannot be written. The first run goes through the command line, so the
- * admitted receipt these cases are about is one the shipped entry point wrote.
+ * Refuse a run whose receipt cannot be written, and return what it published.
+ *
+ * `seedAdmitted` decides whether an admitted receipt is sitting at the state
+ * path when the refusal happens. When it is, the seeding run goes through the
+ * command line, so the receipt these cases are about is one the shipped entry
+ * point wrote.
  */
-function refusalOverAdmittedReceipt(fixture, denials) {
+function refusalWithDeniedReceipt(fixture, { seedAdmitted = true, ...denials } = {}) {
   const { reportPath, approvalPath, statePath } = scenario(fixture);
-  spawnSync(process.execPath, [
-    INTAKE_CLI, ...admissionCommand({
-      report: reportPath, target: 'changelog', approval: approvalPath, root: fixture.repository, state: statePath,
-    }),
-  ], { encoding: 'utf8' });
-  assert.equal(
-    JSON.parse(fs.readFileSync(statePath, 'utf8')).status,
-    'admitted',
-    'the case only means anything if an admitted receipt is really sitting at that path',
-  );
+  if (seedAdmitted) {
+    spawnSync(process.execPath, [
+      INTAKE_CLI, ...admissionCommand({
+        report: reportPath, target: 'changelog', approval: approvalPath, root: fixture.repository, state: statePath,
+      }),
+    ], { encoding: 'utf8' });
+    assert.equal(
+      JSON.parse(fs.readFileSync(statePath, 'utf8')).status,
+      'admitted',
+      'the case only means anything if an admitted receipt is really sitting at that path',
+    );
+  } else {
+    assert.equal(fs.existsSync(statePath), false, 'this case starts with nothing at the state path');
+  }
 
   const streams = captureStreams();
-  // The same run, minus the approval: the report is refused, so the receipt it
-  // must write is a refusal receipt - and writing it is what fails.
+  // The run without its approval: the report is refused, so the receipt it must
+  // write is a refusal receipt - and writing it is what fails.
   const status = run([
     '--report', reportPath, '--target', 'changelog',
     '--root', fixture.repository, '--state', statePath,
@@ -1744,11 +1751,9 @@ function refusalOverAdmittedReceipt(fixture, denials) {
   return { parsed, reportPath, statePath };
 }
 
-test('a refusal that cannot record itself clears the receipt, and says so when it cannot', () => {
-  // When the receipt can still be removed, the stale admission does not
-  // survive, and the run says so.
+test('a refusal that cannot record itself clears the stale admitted receipt', () => {
   withFixtureRepository((fixture) => {
-    const { parsed, reportPath, statePath } = refusalOverAdmittedReceipt(fixture, { removable: true });
+    const { parsed, reportPath, statePath } = refusalWithDeniedReceipt(fixture, { removable: true });
 
     assert.equal(parsed.admission_state, 'cleared');
     assert.equal(fs.existsSync(statePath), false, 'the stale admitted receipt is gone');
@@ -1761,23 +1766,36 @@ test('a refusal that cannot record itself clears the receipt, and says so when i
     assert.equal(release.requirement, 'blocked');
     assert.deepEqual(codesOf(release), [REFUSALS.stateMissing], 'blocked because there is no receipt at all');
   });
+});
 
-  // When it cannot be removed either, nothing further can be done to the path,
-  // and the refusal says exactly that rather than claiming the receipt is safe.
+test('a refusal that can neither record nor clear its receipt says so, and claims nothing more', () => {
   withFixtureRepository((fixture) => {
-    const { parsed, statePath } = refusalOverAdmittedReceipt(fixture, { removable: false });
+    const { parsed, statePath } = refusalWithDeniedReceipt(fixture, { removable: false });
 
     assert.equal(parsed.admission_state, 'not-recorded');
-    assert.ok(
-      parsed.refusals.some((entry) => entry.code === REFUSALS.stateUnwritable
-        && /an earlier receipt may still be present/.test(entry.message)),
-      'no guarantee is claimed that the code cannot keep',
-    );
+    assert.ok(warnsOfAStaleReceipt(parsed), 'no guarantee is claimed that the code cannot keep');
     // The warning is honest rather than decorative: the earlier receipt really
     // is still there, which is why the message tells a human to delete it
     // before any run publishes against that path.
     assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).status, 'admitted');
     assert.deepEqual(partFilesBeside(statePath), [], 'the abandoned write leaves no half-receipt behind');
+  });
+});
+
+test('a refusal over an empty state path raises no alarm about a receipt that is not there', () => {
+  withFixtureRepository((fixture) => {
+    // Nothing was ever recorded at this path, so clearing it has nothing to
+    // remove. That is a cleared path, not a failure: an operator told to go
+    // delete a receipt that does not exist learns to ignore the one message in
+    // this module that asks a human to act.
+    const { parsed, reportPath, statePath } = refusalWithDeniedReceipt(fixture, { seedAdmitted: false });
+
+    assert.equal(parsed.admission_state, 'cleared');
+    assert.equal(warnsOfAStaleReceipt(parsed), false, 'an empty path is not reported as a surviving receipt');
+    assert.deepEqual(codesOf(parsed), [REFUSALS.stateUnwritable, REFUSALS.unapprovedReport].sort());
+    assert.equal(fs.existsSync(statePath), false);
+    assert.deepEqual(partFilesBeside(statePath), []);
+    assert.equal(releaseCheck(fixture, { statePath, reportPath }).requirement, 'blocked');
   });
 });
 
@@ -1787,11 +1805,10 @@ test('a receipt write reports what happened to the receipt, not what happened to
     // second failure is the smaller one, and it must not displace the first:
     // an operator acting on this output needs the receipt's outcome, and a
     // refusal code is a code this module defines rather than a raw errno.
-    const { parsed, statePath } = refusalOverAdmittedReceipt(fixture, { removable: true, tidiable: false });
+    const { parsed, statePath } = refusalWithDeniedReceipt(fixture, { removable: true, tidiable: false });
 
     assert.equal(parsed.admission_state, 'cleared');
     assert.equal(fs.existsSync(statePath), false, 'the stale admitted receipt is still gone');
-    assert.ok(everyCodeIsARefusalCode(parsed), 'no refusal reports an errno where a refusal code belongs');
     assert.deepEqual(codesOf(parsed), [REFUSALS.stateUnwritable, REFUSALS.unapprovedReport].sort());
     // What is left behind is left behind. The run does not pretend otherwise,
     // and a scratch file nobody can delete is not a reason to withhold the
