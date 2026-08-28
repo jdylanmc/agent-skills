@@ -44,11 +44,14 @@ describes it.
    reports the rest unapplied, and refuses a missing, ambiguous, malformed,
    unapproved, digest-mismatched, target-mismatched, or self-contradicting
    report **before** anything is edited. It emits one normalized change request,
-   with every proposed surface canonicalized to a path inside the target skill,
-   and records the admission as a bounded receipt in run-owned state that
-   publication rechecks. With no report, this step does not run and the
-   operator's own words are the change request, grounded through the same
-   command in the same shape; nothing manufactures a report to fill the shape.
+   with every proposed surface canonicalized to a path inside the target skill
+   and one proposal per file, and records the admission as a bounded receipt in
+   run-owned state that publication rechecks — a report admitted without that
+   receipt grounds nothing. An approved report that applies to nothing here ends
+   the run with its exclusions reported and no change made. With no report, this
+   step does not run and the operator's own words are the change request,
+   grounded through the same command in the same shape; nothing manufactures a
+   report to fill the shape.
 3. [Change grounding](../../_atoms/change-grounding/change-grounding.md) reads
    that intent as the standard, reads the current implementation, and takes the
    change request from whichever source produced it, without inferring one. A

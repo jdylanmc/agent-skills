@@ -72,14 +72,23 @@ approves that exact digest and that one target for this run.
      --root <repository root> --state <run-owned receipt path>
    ```
 
-   Exit `2` is a refusal and is not a warning to carry forward. `--state`
-   records the admission as a bounded receipt in run-owned, unpublished state,
-   which is what step 5 rechecks; a run that intends to publish supplies it.
+   Exit `2` is a refusal and is not a warning to carry forward. **`--state` is
+   required**, and an admission recorded nowhere returns no change request at
+   all: there is nothing for step 5 to re-derive, so there is nothing to ground
+   with. An approved report that applies to nothing here reports
+   `no-applicable-recommendations`, lists what it excluded, and the run stops —
+   before the intent decision, the changelog, and the pull request — because
+   there is no change to make.
+
+   Every proposed surface is canonicalized to a path inside the target skill,
+   and one file takes one proposal: identical proposals deduplicate, and two
+   different ones are an ambiguity for the operator rather than a guess here.
 
    With no report, this step does not happen at all. Human guidance grounds
-   through the same command — `--guidance <text> --target <skill>` — producing
-   the same normalized shape with no report, no approval, and no receipt. No
-   synthetic report is manufactured to fill the shape.
+   through the same command — `--guidance <text>`, `--guidance-file <path>`, or
+   `--guidance -` for standard input — producing the same normalized shape with
+   no report, no approval, and no receipt. No synthetic report is manufactured
+   to fill the shape.
 
 3. Run [Skill reinforcement](./_molecules/skill-reinforcement/skill-reinforcement.md).
    It resolves the one existing skill, admits an approved report against that
@@ -228,7 +237,8 @@ Each run ends in exactly one status:
 | --- | --- |
 | `reinforced` | The change is made, validation passed, `/roast` ran on the final head with every finding addressed, the pull request is open. A degraded changelog does not lower this status; it is reported. A degraded writing review does not lower it either; it is reported the same way. |
 | `needs-confirmation` | The intent changed but the operator has not confirmed the revised wording, or the three-round roast pause awaits his answer. Nothing is stored or merged. |
-| `blocked` | The target is not a routable existing skill, a supplied report is refused by intake, the admission release check is blocked at publication, a dependency prevents the change, validation cannot pass, or the diff audit refuses an out-of-target path. |
+| `blocked` | The target is not a routable existing skill, a supplied report is refused by intake or admitted without a recorded receipt, the admission release check is blocked at publication, a dependency prevents the change, validation cannot pass, or the diff audit refuses an out-of-target path. |
+| `halted` | See below. A report that applies to nothing here also ends the run before any change is made, reported as `no-applicable-recommendations` with the exclusions listed. |
 | `halted` | `/roast` refused or returned an unsynthesized result, or the loop reached its round limit without convergence. |
 
 Never report a reinforcement `reinforced` unless `/roast` actually ran on the
@@ -264,8 +274,16 @@ for naming another skill are listed too, so nobody has to wonder whether they
 were missed or deliberately left alone.
 
 The receipt itself is run state and is never committed: it lives outside the
-repository or under a git-ignored run-state root, so it appears in the pull
+repository or under the git-ignored `.skill-log/`, so it appears in the pull
 request as quoted evidence and never as a changed file.
+
+**Quote what the receipt proves, and not more.** It binds these report bytes,
+this target, this grant token, this selection, and this grounding — all
+re-derivable, which is why the check can refuse a drifted one on arithmetic. It
+proves nothing about a person: a file can be written by anything that can write
+files, and every value in it is a public constant or a digest anyone holding the
+report could compute. Personhood came from the operator interaction that
+produced the approval, and the receipt does not stand in for it.
 
 ## The Writing Component
 

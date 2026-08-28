@@ -30,23 +30,35 @@ saying the operator already agreed is not approval; it is a sentence.
 ```text
 node <atoms>/report-intake/report-intake.mjs \
   --report <report.json> --target <skill> --approval <approval.json> \
-  [--root <repository root> --state <absolute receipt path>]
+  --root <repository root> --state <absolute receipt path>
 
 node <atoms>/report-intake/report-intake.mjs --guidance <text> --target <skill>
+node <atoms>/report-intake/report-intake.mjs --guidance-file <path> --target <skill>
+node <atoms>/report-intake/report-intake.mjs --guidance - --target <skill>
 
 node <atoms>/report-intake/report-intake.mjs \
   --require-admitted-state <receipt> --report <report.json> --target <skill>
 ```
 
-Exit `0` admits the report, or reports the release check satisfied, and prints
-the normalized change-grounding input. Exit `2` refuses and names **every**
-reason at once. Exit `1` is a usage error. A refusal is not a warning to carry
-forward; the run stops there, before any file is edited.
+Exit `0` admits the report, reports that an approved report applies to nothing
+here, or reports the release check satisfied. Exit `2` refuses, reports an
+unrecorded admission, or blocks. Exit `1` is a usage error. A refusal is not a
+warning to carry forward; the run stops there, before any file is edited.
+
+**`--report` requires `--state` and `--root`.** An admission nobody wrote down
+cannot be re-derived before publication, so a report admitted without a receipt
+reports `admitted-unrecorded`, exits non-zero, and returns no change request at
+all. There is nothing to ground with, which is the point: the alternative is a
+run whose only evidence of its own authority is that it says so.
 
 The same command grounds human guidance, so both admissible sources produce one
 shape from one place rather than one shape from a script and another from a
-paragraph. `--guidance` takes no report, no approval, and no admission state,
-and supplying any of them alongside it is a usage error rather than a merge.
+paragraph. Guidance arrives as `--guidance <text>`, as `--guidance-file <path>`,
+or on standard input with `--guidance -`, and file and stream input are bounded
+so a paragraph-sized field cannot become an unbounded read. `--guidance` takes
+its value literally, because prose may legitimately begin with `--`; it takes no
+report, no approval, and no admission state, and supplying any of them alongside
+it is a usage error rather than a merge.
 
 ## Inputs
 
@@ -55,7 +67,7 @@ and supplying any of them alongside it is a usage error rather than a merge.
 | `report` | yes | Exactly one reinforcement report. Zero is missing, two is ambiguous, and neither is resolved by picking one. |
 | `target` | yes | The one routable skill this run reinforces, from the reinforcement-target atom. |
 | `approval` | yes | The operator's approval receipt for this run. |
-| `state` | no | Where to record the admission receipt. Required for a run that will publish. |
+| `state` | with `report` | Where to record the admission receipt. |
 | `root` | with `state` | The repository, so the receipt's location can be proven unpublished. |
 
 This atom runs **only** when the operator supplied a report. Human guidance
@@ -119,9 +131,13 @@ is. Wrapping was the smallest safe integration; changing the fixed record to
 carry targets would change the artifact whose fixedness makes two post-mortems
 comparable.
 
-`recommendations` may be empty. A report that proposes nothing for this skill is
-admitted and grounds no change, which is a different outcome from a report that
-could not be trusted.
+`recommendations` may be empty, and a report may propose things only for other
+skills. Either way the outcome is `no-applicable-recommendations`: not a
+refusal, and not a change either. The exclusions are reported so the operator
+can see what the report did contain, no change request is produced, and the run
+stops there rather than carrying an empty request into an intent decision about
+a change nobody proposed. The receipt records that outcome, and the release
+check refuses it, so it cannot become a pull request by inattention.
 
 `promotion_recommendations.proposed_only` is deliberately **not** a section a
 recommendation may cite. Its entries are identifiers rather than candidate
@@ -140,22 +156,53 @@ of the target read as a surface at all.
 
 So every proposed surface is normalized first, to a target-relative POSIX path:
 
-- surrounding whitespace is trimmed and separators are normalized to `/`;
+- whitespace wrapping the whole value is dropped and separators are normalized
+  to `/`;
 - a leading `./` is stripped, and `.` segments are dropped;
-- an exact `skills/<that recommendation's target>/` prefix is stripped, and
-  nothing else is;
-- the result is the path relative to the target skill's own directory.
+- an exact `skills/<that recommendation's target>/` prefix is stripped —
+  matched the way a filesystem matches it, so `Skills/Changelog/` strips too —
+  and nothing else is;
+- the result is the path relative to the target skill's own directory, keeping
+  its own spelling and case.
 
 Everything else is **refused, never repaired**: an absolute path, a
 drive-rooted or UNC path, a `file:` or any other URL, a `..` segment anywhere, a
-trailing separator, and a first segment naming `skills`, `doctrine`, `.github`,
-or `.git`. A surface under another skill's package, or under `doctrine/`, is
-refused at this step — before containment, before grouping, and before anything
-downstream has a chance to be forgiving about it.
+trailing separator, a colon anywhere in a segment (an NTFS alternate data
+stream), a segment ending in a dot or a space, a Windows reserved device name
+(`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, with or without an
+extension), and a first segment naming `skills`, `doctrine`, `.github`, or
+`.git` in any case. A surface under another skill's package, or under
+`doctrine/`, is refused at this step — before containment, before grouping, and
+before anything downstream has a chance to be forgiving about it.
 
-Contradiction grouping then runs over the canonical surface, so a removal
-spelled `skills/<target>/SKILL.md` and a revision spelled `SKILL.md` are one
-file and one contradiction.
+Whitespace around the whole value is formatting and is dropped; a *segment* that
+ends in whitespace or a dot is not, and is refused. The difference is real:
+Windows silently strips a trailing dot or space from a name while POSIX keeps
+it, so `_atoms /x.md` is two different files depending on where it is applied,
+while `  SKILL.md  ` is one file, sloppily quoted.
+
+### Identity Is Not Spelling
+
+Comparison runs on a **key** derived from the canonical surface: Unicode NFC,
+lower-cased. `SKILL.md`, `skill.md`, and `SKILL.MD` are one file on the
+case-insensitive filesystems this library is developed on, and two Unicode
+spellings of one accented name are one file everywhere. The key decides grouping
+only; the canonical spelling is what a human reads and what travels onward.
+
+### One File Takes One Proposal
+
+Two applicable recommendations naming one canonical surface are either the same
+proposal written twice — identical directive, identical statement — or they are
+two different proposals about one file. The first **deduplicates** into a single
+change carrying both recommendation IDs. The second **refuses**.
+
+Refusing the second is the deliberate part. It is tempting to let two revisions
+of `SKILL.md` both apply, but nothing here can tell whether they compose,
+overlap, or contradict: *tighten the output contract* and *drop the output
+contract* are both revisions of one file, and deciding they are compatible means
+guessing at English. Guessing produces a change nobody proposed, so the
+ambiguity goes back to the operator, who can approve a report that says one
+thing per file.
 
 ## What Intake Validates
 
@@ -231,6 +278,9 @@ winner, because picking is a decision that belongs to the operator.
 | `contradictory_recommendations` | Two applicable recommendations cannot both be applied. |
 | `malformed_surface` | A proposed surface is not a target-relative path inside the target skill. |
 | `state_path_published` | The admission receipt would be written where the repository publishes it. |
+| `state_path_symlink` | A component of the admission state path is a symbolic link. |
+| `state_not_recorded` | A report was admitted with no `--state` to record it in. |
+| `oversized_guidance` | Guidance from a file or standard input exceeds the bound. |
 | `state_unwritable` | The admission receipt could not be recorded. |
 | `state_missing` | Publication was attempted with no recorded admission. |
 | `malformed_state` | The receipt is not this schema, or not its exact field set. |
@@ -277,16 +327,49 @@ compensating use. The grant is recorded verbatim because it is a fixed public
 constant with exactly one accepted value, so the field can never come to hold a
 secret.
 
+### What the Receipt Proves, and What It Cannot
+
+The receipt proves a **deterministic binding**: these report bytes, this target,
+this grant token, this selection of recommendations, this grounding. Every one
+of those is re-derivable, which is why the release check can refuse a drifted
+one on arithmetic.
+
+It proves **nothing about a person**. A file can be written by anything that can
+write files, and every value in it is a public constant or a digest anyone
+holding the report could compute, so a receipt is forgeable by construction and
+carries no identity, signature, or timestamp it could verify. Personhood comes
+from the operator interaction that produced the approval in the first place, and
+no amount of re-derivation here substitutes for it. What the receipt removes is
+the *other* failure — an admission that drifted, was replayed, or never happened
+— and claiming more for it would be the sort of promise this library has already
+paid to learn is not a boundary.
+
 The receipt is **run state, not package state**. It is written atomically —
 temporary file beside the destination, then a rename — so an interrupted write
 never leaves a half-receipt for the release check to misread. Its path must be
 absolute, must not traverse, and must be either outside the repository entirely
-— the caller's own workspace, and the ordinary case — or under one of the
-git-ignored run-state roots. Anywhere the repository publishes is refused, which
-keeps the receipt out of the diff the write-boundary guard audits and out of the
-package being reinforced. The list of in-repository run-state roots is pinned
-against `.gitignore` by the conformance suite, so adding one without ignoring it
-first fails the build rather than quietly publishing a receipt.
+— the caller's own workspace, and the ordinary case — or under `.skill-log/`,
+the one in-repository run-state root. Anywhere the repository publishes is
+refused, which keeps the receipt out of the diff the write-boundary guard audits
+and out of the package being reinforced. `.test-sandbox/` is deliberately not a
+run-state root: it is scratch space tests wipe between runs, and a production
+run whose authority record lived there would be one `rm -rf` from unprovable.
+The list is pinned against `.gitignore` by the conformance suite, so adding a
+root without ignoring it first fails the build rather than quietly publishing a
+receipt.
+
+**Containment is judged on the real location, not the spelling.** Every existing
+component of the path is checked for a symbolic link using the same guard the
+write-boundary check uses — one definition of "no component of this path is a
+link", not a second copy that would eventually disagree — and the deepest
+existing ancestor is resolved through every link before the remaining tail is
+rejoined. So a link inside `.skill-log/` pointing back at the repository, a link
+pointing out of it, and a link outside the repository resolving back into it are
+all refused, rather than one of them being judged on where it appeared to be.
+
+No refusal here quotes the path it refused. A state path is caller-supplied and
+usually absolute, and a boundary message that echoes it turns a refusal into a
+disclosure of somebody's home directory in a pull request.
 
 **A refusal never leaves an admitted receipt behind.** A refused run overwrites
 the receipt with a refused one, so an earlier admission at the same path can
@@ -310,6 +393,16 @@ skill, or that a check be skipped is text, and it stays text: scope comes from
 the compared `target_skill`, and authority from the operator's receipt. The
 record's own `quarantined_untrusted_directives` anchors are carried forward into
 the lineage as reported, not acted upon.
+
+**That extends to the refusals themselves.** A refusal is read by a person and
+often pasted into a pull request, so a value copied out of the report arrives
+bounded and on one line — otherwise the refusal becomes the delivery mechanism,
+and an embedded directive reproduced verbatim lands in a reviewer's terminal
+looking like output this run produced rather than input it rejected. Every
+refusal names its subject by position (`recommendations[2]`), never by the id
+the report chose for itself, and quotes a report-derived value only where the
+value is the information the reader needs — escaped to one line and truncated.
+Codes and indices are preferred to values throughout.
 
 ## Output
 

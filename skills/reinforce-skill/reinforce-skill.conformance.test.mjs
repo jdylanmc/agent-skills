@@ -52,6 +52,7 @@ import {
   buildAdmissionReceipt,
   groundingFromGuidance,
   normalizeSurface,
+  reconcileApplicable,
   requireAdmittedState,
 } from './_atoms/report-intake/report-intake.mjs';
 import {
@@ -943,6 +944,7 @@ test('the pull request quotes a machine receipt, rechecked rather than remembere
 
 test('the admission receipt is run state the repository never publishes', () => {
   const gitignore = fs.readFileSync(path.join(REPOSITORY_ROOT, '.gitignore'), 'utf8');
+  assert.deepEqual(RUN_STATE_ROOTS, ['.skill-log'], 'scratch space is not a place to keep authority');
   for (const root of RUN_STATE_ROOTS) {
     assert.match(
       gitignore,
@@ -953,10 +955,65 @@ test('the admission receipt is run state the repository never publishes', () => 
 
   // The receipt is not a package file, so it never enters the diff the guard audits.
   assert.equal(
-    classifyWritePath(REPOSITORY_ROOT, 'reinforce-skill', '.test-sandbox/run/admission.json'),
+    classifyWritePath(REPOSITORY_ROOT, 'reinforce-skill', '.skill-log/run/admission.json'),
     WRITE_CLASS.outside,
   );
   assert.equal(isWritableClass(WRITE_CLASS.outside), false);
+});
+
+test('a report grounds a run only when its admission was recorded', () => {
+  // The strongest form of the rule is that there is nothing to proceed with:
+  // an unrecorded admission returns no change request, so a caller cannot
+  // continue on one by accident.
+  const entry = flat(ENTRY);
+  assert.match(entry, /\*\*`--state` is\s+required\*\*/);
+  assert.match(entry, /an admission recorded nowhere returns no change request/);
+  assert.match(flat(INTAKE), /`--report` requires `--state` and `--root`/);
+});
+
+test('one file takes one proposal, and the ambiguous case goes back to the operator', () => {
+  const change = (id, surface, directive, statement) => ({
+    id, surface, directive, statement, evidence: ['U1'], source_ref: 'skill_improvements[0]',
+  });
+  const tighten = change('A', 'SKILL.md', 'revise', 'tighten the output contract');
+
+  assert.deepEqual(reconcileApplicable([tighten]).refusals, []);
+  assert.deepEqual(
+    reconcileApplicable([tighten, { ...tighten, id: 'B' }]).changes.map((entry) => entry.ids),
+    [['A', 'B']],
+    'the same proposal written twice is one change',
+  );
+  assert.equal(
+    reconcileApplicable([tighten, change('C', 'SKILL.md', 'revise', 'drop the output contract')])
+      .refusals.length,
+    1,
+    'two different proposals about one file are the operator\'s decision',
+  );
+  assert.equal(
+    reconcileApplicable([tighten, change('D', 'skills/x/SKILL.MD'.replace('skills/x/', ''), 'remove', 'drop it')])
+      .refusals.length,
+    1,
+    'and case is not a way to make them different files',
+  );
+});
+
+test('an approved report that applies to nothing stops before anything is changed', () => {
+  const report = reportText({ recommendations: [] });
+  const outcome = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+
+  assert.equal(outcome.status, 'no-applicable-recommendations');
+  assert.deepEqual(outcome.refusals, [], 'nothing went wrong; there is simply nothing to do');
+  assert.equal(outcome.change_request, null, 'and nothing to carry into an intent decision');
+
+  // It also cannot become a pull request, which is what makes the stop real.
+  const receipt = buildAdmissionReceipt(outcome);
+  assert.equal(receipt.status, 'no-applicable-recommendations');
+  assert.equal(
+    requireAdmittedState({ state: receipt, report, target: 'changelog' }).requirement,
+    'blocked',
+  );
+
+  assert.match(flat(ENTRY), /no-applicable-recommendations/);
 });
 
 test('a proposed surface can never name doctrine, another package, or a path outside the target', () => {

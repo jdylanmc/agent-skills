@@ -155,19 +155,27 @@ below is unreleased and no comparison links are available.
   applied; the rest are reported and left for their own run. A missing,
   ambiguous, malformed, unapproved, edited-since-approval, wrong-skill, or
   self-contradicting report stops the run before anything is edited, and every
-  reason is listed at once. Every proposed surface is canonicalized first, so
-  `SKILL.md` and `skills/<skill>/SKILL.md` are one file and a contradiction
-  spelled two ways is still caught, and a path naming another package,
-  `doctrine/`, an absolute location, or a URL is refused rather than repaired.
-  Applicable recommendations are reconciled into one change request that joins
-  the same intent-first workflow — the intent decision is still yours to
-  confirm, and an approved report never stands in for it. The admission is
-  recorded as a small machine receipt in run-owned, unpublished state and is
-  re-derived from the report on disk before a pull request opens, so a report
-  edited after you approved it stops the run rather than shipping. The pull
-  request quotes that receipt and carries the whole chain from report digest and
-  evidence anchors through to the reviewed head. Nothing about the
-  human-guidance path changed — it grounds through the same command, needs no
+  reason is listed at once, bounded and on one line so a directive embedded in a
+  report cannot ride out inside the refusal that rejected it. Every proposed
+  surface is canonicalized first and compared on file identity rather than
+  spelling, so `SKILL.md`, `skills/<skill>/SKILL.md`, and `skill.md` are one
+  file and a contradiction spelled two ways is still caught; a path naming
+  another package, `doctrine/`, an absolute location, a URL, or a name that
+  resolves differently on Windows than on Linux is refused rather than repaired.
+  One file takes one proposal: the same proposal made twice deduplicates, and
+  two different proposals about one file go back to you rather than being
+  guessed into compatibility. Applicable recommendations are reconciled into one
+  change request that joins the same intent-first workflow — the intent decision
+  is still yours to confirm, and an approved report never stands in for it. A
+  report that turns out to apply to nothing here says so, lists what it
+  excluded, and stops before anything is changed. The admission is recorded as a
+  small machine receipt in run-owned, unpublished state — required, so an
+  admission nobody wrote down grounds nothing — and re-derived from the report
+  on disk before a pull request opens, so a report edited after you approved it
+  stops the run rather than shipping. The pull request quotes that receipt, and
+  says plainly that it binds bytes and choices rather than proving who was
+  present. Nothing about the human-guidance path changed — it grounds through
+  the same command, from an argument, a file, or standard input, and needs no
   report, approval, or receipt — `post-mortem` is untouched, and no report is
   ever manufactured to satisfy a shape.
 

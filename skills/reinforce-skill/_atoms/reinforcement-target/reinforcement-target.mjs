@@ -85,8 +85,13 @@ function requireString(value, name) {
  * Reject every symlink in the existing prefix of `absolute`, not just the leaf.
  * A symlinked parent redirects a write exactly as effectively as a symlinked
  * file and is easier to miss.
+ *
+ * Exported so report intake proves the same property about the path it records
+ * a run receipt at. One guard, not two: a second copy would eventually walk the
+ * prefix differently, and the difference that matters is one of them accepting
+ * a redirect the other refuses.
  */
-function assertNoSymlinkComponent(realRoot, absolute) {
+export function assertNoSymlinkComponent(realRoot, absolute) {
   const relative = path.relative(realRoot, absolute);
   let walked = realRoot;
   for (const segment of relative.split(path.sep).filter(Boolean)) {

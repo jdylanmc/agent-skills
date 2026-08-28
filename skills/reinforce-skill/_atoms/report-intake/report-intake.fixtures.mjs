@@ -22,6 +22,16 @@ import {
   reportDigest,
 } from './report-intake.mjs';
 
+/**
+ * The run-state root a test may write a receipt under.
+ *
+ * `.test-sandbox/` is not a production run-state root - a receipt that lives in
+ * scratch space tests wipe would be one `rm -rf` from unprovable - so a test
+ * proving the in-repository branch uses the same root production does, and
+ * everything else runs against a throwaway repository root inside the sandbox.
+ */
+export const IN_REPO_STATE_ROOT = '.skill-log';
+
 export const INTAKE_CLI = fileURLToPath(new URL('./report-intake.mjs', import.meta.url));
 
 export const REPOSITORY_ROOT = path.resolve(
@@ -215,4 +225,21 @@ export function withFixtureDirectory(run) {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+}
+
+/**
+ * A throwaway *repository* root with a run-state root inside it, so the
+ * containment rules can be exercised - inside, outside, and symlinked across -
+ * without writing anywhere the real repository publishes.
+ */
+export function withFixtureRepository(run) {
+  return withFixtureDirectory((sandbox) => {
+    const repository = path.join(sandbox, 'repo');
+    fs.mkdirSync(path.join(repository, IN_REPO_STATE_ROOT), { recursive: true });
+    fs.mkdirSync(path.join(repository, 'skills', 'changelog'), { recursive: true });
+    fs.mkdirSync(path.join(repository, 'doctrine'), { recursive: true });
+    const outside = path.join(sandbox, 'caller-workspace');
+    fs.mkdirSync(outside, { recursive: true });
+    return run({ sandbox, repository, outside });
+  });
 }
