@@ -31,11 +31,12 @@ below is unreleased and no comparison links are available.
   question for any workflow holding an approved artifact — does new or changed
   evidence contradict its assertions? It compares changed evidence against a
   small, capped set of assertions rather than a whole document, escalates only
-  what a person needs to see and records the rest, and does not raise a
-  divergence again once someone has accepted it. It reports and never edits,
-  approves, invalidates, or proposes an edit. `/spec` uses it on the held path so
-  an approved specification is revisited only when the enriched Discovery
-  evidence genuinely contradicts it.
+  what a person needs to see and returns the rest for the caller to record, and
+  does not raise a divergence again once someone has accepted it. It reports and
+  never edits, approves, invalidates, or proposes an edit. `/spec` uses it on the
+  held path — recording the non-escalated findings through Chronicler so a
+  lower-confidence divergence survives the run — so an approved specification is
+  revisited only when the enriched Discovery evidence genuinely contradicts it.
 - **Specification publication.** `/spec` now publishes the pair as a change
   request so a human has something to merge. Publication pushes the run's own
   branch and opens a change request through the provider's official

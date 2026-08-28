@@ -16,8 +16,8 @@ turning requirements into design.
 
 ```text
 record -> resolve approval state -> resolve confirmed Discovery source
-       -> on held: check contradiction, then route through spec-outcome
-          with the resulting verdict
+       -> on held: check contradiction, record the non-escalated findings,
+          then route through spec-outcome with the resulting verdict
        -> model product intent -> render nano/full siblings
        -> validate and reread -> one independent Roast pass
        -> resolve status -> publish for approval -> human decision
@@ -63,13 +63,17 @@ record -> resolve approval state -> resolve confirmed Discovery source
    artifact's assertion set and the enriched Discovery evidence to produce a
    verdict of `escalated` or `none`; it compares against the capped assertion
    set, never the whole document, and reports without editing, approving, or
-   invalidating anything. Then run
+   invalidating anything. Record the check's non-escalated `recorded` and
+   `suppressed` findings through Chronicler before routing the verdict onward,
+   so a `medium` or `low` divergence survives the run and the record stays
+   auditable rather than being dropped with the verdict; only an escalated
+   finding interrupts the human. Then run
    [Specification outcome](./_atoms/spec-outcome/spec-outcome.md) with
    `sourceStatus: 'held'`, the approval state, and that verdict. Return whatever
    it resolves — `held` when nothing new contradicts, `needs-decision` when the
    contradiction escalated. Nothing else is derived, written, roasted, or
-   published on this path; the contradiction check and the resolver call are the
-   only additional steps.
+   published on this path; the contradiction check, the Chronicler recording,
+   and the resolver call are the only additional steps.
 5. The molecule preserves the source's evidence distinctions, formalizes product
    intent, writes the sibling Product Requirements Documents beneath
    `docs/agent/specs/`, rereads and validates them, and resolves every

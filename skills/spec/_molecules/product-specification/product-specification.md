@@ -15,7 +15,8 @@ artifact.
 
 ```text
 resolve approval state -> resolve source with state-dependent freshness
-                       -> on held: check contradiction, then route through
+                       -> on held: check contradiction, record the
+                          non-escalated findings, then route through
                           spec-outcome with the resulting verdict
                        -> preserve evidence distinctions -> formalize product intent
                        -> write nano/full pair -> reread -> validate
@@ -51,12 +52,18 @@ resolve approval state -> resolve source with state-dependent freshness
    over the approved artifact's assertion set and the enriched Discovery
    evidence — `--bound` to hand judgement exactly the capped surface, then
    `--resolve` on the judged findings — to produce the contradiction verdict
-   (`escalated` or `none`). Then run
+   (`escalated` or `none`). Record the `recorded` and `suppressed` findings the
+   resolver returns through Chronicler **before** routing the verdict onward, so
+   a `medium` or `low` divergence survives the run rather than being discarded
+   with the verdict; only an `escalated` finding interrupts a human. Then run
    [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md) with
    `sourceStatus: 'held'`, the approval state, and that verdict. Return whatever
    it resolves — `held` when nothing new contradicts, `needs-decision` when the
-   contradiction escalated. Nothing else is derived, written, roasted, or
-   published on this path.
+   contradiction escalated. The `accepted` divergences the check suppresses are
+   supplied by the caller for this run; no durable store of previously accepted
+   divergences exists yet, so that continuity gap is visible rather than
+   assumed. Nothing else is derived, written, roasted, or published on this
+   path.
 4. Run
    [Product requirements](../../_atoms/product-requirements/product-requirements.md).
    Formalize only what the source supports. Preserve facts, claims, decisions,

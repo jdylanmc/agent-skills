@@ -9,13 +9,20 @@
  */
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import {
   MAX_SURFACE_WORDS,
+  MAX_SURFACE_CHARACTERS,
   boundSurface,
   resolveContradictions,
+  run,
 } from './contradiction-check.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 function record(overrides = {}) {
   return {
@@ -38,8 +45,21 @@ function judged(findings, overrides = {}) {
   return { ...record(overrides), findings };
 }
 
-test('empty findings report a clean check with no contradiction', () => {
-  const result = resolveContradictions(judged([]));
+test('evidence that produces no finding yields an explicit clean check, not an error or an absent result', () => {
+  // The record carries real, non-additive evidence text; the client judged it
+  // and produced no finding. The contract is that this is a reported clean
+  // check driven by the findings, distinct from a thrown error and from a
+  // missing/absent result.
+  const input = judged([]);
+  assert.ok(input.evidence.length > 0 && input.evidence[0].text.length > 0,
+    'the arrangement supplies real evidence, so a clean result is about the judged findings');
+
+  let result;
+  assert.doesNotThrow(() => { result = resolveContradictions(input); },
+    'evidence with no finding is a clean check, never an error');
+  assert.notEqual(result, undefined, 'a clean check is a reported result, not an absent one');
+  assert.equal(result.clean, true);
+  assert.equal(result.verdict, 'none');
   assert.deepEqual(result, {
     verdict: 'none',
     clean: true,
@@ -47,6 +67,14 @@ test('empty findings report a clean check with no contradiction', () => {
     recorded: [],
     suppressed: [],
   });
+
+  // The result is driven by the judged findings: the same evidence with one
+  // real finding is no longer a clean check.
+  const withFinding = resolveContradictions(judged([
+    { assertionId: 'INT', evidenceRef: 'ev-1', confidence: 'high', description: 'x' },
+  ]));
+  assert.equal(withFinding.clean, false);
+  assert.equal(withFinding.verdict, 'escalated');
 });
 
 test('a high-confidence finding escalates and is reported under escalated', () => {
@@ -245,5 +273,155 @@ test('the resolver never produces the not-checked verdict', () => {
     const result = resolveContradictions(judged(findings));
     assert.notEqual(result.verdict, 'not-checked');
     assert.ok(['escalated', 'none'].includes(result.verdict));
+  }
+});
+
+// --- #123 remediation: boundary defects that reproduced while the suite was green ---
+
+test('a control character in any identifier is refused, so no serialization collision is possible', () => {
+  // The reproduced false clean check: two distinct (assertionId, evidenceRef)
+  // pairs whose delimiter-joined keys collided. With control characters refused
+  // and the key encoded unambiguously, the real high-confidence finding can
+  // never be reported as suppressed.
+  const colliding = {
+    version: 1,
+    artifact: { id: 'spec-001', kind: 'nano-specification' },
+    assertions: [
+      { id: 'a\u0000b', kind: 'intention', text: 'one' },
+      { id: 'a', kind: 'acceptance-criterion', text: 'two' },
+    ],
+    evidence: [
+      { ref: 'c', text: 'three' },
+      { ref: 'b\u0000c', text: 'four' },
+    ],
+    accepted: [{ assertionId: 'a\u0000b', evidenceRef: 'c' }],
+    findings: [{ assertionId: 'a', evidenceRef: 'b\u0000c', confidence: 'high', description: 'real' }],
+  };
+  assert.throws(
+    () => resolveContradictions(colliding),
+    (error) => error.code === 'invalid-input' && /control character/i.test(error.message),
+  );
+});
+
+test('a control character in an accepted pair identifier is refused', () => {
+  assert.throws(
+    () => resolveContradictions(judged(
+      [{ assertionId: 'INT', evidenceRef: 'ev-1', confidence: 'high', description: 'x' }],
+      { accepted: [{ assertionId: 'INT\u0001', evidenceRef: 'ev-1' }] },
+    )),
+    (error) => error.code === 'invalid-input' && /control character/i.test(error.message),
+  );
+});
+
+test('a duplicate assertion id is refused, naming the duplicate', () => {
+  assert.throws(
+    () => boundSurface(record({
+      assertions: [
+        { id: 'DUP', kind: 'intention', text: 'one' },
+        { id: 'DUP', kind: 'non-goal', text: 'two' },
+      ],
+    })),
+    (error) => error.code === 'invalid-input' && /DUP/.test(error.message) && /duplicat/i.test(error.message),
+  );
+});
+
+test('a duplicate evidence ref is refused, naming the duplicate', () => {
+  assert.throws(
+    () => boundSurface(record({
+      evidence: [
+        { ref: 'ev-dup', text: 'one' },
+        { ref: 'ev-dup', text: 'two' },
+      ],
+    })),
+    (error) => error.code === 'invalid-input' && /ev-dup/.test(error.message) && /duplicat/i.test(error.message),
+  );
+});
+
+test('a duplicate finding pair is refused so one divergence stays one finding', () => {
+  assert.throws(
+    () => resolveContradictions(judged([
+      { assertionId: 'INT', evidenceRef: 'ev-1', confidence: 'high', description: 'first' },
+      { assertionId: 'INT', evidenceRef: 'ev-1', confidence: 'low', description: 'second' },
+    ])),
+    (error) => error.code === 'invalid-input' && /duplicat/i.test(error.message),
+  );
+});
+
+test('an oversized single token is refused as surface-unbounded even though it is one word', () => {
+  const oneHugeToken = 'x'.repeat(MAX_SURFACE_CHARACTERS + 1);
+  assert.equal(oneHugeToken.trim().split(/\s+/).length, 1, 'the arrangement is a single whitespace token');
+  assert.throws(
+    () => boundSurface(record({
+      assertions: [{ id: 'INT', kind: 'intention', text: oneHugeToken }],
+    })),
+    (error) => error.code === 'surface-unbounded'
+      && /assertion set/.test(error.message)
+      && /character/.test(error.message),
+  );
+});
+
+test('a whitespace-free oversized string is refused as surface-unbounded', () => {
+  const noWhitespace = '字'.repeat(MAX_SURFACE_CHARACTERS + 1);
+  assert.equal(noWhitespace.trim().split(/\s+/).length, 1, 'a script without whitespace counts as one word');
+  assert.throws(
+    () => boundSurface(record({
+      evidence: [{ ref: 'ev-1', text: noWhitespace }],
+    })),
+    (error) => error.code === 'surface-unbounded'
+      && /evidence set/.test(error.message)
+      && /character/.test(error.message),
+  );
+});
+
+test('a record inheriting findings from its prototype is refused by --resolve', () => {
+  const polluted = Object.assign(Object.create({ findings: [] }), record());
+  assert.throws(
+    () => resolveContradictions(polluted),
+    (error) => error.code === 'invalid-input' && /findings/.test(error.message),
+  );
+});
+
+test('a record inheriting findings from its prototype is refused by --bound, not seen as absent', () => {
+  const polluted = Object.assign(Object.create({ findings: [] }), record());
+  assert.throws(
+    () => boundSurface(polluted),
+    (error) => error.code === 'invalid-input' && /findings/.test(error.message),
+  );
+});
+
+test('the command line reports unreadable-input for a missing path without a clean-looking stdout', () => {
+  const captured = [];
+  const streams = { stdout: { write: (chunk) => captured.push(chunk) } };
+  const missing = path.join(HERE, 'no-such-contradiction-input.json');
+  assert.throws(
+    () => run(['--resolve', '--input', missing], streams),
+    (error) => error.code === 'unreadable-input' && /no-such-contradiction-input/.test(error.message),
+  );
+  assert.equal(captured.join(''), '', 'no failure path writes anything that could read as a clean result');
+});
+
+test('the command line reports unreadable-input for a directory without a clean-looking stdout', () => {
+  const captured = [];
+  const streams = { stdout: { write: (chunk) => captured.push(chunk) } };
+  assert.throws(
+    () => run(['--bound', '--input', HERE], streams),
+    (error) => error.code === 'unreadable-input',
+  );
+  assert.equal(captured.join(''), '', 'no failure path writes anything that could read as a clean result');
+});
+
+test('the command line round-trips a valid record to stdout, proving the failure paths are the exception', () => {
+  const captured = [];
+  const streams = { stdout: { write: (chunk) => captured.push(chunk) } };
+  const scratch = path.join(HERE, 'contradiction-check.roundtrip.tmp.json');
+  fs.writeFileSync(scratch, JSON.stringify(judged([])), 'utf8');
+  try {
+    const code = run(['--resolve', '--input', scratch], streams);
+    assert.equal(code, 0);
+    const parsed = JSON.parse(captured.join(''));
+    assert.equal(parsed.clean, true);
+    assert.equal(parsed.verdict, 'none');
+  } finally {
+    fs.rmSync(scratch, { force: true });
   }
 });

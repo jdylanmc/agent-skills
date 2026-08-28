@@ -46,10 +46,26 @@ export const SCHEMA_VERSION = 1;
  * small — a nano specification of roughly a dozen short declarative claims —
  * and changed evidence larger than the whole approved artifact is not a delta
  * to compare, it is a re-derivation, which is a different decision belonging to
- * the caller. Capping both sides is how "never diff whole documents" becomes
- * mechanical rather than an instruction.
+ * the caller.
+ *
+ * A word count bounds how many distinct claims the surface can carry; it is NOT
+ * a size bound. One whitespace-delimited token can be arbitrarily long, and a
+ * script written without whitespace (many CJK texts) counts an entire paragraph
+ * as a single word. So the word bound alone cannot stop a surface too large to
+ * compare from arriving as "one word".
  */
 export const MAX_SURFACE_WORDS = 500;
+
+/**
+ * The derived size bound that the word bound cannot supply. Written as a
+ * multiple of the word bound rather than as a second magic number so the
+ * derivation is visible: at roughly ten characters per claim-bearing word, a
+ * surface past this is too large to compare regardless of how few whitespace
+ * tokens it contains. This bounds size, not intent — it refuses a surface too
+ * large to be a delta, but it cannot tell that a short whole document was
+ * pasted in as evidence. That remains the caller's judgement.
+ */
+export const MAX_SURFACE_CHARACTERS = MAX_SURFACE_WORDS * 10;
 
 export const ASSERTION_KINDS = Object.freeze(['intention', 'acceptance-criterion', 'non-goal']);
 
@@ -88,8 +104,45 @@ function fail(message) {
   throw new ContradictionCheckError('invalid-input', message);
 }
 
-function nonEmptyString(value) {
-  return typeof value === 'string' && value.trim() !== '';
+function hasOwn(target, key) {
+  return Object.prototype.hasOwnProperty.call(target, key);
+}
+
+/**
+ * One source of truth for "is this a usable string", per the laziness
+ * discipline: a validator that disagrees with another validator is two bugs
+ * waiting to diverge. A string is usable when, after trimming ASCII whitespace
+ * and stripping zero-width and other Unicode format characters (`\p{Cf}`),
+ * meaningful characters remain. A lone zero-width space is therefore not a
+ * non-empty identifier.
+ */
+const FORMAT_OR_ZERO_WIDTH = /[\p{Cf}\u200B-\u200D\uFEFF]/gu;
+function usableString(value) {
+  return typeof value === 'string'
+    && value.replace(FORMAT_OR_ZERO_WIDTH, '').trim() !== '';
+}
+
+/**
+ * An identifier is a stable label, not a payload. A control character
+ * (U+0000–U+001F, U+007F) in one is never a legitimate identifier. Refusing it
+ * states the contract; belt-and-braces with `pairKey`'s collision-proof
+ * encoding it means a future widening of the identifier vocabulary cannot
+ * silently reintroduce a false clean check through a serialization collision.
+ */
+const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/;
+function usableIdentifier(value) {
+  return usableString(value) && !CONTROL_CHARACTERS.test(value);
+}
+
+/**
+ * The suppression and finding-identity key. `JSON.stringify` of a two-element
+ * array is an unambiguous encoding: distinct (assertionId, evidenceRef) pairs
+ * cannot serialize to the same string, unlike a delimiter-joined form where an
+ * identifier containing the delimiter collides with a different pair. This is
+ * the braces to the control-character refusal's belt.
+ */
+function pairKey(assertionId, evidenceRef) {
+  return JSON.stringify([assertionId, evidenceRef]);
 }
 
 function object(value) {
@@ -107,6 +160,10 @@ function wordCount(text) {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function characterCount(text) {
+  return [...text].length;
+}
+
 /**
  * The single source of truth for record shape, shared by both modes so the two
  * cannot drift. The one difference between the modes is what they demand of
@@ -122,8 +179,18 @@ function parseRecord(input, mode) {
     fail('record must be an object');
   }
   refuseUnknownFields(input, RECORD_KEYS, 'record');
+  // A schema field reachable only through the prototype chain is not a supplied
+  // field. Refusing it in both modes closes the gap where `key in input` (which
+  // walks the prototype) disagrees with own-property validation: a record that
+  // inherits `findings` from its prototype must not slip past --resolve as a
+  // clean check, nor be seen by --bound as legitimately absent.
+  for (const key of RECORD_KEYS) {
+    if (key in input && !hasOwn(input, key)) {
+      fail(`field must be an own property, not inherited: ${key}`);
+    }
+  }
   for (const key of REQUIRED_KEYS) {
-    if (!(key in input)) {
+    if (!hasOwn(input, key)) {
       fail(`missing field: ${key}`);
     }
   }
@@ -137,7 +204,7 @@ function parseRecord(input, mode) {
   }
   refuseUnknownFields(input.artifact, ARTIFACT_KEYS, 'artifact');
   for (const key of ARTIFACT_KEYS) {
-    if (!nonEmptyString(input.artifact[key])) {
+    if (!usableString(input.artifact[key])) {
       fail(`artifact.${key} must be a non-empty string`);
     }
   }
@@ -151,14 +218,17 @@ function parseRecord(input, mode) {
       fail(`assertions[${index}] must be an object`);
     }
     refuseUnknownFields(assertion, ASSERTION_KEYS, `assertions[${index}]`);
-    if (!nonEmptyString(assertion.id)) {
-      fail(`assertions[${index}].id must be a non-empty string`);
+    if (!usableIdentifier(assertion.id)) {
+      fail(`assertions[${index}].id must be a non-empty identifier without control characters`);
     }
     if (!ASSERTION_KINDS.includes(assertion.kind)) {
       fail(`assertions[${index}].kind must be one of ${ASSERTION_KINDS.join(', ')}; got ${JSON.stringify(assertion.kind)}`);
     }
-    if (!nonEmptyString(assertion.text)) {
+    if (!usableString(assertion.text)) {
       fail(`assertions[${index}].text must be a non-empty string`);
+    }
+    if (assertionById.has(assertion.id)) {
+      fail(`assertions[${index}].id duplicates an earlier assertion id: ${JSON.stringify(assertion.id)}`);
     }
     assertionById.set(assertion.id, assertion);
   });
@@ -172,11 +242,14 @@ function parseRecord(input, mode) {
       fail(`evidence[${index}] must be an object`);
     }
     refuseUnknownFields(item, EVIDENCE_KEYS, `evidence[${index}]`);
-    if (!nonEmptyString(item.ref)) {
-      fail(`evidence[${index}].ref must be a non-empty string`);
+    if (!usableIdentifier(item.ref)) {
+      fail(`evidence[${index}].ref must be a non-empty identifier without control characters`);
     }
-    if (!nonEmptyString(item.text)) {
+    if (!usableString(item.text)) {
       fail(`evidence[${index}].text must be a non-empty string`);
+    }
+    if (evidenceRefs.has(item.ref)) {
+      fail(`evidence[${index}].ref duplicates an earlier evidence ref: ${JSON.stringify(item.ref)}`);
     }
     evidenceRefs.add(item.ref);
   });
@@ -191,11 +264,11 @@ function parseRecord(input, mode) {
     }
     refuseUnknownFields(pair, ACCEPTED_KEYS, `accepted[${index}]`);
     for (const key of ACCEPTED_KEYS) {
-      if (typeof pair[key] !== 'string' || pair[key] === '') {
-        fail(`accepted[${index}].${key} must be a non-empty string`);
+      if (!usableIdentifier(pair[key])) {
+        fail(`accepted[${index}].${key} must be a non-empty identifier without control characters`);
       }
     }
-    acceptedPairs.add(`${pair.assertionId}\u0000${pair.evidenceRef}`);
+    acceptedPairs.add(pairKey(pair.assertionId, pair.evidenceRef));
   });
 
   const assertionWords = input.assertions.reduce((total, assertion) => total + wordCount(assertion.text), 0);
@@ -213,7 +286,22 @@ function parseRecord(input, mode) {
     );
   }
 
-  const hasFindings = 'findings' in input;
+  const assertionCharacters = input.assertions.reduce((total, assertion) => total + characterCount(assertion.text), 0);
+  const evidenceCharacters = input.evidence.reduce((total, item) => total + characterCount(item.text), 0);
+  if (assertionCharacters > MAX_SURFACE_CHARACTERS) {
+    throw new ContradictionCheckError(
+      'surface-unbounded',
+      `assertion set has ${assertionCharacters} characters; the ceiling is ${MAX_SURFACE_CHARACTERS}`,
+    );
+  }
+  if (evidenceCharacters > MAX_SURFACE_CHARACTERS) {
+    throw new ContradictionCheckError(
+      'surface-unbounded',
+      `evidence set has ${evidenceCharacters} characters; the ceiling is ${MAX_SURFACE_CHARACTERS}`,
+    );
+  }
+
+  const hasFindings = hasOwn(input, 'findings');
   if (mode === 'bound' && hasFindings) {
     fail('a record for --bound must not carry findings; judgement has not happened yet');
   }
@@ -226,13 +314,14 @@ function parseRecord(input, mode) {
     if (!Array.isArray(input.findings)) {
       fail('findings must be an array');
     }
+    const seenFindingPairs = new Set();
     findings = input.findings.map((finding, index) => {
       if (!object(finding)) {
         fail(`findings[${index}] must be an object`);
       }
       refuseUnknownFields(finding, FINDING_KEYS, `findings[${index}]`);
       for (const key of FINDING_KEYS) {
-        if (!(key in finding)) {
+        if (!hasOwn(finding, key)) {
           fail(`findings[${index}] missing field: ${key}`);
         }
       }
@@ -245,9 +334,18 @@ function parseRecord(input, mode) {
       if (!CONFIDENCE_LEVELS.includes(finding.confidence)) {
         fail(`findings[${index}].confidence must be one of ${CONFIDENCE_LEVELS.join(', ')}; got ${JSON.stringify(finding.confidence)}`);
       }
-      if (!nonEmptyString(finding.description)) {
+      if (!usableString(finding.description)) {
         fail(`findings[${index}].description must be a non-empty string`);
       }
+      // One divergence is one finding. The (assertionId, evidenceRef) pair is
+      // the identity of a divergence — the very key suppression uses — so a
+      // repeated pair cannot be allowed to land in escalated and recorded at
+      // once, nor be emitted twice. Refusing it keeps the two from disagreeing.
+      const identity = pairKey(finding.assertionId, finding.evidenceRef);
+      if (seenFindingPairs.has(identity)) {
+        fail(`findings[${index}] duplicates an earlier finding pair: (${finding.assertionId}, ${finding.evidenceRef})`);
+      }
+      seenFindingPairs.add(identity);
       const kind = assertionById.get(finding.assertionId).kind;
       return {
         assertionId: finding.assertionId,
@@ -271,6 +369,8 @@ function parseRecord(input, mode) {
       evidence: input.evidence.length,
       assertionWords,
       evidenceWords,
+      assertionCharacters,
+      evidenceCharacters,
     },
   };
 }
@@ -328,7 +428,7 @@ export function resolveContradictions(input) {
   const recorded = [];
   const suppressed = [];
   for (const finding of record.findings) {
-    if (record.acceptedPairs.has(`${finding.assertionId}\u0000${finding.evidenceRef}`)) {
+    if (record.acceptedPairs.has(pairKey(finding.assertionId, finding.evidenceRef))) {
       suppressed.push(finding);
     } else if (finding.confidence === 'high') {
       escalated.push(finding);
@@ -353,7 +453,19 @@ export function run(argv, streams = process) {
   if (argv.length !== 3 || argv[1] !== '--input' || !path.isAbsolute(argv[2])) {
     throw new ContradictionCheckError('usage', USAGE);
   }
-  const input = JSON.parse(fs.readFileSync(argv[2], 'utf8'));
+  // Reading and parsing the input file is a boundary of trust, and its failures
+  // are classified into this unit's own vocabulary rather than leaking Node's
+  // ENOENT or EISDIR. The underlying condition is carried in the message so the
+  // cause is not swallowed.
+  let input;
+  try {
+    input = JSON.parse(fs.readFileSync(argv[2], 'utf8'));
+  } catch (cause) {
+    throw new ContradictionCheckError(
+      'unreadable-input',
+      `cannot read or parse ${argv[2]}: ${cause.message}`,
+    );
+  }
   let output;
   if (argv[0] === '--bound') {
     output = boundSurface(input);

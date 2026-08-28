@@ -57,10 +57,32 @@ grade itself or widen its own scope.
 | Field | Shape |
 | --- | --- |
 | `artifact` | `{ id, kind }`, both non-empty strings. |
-| `assertions` | Non-empty array of `{ id, kind, text }`, where `kind` is `intention`, `acceptance-criterion`, or `non-goal`. |
-| `evidence` | Non-empty array of `{ ref, text }` — the new or changed material only. |
+| `assertions` | Non-empty array of `{ id, kind, text }`, where `kind` is `intention`, `acceptance-criterion`, or `non-goal`. Every `id` is unique. |
+| `evidence` | Non-empty array of `{ ref, text }` — the new or changed material only. Every `ref` is unique. |
 | `accepted` | Array of `{ assertionId, evidenceRef }` — divergences a human already accepted. |
-| `findings` | Present only after judgement: `{ assertionId, evidenceRef, confidence, description }`, where `confidence` is `high`, `medium`, or `low`. |
+| `findings` | Present only after judgement: `{ assertionId, evidenceRef, confidence, description }`, where `confidence` is `high`, `medium`, or `low`. One divergence is one finding. |
+
+### Identifiers, uniqueness, and strings
+
+`assertions[].id`, `evidence[].ref`, and both members of every `accepted` pair
+are **identifiers**: stable labels, not payloads. An identifier carrying an
+ASCII control character (U+0000–U+001F, U+007F) is refused, and identifiers are
+serialized into suppression and finding-identity keys with an unambiguous
+encoding, so a collision between two distinct pairs is impossible even if the
+identifier vocabulary later widens. The refusal states the contract; the
+encoding is the belt-and-braces guarantee.
+
+Duplicate `assertions[].id` and duplicate `evidence[].ref` are refused as
+`invalid-input`, naming the duplicated identifier. Uniqueness is what makes
+"every finding names the contradicted assertion" and "severity reflects what
+was contradicted" **mechanical** rather than a promise: with a duplicate id the
+last assertion would silently win the severity lookup, and with a duplicate ref
+a finding could not say which evidence text grounded it.
+
+One validator decides whether any string is usable, everywhere: a string counts
+as empty when nothing meaningful remains after trimming ASCII whitespace and
+stripping zero-width and other Unicode format characters, so a lone zero-width
+space is not a non-empty identifier.
 
 ## Two Modes, And Why They Are Two
 
@@ -82,18 +104,34 @@ between them is what each demands of `findings`.
 
 ## The Bounded Surface
 
-`MAX_SURFACE_WORDS` is `500`, applied to the total word count of the assertion
-set and, separately, to the total word count of the evidence set. Exceeding
-either is refused with code `surface-unbounded`, naming which side and both
-numbers.
+Two bounds cap the comparison surface, each applied to the total of the
+assertion set and, separately, to the total of the evidence set. Exceeding
+either is refused with code `surface-unbounded`, naming which side, which bound,
+and both numbers.
+
+- `MAX_SURFACE_WORDS` is `500`. A word count bounds how many distinct claims a
+  surface can carry.
+- `MAX_SURFACE_CHARACTERS` is `MAX_SURFACE_WORDS * 10` — written as that
+  multiple in code so the derivation is visible rather than a second magic
+  number. It exists because the word count is **not** a size bound: one
+  whitespace-delimited token can be arbitrarily long, and a script written
+  without whitespace (many CJK texts) counts an entire paragraph as a single
+  word. The character bound is what actually refuses a surface too large to
+  compare.
 
 The rationale: the assertion set comes from an artifact that is itself small — a
 nano specification of roughly a dozen short declarative claims, capped at 500
 words by #121. Changed evidence larger than the whole approved artifact is not a
 delta to compare, it is a re-derivation, which is a different decision belonging
-to the caller. That refusal is how "never diff whole documents" becomes
-mechanical rather than an instruction. An empty assertion set and an empty
-evidence set are both refused, with code `invalid-input`, because there is
+to the caller.
+
+Be honest about what this delivers. The bound refuses a surface too large to
+compare; it **bounds size, not intent**. It cannot detect that a short whole
+document was pasted in as evidence — a small re-derivation passes the bound. So
+the bound is what keeps the judgement surface small, not a guarantee that only a
+genuine delta ever arrives; recognizing a whole short document as a
+re-derivation remains the caller's judgement. An empty assertion set and an
+empty evidence set are both refused, with code `invalid-input`, because there is
 nothing to check — a shape refusal distinct from an unbounded one.
 
 ## The Output Contract
@@ -142,16 +180,39 @@ would flood the human, who is the scarce resource in this system.
 
 ## Accepted Divergences Suppress
 
-Suppression keys on the exact `(assertionId, evidenceRef)` pair. A suppressed
-finding is returned under `suppressed`, never silently dropped, so a mute is
-auditable — even an otherwise-escalating `high` finding does not escalate once
-its pair is accepted. The narrowness is deliberate: an acceptance recorded
-against one evidence reference does not mute a different one. That risks
+Suppression keys on the exact `(assertionId, evidenceRef)` pair. That pair is
+the **identity** of a divergence: one divergence is one finding. A finding pair
+repeated in the input is refused as `invalid-input`, naming the pair, because a
+duplicate would otherwise land in both `escalated` and `recorded` at once, or be
+emitted twice. Refusing it is what keeps escalation, recording, and suppression
+from disagreeing — they all key on the same identity, so that identity must be
+singular.
+
+A suppressed finding is returned under `suppressed`, never silently dropped, so
+a mute is auditable — even an otherwise-escalating `high` finding does not
+escalate once its pair is accepted. The narrowness is deliberate: an acceptance
+recorded against one evidence reference does not mute a different one. That risks
 re-raising rather than risks hiding, which is the safe direction for a check
 whose whole job is to fail toward silence.
 
 A run in which every finding is suppressed is still `clean: true`. A clean check
 means nothing **new** contradicts.
+
+## Error Vocabulary
+
+Every refusal carries one of a closed set of codes, so a caller classifies a
+failure without parsing prose:
+
+| Code | Meaning |
+| --- | --- |
+| `usage` | The command line was invoked wrongly (wrong flags, or a non-absolute `--input` path). |
+| `unreadable-input` | The `--input` path cannot be read, or its contents are not valid JSON. The underlying condition is carried in the message, not the code, so the cause is not swallowed. |
+| `invalid-input` | The record is malformed: an unknown or inherited field, a missing required field, a bad type, a control character or duplicate identifier, a duplicate finding pair, or a finding that grounds in no supplied assertion or evidence. |
+| `surface-unbounded` | The assertion set or the evidence set exceeds the word or character bound. |
+
+Reading and parsing the input file is a boundary of trust, so Node's `ENOENT`
+and `EISDIR` are classified into `unreadable-input` rather than leaking out as
+themselves.
 
 ## Verdict Maps Onto The Consumer's Vocabulary
 

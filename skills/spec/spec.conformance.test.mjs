@@ -428,3 +428,56 @@ test('the held path produces the verdict with the unit, not a not-checked placeh
   assert.match(molecule, /check contradiction/i);
   assert.match(skill, /shared contradiction check/i);
 });
+
+// #123 remediation: the seam is a behavioural round trip through both modes of
+// the shared unit, and the held path documents recording the non-escalated
+// findings so a lower-confidence divergence is not discarded with the verdict.
+test('the contradiction seam round-trips through --bound and --resolve and records non-escalated findings', async () => {
+  const cc = await import('../_base/_atoms/contradiction-check/contradiction-check.mjs');
+  const so = await import('./_atoms/spec-outcome/spec-outcome.mjs');
+
+  const base = {
+    version: 1,
+    artifact: { id: 'spec-x', kind: 'nano-specification' },
+    assertions: [{ id: 'AC-001', kind: 'acceptance-criterion', text: 'write exactly one pair' }],
+    evidence: [{ ref: 'ev-1', text: 'the enriched foundation elaborates the pair' }],
+    accepted: [],
+  };
+
+  // --bound half: judgement receives exactly the capped comparison surface.
+  const surface = cc.boundSurface(base);
+  assert.deepEqual(Object.keys(surface).sort(), ['accepted', 'artifact', 'assertions', 'counts', 'evidence']);
+
+  // --resolve half: a medium finding is recorded rather than escalated, does
+  // not move the verdict off 'none', and survives in the returned result.
+  const recordedRun = cc.resolveContradictions({
+    ...base,
+    findings: [{ assertionId: 'AC-001', evidenceRef: 'ev-1', confidence: 'medium', description: 'a possible divergence' }],
+  });
+  assert.equal(recordedRun.verdict, 'none');
+  assert.equal(recordedRun.escalated.length, 0);
+  assert.equal(recordedRun.recorded.length, 1);
+
+  // The verdict feeds spec-outcome, which holds on 'none'.
+  const held = so.resolveSpecOutcome({
+    sourceStatus: 'held',
+    pairStatus: 'valid',
+    discoveryGaps: 0,
+    openDecisions: 0,
+    siblingConflicts: 0,
+    roastStatus: 'complete',
+    openMustFix: 0,
+    approval: 'approved',
+    contradiction: recordedRun.verdict,
+  });
+  assert.equal(held.status, 'held');
+});
+
+test('the held path documents recording the non-escalated findings through Chronicler', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
+  assert.match(skill, /findings through Chronicler/i);
+  assert.match(skill, /non-escalated/i);
+  assert.match(molecule, /through Chronicler/i);
+  assert.match(molecule, /medium.{0,20}low|`recorded`.{0,40}`suppressed`/i);
+});
