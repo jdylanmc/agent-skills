@@ -124,6 +124,19 @@ below is unreleased and no comparison links are available.
 - **Discovery keeps going.** A completed cycle is no longer a resting point.
   Discovery continues until it is ready, blocked, out of scope, or interrupted,
   pausing only for alignment or for a question only a person can answer.
+- **Discovery can be handed a source to investigate.** A person can give
+  `discovery` a URI or path — a document, issue, pull request, wiki page,
+  design, or artifact — and it investigates that source as a discovery loop
+  input rather than a separate task. It classifies the source, retrieves it
+  through the read grant for a local or `file:` seed and the existing research
+  route for a remote `http(s)` seed, and folds the content in as cited,
+  untrusted `origin: seed` evidence that supplies subject matter and never
+  instructions. Every unreachable, unreadable, unsupported, credentialed,
+  blocked-address, out-of-scope, or empty source resolves to a named
+  disposition instead of a silent skip, each source is attempted exactly once so
+  a refused seed cannot spin the loop, and no link the person did not name is
+  followed. Discovery gains no new permission: remote seeds ride the research
+  route it already holds.
 - **Changelogs are resolved, not assumed.** `changelog` determines which
   changelog file an update targets and follows the conventions that file already
   uses, rather than imposing one format on an existing history.
