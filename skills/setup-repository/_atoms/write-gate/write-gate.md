@@ -88,11 +88,20 @@ Every unsafe target returns `unsafe-target` and writes nothing at all.
 | `prior-too-large` | The target exists and is larger than `MAX_SNAPSHOT_BYTES`; the gate refuses rather than reading an unbounded prior file into memory for rollback. |
 
 Containment and links are resolved with real filesystem calls on the existing
-ancestors, not by comparing strings. The final write is performed through
+ancestors, not by comparing strings. The final write is performed through a
+capability-selected safe open. On POSIX the gate uses a single atomic
 `fs.openSync` with `O_NOFOLLOW | O_CREAT | O_EXCL | O_WRONLY` (or
-`O_NOFOLLOW | O_TRUNC | O_WRONLY` when overwriting). If the platform does
-not expose `O_NOFOLLOW`, the gate **fails closed** with `blocked` rather
-than opening through a link.
+`O_NOFOLLOW | O_TRUNC | O_WRONLY` when overwriting), so a symbolic link at
+the final component fails at the open call itself. On Windows `O_NOFOLLOW`
+does not exist, so the gate uses **check-open-verify**: `lstatSync` the
+target and refuse a symbolic link or reparse point, `openSync` (with the
+same `O_CREAT | O_EXCL` or `O_TRUNC` flags), then `fstatSync` the descriptor
+and confirm `(dev, ino)` still identify the entry the pre-open `lstat` saw.
+The same capability selection is applied to every snapshot read, every
+rollback restoration open, and every readback. If a hypothetical platform
+exposed neither the atomic `O_NOFOLLOW` open nor the `lstat`/`open`/`fstat`
+sequence, the gate would **fail closed** with `blocked` rather than open a
+symbolic link.
 
 The gate captures `(dev, ino)` for the repository root and for every
 directory between the root and each target's parent at inspection. That
@@ -105,16 +114,32 @@ directory replaced by a symbolic link returns `unsafe-target`.
 **Residual window — what this does and does not defend against.** Node does
 not portably expose `openat` or `O_NOFOLLOW_ANY`, so a fully
 descriptor-relative walk from the root descriptor down to the target is not
-available. The gate pins ancestor identities and re-verifies them at each
-critical instant, and it opens the target itself with `O_NOFOLLOW` so a
-last-instant swap of the final component fails at open. A sufficiently fast
-attacker who can swap an already-verified ancestor into a link **between**
-the last chain verification and the `openSync` call could still redirect
-the write, because the open call re-resolves the path from a string. Every
-readback then re-verifies the chain, so a redirected write would be caught
-by the readback's chain check even if the open somehow followed the swap
-between verifications. Snapshot reads use no-follow descriptors, not
-paths, so a swap at the snapshot itself is caught the same way.
+available on any platform. The gate pins ancestor identities and re-verifies
+them at each critical instant.
+
+On POSIX the gate additionally opens the target itself with `O_NOFOLLOW`,
+so a last-instant swap of the final component into a symbolic link fails
+atomically at the open call. A sufficiently fast attacker who could swap an
+already-verified ancestor into a link **between** the last chain
+verification and the `openSync` call could still redirect the write, because
+the open call re-resolves the path from a string. Every readback then
+re-verifies the chain, so a redirected write would be caught by the
+readback's chain check even if the open somehow followed the swap between
+verifications. Snapshot reads use no-follow descriptors, not paths, so a
+swap at the snapshot itself is caught the same way.
+
+On Windows the guarantee is **check-open-verify rather than an atomic
+no-follow open**. The pre-open `lstatSync` refuses a symbolic link or
+reparse point, but a swap in the small window between the `lstat` and the
+`open` is caught only by the post-open `fstatSync` `(dev, ino)` compare —
+after the fact rather than atomically prevented. `O_CREAT | O_EXCL` still
+prevents a `create` action from writing through an existing entry a swap
+introduces. Every snapshot read, every rollback restoration open, and every
+readback runs the same check-open-verify sequence, so a redirected write
+would be caught by the post-open verify even if the open itself succeeded.
+This is a real gap relative to POSIX, and the gate does not claim parity.
+It is preferable to failing every write on Windows, which is what the gate
+did before this branch was introduced.
 
 ## Staleness
 
@@ -156,9 +181,10 @@ sees exactly what remains on disk. The atom never throws a filesystem
 failure to its caller and never reports a bare `written: false` while
 undisclosed changes remain on disk.
 
-Every readback is a fresh open with `O_NOFOLLOW | O_RDONLY`, so the bytes
-being verified come from the file the open call just created and not from a
-link swapped into position afterward.
+Every readback is a fresh open — on POSIX using `O_NOFOLLOW | O_RDONLY`,
+on Windows using the check-open-verify sequence described above — so the
+bytes being verified come from the file the open call just created and not
+from a link swapped into position afterward.
 
 ## Idempotence
 

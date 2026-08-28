@@ -25,12 +25,36 @@ import {
   WRITE_STATUSES,
   applyPreview,
   buildPreview,
+  _setPlatformCapabilityForTests,
 } from './write-gate.mjs';
 
 const UNIT_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const WRITE_GATE_MJS = path.join(UNIT_ROOT, 'write-gate.mjs');
 const REPOSITORY_ROOT = path.resolve(UNIT_ROOT, '..', '..', '..', '..');
 const SANDBOX_ROOT = path.join(REPOSITORY_ROOT, '.test-sandbox');
+
+/**
+ * Try to create a symbolic link. On Windows, `fs.symlinkSync` requires
+ * Developer Mode or administrator elevation; when neither is granted the
+ * kernel returns `EPERM` (or, less commonly, `ENOSYS`/`UNKNOWN`). A test that
+ * cannot create its symlink cannot exercise its scenario and skips itself
+ * — never silently passing — while other tests continue.
+ */
+function trySymlinkOrSkip(t, target, link, why) {
+  try {
+    fs.symlinkSync(target, link);
+    return true;
+  } catch (error) {
+    if (
+      process.platform === 'win32'
+      && (error.code === 'EPERM' || error.code === 'ENOSYS' || error.code === 'UNKNOWN')
+    ) {
+      t.skip(`${why} — creating a symlink on Windows requires Developer Mode or elevation (${error.code})`);
+      return false;
+    }
+    throw error;
+  }
+}
 
 function workspace(t) {
   fs.mkdirSync(SANDBOX_ROOT, { recursive: true });
@@ -161,7 +185,7 @@ test('a path escaping the repository is refused and writes nothing', (t) => {
 test('a symlinked target is refused and writes nothing', (t) => {
   const root = workspace(t);
   fs.writeFileSync(path.join(root, 'actual.md'), 'real');
-  fs.symlinkSync(path.join(root, 'actual.md'), path.join(root, 'target.md'));
+  if (!trySymlinkOrSkip(t, path.join(root, 'actual.md'), path.join(root, 'target.md'), 'symlinked target refusal')) return;
 
   const preview = buildPreview({ repositoryRoot: root, artifacts: [{ path: 'target.md', content: 'new' }] });
   const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
@@ -173,7 +197,7 @@ test('a symlinked target is refused and writes nothing', (t) => {
 test('a symlinked parent directory is refused and writes nothing', (t) => {
   const root = workspace(t);
   fs.mkdirSync(path.join(root, 'real'));
-  fs.symlinkSync(path.join(root, 'real'), path.join(root, 'link'));
+  if (!trySymlinkOrSkip(t, path.join(root, 'real'), path.join(root, 'link'), 'symlinked parent refusal')) return;
 
   const preview = buildPreview({ repositoryRoot: root, artifacts: [{ path: 'link/file.md', content: 'new' }] });
   const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
@@ -273,7 +297,7 @@ test('a target swapped into a symlink between preview and commit is refused', (t
   // points outside the sandbox. The gate must refuse and never touch the
   // outside file.
   fs.mkdirSync(path.dirname(path.join(root, relativePath)), { recursive: true });
-  fs.symlinkSync(outsidePath, path.join(root, relativePath));
+  if (!trySymlinkOrSkip(t, outsidePath, path.join(root, relativePath), 'SR-01 target swap')) return;
 
   const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
   assert.ok(['unsafe-target', 'stale-preview'].includes(result.status), `${result.status}: ${result.detail}`);
@@ -291,7 +315,7 @@ test('a parent directory swapped into a symlink between preview and commit is re
 
   // Preview built for a non-existent parent. Now replace the parent path with
   // a symlink pointing outside the sandbox before applying.
-  fs.symlinkSync(outsideDir, path.join(root, 'ctx'));
+  if (!trySymlinkOrSkip(t, outsideDir, path.join(root, 'ctx'), 'SR-01 parent swap')) return;
 
   const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
   assert.ok(['unsafe-target', 'stale-preview'].includes(result.status), `${result.status}: ${result.detail}`);
@@ -703,7 +727,7 @@ test('R2-03: a parent directory swapped between mkdir and open is refused as uns
 
   // Force a swap: precreate the outer dir as a symlink pointing outside the
   // sandbox before the apply runs. The walker refuses the symlink ancestor.
-  fs.symlinkSync(outsideDir, path.join(root, 'nested'));
+  if (!trySymlinkOrSkip(t, outsideDir, path.join(root, 'nested'), 'R2-03 parent swap')) return;
 
   const result = applyPreview({
     repositoryRoot: root,
@@ -737,7 +761,7 @@ test('R2-03: a repository root swapped between preview and commit is refused', (
       fs.renameSync(originalSpot, root);
     } catch { /* noop */ }
   });
-  fs.symlinkSync(shadowDir, root);
+  if (!trySymlinkOrSkip(t, shadowDir, root, 'R2-03 root swap')) return;
 
   const result = applyPreview({
     repositoryRoot: root,
@@ -1072,6 +1096,14 @@ test('F-3: overwrite rollback restores prior permission bits, not only content',
   // (0o644 under a typical umask). Preserving the bytes but relaxing the
   // mode is a silent regression a hardened operator cannot detect from the
   // diff.
+  if (process.platform === 'win32') {
+    // Windows does not carry the POSIX rwx permission bits — `fs.chmodSync`
+    // only toggles the read-only attribute — so this behaviour is nothing
+    // the platform can express. The rollback path itself is exercised by
+    // the R2-04 rollback tests, which do run on Windows.
+    t.skip('POSIX permission bits are not represented on Windows');
+    return;
+  }
   const root = workspace(t);
   const artifacts = renderArtifacts(normalizeContext(PROVIDER_INPUTS.github).context);
   const target = path.join(root, artifacts[0].path);
@@ -1168,4 +1200,91 @@ test('F-4: applyPreview refuses a supplied payload carrying NFC + NFD duplicates
   });
   assert.equal(result.status, 'stale-preview');
   assert.match(result.detail, /duplicate/);
+});
+
+// --- WIN-1: the Windows check-open-verify branch, forced on POSIX ---------
+//
+// `_setPlatformCapabilityForTests` overrides the process-wide capability
+// descriptor so the check-open-verify branch (Windows' safe path) can be
+// exercised on a POSIX host. Without this the branch would only ever run on
+// the Windows CI job, and a regression could ship unnoticed on the two
+// POSIX jobs.
+
+test('WIN-1: check-open-verify branch performs the full write and readback', (t) => {
+  const restore = _setPlatformCapabilityForTests({ atomicNoFollow: false, oNoFollow: 0 });
+  t.after(restore);
+
+  const root = workspace(t);
+  const artifacts = renderArtifacts(normalizeContext(PROVIDER_INPUTS.github).context);
+  const preview = buildPreview({ repositoryRoot: root, artifacts });
+  const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
+  assert.equal(result.status, 'configured', result.detail);
+  for (const artifact of artifacts) {
+    const bytes = fs.readFileSync(path.join(root, artifact.path));
+    assert.equal(sha256(bytes.toString('utf8')), artifact.sha256);
+  }
+});
+
+test('WIN-1: check-open-verify branch refuses a symlinked target', (t) => {
+  const restore = _setPlatformCapabilityForTests({ atomicNoFollow: false, oNoFollow: 0 });
+  t.after(restore);
+
+  const root = workspace(t);
+  fs.writeFileSync(path.join(root, 'actual.md'), 'real');
+  if (!trySymlinkOrSkip(t, path.join(root, 'actual.md'), path.join(root, 'target.md'), 'WIN-1 symlink refusal')) return;
+
+  const preview = buildPreview({ repositoryRoot: root, artifacts: [{ path: 'target.md', content: 'new' }] });
+  const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
+  assert.equal(result.status, 'unsafe-target');
+  assert.equal(result.reason, 'symlink-component');
+  assert.equal(fs.readFileSync(path.join(root, 'actual.md'), 'utf8'), 'real');
+});
+
+test('WIN-1: check-open-verify branch rolls back an injected write failure', (t) => {
+  const restore = _setPlatformCapabilityForTests({ atomicNoFollow: false, oNoFollow: 0 });
+  t.after(restore);
+
+  const root = workspace(t);
+  const artifacts = renderArtifacts(normalizeContext(PROVIDER_INPUTS.github).context);
+  const target = path.join(root, artifacts[0].path);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, 'prior contents that must survive');
+  const priorBytes = fs.readFileSync(target);
+
+  const preview = buildPreview({ repositoryRoot: root, artifacts });
+
+  const originalWriteFileSync = fs.writeFileSync;
+  let failed = false;
+  fs.writeFileSync = (target_, data, ...rest) => {
+    if (!failed && typeof target_ === 'number') {
+      failed = true;
+      const error = new Error('injected write failure');
+      error.code = 'EIO';
+      throw error;
+    }
+    return originalWriteFileSync(target_, data, ...rest);
+  };
+  t.after(() => { fs.writeFileSync = originalWriteFileSync; });
+
+  const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.written, false);
+  const after = fs.readFileSync(target);
+  assert.ok(priorBytes.equals(after), 'target must be restored to prior bytes');
+});
+
+test('WIN-1: with neither primitive available the gate fails closed', (t) => {
+  const restore = _setPlatformCapabilityForTests({
+    atomicNoFollow: false,
+    oNoFollow: 0,
+    checkOpenVerify: false,
+  });
+  t.after(restore);
+
+  const root = workspace(t);
+  const artifacts = renderArtifacts(normalizeContext(PROVIDER_INPUTS.github).context);
+  const preview = buildPreview({ repositoryRoot: root, artifacts });
+  const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
+  assert.equal(result.status, 'blocked');
+  assert.match(result.detail, /no safe-open primitive/);
 });

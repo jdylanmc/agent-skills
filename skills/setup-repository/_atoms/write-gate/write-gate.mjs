@@ -12,13 +12,27 @@
  * cannot redirect the write.
  *
  * The write itself is a two-phase commit. Every target is validated,
- * snapshotted, then written with `O_NOFOLLOW` semantics so a target or a
- * parent directory swapped into a symbolic link at the last instant fails at
- * the open call. Ancestor identities (dev, ino) are captured for the
- * repository root and every directory between the root and each target's
- * parent, and re-verified immediately before the truncating/creating open
- * AND before readback. Rollback runs in reverse order, verifies each
- * restoration, and reports accurately when it cannot un-do a mutation.
+ * snapshotted, then written through a safe open. Two safe-open primitives
+ * are supported, chosen once per process at import time and injectable by
+ * tests:
+ *
+ * - `atomicNoFollow` (POSIX): a single atomic `openSync` with
+ *   `O_NOFOLLOW`. A symbolic link at the final component fails at the open
+ *   call itself, so a swap between inspection and open cannot redirect the
+ *   write.
+ * - `checkOpenVerify` (Windows and any platform that can lstat/open/fstat):
+ *   `lstatSync` the target and refuse a symlink or reparse point, `openSync`,
+ *   then `fstatSync` the descriptor and confirm it identifies the same
+ *   entry the pre-open `lstat` saw. Not atomic — a swap inside the tiny
+ *   window between the two calls would be caught by the post-open verify
+ *   rather than atomically prevented. See the residual note in
+ *   `write-gate.md`.
+ *
+ * Ancestor identities (dev, ino) are captured for the repository root and
+ * every directory between the root and each target's parent, and re-verified
+ * immediately before the truncating/creating open AND before readback.
+ * Rollback runs in reverse order, verifies each restoration, and reports
+ * accurately when it cannot un-do a mutation.
  *
  * A confirmation is an object carrying `{ previewId, grant }`. The grant
  * literal alone is not sufficient — it must be paired with the exact
@@ -97,8 +111,50 @@ function realRootOf(repositoryRoot) {
   return fs.realpathSync(repositoryRoot);
 }
 
-function noFollowAvailable() {
-  return typeof fs.constants.O_NOFOLLOW === 'number' && fs.constants.O_NOFOLLOW !== 0;
+/**
+ * Platform capability descriptor for the safe-open primitives. Two
+ * independently sufficient primitives are recognized:
+ *
+ * - `atomicNoFollow` — POSIX only. A single atomic `openSync(...,
+ *   O_NOFOLLOW)` refuses a symlink at the final component atomically.
+ * - `checkOpenVerify` — universally available. `lstatSync` -> refuse
+ *   symlink or reparse point -> `openSync` -> `fstatSync` the descriptor
+ *   and verify (dev, ino) match. Not atomic; a swap inside the window
+ *   between the two syscalls is caught after the fact by the post-open
+ *   verify rather than atomically prevented. See the residual note in
+ *   `write-gate.md`.
+ *
+ * The gate prefers `atomicNoFollow` when available. Both branches use
+ * `platformCapability` rather than reading `process.platform` at each call
+ * site, so `_setPlatformCapabilityForTests` can exercise the
+ * check-open-verify branch on a POSIX host that would otherwise never take
+ * it. The setter is not part of the runtime API.
+ */
+function detectPlatformCapability() {
+  const oNoFollow = fs.constants.O_NOFOLLOW;
+  const atomicNoFollow = typeof oNoFollow === 'number' && oNoFollow !== 0;
+  return Object.freeze({
+    atomicNoFollow,
+    oNoFollow: atomicNoFollow ? oNoFollow : 0,
+    checkOpenVerify:
+      typeof fs.lstatSync === 'function'
+      && typeof fs.fstatSync === 'function'
+      && typeof fs.openSync === 'function',
+  });
+}
+
+let platformCapability = detectPlatformCapability();
+
+/** @internal Test-only. Override the process-wide capability descriptor. */
+export function _setPlatformCapabilityForTests(override) {
+  const prior = platformCapability;
+  platformCapability = Object.freeze({ ...prior, ...(override ?? {}) });
+  return () => { platformCapability = prior; };
+}
+
+/** @internal Test-only. Reset the descriptor to the freshly-detected default. */
+export function _resetPlatformCapabilityForTests() {
+  platformCapability = detectPlatformCapability();
 }
 
 function refusal(status, detail, extra = {}) {
@@ -106,25 +162,75 @@ function refusal(status, detail, extra = {}) {
 }
 
 /**
- * Read a file's bytes through a no-follow open, so a symlink swapped into
- * position after inspection cannot fool the reader.
+ * Read a file's bytes without following a symbolic link at the final
+ * component. On POSIX the read is atomic (O_NOFOLLOW); on Windows the read
+ * is a bounded check-open-verify sequence — see the residual note in
+ * `write-gate.md`.
  */
 function readSnapshotNoFollow(absolutePath) {
-  if (!noFollowAvailable()) {
+  if (platformCapability.atomicNoFollow) {
+    let fd;
+    try {
+      fd = fs.openSync(absolutePath, fs.constants.O_RDONLY | platformCapability.oNoFollow);
+    } catch (error) {
+      if (error.code === 'ELOOP' || error.code === 'EMLINK') {
+        return { ok: false, reason: 'symlink-component' };
+      }
+      return { ok: false, reason: `open:${error.code ?? 'unknown'}` };
+    }
+    try {
+      const stat = fs.fstatSync(fd);
+      if (stat.size > MAX_SNAPSHOT_BYTES) {
+        return { ok: false, reason: 'prior-too-large' };
+      }
+      const bytes = fs.readFileSync(fd);
+      return { ok: true, bytes };
+    } catch (error) {
+      return { ok: false, reason: `read:${error.code ?? 'unknown'}` };
+    } finally {
+      try { fs.closeSync(fd); } catch { /* noop */ }
+    }
+  }
+
+  if (!platformCapability.checkOpenVerify) {
     return { ok: false, reason: 'no-follow-unavailable' };
   }
+
+  // Windows check-open-verify: lstat, refuse a link or reparse point, open,
+  // then fstat and confirm (dev, ino) match. A swap inside the small window
+  // between lstat and open is caught by the post-open compare rather than
+  // atomically prevented — the residual is documented in write-gate.md.
+  let preStat;
+  try {
+    preStat = fs.lstatSync(absolutePath);
+  } catch (error) {
+    return { ok: false, reason: `open:${error.code ?? 'unknown'}` };
+  }
+  if (preStat.isSymbolicLink()) {
+    return { ok: false, reason: 'symlink-component' };
+  }
+  if (!preStat.isFile()) {
+    return { ok: false, reason: 'not-regular-file' };
+  }
+  if (preStat.size > MAX_SNAPSHOT_BYTES) {
+    return { ok: false, reason: 'prior-too-large' };
+  }
+
   let fd;
   try {
-    fd = fs.openSync(absolutePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    fd = fs.openSync(absolutePath, fs.constants.O_RDONLY);
   } catch (error) {
-    if (error.code === 'ELOOP' || error.code === 'EMLINK') {
-      return { ok: false, reason: 'symlink-component' };
-    }
     return { ok: false, reason: `open:${error.code ?? 'unknown'}` };
   }
   try {
-    const stat = fs.fstatSync(fd);
-    if (stat.size > MAX_SNAPSHOT_BYTES) {
+    const postStat = fs.fstatSync(fd);
+    if (postStat.dev !== preStat.dev || postStat.ino !== preStat.ino) {
+      return { ok: false, reason: 'symlink-component' };
+    }
+    if (!postStat.isFile()) {
+      return { ok: false, reason: 'not-regular-file' };
+    }
+    if (postStat.size > MAX_SNAPSHOT_BYTES) {
       return { ok: false, reason: 'prior-too-large' };
     }
     const bytes = fs.readFileSync(fd);
@@ -419,25 +525,143 @@ function confirmationMatches(confirmation, previewId) {
 }
 
 function readbackNoFollow(absolutePath) {
-  if (!noFollowAvailable()) {
+  if (platformCapability.atomicNoFollow) {
+    let fd;
+    try {
+      fd = fs.openSync(absolutePath, fs.constants.O_RDONLY | platformCapability.oNoFollow);
+    } catch (error) {
+      if (error.code === 'ELOOP' || error.code === 'EMLINK') {
+        return { ok: false, reason: 'symlink' };
+      }
+      return { ok: false, reason: `open:${error.code ?? 'unknown'}` };
+    }
+    try {
+      const bytes = fs.readFileSync(fd);
+      return { ok: true, bytes, sha256: sha256(bytes), byteLength: bytes.length };
+    } catch (error) {
+      return { ok: false, reason: `read:${error.code ?? 'unknown'}` };
+    } finally {
+      try { fs.closeSync(fd); } catch { /* noop */ }
+    }
+  }
+
+  if (!platformCapability.checkOpenVerify) {
     return { ok: false, reason: 'no-follow-unavailable' };
   }
+
+  // Windows check-open-verify. See readSnapshotNoFollow for the rationale
+  // and residual.
+  let preStat;
+  try {
+    preStat = fs.lstatSync(absolutePath);
+  } catch (error) {
+    return { ok: false, reason: `open:${error.code ?? 'unknown'}` };
+  }
+  if (preStat.isSymbolicLink()) {
+    return { ok: false, reason: 'symlink' };
+  }
+  if (!preStat.isFile()) {
+    return { ok: false, reason: 'not-regular-file' };
+  }
+
   let fd;
   try {
-    fd = fs.openSync(absolutePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    fd = fs.openSync(absolutePath, fs.constants.O_RDONLY);
   } catch (error) {
-    if (error.code === 'ELOOP' || error.code === 'EMLINK') {
-      return { ok: false, reason: 'symlink' };
-    }
     return { ok: false, reason: `open:${error.code ?? 'unknown'}` };
   }
   try {
+    const postStat = fs.fstatSync(fd);
+    if (postStat.dev !== preStat.dev || postStat.ino !== preStat.ino) {
+      return { ok: false, reason: 'symlink' };
+    }
+    if (!postStat.isFile()) {
+      return { ok: false, reason: 'not-regular-file' };
+    }
     const bytes = fs.readFileSync(fd);
     return { ok: true, bytes, sha256: sha256(bytes), byteLength: bytes.length };
   } catch (error) {
     return { ok: false, reason: `read:${error.code ?? 'unknown'}` };
   } finally {
     try { fs.closeSync(fd); } catch { /* noop */ }
+  }
+}
+
+/**
+ * Open a target for writing without following a symbolic link at the final
+ * component. Two branches, one per capability:
+ *
+ * - `atomicNoFollow` (POSIX): single atomic openSync with O_NOFOLLOW plus
+ *   O_CREAT|O_EXCL (for `create`) or O_TRUNC (for `overwrite`).
+ * - `checkOpenVerify` (Windows): lstat the target, refuse a symlink or
+ *   reparse point, open (with O_CREAT|O_EXCL or O_TRUNC), then fstat and
+ *   verify (dev, ino) match. `ENOTREG` on the post-verify is mapped to
+ *   `symlink-component` by the caller — the target changed shape unsafely.
+ *
+ * Returns `{ ok: true, fd }` on success or `{ ok: false, code, message }`
+ * on failure. The caller interprets the code — EEXIST -> stale-preview,
+ * ELOOP/EMLINK/ENOTREG -> unsafe-target (symlink-component), anything else
+ * -> blocked.
+ */
+function openTargetForWrite(absolutePath, action) {
+  if (platformCapability.atomicNoFollow) {
+    const flags = action === 'create'
+      ? (fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | platformCapability.oNoFollow)
+      : (fs.constants.O_TRUNC | fs.constants.O_WRONLY | platformCapability.oNoFollow);
+    try {
+      const fd = fs.openSync(absolutePath, flags, 0o644);
+      return { ok: true, fd };
+    } catch (error) {
+      return { ok: false, code: error.code ?? 'unknown', message: error.message };
+    }
+  }
+
+  if (!platformCapability.checkOpenVerify) {
+    return { ok: false, code: 'ENOSAFEPRIMITIVE', message: 'no safe write primitive on this platform' };
+  }
+
+  let preStat = null;
+  try {
+    preStat = fs.lstatSync(absolutePath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      return { ok: false, code: error.code ?? 'unknown', message: error.message };
+    }
+  }
+  if (preStat) {
+    if (preStat.isSymbolicLink()) {
+      return { ok: false, code: 'ELOOP', message: 'target is a symbolic link' };
+    }
+    if (!preStat.isFile()) {
+      return { ok: false, code: 'ENOTREG', message: 'target is not a regular file' };
+    }
+  }
+
+  const flags = action === 'create'
+    ? (fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY)
+    : (fs.constants.O_TRUNC | fs.constants.O_WRONLY);
+
+  let fd;
+  try {
+    fd = fs.openSync(absolutePath, flags, 0o644);
+  } catch (error) {
+    return { ok: false, code: error.code ?? 'unknown', message: error.message };
+  }
+
+  try {
+    const postStat = fs.fstatSync(fd);
+    if (!postStat.isFile()) {
+      try { fs.closeSync(fd); } catch { /* noop */ }
+      return { ok: false, code: 'ENOTREG', message: 'opened descriptor is not a regular file' };
+    }
+    if (preStat && (postStat.dev !== preStat.dev || postStat.ino !== preStat.ino)) {
+      try { fs.closeSync(fd); } catch { /* noop */ }
+      return { ok: false, code: 'ELOOP', message: 'target identity changed between lstat and open' };
+    }
+    return { ok: true, fd };
+  } catch (error) {
+    try { fs.closeSync(fd); } catch { /* noop */ }
+    return { ok: false, code: error.code ?? 'unknown', message: error.message };
   }
 }
 
@@ -471,17 +695,16 @@ function rollback(records) {
       // so a prior 0o600 file would silently become 0o644. Opening the file
       // ourselves lets us `fchmodSync` back to the prior mode before closing,
       // and re-reading the mode via `fs.lstatSync` afterwards verifies the
-      // restoration.
-      let fd;
-      try {
-        fd = fs.openSync(
-          record.absolutePath,
-          fs.constants.O_WRONLY | fs.constants.O_TRUNC | (fs.constants.O_NOFOLLOW ?? 0),
-        );
-      } catch (error) {
-        remaining.push({ relativePath: record.relativePath, state: 'not-restored', reason: error.code ?? error.message });
+      // restoration. The open uses the same capability-selected safe path as
+      // the commit itself, so a rollback on Windows takes the same
+      // check-open-verify branch a commit takes and a rollback on POSIX takes
+      // the same atomic O_NOFOLLOW branch.
+      const opened = openTargetForWrite(record.absolutePath, 'overwrite');
+      if (!opened.ok) {
+        remaining.push({ relativePath: record.relativePath, state: 'not-restored', reason: opened.code ?? opened.message });
         continue;
       }
+      const fd = opened.fd;
       let writeFailed = null;
       try {
         fs.writeFileSync(fd, record.priorSnapshot);
@@ -550,11 +773,13 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
     return refusal('blocked', `repository root not usable: ${error.message}`);
   }
 
-  // Fail closed if the platform does not expose O_NOFOLLOW. Opening without
-  // it would silently follow a link at the final component, which is
-  // exactly the class of hazard this gate exists to refuse.
-  if (!noFollowAvailable()) {
-    return refusal('blocked', 'O_NOFOLLOW is not available on this platform; the gate fails closed');
+  // Fail closed only when NEITHER safe primitive is available. On POSIX
+  // the atomic O_NOFOLLOW open is used; on Windows and any platform that
+  // exposes lstat/open/fstat, check-open-verify is used with the residual
+  // documented in write-gate.md. A platform offering neither is refused
+  // rather than opening a symbolic link.
+  if (!platformCapability.atomicNoFollow && !platformCapability.checkOpenVerify) {
+    return refusal('blocked', 'no safe-open primitive is available on this platform; the gate fails closed');
   }
 
   if (!confirmationMatches(confirmation, preview.previewId)) {
@@ -767,18 +992,18 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
     // on the rollback list.
     record.mutated = true;
 
-    const flags = record.inspection.action === 'create'
-      ? (fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | fs.constants.O_NOFOLLOW)
-      : (fs.constants.O_TRUNC | fs.constants.O_WRONLY | fs.constants.O_NOFOLLOW);
-
-    let fd;
-    try {
-      fd = fs.openSync(record.absolutePath, flags, 0o644);
-    } catch (error) {
+    // The safe-open helper picks between the atomic O_NOFOLLOW open on POSIX
+    // and the check-open-verify sequence on Windows. It returns the same
+    // set of error codes so the mapping below is platform-neutral: EEXIST
+    // -> stale-preview, ELOOP/EMLINK/ENOTREG -> unsafe-target
+    // (symlink-component), and anything else -> blocked.
+    const opened = openTargetForWrite(record.absolutePath, record.inspection.action);
+    if (!opened.ok) {
       // The open failed before the file was mutated. Roll back the earlier
       // committed entries and mark this one as never-mutated.
       record.mutated = false;
-      if (error.code === 'ELOOP' || error.code === 'EMLINK') {
+      const code = opened.code;
+      if (code === 'ELOOP' || code === 'EMLINK' || code === 'ENOTREG') {
         const remaining = rollback(records);
         return refusal('unsafe-target', `symlink at ${record.relativePath}`, {
           target: record.relativePath,
@@ -786,7 +1011,7 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
           rollbackRemaining: remaining,
         });
       }
-      if (error.code === 'EEXIST') {
+      if (code === 'EEXIST') {
         const remaining = rollback(records);
         return {
           status: 'stale-preview',
@@ -797,11 +1022,12 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
         };
       }
       const remaining = rollback(records);
-      return refusal('blocked', `open failed for ${record.relativePath}: ${error.code ?? error.message}`, {
+      return refusal('blocked', `open failed for ${record.relativePath}: ${code ?? opened.message}`, {
         target: record.relativePath,
         rollbackRemaining: remaining,
       });
     }
+    const fd = opened.fd;
 
     try {
       fs.writeFileSync(fd, record.entry.content);

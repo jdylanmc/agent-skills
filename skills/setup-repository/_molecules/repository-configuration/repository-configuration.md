@@ -70,12 +70,14 @@ until the context resolves `complete`.
 5. Accept a confirmation only after step 4. Invoke the write gate's
    `apply-preview` subcommand with the exact `previewId` and the literal
    confirmation grant token; both must match. The gate refuses unsafe or
-   concurrently changed targets, writes the approved files with no-follow
-   semantics, and reads them back to report their identities and hashes.
-   The executable enforces that a confirmation binds to one displayed
-   preview; it cannot prove a human (rather than another agent) supplied
-   the confirmation, so displaying the complete preview and obtaining that
-   operator consent is this molecule's obligation, not the gate's.
+   concurrently changed targets, writes the approved files through a safe
+   open (atomic `O_NOFOLLOW` on POSIX; a check-open-verify sequence on
+   Windows — see the residual note in the write-gate atom), and reads them
+   back to report their identities and hashes. The executable enforces
+   that a confirmation binds to one displayed preview; it cannot prove a
+   human (rather than another agent) supplied the confirmation, so
+   displaying the complete preview and obtaining that operator consent is
+   this molecule's obligation, not the gate's.
 
 ## Status Mapping
 
