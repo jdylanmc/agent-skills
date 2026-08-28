@@ -22,6 +22,9 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import { ARTIFACT_TYPES } from './_atoms/artifact-profile/artifact-profile.mjs';
+import { classifyArtifact } from '../_base/_atoms/artifact-classify/artifact-classify.mjs';
+import { GOVERNANCE } from './_atoms/doctrine-select/doctrine-select.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -83,6 +86,8 @@ test('one entry point reaches all four artifact branches', () => {
     '_base/_atoms/artifact-classify/artifact-classify.md',
     'roast/_atoms/doctrine-select/doctrine-select.md',
     'roast/_atoms/artifact-profile/artifact-profile.md',
+    'roast/_atoms/spec-pair/spec-pair.md',
+    'roast/_atoms/spec-authority-screen/spec-authority-screen.md',
     '_base/_atoms/doctrine-evaluate/doctrine-evaluate.md',
   ]) {
     assert.ok(closure.includes(unit), `${ENTRY} must reach ${unit}`);
@@ -129,6 +134,49 @@ test('the artifact-type material is authored exactly once', () => {
   );
 });
 
+test('the spec type is a profile row rather than a second review framework', () => {
+  // Issue #118 asked for a spec roaster and explicitly preferred extending
+  // `/roast` over building a parallel one. This is what "extending" has to
+  // mean mechanically: one more row, and no second contract.
+  assert.ok(ARTIFACT_TYPES.includes('spec'));
+
+  const result = validateRepository(REPOSITORY_ROOT);
+  const forks = [...result.graph.keys()].filter((file) =>
+    /spec-(contract|roast|reviewer|failure|lenses)|roast-spec-branch/.test(file),
+  );
+  assert.deepEqual(forks, [], `a parallel spec review framework appeared: ${forks.join(', ')}`);
+
+  const branch = closureFor(result, 'roast/_molecules/roast-artifact-branch/roast-artifact-branch.md');
+  assert.ok(branch.includes('roast/_atoms/spec-pair/spec-pair.md'));
+  assert.ok(branch.includes('roast/_atoms/spec-authority-screen/spec-authority-screen.md'));
+  assert.ok(branch.includes('roast/_atoms/roast-contract/roast-contract.md'));
+});
+
+test('a spec pair reaches the artifact branch end to end, and never the code branch', (t) => {
+  // Acceptance criterion 1 of issue #118, checked at the entry point rather
+  // than only inside the classifier: intake classifies from evidence, the
+  // profile exists for what it classified, and doctrine governs it. A gap at
+  // any of the three refuses a target `/roast` claims to accept.
+  const sandbox = path.join(REPOSITORY_ROOT, '.test-sandbox');
+  fs.mkdirSync(sandbox, { recursive: true });
+  const root = fs.mkdtempSync(path.join(sandbox, 'roast-conformance-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, 'checkout.nano.md'), '# Checkout\n');
+  fs.writeFileSync(path.join(root, 'checkout.full.md'), '# Checkout, in full\n');
+
+  const classified = classifyArtifact({ path: 'checkout.nano.md', repositoryRoot: root });
+  assert.equal(classified.status, 'Classified');
+  assert.equal(classified.type, 'spec');
+  assert.equal(classified.routeToBranch, 'artifact');
+
+  assert.deepEqual(
+    ARTIFACT_TYPES.filter((type) => !(type in GOVERNANCE)),
+    [],
+    'every artifact profile needs a doctrine selection, or intake refuses the type it just classified',
+  );
+  assert.ok(GOVERNANCE.spec.primary.length > 0, 'no doctrine governs a spec target');
+});
+
 test('no predecessor roast skill package survives the consolidation', () => {
   const packages = fs
     .readdirSync(SKILLS_ROOT, { withFileTypes: true })
@@ -165,4 +213,12 @@ test('every line item the skill promises carries a way to resolve it', () => {
     assert.match(document, /non-empty `Validation`/, `${branch} omits Validation`);
     assert.match(document, /executes no recommendation/, `${branch} omits the read-only boundary`);
   }
+});
+
+test('the skill states that it approves no specification and decides no product question', () => {
+  const entry = read(ENTRY);
+  assert.match(entry, /Never approve a product specification/);
+  assert.match(entry, /decide a product question it left\n  open/);
+  assert.match(entry, /gains no approval authority by invoking it/);
+  assert.match(entry, /`<spec>\.nano\.md` governs\n  and `<spec>\.full\.md` is context/);
 });

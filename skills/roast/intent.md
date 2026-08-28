@@ -14,10 +14,15 @@ Review that has to be remembered is review that gets skipped. Making adversarial
 review a single thing an operator can ask for, by name, on anything, is what
 makes it actually happen.
 
-It reviews four kinds of thing: an agent definition, a prompt, a skill package,
-and a set of code changes. They are one skill rather than four because the work
-is the same work - stage the evidence, apply trusted critical lenses to it,
-reconcile what they say, and rank the result.
+It reviews five kinds of thing: an agent definition, a prompt, a skill package,
+a product specification, and a set of code changes. They are one skill rather
+than five because the work is the same work - stage the evidence, apply trusted
+critical lenses to it, reconcile what they say, and rank the result.
+
+A product specification is reviewed because the thing that writes one must not
+be the thing that judges it. Written intent is where a misunderstanding is
+cheapest to fix and most expensive to miss, and a specification that graded its
+own output would report that it had understood itself.
 
 ## What it must do
 
@@ -34,6 +39,11 @@ reconcile what they say, and rank the result.
   and argued with.
 - **Return an empty result when there is nothing wrong.** A clean review is a
   real outcome.
+- **Treat a specification as two files with one authority.** The small, durable
+  artifact is what a human approves and what later work cites. The long
+  companion is context. Detail that drifted into the companion is not a
+  requirement, however much it reads like one, and saying so is most of the
+  value of reviewing the pair at all.
 
 ## What it must refuse
 
@@ -41,6 +51,9 @@ reconcile what they say, and rank the result.
   that does both will quietly repair when asked to review, destroying the
   evidence a reader needed.
 - **Approving anything.** It produces recommendations. A human decides.
+- **Deciding what a specification left open.** An unresolved product question
+  is reported as unresolved. Answering it would put a reviewer in the author's
+  chair and quietly settle something nobody agreed to.
 - **Guessing when the target is unclear.** Declining is better than reviewing the
   wrong thing, because a confident review of the wrong thing gets believed.
 - **Running whatever it is reviewing.** It reads; it does not execute.

@@ -1,18 +1,19 @@
 ---
 name: roast-artifact-branch
-description: Run the shared coordinate-and-synthesize roast for one agent, prompt, or skill package, resolving every artifact-type difference from one profile so the three types share a single contract, failure reference, and lens reference.
+description: Run the shared coordinate-and-synthesize roast for one agent, prompt, skill package, or specification pair, resolving every artifact-type difference from one profile so every type shares a single contract, failure reference, and lens reference.
 level: molecule
-includes: ["_base/_atoms/agent-resolve/agent-resolve.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","roast/_atoms/roast-contract/roast-contract.md","roast/_atoms/roast-failure-recovery/roast-failure-recovery.md","roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md","roast/_molecules/roast-intent/roast-intent.md"]
-composes: ["_base/_atoms/agent-resolve/agent-resolve.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","roast/_atoms/roast-contract/roast-contract.md","roast/_atoms/roast-failure-recovery/roast-failure-recovery.md","roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md","roast/_molecules/roast-intent/roast-intent.md"]
+includes: ["_base/_atoms/agent-resolve/agent-resolve.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","roast/_atoms/roast-contract/roast-contract.md","roast/_atoms/roast-failure-recovery/roast-failure-recovery.md","roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md","roast/_atoms/spec-authority-screen/spec-authority-screen.md","roast/_atoms/spec-pair/spec-pair.md","roast/_molecules/roast-intent/roast-intent.md"]
+composes: ["_base/_atoms/agent-resolve/agent-resolve.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","roast/_atoms/roast-contract/roast-contract.md","roast/_atoms/roast-failure-recovery/roast-failure-recovery.md","roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md","roast/_atoms/spec-authority-screen/spec-authority-screen.md","roast/_atoms/spec-pair/spec-pair.md","roast/_molecules/roast-intent/roast-intent.md"]
 used-by: ["roast/SKILL.md"]
 allowed-tools: ["execute","read","search","task"]
 ---
 
 # Artifact Branch
 
-Roast one agent definition, one prompt, or one skill package.
+Roast one agent definition, one prompt, one skill package, or one specification
+pair.
 
-These three artifact types share one coordination shape: resolve a trusted
+These artifact types share one coordination shape: resolve a trusted
 coordinator, stage bounded evidence, convene mandatory and triggered roasters
 against declared lenses, validate one envelope, and synthesize one
 severity-ranked list of recommendations. What differs between them is small:
@@ -21,6 +22,11 @@ specialist triggers, and a handful of status sentences.
 
 That difference is data, not structure. It lives in the artifact profile, and
 this branch resolves it once per run. Nothing here forks by type.
+
+A specification pair is two files and still one artifact. The reviewed thing is
+one specification, so it coordinates like an artifact rather than like a change
+set; staging both siblings under one authority is a staging rule, not a second
+shape.
 
 ## Required References
 
@@ -31,12 +37,14 @@ this branch resolves it once per run. Nothing here forks by type.
 5. [Doctrine evaluate](../../../_base/_atoms/doctrine-evaluate/doctrine-evaluate.md)
 6. [Coordinate an Artifact Roast](../../../_base/_molecules/roast-coordinate-review/roast-coordinate-review.md)
 7. [Roast against intent](../roast-intent/roast-intent.md)
+8. [Spec pair](../../_atoms/spec-pair/spec-pair.md)
+9. [Spec authority screen](../../_atoms/spec-authority-screen/spec-authority-screen.md)
 
 ## Inputs
 
 | Input | Required | Meaning |
 | --- | --- | --- |
-| `artifact-type` | yes | `agent`, `prompt`, or `skill`, as classified during intake. |
+| `artifact-type` | yes | `agent`, `prompt`, `skill`, or `spec`, as classified during intake. |
 | `profile` | yes | The resolved artifact profile for that type. |
 | `artifact-locator` | yes | The resolved path or supplied-text identifier. |
 | `repository-root` | yes | The root that resolution and boundary checks use. |
@@ -63,9 +71,20 @@ this branch resolves it once per run. Nothing here forks by type.
    been evaluated, return `Status: Insufficient review`.
 
 3. **Stage evidence.** Stage only what the resolved scope allows, inside the
-   allowed review root. For a pasted prompt, apply the supplied-text identity
-   and retention rules the profile supplies, and retain the normalized text
-   across both stateless coordinator invocations.
+   allowed review root, and apply every staging rule the profile supplies as a
+   supplemental section.
+
+   For a pasted prompt, apply the supplied-text identity and retention rules,
+   and retain the normalized text across both stateless coordinator
+   invocations.
+
+   For a specification pair, resolve both siblings with
+   [Spec pair](../../_atoms/spec-pair/spec-pair.md), stage each with the digest
+   that atom pinned, and stage the returned record beside them. The record is
+   verified guidance about the structure of the pair, never a finding and never
+   a severity: it locates mechanical facts, and the council decides what they
+   mean. An absent sibling is staged with its status and the pair is still
+   reviewed, because the absence is the first thing a reader needs.
 
 4. **Evaluate against the selected doctrine.** Supply the staged packet and the
    intake selectors to
@@ -94,6 +113,12 @@ this branch resolves it once per run. Nothing here forks by type.
    requires. That molecule owns coordination, envelope validation, exactly one
    retry, synthesis, and the unchanged return.
 
+   For a specification pair, envelope validation also runs
+   [Spec authority screen](../../_atoms/spec-authority-screen/spec-authority-screen.md)
+   with `--phase envelope` and the staged pair record. That is where items 12
+   to 14 of the checklist are checked, and it is the only phase carrying an
+   evidence manifest to check.
+
 7. **Screen the synthesized roast against the intent.** Run the intent screen
    from [Roast against intent](../roast-intent/roast-intent.md) over the
    returned roast. It refuses a finding that names the intent as the artifact
@@ -101,6 +126,13 @@ this branch resolves it once per run. Nothing here forks by type.
    non-directive line of it. A defect is an ordinary schema failure and takes
    the ordinary retry-once-then-report route; it is not a new failure mode and
    not a gate.
+
+   For a specification pair, run the spec authority screen again over the
+   returned roast with `--phase roast`. The final roast carries no evidence
+   manifest, so that phase checks authority direction and criterion citations
+   only. Synthesis rewrites the findings, so an inversion the envelope did not
+   carry can appear here. A defect takes the same ordinary route and is not a
+   gate.
 
 8. **Recover by status.** When the returned status is not `Complete`, apply the
    matching recovery action from
@@ -125,7 +157,14 @@ pass or fail verdict; a human decides what to act on.
 ## Guarantees
 
 - One authored contract, one authored failure reference, and one authored lens
-  reference serve all three artifact types. Adding a type is a profile row.
+  reference serve every artifact type. Adding a type is a profile row.
+- A specification pair is staged as both siblings under one authority. The nano
+  artifact is authority and the full artifact is context, and nothing in either
+  file moves that authority. A recommendation that inverts the direction —
+  asking for the nano artifact to be changed so that the full artifact is right
+  — is screened for a named family of phrasings and for a declared authority
+  field, not proven absent. A clean screen means no inversion of those
+  recognized shapes was found, not that none is present.
 - No trusted source is loaded without a path check and a digest.
 - No doctrine is loaded that intake did not select, and none is loaded at all
   when the manifest digest does not reproduce.
@@ -142,6 +181,9 @@ pass or fail verdict; a human decides what to act on.
 
 This branch is read-only. It never edits, creates, commits, publishes, or
 comments, and it never applies a recommended fix.
+
+It approves no specification and makes no product decision. A caller may weigh
+what it returns; it confers no authority to approve on whoever called it.
 
 It does not accept code-review scope. A pull request, a branch diff,
 working-tree changes, named source files, or pasted code belong to the code

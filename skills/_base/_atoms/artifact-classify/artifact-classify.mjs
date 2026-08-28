@@ -13,16 +13,27 @@ export class ArtifactClassificationError extends Error {
 }
 
 /**
- * `/roast` is one entry point with two coordination shapes. The three
+ * `/roast` is one entry point with two coordination shapes. The four
  * single-artifact types share the artifact branch; code-review scope has its
  * own branch and deliberately does not share it.
+ *
+ * `spec` is a single artifact even though it is two files. The reviewed thing
+ * is one specification, staged as the exact sibling pair `<spec>.nano.md` and
+ * `<spec>.full.md`, so it coordinates like an artifact rather than like a
+ * change set.
  */
 const ROUTES = {
   agent: 'artifact',
   skill: 'artifact',
   prompt: 'artifact',
+  spec: 'artifact',
   code: 'code',
 };
+
+/** The declared candidate order, used when nothing was distinguishable. */
+const ALL_TYPES = ['agent', 'skill', 'prompt', 'spec', 'code'];
+
+const SPEC_SUFFIXES = { '.nano.md': 'nano', '.full.md': 'full' };
 
 const CODE_EXTENSIONS = new Set([
   '.c', '.cc', '.cpp', '.cxx', '.cs', '.css', '.go', '.h', '.hpp', '.html', '.java', '.js',
@@ -115,10 +126,43 @@ function resultFromSignals(signals, locator) {
     status: 'Refused',
     category: 'Insufficient evidence',
     locator,
-    candidates: ['agent', 'skill', 'prompt', 'code'].map((type) => ({ type, routeToBranch: ROUTES[type] })),
-    couldNotDistinguish: ['agent', 'skill', 'prompt', 'code'],
+    candidates: ALL_TYPES.map((type) => ({ type, routeToBranch: ROUTES[type] })),
+    couldNotDistinguish: [...ALL_TYPES],
     evidence: signals.map((signal) => signal.evidence),
   };
+}
+
+/**
+ * A specification is recognised from its sibling naming convention, never from
+ * its prose. A nano artifact whose sibling is absent still classifies as a
+ * specification: the missing half is what the review most needs to report, and
+ * refusing to classify would hide it.
+ */
+function specSuffixOf(relative) {
+  return Object.keys(SPEC_SUFFIXES).find((candidate) => relative.endsWith(candidate)) ?? null;
+}
+
+function addSpecSignals(signals, relative, absolute, suffix) {
+  const layer = SPEC_SUFFIXES[suffix];
+  const siblingLayer = layer === 'nano' ? 'full' : 'nano';
+  const sibling = `${absolute.slice(0, -suffix.length)}.${siblingLayer}.md`;
+  const siblingExists = fs.existsSync(sibling);
+  addSignal(
+    signals,
+    'spec',
+    'high',
+    'specification pair naming convention',
+    `${relative} is the ${layer} half of a specification pair`,
+  );
+  addSignal(
+    signals,
+    'spec',
+    siblingExists ? 'high' : 'medium',
+    'specification sibling',
+    siblingExists
+      ? `the ${siblingLayer} sibling resolves beside it`
+      : `the ${siblingLayer} sibling is absent, which the spec pair record reports`,
+  );
 }
 
 function looksLikeDiff(text) {
@@ -187,7 +231,7 @@ function classifyPath({ targetPath, repositoryRoot = process.cwd() }) {
       status: 'Refused',
       category: 'Unreadable target',
       locator: relative,
-      couldNotDistinguish: ['agent', 'skill', 'prompt', 'code'],
+      couldNotDistinguish: [...ALL_TYPES],
       evidence: [evidence('filesystem', 'path does not exist or is not readable')],
     };
   }
@@ -196,7 +240,7 @@ function classifyPath({ targetPath, repositoryRoot = process.cwd() }) {
       status: 'Refused',
       category: 'Unreadable target',
       locator: relative,
-      couldNotDistinguish: ['agent', 'skill', 'prompt', 'code'],
+      couldNotDistinguish: [...ALL_TYPES],
       evidence: [evidence('filesystem', 'symbolic links are not classified')],
     };
   }
@@ -211,7 +255,7 @@ function classifyPath({ targetPath, repositoryRoot = process.cwd() }) {
       status: 'Refused',
       category: 'Unreadable target',
       locator: relative,
-      couldNotDistinguish: ['agent', 'skill', 'prompt', 'code'],
+      couldNotDistinguish: [...ALL_TYPES],
       evidence: [evidence('filesystem', 'target is neither a regular file nor a directory')],
     };
   }
@@ -236,10 +280,18 @@ function classifyPath({ targetPath, repositoryRoot = process.cwd() }) {
   if (/\.prompt\.md$/i.test(basename) || /(^|\/)prompts?\//i.test(relative)) {
     addSignal(signals, 'prompt', 'high', 'prompt path convention', relative);
   }
+  const specSuffix = specSuffixOf(relative);
+  if (specSuffix) {
+    addSpecSignals(signals, relative, absolute, specSuffix);
+  }
   if (CODE_EXTENSIONS.has(extension) && !basename.endsWith('.md')) {
     addSignal(signals, 'code', 'high', 'source extension', extension);
   }
-  if (looksLikeDiff(text)) {
+  // A specification is classified from its sibling naming convention, never
+  // from its prose. A full specification quoting a diff is documenting a
+  // change, not being one, and letting its content contradict its exact path
+  // would refuse the target this atom is meant to place.
+  if (looksLikeDiff(text) && !specSuffix) {
     addSignal(signals, 'code', 'high', 'diff syntax', 'file contains unified diff markers');
   }
 

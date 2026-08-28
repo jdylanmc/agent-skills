@@ -109,6 +109,35 @@ export const GOVERNANCE = {
       },
     ],
   },
+  spec: {
+    primary: [
+      {
+        id: 'pragmatic',
+        reason: 'explicit assumptions, scope boundaries, reversibility, and stopping points',
+      },
+      {
+        id: 'code',
+        reason: 'explicit contracts, unambiguous criteria, error behavior, and validation',
+      },
+    ],
+    conditional: [
+      {
+        id: 'domain',
+        trigger: 'domain-model',
+        reason: 'domain vocabulary, invariants, lifecycle, or ownership boundaries carry the intention',
+      },
+      {
+        id: 'data',
+        trigger: 'data-contract',
+        reason: 'persistence, lineage, schemas, consistency, retention, or temporal behavior are central to the stated outcomes',
+      },
+      {
+        id: 'testing',
+        trigger: 'validation',
+        reason: 'whether an acceptance criterion is observable is a verification question',
+      },
+    ],
+  },
   code: {
     primary: [
       { id: 'code', reason: 'contracts, clarity, bounded complexity, errors, and validation' },
@@ -370,7 +399,7 @@ const VALUE_FLAGS = ['--manifest', '--type', '--select', '--trigger'];
 const REPEATABLE_FLAGS = ['--select', '--trigger'];
 
 export const USAGE = `Usage: doctrine-select.mjs --manifest <path> \\
-  [--type <agent|prompt|skill|code>] [--select <id>]... [--trigger <name>]...
+  [--type <agent|prompt|skill|spec|code>] [--select <id>]... [--trigger <name>]...
 
   --manifest  Absolute path to doctrine/manifest.md. Required. Read for
               canonical identifiers only; no doctrine file is opened.

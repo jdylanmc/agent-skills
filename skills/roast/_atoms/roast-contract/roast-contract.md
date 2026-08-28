@@ -1,6 +1,6 @@
 ---
 name: roast-contract
-description: The artifact roast contract shared by the agent, prompt, and skill branches, including the accepted-finding schema that makes a bounded Recommendation and a Validation mandatory on every finding, authored once and resolved for one artifact type through the artifact profile.
+description: The artifact roast contract shared by the agent, prompt, skill, and spec branches, including the accepted-finding schema that makes a bounded Recommendation and a Validation mandatory on every finding, authored once and resolved for one artifact type through the artifact profile.
 level: atom
 allowed-tools: ["execute"]
 includes: ["roast/_atoms/roast-contract/roast-contract.mjs"]
@@ -10,8 +10,8 @@ used-by: ["roast/_molecules/roast-artifact-branch/roast-artifact-branch.md"]
 
 # Artifact Roast Contract
 
-This contract governs one artifact roast. It is authored once for all three
-artifact types. Every span that genuinely varies by type is a double-brace
+This contract governs one artifact roast. It is authored once for every
+artifact type. Every span that genuinely varies by type is a double-brace
 placeholder resolved by the `artifact-profile` atom for the classified type
 before the contract is supplied to a coordinator.
 
@@ -283,6 +283,8 @@ ordinary route as item 10. The screen refuses a record that carries no
 performed directive screen, or one that reports fewer screened lines than the
 intent has, so the injection screen cannot be satisfied by omitting it or by
 running it over nothing.
+
+{{envelopeExtraChecks}}
 
 ### Which Sections Item 10 Checks
 

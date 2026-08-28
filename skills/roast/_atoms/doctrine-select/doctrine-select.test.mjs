@@ -64,6 +64,7 @@ test('every artifact type selects its declared primary doctrine and nothing else
     agent: ['code', 'pragmatic'],
     prompt: ['pragmatic', 'code'],
     skill: ['pragmatic', 'code'],
+    spec: ['pragmatic', 'code'],
     code: ['code', 'pragmatic'],
   };
   assert.deepEqual(ARTIFACT_TYPES, Object.keys(expected));
@@ -139,7 +140,7 @@ test('an ungoverned artifact type refuses and names the declared types', () => {
   const result = selectDoctrine({ artifactType: 'spreadsheet', availableIds: AVAILABLE });
   assert.equal(result.status, 'Refused');
   assert.equal(result.category, 'No governing doctrine');
-  assert.match(result.detail, /agent, prompt, skill, code/);
+  assert.match(result.detail, /agent, prompt, skill, spec, code/);
 });
 
 test('an identifier the manifest does not declare refuses', () => {

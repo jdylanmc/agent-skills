@@ -1,6 +1,6 @@
 ---
 name: roast-failure-recovery
-description: The failure statuses, recovery actions, and degraded states shared by the agent, prompt, and skill branches, authored once and resolved for one artifact type through the artifact profile.
+description: The failure statuses, recovery actions, and degraded states shared by the agent, prompt, skill, and spec branches, authored once and resolved for one artifact type through the artifact profile.
 level: atom
 allowed-tools: []
 includes: []
@@ -15,7 +15,7 @@ shape defined in `agents/artifact-roastmaster.agent.md`, including every
 failure. Never return a raw Artifact Roast Envelope, a bare status token, or an
 unlabeled partial review.
 
-This reference is authored once for all three artifact types. Every span that
+This reference is authored once for every artifact type. Every span that
 genuinely varies by type is a double-brace placeholder resolved by the
 `artifact-profile` atom before this document is used.
 

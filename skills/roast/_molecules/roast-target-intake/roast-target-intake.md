@@ -56,6 +56,10 @@ routes on evidence and refuses when the evidence does not settle the question.
    For `routeToBranch` of `code`, there is no profile: the code branch owns its
    own scope, panel, and contract.
 
+   A `spec` target is one artifact staged from two files. The classifier
+   recognizes either half of the pair, and the profile carries the rules for
+   staging both under one authority.
+
 5. **Select doctrine.** Run Doctrine select with the classified type, the
    manifest path, any `explicit-doctrine` as an override, and any
    `observed-triggers`. Retain the selection **and its reasoning**, so a

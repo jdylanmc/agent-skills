@@ -38,7 +38,7 @@ consumer is the evidence, and it does not exist yet.
 | Input | Required | Meaning |
 | --- | --- | --- |
 | `--manifest` | yes | Absolute path to `doctrine/manifest.md`. Read for canonical identifiers only. |
-| `--type` | no | The classified artifact type: `agent`, `prompt`, `skill`, or `code`. |
+| `--type` | no | The classified artifact type: `agent`, `prompt`, `skill`, `spec`, or `code`. |
 | `--select` | no | An explicit doctrine identifier. Repeatable. Overrides inference entirely. |
 | `--trigger` | no | A trigger the caller observed in the packet. Repeatable. Enables a conditional doctrine. |
 
@@ -52,6 +52,7 @@ and the inferred one is reported as unused.
 | `agent` | `code`, `pragmatic` | `domain` on `domain-model`; `data` on `data-contract` |
 | `prompt` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract` |
 | `skill` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation` |
+| `spec` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation` |
 | `code` | `code`, `pragmatic` | `testing` on `validation`; `data` on `data-contract`; `domain` on `domain-model` |
 
 The conditional column is how this unit satisfies the repository rule that
@@ -65,7 +66,7 @@ applies.
 ```text
 node <atoms>/doctrine-select/doctrine-select.mjs \
   --manifest "$manifest_path" \
-  [--type <agent|prompt|skill|code>] \
+  [--type <agent|prompt|skill|spec|code>] \
   [--select <id>]... \
   [--trigger <name>]...
 ```

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -6,9 +7,18 @@ import { fileURLToPath } from 'node:url';
 import { classifyArtifact } from './artifact-classify.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const SANDBOX_ROOT = path.join(ROOT, '.test-sandbox');
 
 function reflowed(value) {
   return JSON.stringify(value).replace(/\s+/g, ' ');
+}
+
+/** Repository-local scratch space; `.test-sandbox/` is git-ignored. */
+function workspace(t) {
+  fs.mkdirSync(SANDBOX_ROOT, { recursive: true });
+  const root = fs.mkdtempSync(path.join(SANDBOX_ROOT, 'artifact-classify-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  return root;
 }
 
 test('classifies an agent definition from path and frontmatter evidence', () => {
@@ -93,5 +103,79 @@ test('refuses generic Markdown files with insufficient evidence', () => {
 
   assert.equal(result.status, 'Refused');
   assert.equal(result.category, 'Insufficient evidence');
-  assert.deepEqual(result.couldNotDistinguish, ['agent', 'skill', 'prompt', 'code']);
+  assert.deepEqual(result.couldNotDistinguish, ['agent', 'skill', 'prompt', 'spec', 'code']);
+});
+
+test('classifies either half of a specification pair as a spec, never as code', (t) => {
+  const root = workspace(t);
+  fs.mkdirSync(path.join(root, 'specs'));
+  fs.writeFileSync(path.join(root, 'specs', 'checkout-hold.nano.md'), '# Checkout hold\n');
+  fs.writeFileSync(path.join(root, 'specs', 'checkout-hold.full.md'), '# Checkout hold, in full\n');
+
+  for (const half of ['specs/checkout-hold.nano.md', 'specs/checkout-hold.full.md']) {
+    const result = classifyArtifact({ path: half, repositoryRoot: root });
+    assert.equal(result.status, 'Classified', half);
+    assert.equal(result.type, 'spec', half);
+    assert.equal(result.routeToBranch, 'artifact', half);
+    assert.equal(result.confidence, 'high', half);
+    assert.match(reflowed(result.evidence), /specification pair naming convention/);
+    assert.match(reflowed(result.evidence), /sibling resolves beside it/);
+  }
+});
+
+test('a specification whose sibling is absent still classifies rather than refusing', (t) => {
+  // The missing half is exactly what the review must report. Refusing to
+  // classify would hide the one defect the operator most needs to see.
+  const root = workspace(t);
+  fs.writeFileSync(path.join(root, 'checkout-hold.nano.md'), '# Checkout hold\n');
+
+  const result = classifyArtifact({ path: 'checkout-hold.nano.md', repositoryRoot: root });
+
+  assert.equal(result.status, 'Classified');
+  assert.equal(result.type, 'spec');
+  assert.equal(result.routeToBranch, 'artifact');
+  assert.match(reflowed(result.evidence), /full sibling is absent/);
+});
+
+test('a specification inside a prompts directory refuses rather than picking a side', (t) => {
+  // Two conventions genuinely collide here, and the classifier does not get to
+  // decide which the operator meant.
+  const root = workspace(t);
+  fs.mkdirSync(path.join(root, 'prompts'));
+  fs.writeFileSync(path.join(root, 'prompts', 'checkout.nano.md'), '# Checkout\n');
+
+  const result = classifyArtifact({ path: 'prompts/checkout.nano.md', repositoryRoot: root });
+
+  assert.equal(result.status, 'Refused');
+  assert.equal(result.category, 'Ambiguous target');
+  assert.deepEqual(result.couldNotDistinguish.sort(), ['prompt', 'spec']);
+});
+
+test('a specification that quotes a diff is still a specification', (t) => {
+  // Content must not overrule an exact path convention here. A full
+  // specification documenting a change would otherwise become an ambiguous
+  // target and get no review at all.
+  const root = workspace(t);
+  fs.writeFileSync(
+    path.join(root, 'checkout.full.md'),
+    [
+      '# Checkout, in full',
+      '',
+      'The rejected approach edited the handler directly:',
+      '',
+      'diff --git a/src/checkout.ts b/src/checkout.ts',
+      '@@ -1 +1 @@',
+      '-const hold = 0;',
+      '+const hold = 15;',
+      '',
+    ].join('\n'),
+  );
+  fs.writeFileSync(path.join(root, 'checkout.nano.md'), '# Checkout\n');
+
+  const result = classifyArtifact({ path: 'checkout.full.md', repositoryRoot: root });
+
+  assert.equal(result.status, 'Classified');
+  assert.equal(result.type, 'spec');
+  assert.equal(result.routeToBranch, 'artifact');
+  assert.doesNotMatch(reflowed(result.evidence), /diff syntax/);
 });
