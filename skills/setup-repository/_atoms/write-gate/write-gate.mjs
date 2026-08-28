@@ -637,9 +637,18 @@ function openTargetForWrite(absolutePath, action) {
     }
   }
 
+  // The overwrite path opens WITHOUT `O_TRUNC` on Windows and truncates
+  // through a separate `ftruncateSync` after the identity check. Windows'
+  // `CreateFileW(TRUNCATE_EXISTING, ...)` disposition rejects
+  // `GENERIC_READ | GENERIC_WRITE` with `ERROR_INVALID_PARAMETER` (surfaced
+  // by libuv as `EINVAL`), so the naive combination `O_TRUNC | O_RDWR` on
+  // Windows fails at the open call itself. Opening without `O_TRUNC` gives
+  // a normally-usable handle that fstat can read attributes on, and
+  // truncating through the fd (`SetEndOfFile` under libuv) is well-defined
+  // there.
   const flags = action === 'create'
     ? (fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_RDWR)
-    : (fs.constants.O_TRUNC | fs.constants.O_RDWR);
+    : fs.constants.O_RDWR;
 
   let fd;
   try {
@@ -650,14 +659,12 @@ function openTargetForWrite(absolutePath, action) {
 
   try {
     // The post-open fstat is what confirms the descriptor still identifies
-    // the entry the pre-open `lstat` saw. On Windows this is why the open
-    // uses `O_RDWR` rather than `O_WRONLY`: NtQueryInformationFile
-    // (which powers fstat under libuv) needs FILE_READ_ATTRIBUTES on the
-    // handle, and Windows' GENERIC_WRITE (the mapping for O_WRONLY alone)
-    // omits that right — so an O_WRONLY handle would fail every fstat call
-    // with EACCES and turn every overwrite into `blocked` on the Windows
-    // job. GENERIC_READ | GENERIC_WRITE (the mapping for O_RDWR) includes
-    // FILE_READ_ATTRIBUTES and lets the identity check run.
+    // the entry the pre-open `lstat` saw. The open uses `O_RDWR` rather
+    // than `O_WRONLY` here because NtQueryInformationFile (which powers
+    // fstat under libuv) needs FILE_READ_ATTRIBUTES on the handle, and
+    // Windows' GENERIC_WRITE mapping for O_WRONLY alone omits that right —
+    // so an O_WRONLY handle would fail every fstat call with EACCES and
+    // turn every overwrite into `blocked` on the Windows job.
     const postStat = fs.fstatSync(fd);
     if (!postStat.isFile()) {
       try { fs.closeSync(fd); } catch { /* noop */ }
@@ -666,6 +673,17 @@ function openTargetForWrite(absolutePath, action) {
     if (preStat && (postStat.dev !== preStat.dev || postStat.ino !== preStat.ino)) {
       try { fs.closeSync(fd); } catch { /* noop */ }
       return { ok: false, code: 'ELOOP', message: 'target identity changed between lstat and open' };
+    }
+    if (action === 'overwrite') {
+      // Truncate through the identity-verified descriptor, so the write
+      // sees an empty file exactly as a POSIX `O_TRUNC` open would deliver
+      // one.
+      try {
+        fs.ftruncateSync(fd, 0);
+      } catch (error) {
+        try { fs.closeSync(fd); } catch { /* noop */ }
+        return { ok: false, code: error.code ?? 'unknown', message: error.message };
+      }
     }
     return { ok: true, fd };
   } catch (error) {

@@ -94,16 +94,18 @@ capability-selected safe open. On POSIX the gate uses a single atomic
 `O_NOFOLLOW | O_TRUNC | O_WRONLY` when overwriting), so a symbolic link at
 the final component fails at the open call itself. On Windows `O_NOFOLLOW`
 does not exist, so the gate uses **check-open-verify**: `lstatSync` the
-target and refuse a symbolic link or reparse point, `openSync` (with the
-same `O_CREAT | O_EXCL` or `O_TRUNC` flags, but `O_RDWR` in place of
-`O_WRONLY` so the post-open `fstatSync` has the `FILE_READ_ATTRIBUTES`
-right it needs on Windows), then `fstatSync` the descriptor and confirm
-`(dev, ino)` still identify the entry the pre-open `lstat` saw. The same
+target and refuse a symbolic link or reparse point, `openSync` with
+`O_RDWR` (plus `O_CREAT | O_EXCL` for a fresh create), then `fstatSync`
+the descriptor and confirm `(dev, ino)` still identify the entry the
+pre-open `lstat` saw. The overwrite path does not pass `O_TRUNC` at open
+time on the Windows branch — Windows' `CreateFileW(TRUNCATE_EXISTING, ...)`
+rejects `GENERIC_READ | GENERIC_WRITE` with `EINVAL` — and truncates
+through `ftruncateSync` after the identity check instead. The same
 capability selection is applied to every snapshot read, every rollback
 restoration open, and every readback. If a hypothetical platform exposed
 neither the atomic `O_NOFOLLOW` open nor the `lstat`/`open`/`fstat`
-sequence, the gate would **fail closed** with `blocked` rather than open a
-symbolic link.
+sequence, the gate would **fail closed** with `blocked` rather than open
+a symbolic link.
 
 The gate captures `(dev, ino)` for the repository root and for every
 directory between the root and each target's parent at inspection. That
