@@ -19,21 +19,31 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  ADMISSION_SCHEMA,
   APPROVAL_GRANT,
   DIRECTIVES,
   IntakeError,
   REPORT_SCHEMA,
   REFUSALS,
+  SOURCES,
+  admitGuidance,
   admitReport,
+  buildAdmissionReceipt,
+  changeRequestDigest,
   checkApproval,
   groundingFromGuidance,
+  normalizeSurface,
   reportDigest,
+  requireAdmittedState,
   selectSingleReport,
 } from './report-intake.mjs';
 import {
   INTAKE_CLI,
+  REPOSITORY_ROOT,
   admit,
   approvalFor,
+  codesOf,
+  conformingRecommendations,
   reportText,
   withFixtureDirectory,
 } from './report-intake.fixtures.mjs';
@@ -68,6 +78,8 @@ test('lineage runs from the report digest to the recommendations it authorized',
 
   assert.equal(admitted.lineage.report_sha256, reportDigest(report));
   assert.equal(admitted.report.sha256, reportDigest(report));
+  assert.ok(!('report_path' in admitted.lineage), 'a digest is the identity; a path is not');
+  assert.ok(!('path' in admitted.report), 'no path reaches the output');
   assert.equal(admitted.lineage.schema, REPORT_SCHEMA);
   assert.equal(admitted.lineage.target_skill, 'changelog');
   assert.deepEqual(admitted.lineage.approval_receipt, {
@@ -306,4 +318,185 @@ test('one run reinforces one skill: --target is given once', () => {
     assert.equal(twoTargets.status, 1);
     assert.match(twoTargets.stderr, /a run reinforces one skill/);
   });
+});
+
+test('a proposed surface is canonicalized to a target-relative path before anything compares it', () => {
+  const aliases = [
+    'SKILL.md',
+    './SKILL.md',
+    '  SKILL.md  ',
+    'skills/changelog/SKILL.md',
+    './skills/changelog/SKILL.md',
+    'skills/changelog/./SKILL.md',
+    '_atoms/../SKILL.md'.replace('_atoms/../', ''),
+  ];
+  for (const alias of aliases) {
+    assert.equal(
+      normalizeSurface(alias, { target: 'changelog' }),
+      'SKILL.md',
+      `${JSON.stringify(alias)} names the same file`,
+    );
+  }
+
+  assert.equal(
+    normalizeSurface('_atoms/changelog-target/changelog-target.md', { target: 'changelog' }),
+    '_atoms/changelog-target/changelog-target.md',
+  );
+  assert.equal(
+    normalizeSurface('skills\\changelog\\SKILL.md', { target: 'changelog' }),
+    'SKILL.md',
+    'a Windows-style separator names the same file as a POSIX one',
+  );
+});
+
+test('the canonical surface is what reaches the change request', () => {
+  const recommendations = conformingRecommendations();
+  recommendations[0].change.surface = ' ./skills/changelog/SKILL.md ';
+  const report = reportText({ recommendations });
+  const admitted = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+
+  assert.equal(admitted.status, 'admitted');
+  assert.equal(admitted.change_request.changes[0].surface, 'SKILL.md');
+  assert.ok(
+    !JSON.stringify(admitted.change_request).includes('skills/changelog'),
+    'the un-normalized spelling never travels onward',
+  );
+});
+
+test('one validation requirement cited twice is carried once', () => {
+  const recommendations = conformingRecommendations();
+  recommendations[1].validation = 'VR-1';
+  const report = reportText({ recommendations });
+  const admitted = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+
+  assert.equal(admitted.status, 'admitted');
+  assert.deepEqual(admitted.applicable.map((entry) => entry.validation), ['VR-1', 'VR-1']);
+  assert.deepEqual(
+    admitted.change_request.validation.map((entry) => entry.candidate),
+    ['VR-1'],
+    'a requirement governing two recommendations is stated once',
+  );
+});
+
+test('a ledger anchor may carry a descriptor; only the identifier travels', () => {
+  const admitted = admit();
+  for (const anchor of admitted.lineage.evidence_anchors) {
+    assert.match(anchor, /^[UATSRME]\d+$/, 'lineage carries identifiers, never descriptors');
+  }
+  assert.deepEqual(admitted.lineage.evidence_anchors, ['U1', 'T3']);
+});
+
+test('both sources produce one grounding shape through one command line', () => {
+  assert.deepEqual(SOURCES, ['human-guidance', 'post-mortem-report']);
+
+  const guided = admitGuidance({ target: 'changelog', guidance: 'tighten the output contract' });
+  const reported = admit();
+
+  assert.equal(guided.status, 'admitted');
+  assert.deepEqual(Object.keys(guided).sort(), Object.keys(reported).sort());
+  assert.deepEqual(
+    Object.keys(guided.change_request).sort(),
+    Object.keys(reported.change_request).sort(),
+  );
+  assert.equal(guided.change_request.source, 'human-guidance');
+  assert.equal(reported.change_request.source, 'post-mortem-report');
+  assert.equal(guided.lineage, null, 'guidance has no report lineage to preserve');
+});
+
+test('the command line grounds human guidance with no report and no approval', () => {
+  const grounded = spawnSync(
+    process.execPath,
+    [INTAKE_CLI, '--guidance', 'the degraded path should say which reason applied', '--target', 'changelog'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(grounded.status, 0);
+  const parsed = JSON.parse(grounded.stdout);
+  assert.equal(parsed.status, 'admitted');
+  assert.equal(parsed.change_request.source, 'human-guidance');
+  assert.equal(
+    parsed.change_request.changes[0].statement,
+    'the degraded path should say which reason applied',
+  );
+});
+
+test('an admitted report leaves a bounded receipt, and the release check re-derives it', () => {
+  withFixtureDirectory((root) => {
+    const report = reportText();
+    const reportPath = path.join(root, 'report.json');
+    const approvalPath = path.join(root, 'approval.json');
+    const statePath = path.join(root, 'state', 'admission.json');
+    fs.writeFileSync(reportPath, report);
+    fs.writeFileSync(approvalPath, JSON.stringify(approvalFor(report)));
+
+    const admitted = spawnSync(process.execPath, [
+      INTAKE_CLI,
+      '--report', reportPath,
+      '--target', 'changelog',
+      '--approval', approvalPath,
+      '--root', REPOSITORY_ROOT,
+      '--state', statePath,
+    ], { encoding: 'utf8' });
+    assert.equal(admitted.status, 0);
+    assert.equal(JSON.parse(admitted.stdout).admission_state, 'recorded');
+
+    const receipt = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    assert.equal(receipt.schema, ADMISSION_SCHEMA);
+    assert.equal(receipt.status, 'admitted');
+    assert.equal(receipt.report_sha256, reportDigest(report));
+    assert.equal(receipt.target_skill, 'changelog');
+    assert.deepEqual(receipt.approval, approvalFor(report));
+    assert.deepEqual(receipt.applied_recommendation_ids, ['R-1', 'R-2']);
+    assert.deepEqual(receipt.evidence_anchors, ['U1', 'T3']);
+    assert.equal(
+      receipt.change_request_sha256,
+      changeRequestDigest(admit().change_request),
+      'the receipt fixes the grounding these recommendations produce',
+    );
+
+    const released = spawnSync(process.execPath, [
+      INTAKE_CLI,
+      '--require-admitted-state', statePath,
+      '--report', reportPath,
+      '--target', 'changelog',
+    ], { encoding: 'utf8' });
+    assert.equal(released.status, 0);
+    assert.equal(JSON.parse(released.stdout).requirement, 'satisfied');
+  });
+});
+
+test('the receipt carries no report content and no absolute path', () => {
+  const report = reportText();
+  const receipt = buildAdmissionReceipt(admit({ report }));
+  const serialized = JSON.stringify(receipt);
+
+  assert.ok(!serialized.includes('name the resolved changelog file'), 'no report prose is copied');
+  assert.ok(!serialized.includes('evidence_ledger'), 'no record is copied');
+  assert.ok(!serialized.includes(REPOSITORY_ROOT), 'no absolute path is recorded');
+  assert.ok(!/"[^"]*\/[^"]*\.json"/.test(serialized), 'no file path is recorded');
+  assert.equal(receipt.approval.grant, APPROVAL_GRANT, 'the grant is the fixed public constant');
+});
+
+test('the release check is satisfied only against the report it admitted', () => {
+  const report = reportText();
+  const receipt = buildAdmissionReceipt(admit({ report }));
+
+  assert.equal(
+    requireAdmittedState({ state: receipt, report, target: 'changelog' }).requirement,
+    'satisfied',
+  );
+  assert.equal(
+    requireAdmittedState({ state: receipt, report: `${report}\n`, target: 'changelog' }).requirement,
+    'blocked',
+    'a report edited after admission is stale',
+  );
+  assert.equal(
+    requireAdmittedState({ state: receipt, report, target: 'roast' }).requirement,
+    'blocked',
+    'a receipt admits one target',
+  );
+  assert.equal(
+    requireAdmittedState({ state: null, report, target: 'changelog' }).requirement,
+    'blocked',
+    'no receipt is no admission',
+  );
 });

@@ -44,13 +44,21 @@ import {
   resolveSkillTarget,
 } from './_atoms/reinforcement-target/reinforcement-target.mjs';
 import {
+  ADMISSION_SCHEMA,
   REFUSALS as REPORT_REFUSALS,
+  RUN_STATE_ROOTS,
+  admitGuidance,
   admitReport,
+  buildAdmissionReceipt,
   groundingFromGuidance,
+  normalizeSurface,
+  requireAdmittedState,
 } from './_atoms/report-intake/report-intake.mjs';
 import {
   approvalFor,
+  conformingRecommendations,
   conformingRecord,
+  refusedFor,
   reportText,
 } from './_atoms/report-intake/report-intake.fixtures.mjs';
 import {
@@ -890,15 +898,105 @@ test('the pull request preserves the whole lineage from report to reviewed head'
   assert.deepEqual(Object.keys(lineage).sort(), [
     'applied_recommendation_ids',
     'approval_receipt',
+    'change_request_sha256',
     'evidence_anchors',
     'excluded_recommendations',
     'quarantined_untrusted_directives',
-    'report_path',
     'report_sha256',
     'schema',
     'target_skill',
   ]);
   assert.deepEqual(lineage.evidence_anchors, ['U1', 'T3']);
+  assert.ok(!('report_path' in lineage), 'the digest is the identity; a path is not');
+});
+
+test('the pull request quotes a machine receipt, rechecked rather than remembered', () => {
+  const entry = flat(ENTRY);
+  assert.match(entry, /--require-admitted-state/);
+  assert.match(entry, /\*\*The admission receipt is quoted verbatim\*\*/);
+  assert.match(entry, /re-derives the admission rather than reading its label/);
+  assert.match(entry, /A human-guidance run has no receipt to check/);
+
+  // And the check is a computed precondition, not a described one.
+  const report = reportText();
+  const receipt = buildAdmissionReceipt(admitReport({
+    report,
+    approval: approvalFor(report),
+    target: 'changelog',
+  }));
+  assert.equal(receipt.schema, ADMISSION_SCHEMA);
+  assert.equal(
+    requireAdmittedState({ state: receipt, report, target: 'changelog' }).requirement,
+    'satisfied',
+  );
+  assert.equal(
+    requireAdmittedState({ state: receipt, report: `${report} `, target: 'changelog' }).requirement,
+    'blocked',
+    'publication is blocked once the approved report has changed',
+  );
+  assert.equal(
+    requireAdmittedState({ state: null, report, target: 'changelog' }).requirement,
+    'blocked',
+    'an unrecorded admission cannot publish',
+  );
+});
+
+test('the admission receipt is run state the repository never publishes', () => {
+  const gitignore = fs.readFileSync(path.join(REPOSITORY_ROOT, '.gitignore'), 'utf8');
+  for (const root of RUN_STATE_ROOTS) {
+    assert.match(
+      gitignore,
+      new RegExp(`^${root.replace('.', '\\.')}/$`, 'm'),
+      `${root}/ must be git-ignored for a receipt written there to stay unpublished`,
+    );
+  }
+
+  // The receipt is not a package file, so it never enters the diff the guard audits.
+  assert.equal(
+    classifyWritePath(REPOSITORY_ROOT, 'reinforce-skill', '.test-sandbox/run/admission.json'),
+    WRITE_CLASS.outside,
+  );
+  assert.equal(isWritableClass(WRITE_CLASS.outside), false);
+});
+
+test('a proposed surface can never name doctrine, another package, or a path outside the target', () => {
+  // The refusal is decided by the normalizer, and what it accepts is exactly
+  // what the write-boundary guard calls in-target.
+  for (const hostile of [
+    'doctrine/manifest.md',
+    'skills/post-mortem/SKILL.md',
+    '../post-mortem/SKILL.md',
+    '/etc/passwd',
+    'file:///etc/passwd',
+    '.github/workflows/validate-skills.yml',
+  ]) {
+    assert.equal(
+      codeOf(() => normalizeSurface(hostile, { target: 'changelog' })),
+      REPORT_REFUSALS.malformedSurface,
+      `${hostile} must be refused as a surface`,
+    );
+  }
+
+  const normalized = normalizeSurface('skills/reinforce-skill/SKILL.md', { target: 'reinforce-skill' });
+  assert.equal(normalized, 'SKILL.md');
+  assert.equal(
+    classifyWritePath(REPOSITORY_ROOT, 'reinforce-skill', `skills/reinforce-skill/${normalized}`),
+    WRITE_CLASS.inTarget,
+  );
+
+  // And a contradiction spelled two ways is one contradiction.
+  const recommendations = conformingRecommendations();
+  recommendations[1].target_skill = 'changelog';
+  recommendations[1].change = {
+    surface: './skills/changelog/SKILL.md',
+    directive: 'remove',
+    statement: 'drop the output contract',
+  };
+  const report = reportText({ recommendations });
+  assert.ok(refusedFor(
+    admitReport({ report, approval: approvalFor(report), target: 'changelog' }),
+    REPORT_REFUSALS.contradictoryRecommendations,
+  ));
 });
 
 test('post-mortem is untouched: intake enforces its record contract without composing it', () => {
@@ -933,6 +1031,17 @@ test('the human-guidance path is unchanged and needs no report at all', () => {
   assert.equal(request.report_sha256, null);
   assert.deepEqual(request.recommendation_ids, []);
   assert.equal(request.changes[0].statement, 'the degraded path should say which reason applied');
+
+  // The same command grounds it, in the same shape, with no receipt.
+  const guided = admitGuidance({ target: 'changelog', guidance: 'tighten the output' });
+  const reported = admitReport({
+    report: reportText(),
+    approval: approvalFor(reportText()),
+    target: 'changelog',
+  });
+  assert.deepEqual(Object.keys(guided).sort(), Object.keys(reported).sort());
+  assert.equal(guided.status, 'admitted');
+  assert.equal(guided.lineage, null, 'guidance carries no report lineage and needs no receipt');
 
   const entry = flat(ENTRY);
   assert.match(entry, /Human guidance stands alone/);

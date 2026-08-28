@@ -24,10 +24,13 @@ import {
 
 export const INTAKE_CLI = fileURLToPath(new URL('./report-intake.mjs', import.meta.url));
 
-const REPOSITORY_ROOT = path.resolve(
+export const REPOSITORY_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..', '..', '..', '..',
 );
+
+/** Repository-local scratch space; `.test-sandbox/` is git-ignored. */
+const SANDBOX_ROOT = path.join(REPOSITORY_ROOT, '.test-sandbox');
 
 /** A post-mortem record that satisfies post-mortem's own contract. */
 export function conformingRecord(overrides = {}) {
@@ -184,20 +187,29 @@ export function approvalFor(report, target = 'changelog', overrides = {}) {
 export function admit({ report = reportText(), target = 'changelog', approval } = {}) {
   return admitReport({
     report,
-    reportPath: 'report.json',
     approval: approval === undefined ? approvalFor(report, target) : approval,
     target,
   });
 }
 
-/** The refusal codes a result carries, sorted and de-duplicated. */
+/** The refusal codes a result carries, as a sorted de-duplicated set. */
 export function codesOf(result) {
-  return [...new Set(result.refusals.map((entry) => entry.code))].sort();
+  return [...new Set((result.refusals ?? result.reasons ?? []).map((entry) => entry.code))].sort();
 }
 
-/** A throwaway directory inside the working tree, never a shared temp path. */
+/** Whether a result refused for exactly the given reasons, and no others. */
+export function refusedFor(result, ...codes) {
+  return JSON.stringify(codesOf(result)) === JSON.stringify([...new Set(codes)].sort());
+}
+
+/**
+ * A throwaway directory under the git-ignored `.test-sandbox/`, never a shared
+ * operating-system temporary directory and never an unignored repository root
+ * entry that a stray failure would leave behind as untracked noise.
+ */
 export function withFixtureDirectory(run) {
-  const root = fs.mkdtempSync(path.join(REPOSITORY_ROOT, '.report-intake-fixture-'));
+  fs.mkdirSync(SANDBOX_ROOT, { recursive: true });
+  const root = fs.mkdtempSync(path.join(SANDBOX_ROOT, 'report-intake-'));
   try {
     return run(root);
   } finally {

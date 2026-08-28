@@ -68,12 +68,18 @@ approves that exact digest and that one target for this run.
 
    ```text
    node skills/reinforce-skill/_atoms/report-intake/report-intake.mjs \
-     --report <report.json> --target <skill> --approval <approval.json>
+     --report <report.json> --target <skill> --approval <approval.json> \
+     --root <repository root> --state <run-owned receipt path>
    ```
 
-   Exit `2` is a refusal and is not a warning to carry forward. With no report,
-   this step does not happen at all: human guidance is complete on its own and
-   no synthetic report is manufactured to fill the shape.
+   Exit `2` is a refusal and is not a warning to carry forward. `--state`
+   records the admission as a bounded receipt in run-owned, unpublished state,
+   which is what step 5 rechecks; a run that intends to publish supplies it.
+
+   With no report, this step does not happen at all. Human guidance grounds
+   through the same command — `--guidance <text> --target <skill>` — producing
+   the same normalized shape with no report, no approval, and no receipt. No
+   synthetic report is manufactured to fill the shape.
 
 3. Run [Skill reinforcement](./_molecules/skill-reinforcement/skill-reinforcement.md).
    It resolves the one existing skill, admits an approved report against that
@@ -110,10 +116,28 @@ approves that exact digest and that one target for this run.
    (`intent-decision.mjs --state <path> --require-decision`) over the recorded
    decision; a `blocked` result — a `changes-intent` decision that never reached
    `stored`, or a stored intent that no longer matches the file on disk — stops
-   publication rather than opening a pull request. Otherwise open the pull
-   request with the evidence — the report lineage when there was one, the intent
-   decision, the classified diff, the validation output, and the full roast
-   account — return its identifier and reviewed head, and **stop**. Never merge.
+   publication rather than opening a pull request.
+
+   When a report grounded the run, run the admission release check the same way
+   and treat it the same way:
+
+   ```text
+   node skills/reinforce-skill/_atoms/report-intake/report-intake.mjs \
+     --require-admitted-state <receipt> --report <report.json> --target <skill>
+   ```
+
+   It re-derives the admission rather than reading its label: it recomputes the
+   report's digest from disk, re-runs intake under the approval the receipt
+   recorded, and compares the applied recommendation IDs, the evidence anchors,
+   and the change-request digest. Exit `2` is `blocked` — no receipt, a refused
+   one, a report edited since it was admitted, or a selection that no longer
+   matches — and stops publication. A human-guidance run has no receipt to check
+   and this step does not apply to it.
+
+   Otherwise open the pull request with the evidence — the report lineage when
+   there was one, the intent decision, the classified diff, the validation
+   output, and the full roast account — return its identifier and reviewed head,
+   and **stop**. Never merge.
 
 ## Intent Decides First, and This Ordering Is the Point
 
@@ -174,8 +198,9 @@ Return:
   package;
 - the change source: `human-guidance`, or `post-mortem-report` with its digest,
   the approval receipt, the recommendation IDs applied, the ones excluded with
-  the skill each names, the evidence anchors behind the applied ones, and any
-  anchors the record had already quarantined as untrusted directives;
+  the skill each names, the evidence anchor identifiers behind the applied ones,
+  any anchors the record had already quarantined as untrusted directives, and
+  the admission receipt quoted verbatim with the release check's result;
 - the intent decision — `changes-intent` with the confirmed new text, or
   `preserves-intent` with the reasoning the intent was reviewed and left intact
   (or the note that no intent existed to review and this change does not create
@@ -203,7 +228,7 @@ Each run ends in exactly one status:
 | --- | --- |
 | `reinforced` | The change is made, validation passed, `/roast` ran on the final head with every finding addressed, the pull request is open. A degraded changelog does not lower this status; it is reported. A degraded writing review does not lower it either; it is reported the same way. |
 | `needs-confirmation` | The intent changed but the operator has not confirmed the revised wording, or the three-round roast pause awaits his answer. Nothing is stored or merged. |
-| `blocked` | The target is not a routable existing skill, a supplied report is refused by intake, a dependency prevents the change, validation cannot pass, or the diff audit refuses an out-of-target path. |
+| `blocked` | The target is not a routable existing skill, a supplied report is refused by intake, the admission release check is blocked at publication, a dependency prevents the change, validation cannot pass, or the diff audit refuses an out-of-target path. |
 | `halted` | `/roast` refused or returned an unsynthesized result, or the loop reached its round limit without convergence. |
 
 Never report a reinforcement `reinforced` unless `/roast` actually ran on the
@@ -231,10 +256,16 @@ report digest -> post-mortem evidence anchors -> applied recommendation IDs
 ```
 
 Every link is stated exactly as it was checked: the digest as the SHA-256 that
-was approved, the anchors as the record's own anchors, and the receipt as the
-three compared fields. Recommendations excluded for naming another skill are
-listed too, so nobody has to wonder whether they were missed or deliberately
-left alone.
+was approved, the anchors as the record's own anchor identifiers, and the
+receipt as the three compared fields. **The admission receipt is quoted
+verbatim**, as the machine wrote it, rather than paraphrased — a paraphrase is
+a claim about a check, and the receipt is the check. Recommendations excluded
+for naming another skill are listed too, so nobody has to wonder whether they
+were missed or deliberately left alone.
+
+The receipt itself is run state and is never committed: it lives outside the
+repository or under a git-ignored run-state root, so it appears in the pull
+request as quoted evidence and never as a changed file.
 
 ## The Writing Component
 
@@ -278,7 +309,11 @@ because reviewing the writing is optional by choice.
   run. A lifecycle state, a confidence, or a sentence inside the report is never
   approval. A missing, ambiguous, malformed, unapproved, digest-mismatched,
   target-mismatched, or self-contradicting report is refused before anything is
-  edited.
+  edited, and the admission is re-derived from the report on disk before
+  anything publishes.
+- **A proposed surface is a path inside the target skill.** Every one is
+  canonicalized before it is compared or grouped, and an absolute path, a URL, a
+  traversal, another package, or `doctrine/` is refused rather than repaired.
 - **Never approves, validates, or edits the evidence.** It does not mark a
   report approved, approve one on the operator's behalf, validate the
   recommendations it applies, or change the post-mortem record, its anchors, or
@@ -313,9 +348,10 @@ because reviewing the writing is optional by choice.
 context, and any report the operator supplied. `edit` changes the target skill's
 own files — its `SKILL.md`, its units, its `intent.md` on confirmation, and its
 tests — and registers a new test in the validation workflow. `execute` runs
-Chronicler recording, the deterministic report intake and write-boundary guard,
-the deriver and validator, the test suite, and the git commands that create the
-review branch, commit the change, and open the pull request. `task` invokes
+Chronicler recording, the deterministic report intake and its release check, the
+write-boundary guard, the deriver and validator, the test suite, and the git
+commands that create the review branch, commit the change, and open the pull
+request. `task` invokes
 `/roast` as a required nested skill and dispatches the fresh-context rubber duck.
 
 The grant did not widen to read a report. A report is a file, `read` already

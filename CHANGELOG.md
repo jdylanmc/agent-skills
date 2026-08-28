@@ -155,13 +155,21 @@ below is unreleased and no comparison links are available.
   applied; the rest are reported and left for their own run. A missing,
   ambiguous, malformed, unapproved, edited-since-approval, wrong-skill, or
   self-contradicting report stops the run before anything is edited, and every
-  reason is listed at once. Applicable recommendations are reconciled into one
-  change request that joins the same intent-first workflow — the intent decision
-  is still yours to confirm, and an approved report never stands in for it — and
-  the pull request carries the whole chain from report digest and evidence
-  anchors through to the reviewed head. Nothing about the human-guidance path
-  changed, `post-mortem` is untouched, and no report is ever manufactured to
-  satisfy a shape.
+  reason is listed at once. Every proposed surface is canonicalized first, so
+  `SKILL.md` and `skills/<skill>/SKILL.md` are one file and a contradiction
+  spelled two ways is still caught, and a path naming another package,
+  `doctrine/`, an absolute location, or a URL is refused rather than repaired.
+  Applicable recommendations are reconciled into one change request that joins
+  the same intent-first workflow — the intent decision is still yours to
+  confirm, and an approved report never stands in for it. The admission is
+  recorded as a small machine receipt in run-owned, unpublished state and is
+  re-derived from the report on disk before a pull request opens, so a report
+  edited after you approved it stops the run rather than shipping. The pull
+  request quotes that receipt and carries the whole chain from report digest and
+  evidence anchors through to the reviewed head. Nothing about the
+  human-guidance path changed — it grounds through the same command, needs no
+  report, approval, or receipt — `post-mortem` is untouched, and no report is
+  ever manufactured to satisfy a shape.
 
 ### Removed
 
