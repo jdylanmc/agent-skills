@@ -160,11 +160,14 @@ layer, then an alignment term, then the context layer. Order is what carries
 direction in the sentence. "Align the full specification with the nano
 specification" is the correct direction and is clean; "align the nano
 specification with the full specification" is the inversion and is a defect. A
-clause is skipped only when a negation term *opens* it, so "Do not update the
-nano specification to match the full specification" is not read as the
-instruction it warns against, while a negation that merely trails an inversion —
-"update the nano specification to match the full specification, rather than
-leaving the drift" — reverses nothing and is still caught.
+clause is skipped only for the span a negation term governs, so "Do not update
+the nano specification to match the full specification" is not read as the
+instruction it warns against. A contrast opener does not suppress the directive
+after its comma — "Instead of leaving the drift, update the nano specification
+to match the full specification" is still caught — and a negation that merely
+trails an inversion, "update the nano specification to match the full
+specification, rather than leaving the drift", reverses nothing and is still
+caught.
 
 Recommending a change to the nano specification is otherwise entirely
 legitimate — an ambiguous criterion should be rewritten — so the screen does not

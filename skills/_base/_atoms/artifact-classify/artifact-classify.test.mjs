@@ -123,6 +123,20 @@ test('classifies either half of a specification pair as a spec, never as code', 
   }
 });
 
+test('an existing target path wins over diff wording in its file name', (t) => {
+  const root = workspace(t);
+  fs.mkdirSync(path.join(root, 'docs', 'specs'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'docs', 'specs', 'diff.nano.md'), '# Diff spec\n');
+  fs.writeFileSync(path.join(root, 'docs', 'specs', 'diff.full.md'), '# Diff spec, in full\n');
+
+  const result = classifyArtifact({ target: 'docs/specs/diff.nano.md', repositoryRoot: root });
+
+  assert.equal(result.status, 'Classified');
+  assert.equal(result.type, 'spec');
+  assert.equal(result.routeToBranch, 'artifact');
+  assert.doesNotMatch(reflowed(result.evidence), /diff reference/);
+});
+
 test('a specification whose sibling is absent still classifies rather than refusing', (t) => {
   // The missing half is exactly what the review must report. Refusing to
   // classify would hide the one defect the operator most needs to see.
@@ -135,6 +149,34 @@ test('a specification whose sibling is absent still classifies rather than refus
   assert.equal(result.type, 'spec');
   assert.equal(result.routeToBranch, 'artifact');
   assert.match(reflowed(result.evidence), /full sibling is absent/);
+});
+
+test('a specification sibling that is a symbolic link is not reported as resolving', (t) => {
+  const root = workspace(t);
+  fs.writeFileSync(path.join(root, 'checkout.nano.md'), '# Checkout\n');
+  fs.symlinkSync(path.join(root, 'checkout.nano.md'), path.join(root, 'checkout.full.md'));
+
+  const result = classifyArtifact({ path: 'checkout.nano.md', repositoryRoot: root });
+
+  assert.equal(result.status, 'Classified');
+  assert.equal(result.type, 'spec');
+  assert.doesNotMatch(reflowed(result.evidence), /sibling resolves beside it/);
+  assert.match(reflowed(result.evidence), /full sibling is absent or unsafe/);
+});
+
+test('a specification sibling resolving outside the root is not reported as resolving', (t) => {
+  const outside = workspace(t);
+  fs.writeFileSync(path.join(outside, 'checkout.nano.md'), '# Checkout\n');
+  fs.writeFileSync(path.join(outside, 'checkout.full.md'), '# Checkout, in full\n');
+  const root = workspace(t);
+  fs.symlinkSync(outside, path.join(root, 'alias'));
+
+  const result = classifyArtifact({ path: 'alias/checkout.nano.md', repositoryRoot: root });
+
+  assert.equal(result.status, 'Classified');
+  assert.equal(result.type, 'spec');
+  assert.doesNotMatch(reflowed(result.evidence), /sibling resolves beside it/);
+  assert.match(reflowed(result.evidence), /full sibling is absent or unsafe/);
 });
 
 test('a specification inside a prompts directory refuses rather than picking a side', (t) => {

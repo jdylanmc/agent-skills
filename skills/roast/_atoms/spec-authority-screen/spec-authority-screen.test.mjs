@@ -293,6 +293,22 @@ test('a negation opening a clause is skipped but a trailing one does not suppres
   assert.deepEqual(categories(trailing), ['Inverted authority']);
 });
 
+test('a contrast opener suppresses only the contrast span, not the following directive', () => {
+  const result = screen(
+    report({
+      findings: finding({
+        Authority: 'specs/checkout.nano.md',
+        Location: 'specs/checkout.nano.md:L12',
+        Recommendation:
+          'Instead of leaving the drift, update the nano specification to match the full specification.',
+      }),
+    }),
+    pairRecord(),
+  );
+
+  assert.deepEqual(categories(result), ['Inverted authority']);
+});
+
 test('a disagreement naming only the full layer still demands an authority (Finding 5)', () => {
   // The coverage 173c527 removed: an entry that rests on a conflict and names
   // the context layer must attribute an authority even when it never names the
@@ -560,9 +576,45 @@ test('the documented vocabulary and the screen vocabulary match in both directio
 
 test('every documented defect category is reachable from some report', () => {
   assert.equal(new Set(DEFECT_CATEGORIES).size, DEFECT_CATEGORIES.length);
-  const source = fs.readFileSync(path.join(UNIT_ROOT, 'spec-authority-screen.mjs'), 'utf8');
-  for (const category of DEFECT_CATEGORIES) {
-    const uses = [...source.matchAll(new RegExp(`'${category}'`, 'g'))];
-    assert.ok(uses.length >= 2, `${category} is declared but never recorded`);
+  const cases = new Map([
+    [
+      'Missing pair evidence',
+      () => screen(report({ manifest: '- specs/checkout.nano.md, Evidence status: Staged' }), pairRecord()),
+    ],
+    [
+      'Inverted authority',
+      () =>
+        screen(
+          report({
+            findings: finding({
+              Location: 'specs/checkout.nano.md:L12',
+              Recommendation: 'Update the nano specification to match the full specification.',
+            }),
+          }),
+          pairRecord(),
+        ),
+    ],
+    [
+      'Unattributed authority',
+      () =>
+        screen(
+          report({
+            findings: finding({
+              Evidence: 'The full specification contradicts the reservation window.',
+              Recommendation: 'Delete the contradiction.',
+            }),
+          }),
+          pairRecord(),
+        ),
+    ],
+    [
+      'Undeclared criterion citation',
+      () => screen(report({ findings: finding({ Evidence: 'The section cites AC-999.' }) }), pairRecord()),
+    ],
+  ]);
+  assert.deepEqual([...cases.keys()].sort(), [...DEFECT_CATEGORIES].sort());
+  for (const [category, build] of cases) {
+    const result = build();
+    assert.ok(categories(result).includes(category), `${category} was not emitted`);
   }
 });

@@ -31,8 +31,10 @@ ambiguous cases.
 | `locator` | no | The caller's stable identifier for supplied text. |
 
 Supply exactly one target form when possible. When a caller passes only
-`target`, the atom treats newline-containing input as supplied text, recognized
-pull-request or diff wording as a reference, and otherwise as a path.
+`target`, the atom treats newline-containing input as supplied text, gives an
+existing in-root path priority over free-text heuristics, then treats
+recognized pull-request or diff wording as a reference, and otherwise as a
+path.
 
 ## Operation
 
@@ -49,7 +51,8 @@ pull-request or diff wording as a reference, and otherwise as a path.
      `prompts/` path, or supplied instructional text with no stronger marker.
    - `spec`: the specification pair naming convention, `<spec>.nano.md` or
      `<spec>.full.md`, with a second evidence record stating whether the
-     sibling resolves beside it.
+     sibling resolves beside it as a non-symbolic-link file inside the
+     repository root.
    - `code`: pull-request, branch-diff, working-tree, or unified-diff
      references; source-code extensions; or code syntax in supplied text.
 4. Return `Classified` only when exactly one artifact type has medium or high
@@ -87,9 +90,9 @@ Refusal categories: `Ambiguous target`, `Insufficient evidence`, and
   identifies it as an agent, skill, or code artifact.
 - A specification pair is classified from its sibling naming convention and
   never from its prose, so it is never routed as code and never reviewed under
-  the prompt contract. A nano artifact whose sibling is absent still classifies
-  as `spec`: the missing half is what a review most needs to report, and
-  refusing to classify would hide it.
+  the prompt contract. A nano artifact whose sibling is absent or unsafe still
+  classifies as `spec`: the sibling state is what a review most needs to
+  report, and refusing to classify would hide it.
 - A content-derived code signal never overrules an exact specification suffix.
   A full specification that quotes a diff is documenting a change, not being
   one. A genuine conflict between two path conventions, such as a `.nano.md`

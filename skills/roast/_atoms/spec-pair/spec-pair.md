@@ -46,7 +46,9 @@ node <atoms>/spec-pair/spec-pair.mjs --spec "$absolute_path_to_either_sibling" \
   --repository-root "$absolute_repository_root"
 ```
 
-Pass `--nano` and `--full` instead when the two files do not share a stem.
+Pass `--nano` and `--full` instead when the caller already has both exact
+paths, but they must still be the same sibling pair: one directory, one stem,
+one `.nano.md`, and one `.full.md`.
 `--repository-root` renders every locator relative to that root and is the
 boundary both paths must stay inside. It is required: there is no default and no
 silent fall back to an unbounded resolution. A flag given more than once is a
@@ -99,7 +101,7 @@ in either direction.
 | `duplicate-criterion-id` | Two nano criteria share one identifier, so a downstream citation is ambiguous. |
 | `unknown-criterion-reference` | The full specification cites a criterion identifier the nano artifact does not declare. |
 | `unresolved-trace-reference` | A full-specification trace line names no declared criterion, specification identifier, or intention, so it traces to nothing. |
-| `untraced-requirement` | A full-specification section that traces to nothing states a requirement, so context reads as authority. |
+| `untraced-requirement` | A material full-specification bullet or statement traces to nothing, so context reads as authority. |
 | `authority-conflict` | The full specification restates a criterion with different text, or claims precedence over the nano artifact. |
 | `nano-section-outside-contract` | The nano artifact carries a section outside the set it may hold. |
 
@@ -128,11 +130,20 @@ or `AC1`, optionally inside a task box or bold markers. `AC1` and `AC-1` are
 the same identifier, and the identifier is matched without regard to case, so
 `ac-1` is that same identifier too.
 
+### Specification identifiers
+
+The nano artifact's stable identifier may be written as `Spec ID:`,
+`Spec identifier:`, or `Specification identifier:`, optionally as a list item
+and with the label in bold markers. `Spec ID:` is the canonical label emitted by
+`/spec`.
+
 ### Trace references
 
-A **declared** criterion identifier appearing anywhere in a full-specification
-section, the specification identifier, or a line opening `Traces to:` or
-`Elaborates:` whose target resolves. Any one of them makes the section traced.
+A **declared** criterion identifier on a material full-specification bullet or
+statement, an `[INTENT]` marker, the specification identifier, or a nearby line
+opening `Traces to:` or `Elaborates:` whose target resolves. A trace line
+applies only to the next material statement it introduces, not to every
+requirement later in the section.
 
 A trace line's target resolves when it names a declared criterion identifier,
 the specification identifier, or the nano intention:
@@ -141,10 +152,10 @@ the specification identifier, or the nano intention:
 
 `Traces to: AC-1 and AC-2` names two targets and resolves when either does. A
 target that resolves to none of the above is recorded as
-`unresolved-trace-reference`, and it does not mark its section traced. A trace
-to nothing is not a trace, and treating it as one would let a typo silence
-every requirement in the section it heads. An undeclared identifier is likewise
-never a trace: `AC-999` is recorded and leaves its section untraced.
+`unresolved-trace-reference`, and it does not mark a later requirement traced. A
+trace to nothing is not a trace, and treating it as one would let a typo silence
+requirements. An undeclared identifier is likewise never a trace: `AC-999` is
+recorded and leaves that material statement untraced.
 
 ### Requirement terms
 

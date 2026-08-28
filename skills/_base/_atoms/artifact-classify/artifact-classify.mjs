@@ -142,11 +142,31 @@ function specSuffixOf(relative) {
   return Object.keys(SPEC_SUFFIXES).find((candidate) => relative.endsWith(candidate)) ?? null;
 }
 
-function addSpecSignals(signals, relative, absolute, suffix) {
+function safeExistingFileInsideRoot(absolutePath, repositoryRoot) {
+  let stats;
+  try {
+    stats = fs.lstatSync(absolutePath);
+  } catch {
+    return false;
+  }
+  if (stats.isSymbolicLink() || !stats.isFile()) {
+    return false;
+  }
+  try {
+    const realRoot = fs.realpathSync(repositoryRoot);
+    const realPath = fs.realpathSync(absolutePath);
+    const relative = path.relative(realRoot, realPath);
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  } catch {
+    return false;
+  }
+}
+
+function addSpecSignals(signals, relative, absolute, suffix, repositoryRoot) {
   const layer = SPEC_SUFFIXES[suffix];
   const siblingLayer = layer === 'nano' ? 'full' : 'nano';
   const sibling = `${absolute.slice(0, -suffix.length)}.${siblingLayer}.md`;
-  const siblingExists = fs.existsSync(sibling);
+  const siblingExists = safeExistingFileInsideRoot(sibling, repositoryRoot);
   addSignal(
     signals,
     'spec',
@@ -161,7 +181,7 @@ function addSpecSignals(signals, relative, absolute, suffix) {
     'specification sibling',
     siblingExists
       ? `the ${siblingLayer} sibling resolves beside it`
-      : `the ${siblingLayer} sibling is absent, which the spec pair record reports`,
+      : `the ${siblingLayer} sibling is absent or unsafe, which the spec pair record reports`,
   );
 }
 
@@ -282,7 +302,7 @@ function classifyPath({ targetPath, repositoryRoot = process.cwd() }) {
   }
   const specSuffix = specSuffixOf(relative);
   if (specSuffix) {
-    addSpecSignals(signals, relative, absolute, specSuffix);
+    addSpecSignals(signals, relative, absolute, specSuffix, repositoryRoot);
   }
   if (CODE_EXTENSIONS.has(extension) && !basename.endsWith('.md')) {
     addSignal(signals, 'code', 'high', 'source extension', extension);
@@ -312,6 +332,18 @@ export function classifyArtifact(input = {}) {
   if (typeof input.target === 'string') {
     if (input.target.includes('\n')) {
       return classifyText(input.target, input.locator ?? 'supplied-text');
+    }
+    try {
+      const { absolute } = relativePathInside(repositoryRoot, input.target);
+      fs.lstatSync(absolute);
+      return classifyPath({ targetPath: input.target, repositoryRoot });
+    } catch (error) {
+      if (error instanceof ArtifactClassificationError && error.code === 'path_outside_root') {
+        throw error;
+      }
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') {
+        return classifyPath({ targetPath: input.target, repositoryRoot });
+      }
     }
     const referenceResult = classifyReference(input.target);
     if (referenceResult.status === 'Classified') {

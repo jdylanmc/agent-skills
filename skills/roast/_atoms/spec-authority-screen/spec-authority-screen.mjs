@@ -158,6 +158,33 @@ function clausesOf(text) {
     .filter((clause) => clause !== '');
 }
 
+function screenedClausesOf(text) {
+  const screened = [];
+  for (const clause of clausesOf(text)) {
+    if (!opensWith(clause, NEGATION_TERMS)) {
+      screened.push(clause);
+      continue;
+    }
+    const rest = clause.trimStart().replace(
+      new RegExp(
+        `^(?:${NEGATION_TERMS.map((phrase) =>
+          phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'),
+        ).join('|')})(?![A-Za-z0-9])`,
+        'i',
+      ),
+      '',
+    );
+    const separator = /[,;]/.exec(rest);
+    if (separator) {
+      const afterContrast = rest.slice(separator.index + 1).trim();
+      if (afterContrast !== '') {
+        screened.push(afterContrast);
+      }
+    }
+  }
+  return screened;
+}
+
 /** Every line of `## Evidence Manifest`, with fenced content excluded. */
 export function manifestLines(report) {
   const lines = report.replace(/\r\n/g, '\n').split('\n');
@@ -324,10 +351,7 @@ export function screenSpecReport(report, record, options = {}) {
       });
     }
 
-    for (const clause of clausesOf(recommendation)) {
-      if (opensWith(clause, NEGATION_TERMS)) {
-        continue;
-      }
+    for (const clause of screenedClausesOf(recommendation)) {
       const nanoAt = firstPosition(clause, nanoTerms);
       if (nanoAt === -1) {
         continue;

@@ -100,8 +100,12 @@ const BARE_RESTATEMENT_LINE =
   /^\s*\*{0,2}\s*(AC-?\d+)\s*\*{0,2}\s*(?:[.:)]|\u2014)\s*(.*)$/i;
 const CRITERION_TOKEN = /\bAC-?\d+\b/gi;
 const SPEC_IDENTIFIER_LINE =
-  /^\s*(?:[-*+]\s*)?\*{0,2}(?:specification|spec)\s+identifier\*{0,2}\s*:\s*(\S.*?)\s*$/i;
+  /^\s*(?:[-*+]\s*)?\*{0,2}(?:(?:specification|spec)\s+identifier|spec\s+id)\*{0,2}\s*:\s*(\S.*?)\s*$/i;
 const TRACE_LINE = /^\s*(?:[-*+]\s*)?\*{0,2}(?:traces? to|elaborates)\*{0,2}\s*:\s*(\S.*?)\s*$/i;
+const INTENT_MARKER = /\[INTENT\]/i;
+const MATERIAL_IDENTIFIER_LINE =
+  /^\s*(?:[-*+]|\d+\.)?\s*(?:\[[ xX]\]\s*)?\*{0,2}(?:REQ|DEC)-\d+\b/i;
+const LIST_ITEM_LINE = /^\s*(?:[-*+]|\d+\.)\s+\S/;
 const MARKDOWN_LINK = /\[[^\]]*\]\(([^)\s]+)\)/g;
 const HEADING_LINE = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 const FENCE_LINE = /^\s*(`{3,}|~{3,})/;
@@ -150,6 +154,9 @@ function traceTargets(text) {
 
 /** A trace target resolves to a declared criterion, the identifier, or the intention. */
 function resolveTraceTarget(target, declaredIds, specId) {
+  if (/^INTENT$/i.test(target.replace(/[\[\]`*_]/g, '').trim())) {
+    return true;
+  }
   for (const id of criterionTokens(target)) {
     if (declaredIds.has(id)) {
       return true;
@@ -343,7 +350,15 @@ function resolvePaths(input) {
   if (!path.isAbsolute(nano) || !path.isAbsolute(full)) {
     throw new SpecPairError('unsafe_path', 'specification paths must be absolute');
   }
-  return { nano: path.normalize(nano), full: path.normalize(full) };
+  nano = path.normalize(nano);
+  full = path.normalize(full);
+  if (nano.slice(0, -NANO_SUFFIX.length) !== full.slice(0, -FULL_SUFFIX.length)) {
+    throw new SpecPairError(
+      'usage',
+      'sibling mismatch: the nano and full specification paths must share one directory and stem',
+    );
+  }
+  return { nano, full };
 }
 
 function collectNano(records, locator) {
@@ -632,30 +647,53 @@ function collectFull(records, locator, criteria, specId) {
     }
   }
 
-  for (const section of sectionsOf(records)) {
-    const traces = (record) => {
-      const text = typeof record === 'string' ? record : record.text;
-      if (criterionTokens(text).some((id) => declaredIds.has(id))) {
-        return true;
-      }
-      if (specId !== null && containsPhrase(text, specId)) {
-        return true;
-      }
-      const targets = traceTargets(text);
-      return targets !== null && targets.some((target) => resolveTraceTarget(target, declaredIds, specId));
-    };
-    const headingTraces = section.heading !== null && traces(section.heading);
-    const bodyTraces = section.lines.some((record) => !record.fenced && traces(record));
-    if (headingTraces || bodyTraces) {
-      continue;
+  const traces = (record) => {
+    const text = typeof record === 'string' ? record : record.text;
+    if (criterionTokens(text).some((id) => declaredIds.has(id))) {
+      return true;
     }
+    if (INTENT_MARKER.test(text)) {
+      return true;
+    }
+    if (specId !== null && containsPhrase(text, specId)) {
+      return true;
+    }
+    const targets = traceTargets(text);
+    return targets !== null && targets.some((target) => resolveTraceTarget(target, declaredIds, specId));
+  };
+  const materialRequirement = (record, section) => {
+    if (REQUIREMENT_TERMS.some((term) => containsPhrase(record.text, term))) {
+      return true;
+    }
+    if (MATERIAL_IDENTIFIER_LINE.test(record.text)) {
+      return true;
+    }
+    return (
+      section.normalized !== null &&
+      containsPhrase(section.normalized, 'product decisions') &&
+      LIST_ITEM_LINE.test(record.text)
+    );
+  };
+
+  for (const section of sectionsOf(records)) {
+    let pendingTrace = section.heading !== null && traces(section.heading);
     for (const record of section.lines) {
       if (record.fenced || /^\s*>/.test(record.text) || unresolvedTraceLines.has(record.number)) {
         continue;
       }
-      if (!REQUIREMENT_TERMS.some((term) => containsPhrase(record.text, term))) {
+      const targets = traceTargets(record.text);
+      if (targets !== null) {
+        pendingTrace = targets.some((target) => resolveTraceTarget(target, declaredIds, specId));
         continue;
       }
+      if (!materialRequirement(record, section)) {
+        continue;
+      }
+      if (traces(record) || pendingTrace) {
+        pendingTrace = false;
+        continue;
+      }
+      pendingTrace = false;
       const entry = {
         line: record.number,
         section: section.heading,

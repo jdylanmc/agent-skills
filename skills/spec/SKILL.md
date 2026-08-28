@@ -79,14 +79,13 @@ record -> resolve approval state -> resolve confirmed Discovery source
    `docs/agent/specs/`, rereads and validates them, and resolves every
    pre-review status.
 6. Submit the exact candidate pair to `roast` and require its evidence-based
-   classification to return artifact type `specification`. Roast is read-only
-   and returns recommendations; it does not repair the pair. The
-   `specification` artifact profile is delivered by issue #118 and is not
-   available in the repository at the time this package is introduced, so
-   `complete` remains unreachable until that dependency lands. If the profile is
-   unavailable, the review is incomplete, or any `Must fix` finding remains
-   unresolved, return `blocked`. The outer delivery workflow may apply repairs
-   and invoke this skill and Roast again; this run does not own that loop.
+   classification to return artifact type `spec`. Roast is read-only and
+   returns recommendations; it does not repair the pair or approve it. The
+   `spec` artifact profile stages both siblings and applies the nano/full
+   authority screen. If classification does not return `spec`, the review is
+   incomplete, or any `Must fix` finding remains unresolved, return `blocked`.
+   The outer delivery workflow may apply repairs and invoke this skill and
+   Roast again; this run does not own that loop.
 7. Present the nano Product Requirements Document first. Present the full
    document as linked, expandable supporting context. A human may approve the
    nano intention and acceptance criteria only after the independent review is
@@ -175,7 +174,7 @@ Resolve worst to best:
 
 | Status | Meaning |
 | --- | --- |
-| `blocked` | The source is inaccessible or stale, persistence or reread failed, pair validation failed, the Roast profile or review is unavailable, or unresolved `Must fix` findings remain. |
+| `blocked` | The source is inaccessible or stale, persistence or reread failed, pair validation failed, Roast classification did not return `spec`, the Roast review is incomplete, or unresolved `Must fix` findings remain. |
 | `needs-discovery` | The source lacks evidence or scope required to state product intent without guessing. |
 | `needs-decision` | Product decisions, contradictions, sibling conflicts, or approval remain unresolved. |
 | `held` | The approved specification stands; the source moved and nothing contradicts it; nothing was re-derived and nothing was written. |

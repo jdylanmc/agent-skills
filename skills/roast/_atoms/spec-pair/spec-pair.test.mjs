@@ -128,6 +128,71 @@ test('a clean pair is paired, linked, and records nothing', (t) => {
   assert.match(record.observation, /every mechanical pair check passed/);
 });
 
+test('the canonical /spec nano shape stages its Spec ID identity', (t) => {
+  const root = workspace(t);
+  const nano = [
+    '# Faster checkout',
+    '',
+    'Spec ID: SPEC-FASTER-CHECKOUT',
+    'Source: docs/agent/discovery/faster-checkout.md',
+    'Source revision: abc123',
+    'Full specification: [Supporting context](./faster-checkout.full.md)',
+    '',
+    '## Intention',
+    '',
+    'A shopper completes checkout without waiting on duplicate validation.',
+    '',
+    '## Acceptance Criteria',
+    '',
+    '- AC-001: Duplicate validation is skipped when a fresh validation receipt exists.',
+    '',
+    '## Non-goals',
+    '',
+    '- Payment provider behavior is unchanged.',
+    '',
+  ].join('\n');
+  const full = [
+    '# Faster checkout - Full specification',
+    '',
+    'Spec ID: SPEC-FASTER-CHECKOUT',
+    'Source: docs/agent/discovery/faster-checkout.md',
+    'Source revision: abc123',
+    'Nano authority: [Nano](./faster-checkout.nano.md)',
+    '',
+    '## Authority',
+    '',
+    'The nano specification is authoritative.',
+    '',
+    '## Product Context',
+    '',
+    'Prior checkout work identified duplicate validation as the user-visible delay.',
+    '',
+    '## Product Requirements',
+    '',
+    '- REQ-001 [AC-001]: Skip duplicate validation when a fresh validation receipt exists.',
+    '',
+    '## Product Decisions',
+    '',
+    'None.',
+    '',
+    '## Traceability',
+    '',
+    '- AC-001: REQ-001',
+    '',
+    '## Open Questions',
+    '',
+    'None.',
+    '',
+  ].join('\n');
+  const { nanoPath } = writePair(root, { stem: 'faster-checkout', nano, full });
+
+  const record = stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+
+  assert.equal(record.specId, 'SPEC-FASTER-CHECKOUT');
+  assert.deepEqual(record.criteria.map((entry) => entry.id), ['AC-001']);
+  assert.deepEqual(rules(record).filter((rule) => rule === 'missing-spec-identifier'), []);
+});
+
 test('the full sibling is resolved from either half of the pair', (t) => {
   const root = workspace(t);
   const { nanoPath, fullPath } = writePair(root);
@@ -456,6 +521,34 @@ test('an undeclared identifier alone never marks a section traced', (t) => {
   );
 });
 
+test('an unmarked requirement cannot hide in a section with a traced requirement', (t) => {
+  const root = workspace(t);
+  writePair(root, {
+    nano: CLEAN_NANO
+      .replace('- AC-1:', '- AC-001:')
+      .replace('- AC-2:', '- AC-002:'),
+    full: [
+      '# Checkout hold, in full',
+      '',
+      '## Product Requirements',
+      '',
+      '- REQ-001 [AC-001]: Keep the reserved basket available while payment settles.',
+      '- REQ-003: Ask the shopper to restart checkout when fraud screening is delayed.',
+      '',
+    ].join('\n'),
+  });
+
+  const record = stageSpecPair({
+    specPath: path.join(root, 'checkout-hold.nano.md'),
+    repositoryRoot: root,
+  });
+
+  const untraced = record.traceability.untracedRequirements;
+  assert.deepEqual(untraced.map((entry) => entry.line), [6]);
+  assert.match(untraced[0].text, /REQ-003/);
+  assert.ok(rules(record).includes('untraced-requirement'));
+});
+
 test('an untraced full-spec requirement is recorded and traced context is not', (t) => {
   const root = workspace(t);
   writePair(root, {
@@ -673,6 +766,10 @@ test('a directory symbolic link inside the root cannot reach a pair outside it',
 });
 
 test('a sibling that cannot be inspected is unreadable rather than missing', (t) => {
+  if (typeof process.getuid !== 'function') {
+    t.skip('POSIX ownership and permission bits are unavailable on this platform');
+    return;
+  }
   const root = workspace(t);
   const nested = path.join(root, 'specs');
   fs.mkdirSync(nested);
@@ -714,6 +811,36 @@ test('a single specification path and an explicit pair are mutually exclusive', 
   const streams = captureStreams();
   assert.equal(runSpecPair(['--spec', nanoPath, '--full', fullPath], streams), 1);
   assert.match(streams.errors(), /usage: .*never both/);
+});
+
+test('an explicit nano and full pair must be true siblings', (t) => {
+  const root = workspace(t);
+  const checkout = writePair(root, { stem: 'checkout' });
+  const refunds = writePair(root, { stem: 'refunds' });
+  const nested = path.join(root, 'nested');
+  fs.mkdirSync(nested);
+  const nestedPair = writePair(nested, { stem: 'checkout' });
+
+  for (const [nanoPath, fullPath] of [
+    [checkout.nanoPath, refunds.fullPath],
+    [checkout.nanoPath, nestedPair.fullPath],
+  ]) {
+    assert.throws(() => stageSpecPair({ nanoPath, fullPath, repositoryRoot: root }), (error) => {
+      assert.equal(error.code, 'usage');
+      assert.match(error.message, /sibling mismatch/);
+      return true;
+    });
+  }
+
+  const streams = captureStreams();
+  assert.equal(
+    runSpecPair(
+      ['--nano', checkout.nanoPath, '--full', refunds.fullPath, '--repository-root', root],
+      streams,
+    ),
+    1,
+  );
+  assert.match(streams.errors(), /sibling mismatch/);
 });
 
 test('the command line emits the record, refuses without a target, and probes', (t) => {
@@ -797,11 +924,123 @@ test('the documented vocabulary and the resolver vocabulary match in both direct
 });
 
 test('every documented observation rule is reachable from some pair', () => {
-  // A rule token nobody can produce reads as coverage while guarding nothing.
   assert.equal(new Set(OBSERVATION_RULES).size, OBSERVATION_RULES.length);
-  const source = fs.readFileSync(path.join(UNIT_ROOT, 'spec-pair.mjs'), 'utf8');
-  for (const rule of OBSERVATION_RULES) {
-    const uses = [...source.matchAll(new RegExp(`'${rule}'`, 'g'))];
-    assert.ok(uses.length >= 2, `${rule} is declared but never recorded`);
+  const cases = new Map([
+    [
+      'missing-sibling',
+      (root) => {
+        const { nanoPath } = writePair(root, { full: null });
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+    [
+      'unreadable-sibling',
+      (root) => {
+        const { nanoPath, fullPath } = writePair(root, { full: null });
+        fs.mkdirSync(fullPath);
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+    [
+      'broken-full-link',
+      (root) => {
+        const { nanoPath } = writePair(root, {
+          nano: CLEAN_NANO.replace('[Full specification](./checkout-hold.full.md)', 'See full.'),
+        });
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+    [
+      'missing-spec-identifier',
+      (root) => {
+        const { nanoPath } = writePair(root, {
+          nano: CLEAN_NANO.replace('- Specification identifier: SPEC-CHECKOUT-HOLD\n', ''),
+        });
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+    [
+      'no-acceptance-criteria',
+      (root) => {
+        const { nanoPath } = writePair(root, {
+          nano: CLEAN_NANO.replace(
+            '## Acceptance criteria\n\n- AC-1: A reserved basket stays reserved for fifteen minutes.\n- AC-2: An expired reservation releases every held item.\n\n',
+            '',
+          ),
+        });
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+    [
+      'duplicate-criterion-id',
+      (root) => {
+        const { nanoPath } = writePair(root, {
+          nano: CLEAN_NANO.replace(
+            '- AC-2: An expired reservation releases every held item.',
+            '- AC-1: An expired reservation releases every held item.',
+          ),
+        });
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+    [
+      'unknown-criterion-reference',
+      (root) => {
+        const { nanoPath } = writePair(root, {
+          full: '# In full\n\n## Refunds\n\nThe refund path cites AC-999.\n',
+        });
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+    [
+      'unresolved-trace-reference',
+      (root) => {
+        const { nanoPath } = writePair(root, {
+          full: '# In full\n\n## Refunds\n\nTraces to: bananas\n',
+        });
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+    [
+      'untraced-requirement',
+      (root) => {
+        const { nanoPath } = writePair(root, {
+          full: '# In full\n\n## Refunds\n\nA refund must be issued within one day.\n',
+        });
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+    [
+      'authority-conflict',
+      (root) => {
+        const { nanoPath } = writePair(root, {
+          full: '# In full\n\n## Window\n\n- AC-1: A reserved basket stays reserved for sixty minutes.\n',
+        });
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+    [
+      'nano-section-outside-contract',
+      (root) => {
+        const { nanoPath } = writePair(root, {
+          nano: CLEAN_NANO.replace(
+            '## Full specification',
+            '## Chosen architecture\n\nA cache holds reservations.\n\n## Full specification',
+          ),
+        });
+        return stageSpecPair({ specPath: nanoPath, repositoryRoot: root });
+      },
+    ],
+  ]);
+  assert.deepEqual([...cases.keys()].sort(), [...OBSERVATION_RULES].sort());
+  for (const [rule, build] of cases) {
+    fs.mkdirSync(SANDBOX_ROOT, { recursive: true });
+    const tRoot = fs.mkdtempSync(path.join(SANDBOX_ROOT, 'spec-pair-reachability-'));
+    try {
+      const record = build(tRoot);
+      assert.ok(rules(record).includes(rule), `${rule} was not emitted`);
+    } finally {
+      fs.rmSync(tRoot, { recursive: true, force: true });
+    }
   }
 });
