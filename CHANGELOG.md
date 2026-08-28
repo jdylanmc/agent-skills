@@ -165,7 +165,10 @@ below is unreleased and no comparison links are available.
   resolves differently on Windows than on Linux is refused rather than repaired.
   One file takes one proposal: the same proposal made twice deduplicates, and
   two different proposals about one file go back to you rather than being
-  guessed into compatibility. Applicable recommendations are reconciled into one
+  guessed into compatibility. Recommendation identifiers are bounded to a plain
+  identifier grammar at intake rather than escaped wherever they land, so a
+  two-kilobyte id, a newline in one, or Markdown in one is refused before
+  admission and never reaches a receipt or a pull request. Applicable recommendations are reconciled into one
   change request that joins the same intent-first workflow — the intent decision
   is still yours to confirm, and an approved report never stands in for it. A
   report that turns out to apply to nothing here says so, lists what it
@@ -177,9 +180,10 @@ below is unreleased and no comparison links are available.
   after the fact, stops the run rather than shipping. The pull request quotes that receipt, and
   says plainly that it binds bytes and choices rather than proving who was
   present. Nothing about the human-guidance path changed — it grounds through
-  the same command, from an argument, a file, or standard input — measured
-  before it is read, and abandoned mid-stream once it passes the bound — and
-  needs no report, approval, or receipt; `post-mortem` is untouched, and no report is
+  the same command, from an argument, a file, or standard input; every named
+  input — report, approval, and guidance alike — is measured before it is read,
+  refused through a symbolic link, and abandoned mid-stream once it passes its
+  bound, and guidance needs no report, approval, or receipt; `post-mortem` is untouched, and no report is
   ever manufactured to satisfy a shape.
 
 ### Removed

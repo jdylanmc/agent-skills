@@ -173,6 +173,40 @@ export const RUN_STATE_ROOTS = ['.skill-log'];
 /** The largest guidance this intake will read from a file or standard input. */
 export const MAX_GUIDANCE_BYTES = 64 * 1024;
 
+/**
+ * The largest report and approval this intake will read.
+ *
+ * A report is a wrapped post-mortem record and can legitimately be large; an
+ * approval is three short fields. Both are named by the operator and read from
+ * disk, so both are measured before they are read rather than after - the same
+ * rule guidance follows, for the same reason.
+ */
+export const MAX_REPORT_BYTES = 4 * 1024 * 1024;
+export const MAX_APPROVAL_BYTES = 16 * 1024;
+
+/**
+ * How many times a non-blocking read may report `EAGAIN` before the stream is
+ * given up on. An unbounded retry loop is a spin: a producer that never writes
+ * and never closes would hold this process forever, and "forever" is not a
+ * failure anybody gets told about.
+ */
+export const MAX_EAGAIN_RETRIES = 200;
+export const EAGAIN_RETRY_DELAY_MS = 5;
+
+/**
+ * The shape an identifier out of a report must have.
+ *
+ * A recommendation id is not a name this run chose; it is text the report wrote,
+ * and it travels further than any other field in it - into the receipt, into the
+ * lineage, into the pull request a person reads. Bounding it at intake is not
+ * the same as escaping it at the point of display: escaping makes one rendering
+ * safe, and this makes the value itself something a downstream consumer that
+ * never heard of this module can rely on. Sixty-four characters of alphanumerics,
+ * dot, dash, and underscore is more than any real identifier needs and less than
+ * anything can hide in.
+ */
+export const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
 /** The longest report-derived fragment any refusal message may quote. */
 export const MAX_SNIPPET_LENGTH = 80;
 
@@ -234,6 +268,9 @@ export const REFUSALS = {
   stateNotRecorded: 'state_not_recorded',
   oversizedGuidance: 'oversized_guidance',
   unreadableGuidance: 'unreadable_guidance',
+  oversizedReport: 'oversized_report',
+  oversizedApproval: 'oversized_approval',
+  malformedIdentifier: 'malformed_identifier',
   stateUnwritable: 'state_unwritable',
   stateMissing: 'state_missing',
   malformedState: 'malformed_state',
@@ -415,8 +452,12 @@ export function normalizeSurface(surface, { target } = {}) {
   // different files depending on where it is applied - while `  SKILL.md  ` is
   // one file, sloppily quoted.
   const trimmed = surface.trim();
-  if (/[\u0000-\u001f]/.test(trimmed)) {
-    refuse('a surface may not contain a control character');
+  if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(trimmed)) {
+    // C1 controls, the C1 supplement, and the two Unicode line separators. All
+    // of them are invisible in a diff and several of them end a line in one
+    // renderer and not another, which is a poor property for a value that names
+    // the file a change will be applied to.
+    refuse('a surface may not contain a control character or a line separator');
   }
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
     refuse(`a surface is a path inside the target skill, never a URL: ${snippet(trimmed)}`);
@@ -680,8 +721,17 @@ function checkRecommendation(recommendation, context) {
     refusals.push({ code: REFUSALS.malformedReport, message: `${label} omits ${snippetList(missing)}` });
   }
 
+  // The id travels further than any other field in a report - receipt, lineage,
+  // pull request - so it is bounded here rather than escaped wherever it lands.
+  // A consumer downstream that never heard of this module gets an identifier it
+  // can rely on, not a string it has to remember to be careful with.
   if (!nonEmptyString(recommendation.id)) {
     refusals.push({ code: REFUSALS.malformedReport, message: `${label} must carry a non-empty id` });
+  } else if (!IDENTIFIER_PATTERN.test(recommendation.id)) {
+    refusals.push({
+      code: REFUSALS.malformedIdentifier,
+      message: `${label} carries an id that is not an identifier: ${snippet(recommendation.id)}`,
+    });
   }
 
   // The load-bearing field. A recommendation that names no skill is refused
@@ -787,6 +837,12 @@ function checkRecommendation(recommendation, context) {
     refusals.push({
       code: REFUSALS.unvalidatedRecommendation,
       message: `${label} must name the validation requirement that governs it`,
+    });
+  } else if (!IDENTIFIER_PATTERN.test(recommendation.validation)) {
+    refusals.push({
+      code: REFUSALS.malformedIdentifier,
+      message: `${label} names a validation requirement that is not an identifier: `
+        + `${snippet(recommendation.validation)}`,
     });
   } else if (!validations.has(recommendation.validation)) {
     refusals.push({
@@ -1131,11 +1187,26 @@ export function admitReport({
           .map((entry) => normalizeAnchorId(entry?.anchor))
           .filter((anchor) => anchor !== null),
       );
-      const validations = new Map(
-        (Array.isArray(record.validation_requirements) ? record.validation_requirements : [])
-          .filter((entry) => isPlainObject(entry) && nonEmptyString(entry.candidate))
-          .map((entry) => [entry.candidate, entry]),
-      );
+      // A candidate id is a key, and two entries sharing one is a record that
+      // cannot say which requirement governs a recommendation citing it.
+      // Resolving it by taking the first would decide that silently, and the
+      // two entries most worth distinguishing are the ones that differ.
+      const requirements = (Array.isArray(record.validation_requirements)
+        ? record.validation_requirements
+        : []).filter((entry) => isPlainObject(entry) && nonEmptyString(entry.candidate));
+      const duplicated = [...new Set(
+        requirements
+          .map((entry) => entry.candidate)
+          .filter((candidate, index, all) => all.indexOf(candidate) !== index),
+      )];
+      if (duplicated.length) {
+        refusals.push({
+          code: REFUSALS.malformedRecord,
+          message: `the wrapped post-mortem record gives one validation requirement id to more than one `
+            + `requirement: ${snippetList(duplicated)}`,
+        });
+      }
+      const validations = new Map(requirements.map((entry) => [entry.candidate, entry]));
       const seen = new Set();
       envelope.recommendations.forEach((recommendation, index) => {
         const checked = checkRecommendation(recommendation, {
@@ -1419,6 +1490,27 @@ export function buildRefusalReceipt(result) {
 }
 
 /**
+ * Remove whatever receipt is at a path.
+ *
+ * The fallback for a refusal whose receipt could not be written. Leaving an
+ * earlier admitted receipt in place would let publication re-derive it and
+ * proceed, so if this run cannot say "refused" at that path, the next best
+ * outcome is that the path says nothing at all.
+ */
+export function clearAdmissionState(statePath, { repositoryRoot = null } = {}) {
+  const { real } = assertStatePath(statePath, { repositoryRoot });
+  try {
+    fs.rmSync(real, { force: true });
+  } catch (error) {
+    throw new IntakeError(
+      REFUSALS.stateUnwritable,
+      `the admission receipt could neither be written nor removed: ${error.code}`,
+    );
+  }
+  return real;
+}
+
+/**
  * Write a receipt atomically.
  *
  * A half-written receipt is worse than none: a release check reading it would
@@ -1581,13 +1673,36 @@ export function requireAdmittedState({ state = null, report = null, target = nul
 // Command line
 // ---------------------------------------------------------------------------
 
+/**
+ * The flags a release check must be invoked with, in the order every document
+ * spells them.
+ *
+ * Exported because the same shape appears in three places - this usage text,
+ * the unit's own reference, and the skill that runs it at publication - and a
+ * documented command that omits a required flag is worse than no documentation
+ * at all: it exits 1 on usage, and an exit code nobody reads as a stop looks
+ * like a check that ran. One definition, and a conformance test that runs what
+ * the documents actually say.
+ */
+export const RELEASE_CHECK_FLAGS = ['--require-admitted-state', '--report', '--target', '--root'];
+
+/** Build the release-check argument vector. The only supported way to spell it. */
+export function releaseCheckCommand({ state, report, target, root } = {}) {
+  return [
+    '--require-admitted-state', state,
+    '--report', report,
+    '--target', target,
+    '--root', root,
+  ];
+}
+
 export const USAGE = `Usage:
   report-intake.mjs --report <path> --target <skill> --approval <path>
                     --root <repository root> --state <absolute receipt path>
   report-intake.mjs --guidance <text> --target <skill>
   report-intake.mjs --guidance-file <path> --target <skill>
   report-intake.mjs --guidance - --target <skill>          (reads standard input)
-  report-intake.mjs --require-admitted-state <path> --report <path> --target <skill>
+  report-intake.mjs ${RELEASE_CHECK_FLAGS.map((flag) => `${flag} <value>`).join(' ')}
   report-intake.mjs --probe
 
 A report grounds a run only when its admission is recorded, so --report requires
@@ -1595,7 +1710,8 @@ A report grounds a run only when its admission is recorded, so --report requires
 
 Exit 0 when the report is admitted, when an approved report applies to nothing
 here, or when the release check is satisfied; 2 when it is refused, unrecorded,
-or blocked; 1 on a usage error.`;
+or blocked; 1 on a usage error. Exit 1 is a stop, never a pass: a command spelled
+wrongly checked nothing.`;
 
 /** Flags whose value is taken literally, so guidance may itself begin with --. */
 const LITERAL_VALUE_FLAGS = new Set(['--guidance']);
@@ -1676,16 +1792,32 @@ function usageError(streams, message) {
   return 1;
 }
 
-/** Read a report without letting its path reach the output. */
+/**
+ * Read a report, bounded and without letting its path reach the output.
+ *
+ * A report is named by the operator and read from disk, exactly like guidance,
+ * so it is measured before it is read and refused through a link for the same
+ * reasons. It is allowed to be much larger, because a wrapped post-mortem
+ * record legitimately is.
+ */
 function readReport(candidate) {
   try {
-    return { text: fs.readFileSync(candidate, 'utf8'), refusal: null };
+    return {
+      text: readBoundedFile(candidate, {
+        max: MAX_REPORT_BYTES,
+        kind: 'unreadableReport',
+        oversized: REFUSALS.oversizedReport,
+      }),
+      refusal: null,
+    };
   } catch (error) {
     return {
       text: null,
       refusal: {
-        code: REFUSALS.unreadableReport,
-        message: `the supplied report could not be read: ${error.code ?? 'unreadable'}`,
+        code: error.code === REFUSALS.oversizedReport ? error.code : REFUSALS.unreadableReport,
+        message: error.code === REFUSALS.oversizedReport
+          ? error.message
+          : `the supplied report could not be read: ${error.message.split(': ').pop()}`,
       },
     };
   }
@@ -1699,56 +1831,60 @@ function readReport(candidate) {
  * not guidance. The limit is checked on bytes read, not on a promise about the
  * source.
  */
-export function readBoundedGuidance(source, { fileSystem = fs } = {}) {
+export function readBoundedFile(source, { max, kind, oversized, fileSystem = fs } = {}) {
+  // Ask the filesystem how big it is before reading any of it. Reading first
+  // and measuring after is how a bounded input becomes an unbounded read: by the
+  // time the check runs, the process is already holding the thing the check
+  // exists to refuse.
+  let stats;
+  try {
+    stats = fileSystem.lstatSync(source);
+  } catch (error) {
+    throw new IntakeError(
+      REFUSALS[kind],
+      `the ${kind === 'unreadableGuidance' ? 'guidance' : kind} could not be read: ${error.code ?? 'unreadable'}`,
+    );
+  }
+  if (stats.isSymbolicLink()) {
+    throw new IntakeError(REFUSALS[kind], 'an input is read where it is named, never through a symbolic link');
+  }
+  if (!stats.isFile()) {
+    throw new IntakeError(REFUSALS[kind], 'an input comes from a regular file');
+  }
+  if (stats.size > max) {
+    throw new IntakeError(oversized, `this input is bounded at ${max} bytes; the named file holds ${stats.size}`);
+  }
+  let text;
+  try {
+    text = fileSystem.readFileSync(source, 'utf8');
+  } catch (error) {
+    throw new IntakeError(REFUSALS[kind], `an input could not be read: ${error.code ?? 'unreadable'}`);
+  }
+  // A file can grow between the measurement and the read, so the bound is
+  // checked again on what actually arrived rather than on what was promised.
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes > max) {
+    throw new IntakeError(oversized, `this input is bounded at ${max} bytes; ${bytes} arrived`);
+  }
+  return text;
+}
+
+export function readBoundedGuidance(source, { fileSystem = fs, sleep = null } = {}) {
   if (source !== '-') {
-    // Ask the filesystem how big it is before reading any of it. Reading first
-    // and measuring after is how a bounded field becomes an unbounded read: by
-    // the time the check runs, the process is already holding the thing the
-    // check exists to refuse.
-    let stats;
-    try {
-      stats = fileSystem.lstatSync(source);
-    } catch (error) {
-      throw new IntakeError(REFUSALS.unreadableGuidance, `guidance could not be read: ${error.code ?? 'unreadable'}`);
-    }
-    if (stats.isSymbolicLink()) {
-      throw new IntakeError(
-        REFUSALS.unreadableGuidance,
-        'a guidance file is read where it is named, never through a symbolic link',
-      );
-    }
-    if (!stats.isFile()) {
-      throw new IntakeError(REFUSALS.unreadableGuidance, 'guidance comes from a regular file');
-    }
-    if (stats.size > MAX_GUIDANCE_BYTES) {
-      throw new IntakeError(
-        REFUSALS.oversizedGuidance,
-        `guidance is bounded at ${MAX_GUIDANCE_BYTES} bytes; the named file holds ${stats.size}`,
-      );
-    }
-    let text;
-    try {
-      text = fileSystem.readFileSync(source, 'utf8');
-    } catch (error) {
-      throw new IntakeError(REFUSALS.unreadableGuidance, `guidance could not be read: ${error.code ?? 'unreadable'}`);
-    }
-    // A file can grow between the stat and the read, so the bound is checked
-    // again on what actually arrived rather than on what was promised.
-    const bytes = Buffer.byteLength(text, 'utf8');
-    if (bytes > MAX_GUIDANCE_BYTES) {
-      throw new IntakeError(
-        REFUSALS.oversizedGuidance,
-        `guidance is bounded at ${MAX_GUIDANCE_BYTES} bytes; ${bytes} arrived`,
-      );
-    }
-    return text;
+    return readBoundedFile(source, {
+      max: MAX_GUIDANCE_BYTES,
+      kind: 'unreadableGuidance',
+      oversized: REFUSALS.oversizedGuidance,
+      fileSystem,
+    });
   }
 
   // A stream has no size to ask for, so it is read in chunks and abandoned the
   // moment it passes the bound. One byte over is enough to know; the rest is
-  // never buffered, and nothing waits for a producer that may never stop.
+  // never buffered.
   const chunks = [];
   let total = 0;
+  let stalls = 0;
   const chunk = Buffer.alloc(16 * 1024);
   for (;;) {
     let read;
@@ -1756,6 +1892,21 @@ export function readBoundedGuidance(source, { fileSystem = fs } = {}) {
       read = fileSystem.readSync(0, chunk, 0, chunk.length, null);
     } catch (error) {
       if (error.code === 'EAGAIN') {
+        // Non-blocking standard input with nothing ready yet. Retrying is
+        // correct; retrying forever is a spin that ends in a process nobody is
+        // told about, so the wait is bounded and its expiry is a refusal.
+        stalls += 1;
+        if (stalls > MAX_EAGAIN_RETRIES) {
+          throw new IntakeError(
+            REFUSALS.unreadableGuidance,
+            `standard input supplied nothing after ${MAX_EAGAIN_RETRIES} attempts; guidance is not waited on indefinitely`,
+          );
+        }
+        if (sleep) {
+          sleep(EAGAIN_RETRY_DELAY_MS);
+        } else {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, EAGAIN_RETRY_DELAY_MS);
+        }
         continue;
       }
       if (error.code === 'EOF') {
@@ -1766,6 +1917,7 @@ export function readBoundedGuidance(source, { fileSystem = fs } = {}) {
     if (read === 0) {
       break;
     }
+    stalls = 0;
     total += read;
     if (total > MAX_GUIDANCE_BYTES) {
       throw new IntakeError(
@@ -1904,11 +2056,17 @@ export function run(argv, streams = process) {
   let approval = null;
   if (parsed.approval !== null) {
     try {
-      approval = JSON.parse(fs.readFileSync(parsed.approval, 'utf8'));
+      approval = JSON.parse(readBoundedFile(parsed.approval, {
+        max: MAX_APPROVAL_BYTES,
+        kind: 'malformedApproval',
+        oversized: REFUSALS.oversizedApproval,
+      }));
     } catch (error) {
       preRefusals.push({
-        code: REFUSALS.malformedApproval,
-        message: `the approval receipt could not be read: ${error.code ?? 'malformed'}`,
+        code: error.code === REFUSALS.oversizedApproval ? error.code : REFUSALS.malformedApproval,
+        message: error.code === REFUSALS.oversizedApproval
+          ? error.message
+          : `the approval receipt could not be read: ${error.code ?? 'malformed'}`,
       });
     }
   }
@@ -1957,16 +2115,33 @@ export function run(argv, streams = process) {
   try {
     writeAdmissionState(parsed.state, receipt, { repositoryRoot: parsed.root });
   } catch (error) {
+    const failures = [{ code: error.code, message: error.message }];
+    // A refusal whose receipt could not be written is the dangerous case: an
+    // earlier admitted receipt may still be sitting at that path, and the
+    // release check would re-derive it and let the run publish. Writing failed,
+    // so the next best outcome is that the path says nothing at all.
+    admissionState = 'not-recorded';
+    if (receipt.status !== 'admitted') {
+      try {
+        clearAdmissionState(parsed.state, { repositoryRoot: parsed.root });
+        admissionState = 'cleared';
+      } catch (removalError) {
+        failures.push({
+          code: removalError.code,
+          message: 'the admission receipt could neither be recorded nor removed, so an earlier receipt may '
+            + 'still be present at that path; delete it before any run publishes against it',
+        });
+      }
+    }
     decided = {
       ...decided,
       status: 'refused',
-      refusals: sanitizeRefusals([...decided.refusals, { code: error.code, message: error.message }]),
+      refusals: sanitizeRefusals([...decided.refusals, ...failures]),
       applicable: [],
       excluded: [],
       lineage: null,
       change_request: null,
     };
-    admissionState = 'not-recorded';
   }
 
   streams.stdout.write(`${JSON.stringify({ ...decided, admission_state: admissionState }, null, 2)}\n`);

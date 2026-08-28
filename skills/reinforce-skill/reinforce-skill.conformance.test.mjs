@@ -45,22 +45,27 @@ import {
 } from './_atoms/reinforcement-target/reinforcement-target.mjs';
 import {
   ADMISSION_SCHEMA,
+  RELEASE_CHECK_FLAGS,
   REFUSALS as REPORT_REFUSALS,
   RUN_STATE_ROOTS,
+  USAGE as INTAKE_USAGE,
   admitGuidance,
   admitReport,
   buildAdmissionReceipt,
   groundingFromGuidance,
   normalizeSurface,
   reconcileApplicable,
+  releaseCheckCommand,
   requireAdmittedState,
 } from './_atoms/report-intake/report-intake.mjs';
 import {
+  INTAKE_CLI,
   approvalFor,
   conformingRecommendations,
   conformingRecord,
   refusedFor,
   reportText,
+  withFixtureRepository,
 } from './_atoms/report-intake/report-intake.fixtures.mjs';
 import {
   DECISIONS,
@@ -1238,4 +1243,136 @@ test('every suite this package ships runs in continuous integration', () => {
   assert.ok(found.length >= 2, 'the walk found fewer suites than shipped');
   const unregistered = found.filter((file) => !workflow.includes(file)).sort();
   assert.deepEqual(unregistered, [], `never run in continuous integration: ${unregistered.join(', ')}`);
+});
+
+/**
+ * Every release-check command any document spells, as its flag list.
+ *
+ * Extracted rather than restated: the failure this guards against is a document
+ * that omits a required flag, and a test that restates the command would agree
+ * with itself while the document was wrong.
+ */
+function documentedReleaseCommands() {
+  const sources = [
+    ['SKILL.md', read(ENTRY)],
+    ['report-intake.md', read(INTAKE)],
+    ['report-intake.mjs usage', INTAKE_USAGE],
+  ];
+  const found = [];
+  for (const [name, body] of sources) {
+    // A command may be wrapped over several lines with a trailing backslash.
+    const joined = body.replace(/\\\n\s*/g, ' ');
+    for (const line of joined.split('\n')) {
+      // A command, not prose about one: it invokes the script.
+      if (!line.includes('--require-admitted-state') || !line.includes('report-intake.mjs')) {
+        continue;
+      }
+      found.push({ name, flags: [...line.matchAll(/(--[a-z-]+)/g)].map((match) => match[1]) });
+    }
+  }
+  return found;
+}
+
+test('every documented release check spells every flag the command requires', () => {
+  const documented = documentedReleaseCommands();
+  assert.ok(documented.length >= 3, 'the command is documented in the skill, the unit, and the usage text');
+
+  for (const { name, flags } of documented) {
+    assert.deepEqual(
+      [...flags].sort(),
+      [...RELEASE_CHECK_FLAGS].sort(),
+      `${name} spells a release check that would exit 1 on usage rather than checking anything`,
+    );
+  }
+
+  // The builder is the single definition the documents are checked against.
+  assert.deepEqual(
+    releaseCheckCommand({ state: 's', report: 'r', target: 't', root: 'x' }),
+    ['--require-admitted-state', 's', '--report', 'r', '--target', 't', '--root', 'x'],
+  );
+  assert.deepEqual(
+    releaseCheckCommand({ state: 's', report: 'r', target: 't', root: 'x' })
+      .filter((token) => token.startsWith('--')),
+    RELEASE_CHECK_FLAGS,
+  );
+});
+
+test('the documented release check actually runs, and satisfies only a real admission', () => {
+  withFixtureRepository((fixture) => {
+    const report = reportText();
+    const reportPath = path.join(fixture.outside, 'report.json');
+    const approvalPath = path.join(fixture.outside, 'approval.json');
+    const statePath = path.join(fixture.repository, '.skill-log', 'admission.json');
+    fs.writeFileSync(reportPath, report);
+    fs.writeFileSync(approvalPath, JSON.stringify(approvalFor(report)));
+
+    const admitted = spawnSync(process.execPath, [
+      INTAKE_CLI, '--report', reportPath, '--target', 'changelog', '--approval', approvalPath,
+      '--root', fixture.repository, '--state', statePath,
+    ], { encoding: 'utf8' });
+    assert.equal(admitted.status, 0);
+
+    // Run each documented flag list with real values substituted in order, so a
+    // document that drifts fails here rather than at publication time.
+    const values = {
+      '--require-admitted-state': statePath,
+      '--report': reportPath,
+      '--target': 'changelog',
+      '--root': fixture.repository,
+    };
+    for (const { name, flags } of documentedReleaseCommands()) {
+      const argv = flags.flatMap((flag) => [flag, values[flag]]);
+      const run = spawnSync(process.execPath, [INTAKE_CLI, ...argv], { encoding: 'utf8' });
+      assert.equal(run.status, 0, `${name}'s command must run and pass, not exit on usage`);
+      assert.equal(JSON.parse(run.stdout).requirement, 'satisfied');
+    }
+
+    // And the builder's own spelling agrees with the documents.
+    const built = spawnSync(process.execPath, [
+      INTAKE_CLI,
+      ...releaseCheckCommand({
+        state: statePath, report: reportPath, target: 'changelog', root: fixture.repository,
+      }),
+    ], { encoding: 'utf8' });
+    assert.equal(built.status, 0);
+  });
+});
+
+test('exit 1 is a stop, and the skill says so where publication depends on it', () => {
+  const entry = flat(ENTRY);
+  assert.match(entry, /\*\*Exit `1` is also a stop, never a pass:\*\*/);
+  assert.match(entry, /Only exit `0` permits publication/);
+  assert.match(flat(INTAKE), /a usage error is a stop, never a pass/i);
+
+  // Behaviour, not just the sentence: a release check missing a required flag
+  // exits 1 and reports nothing a caller could mistake for a result.
+  withFixtureRepository((fixture) => {
+    const report = reportText();
+    const reportPath = path.join(fixture.outside, 'report.json');
+    fs.writeFileSync(reportPath, report);
+    const statePath = path.join(fixture.repository, '.skill-log', 'admission.json');
+
+    for (const omitted of RELEASE_CHECK_FLAGS) {
+      const argv = releaseCheckCommand({
+        state: statePath, report: reportPath, target: 'changelog', root: fixture.repository,
+      });
+      const at = argv.indexOf(omitted);
+      const short = [...argv.slice(0, at), ...argv.slice(at + 2)];
+      const run = spawnSync(process.execPath, [INTAKE_CLI, ...short], { encoding: 'utf8' });
+
+      assert.notEqual(run.status, 0, `omitting ${omitted} must never exit 0`);
+      assert.ok(
+        !run.stdout.includes('"requirement": "satisfied"'),
+        `omitting ${omitted} must never look like a release check that passed`,
+      );
+      if (omitted === '--require-admitted-state') {
+        // Without it the command is not a release check at all; it is an
+        // admission with no --state, which is refused rather than silently
+        // treated as a check that ran.
+        assert.match(run.stdout, /"admitted-unrecorded"|"refused"/);
+      } else {
+        assert.equal(run.stdout, '', 'a usage failure reports no result at all');
+      }
+    }
+  });
 });

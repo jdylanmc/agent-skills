@@ -121,16 +121,23 @@ approves that exact digest and that one target for this run.
 
    ```text
    node skills/reinforce-skill/_atoms/report-intake/report-intake.mjs \
-     --require-admitted-state <receipt> --report <report.json> --target <skill>
+     --require-admitted-state <receipt> --report <report.json> \
+     --target <skill> --root <repository root>
    ```
+
+   All four flags are required. `--root` is what proves the receipt was read
+   from run state rather than from somewhere the repository publishes, and a
+   command missing it exits `1`.
 
    It re-derives the admission rather than reading its label: it recomputes the
    report's digest from disk, re-runs intake under the approval the receipt
-   recorded, and compares the applied recommendation IDs, the evidence anchors,
-   and the change-request digest. Exit `2` is `blocked` — no receipt, a refused
-   one, a report edited since it was admitted, or a selection that no longer
-   matches — and stops publication. A human-guidance run has no receipt to check
-   and this step does not apply to it.
+   recorded, and compares every field the pull request quotes. Exit `2` is
+   `blocked` — no receipt, a refused one, a report edited since it was admitted,
+   or a selection that no longer matches — and stops publication. **Exit `1` is
+   also a stop, never a pass:** a command spelled wrongly checked nothing, and
+   treating a usage failure as a clean result is how a gate becomes decoration.
+   Only exit `0` permits publication. A human-guidance run has no receipt to
+   check and this step does not apply to it.
 
    Otherwise open the pull request with the evidence — the report lineage when
    there was one, the intent decision, the classified diff, the validation

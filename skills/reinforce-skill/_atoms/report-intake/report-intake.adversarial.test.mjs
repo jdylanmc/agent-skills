@@ -30,9 +30,15 @@ import {
   admitReport,
   assertStatePath,
   buildAdmissionReceipt,
+  IDENTIFIER_PATTERN,
+  MAX_APPROVAL_BYTES,
+  MAX_EAGAIN_RETRIES,
   MAX_GUIDANCE_BYTES,
+  MAX_REPORT_BYTES,
+  clearAdmissionState,
   normalizeAnchorId,
   normalizeSurface,
+  readBoundedFile,
   readBoundedGuidance,
   MAX_LISTED_ITEMS,
   MAX_MESSAGE_LENGTH,
@@ -1216,8 +1222,10 @@ test('every refusal is bounded and single-line, whatever the report does to prov
 
   // 4. Three hundred recommendations contradicting each other on one surface,
   //    so the contradiction message would enumerate three hundred ids.
+  // Ids are bounded by grammar now, so the crowd uses real ones - the length
+  // being tested here is the list's, not the identifier's.
   const crowd = Array.from({ length: 300 }, (_x, index) => ({
-    id: `${directive}-${index}`,
+    id: `R-${index}`,
     target_skill: 'changelog',
     source_ref: 'skill_improvements[0]',
     change: { surface: 'SKILL.md', directive: index % 2 ? 'revise' : 'remove', statement: `variant ${index}` },
@@ -1227,6 +1235,7 @@ test('every refusal is bounded and single-line, whatever the report does to prov
   const crowdReport = reportText({ recommendations: crowd });
   const crowded = admitReport({ report: crowdReport, approval: approvalFor(crowdReport), target: 'changelog' });
   assertBounded(crowded, [directive]);
+  assert.ok(refusedFor(crowded, REFUSALS.contradictoryRecommendations));
   assert.ok(
     messagesOf(crowded).some((message) => /and \d+ more/.test(message)),
     'a long list is summarized by count rather than enumerated',
@@ -1405,4 +1414,277 @@ test('a Windows-shaped path cannot reach containment as a target-relative surfac
       `${JSON.stringify(hostile)} must be refused`,
     );
   }
+});
+
+test('a recommendation id that is not an identifier is refused before admission', () => {
+  const hostile = [
+    'R 1',
+    'R\n1',
+    'R\r\n1',
+    '[R-1](https://example.invalid)',
+    '**R-1**',
+    '`R-1`',
+    '-leading-dash',
+    '.leading-dot',
+    'R/1',
+    'R\\1',
+    'R:1',
+    'R\u20281',
+    'R\u007f1',
+    'x'.repeat(65),
+    'x'.repeat(2048),
+    '',
+    '   ',
+  ];
+
+  for (const id of hostile) {
+    // Applicable path: the recommendation names this run's target.
+    const applicable = conformingRecommendations();
+    applicable[0].id = id;
+    const applicableReport = reportText({ recommendations: applicable });
+    const applicableResult = admitReport({
+      report: applicableReport,
+      approval: approvalFor(applicableReport),
+      target: 'changelog',
+    });
+    assert.equal(applicableResult.status, 'refused', `${JSON.stringify(id.slice(0, 20))} must refuse`);
+    assert.equal(applicableResult.change_request, null);
+
+    // Excluded path: the recommendation names some other skill. An id that
+    // never applies still reaches the excluded list and the receipt, so it is
+    // held to the same grammar.
+    const excluded = conformingRecommendations();
+    excluded[2].id = id;
+    const excludedReport = reportText({ recommendations: excluded });
+    const excludedResult = admitReport({
+      report: excludedReport,
+      approval: approvalFor(excludedReport),
+      target: 'changelog',
+    });
+    assert.equal(excludedResult.status, 'refused', `an excluded ${JSON.stringify(id.slice(0, 20))} must refuse too`);
+    assert.equal(excludedResult.lineage, null);
+  }
+
+  // The bound itself, and the boundary either side of it.
+  assert.ok(IDENTIFIER_PATTERN.test('R-1'));
+  assert.ok(IDENTIFIER_PATTERN.test('a'));
+  assert.ok(IDENTIFIER_PATTERN.test(`R${'x'.repeat(63)}`));
+  assert.ok(!IDENTIFIER_PATTERN.test(`R${'x'.repeat(64)}`));
+});
+
+test('no receipt, lineage, or change request ever carries an unbounded identifier', () => {
+  const admitted = admit();
+  const receipt = buildAdmissionReceipt(admitted);
+  const identifiers = [
+    ...receipt.applied_recommendation_ids,
+    ...receipt.excluded_recommendations.map((entry) => entry.id),
+    ...admitted.change_request.recommendation_ids,
+    ...admitted.change_request.changes.flatMap((change) => change.ids),
+    ...admitted.change_request.validation.map((entry) => entry.candidate),
+  ];
+  assert.ok(identifiers.length > 0);
+  for (const identifier of identifiers) {
+    assert.ok(IDENTIFIER_PATTERN.test(identifier), `${JSON.stringify(identifier)} escaped the grammar`);
+  }
+});
+
+test('a validation requirement cited by an unbounded id is refused', () => {
+  const recommendations = conformingRecommendations();
+  recommendations[0].validation = `VR-${'x'.repeat(200)}`;
+  const report = reportText({ recommendations });
+  const result = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+
+  assert.ok(codesOf(result).includes(REFUSALS.malformedIdentifier));
+  assert.ok(!codesOf(result).includes(REFUSALS.unvalidatedRecommendation), 'the grammar decides first');
+});
+
+test('one validation-requirement id given to two requirements is a malformed record', () => {
+  const record = conformingRecord();
+  // Same id, different content: the pair most worth telling apart, and the one
+  // "resolve by taking the first" would silently pick between.
+  record.validation_requirements[1] = {
+    ...record.validation_requirements[1],
+    candidate: 'VR-1',
+    success_measure: 'something else entirely',
+  };
+  const report = reportText({ record });
+  const result = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+
+  assert.equal(result.status, 'refused');
+  assert.ok(codesOf(result).includes(REFUSALS.malformedRecord));
+  assert.ok(result.refusals.some((entry) => /more than one/.test(entry.message)));
+
+  // Identical duplicates are refused on the same rule: an id is a key.
+  const identical = conformingRecord();
+  identical.validation_requirements[1] = { ...identical.validation_requirements[0] };
+  const identicalReport = reportText({ record: identical });
+  assert.ok(codesOf(admitReport({
+    report: identicalReport,
+    approval: approvalFor(identicalReport),
+    target: 'changelog',
+  })).includes(REFUSALS.malformedRecord));
+});
+
+test('a report or approval is measured before it is read, and refused through a link', () => {
+  withFixtureRepository((fixture) => {
+    const report = reportText();
+    const reportPath = path.join(fixture.outside, 'report.json');
+    const approvalPath = path.join(fixture.outside, 'approval.json');
+    const statePath = path.join(fixture.repository, '.skill-log', 'admission.json');
+    fs.writeFileSync(reportPath, report);
+    fs.writeFileSync(approvalPath, JSON.stringify(approvalFor(report)));
+
+    // Neither input is read through a link.
+    const reportLink = path.join(fixture.outside, 'report-link.json');
+    const approvalLink = path.join(fixture.outside, 'approval-link.json');
+    fs.symlinkSync(reportPath, reportLink);
+    fs.symlinkSync(approvalPath, approvalLink);
+
+    const viaReportLink = spawnSync(process.execPath, [
+      INTAKE_CLI, '--report', reportLink, '--target', 'changelog', '--approval', approvalPath,
+      '--root', fixture.repository, '--state', statePath,
+    ], { encoding: 'utf8' });
+    assert.equal(viaReportLink.status, 2);
+    assert.match(viaReportLink.stdout, /"unreadable_report"/);
+
+    const viaApprovalLink = spawnSync(process.execPath, [
+      INTAKE_CLI, '--report', reportPath, '--target', 'changelog', '--approval', approvalLink,
+      '--root', fixture.repository, '--state', statePath,
+    ], { encoding: 'utf8' });
+    assert.equal(viaApprovalLink.status, 2);
+    assert.match(viaApprovalLink.stdout, /"malformed_approval"/);
+
+    // An oversized approval is refused from its size; the read never happens.
+    const reads = [];
+    const measuringOnly = {
+      lstatSync: () => ({ isSymbolicLink: () => false, isFile: () => true, size: MAX_APPROVAL_BYTES + 1 }),
+      readFileSync: () => { reads.push('read'); throw new Error('must not be read'); },
+    };
+    assert.throws(
+      () => readBoundedFile('anything', {
+        max: MAX_APPROVAL_BYTES,
+        kind: 'malformedApproval',
+        oversized: REFUSALS.oversizedApproval,
+        fileSystem: measuringOnly,
+      }),
+      (error) => error.code === REFUSALS.oversizedApproval,
+    );
+    assert.deepEqual(reads, [], 'an oversized input is refused from its size, never read');
+
+    // And the same for a report, at the report bound.
+    assert.throws(
+      () => readBoundedFile('anything', {
+        max: MAX_REPORT_BYTES,
+        kind: 'unreadableReport',
+        oversized: REFUSALS.oversizedReport,
+        fileSystem: {
+          lstatSync: () => ({ isSymbolicLink: () => false, isFile: () => true, size: MAX_REPORT_BYTES + 1 }),
+          readFileSync: () => { throw new Error('must not be read'); },
+        },
+      }),
+      (error) => error.code === REFUSALS.oversizedReport,
+    );
+
+    // The bounds differ because the inputs do.
+    assert.ok(MAX_REPORT_BYTES > MAX_APPROVAL_BYTES);
+    assert.ok(MAX_APPROVAL_BYTES > 0);
+  });
+});
+
+test('a stalled standard input is given up on, not spun on forever', () => {
+  let attempts = 0;
+  const waits = [];
+  const alwaysStalled = {
+    readSync: () => {
+      attempts += 1;
+      const error = new Error('EAGAIN');
+      error.code = 'EAGAIN';
+      throw error;
+    },
+  };
+
+  assert.throws(
+    () => readBoundedGuidance('-', { fileSystem: alwaysStalled, sleep: (ms) => waits.push(ms) }),
+    (error) => error.code === REFUSALS.unreadableGuidance,
+    'a stream that never supplies anything is a refusal, not a hang',
+  );
+  assert.equal(attempts, MAX_EAGAIN_RETRIES + 1, 'the retry ceiling is exact, not approximate');
+  assert.equal(waits.length, MAX_EAGAIN_RETRIES, 'and every retry waits before it tries again');
+
+  // A stall that clears is not a failure: the ceiling counts consecutive
+  // stalls, so a slow producer that eventually writes still succeeds.
+  let stalls = 0;
+  let delivered = false;
+  const slow = {
+    readSync: (_fd, buffer) => {
+      if (stalls < MAX_EAGAIN_RETRIES) {
+        stalls += 1;
+        const error = new Error('EAGAIN');
+        error.code = 'EAGAIN';
+        throw error;
+      }
+      if (delivered) {
+        return 0;
+      }
+      delivered = true;
+      return Buffer.from('eventually').copy(buffer);
+    },
+  };
+  assert.equal(readBoundedGuidance('-', { fileSystem: slow, sleep: () => {} }), 'eventually');
+});
+
+test('a refusal that cannot record itself clears the receipt, and says so when it cannot', () => {
+  withFixtureRepository((fixture) => {
+    const { reportPath, approvalPath, statePath } = scenario(fixture);
+
+    spawnSync(process.execPath, [
+      INTAKE_CLI, '--report', reportPath, '--target', 'changelog', '--approval', approvalPath,
+      '--root', fixture.repository, '--state', statePath,
+    ], { encoding: 'utf8' });
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).status, 'admitted');
+
+    // Make the receipt's directory unwritable, so the refusal cannot be
+    // recorded. The earlier admitted receipt must not survive as authority.
+    const directory = path.dirname(statePath);
+    fs.chmodSync(directory, 0o500);
+    try {
+      const refused = spawnSync(process.execPath, [
+        INTAKE_CLI, '--report', reportPath, '--target', 'changelog',
+        '--root', fixture.repository, '--state', statePath,
+      ], { encoding: 'utf8' });
+      assert.equal(refused.status, 2);
+      const parsed = JSON.parse(refused.stdout);
+      assert.ok(codesOf(parsed).includes(REFUSALS.stateUnwritable));
+
+      if (parsed.admission_state === 'cleared') {
+        assert.equal(fs.existsSync(statePath), false, 'the stale admitted receipt is gone');
+      } else {
+        // The honest branch: nothing further could be done to the path, and the
+        // refusal says exactly that rather than claiming the receipt is safe.
+        assert.equal(parsed.admission_state, 'not-recorded');
+        assert.ok(
+          parsed.refusals.some((entry) => /an earlier receipt may still be present/.test(entry.message)),
+          'no guarantee is claimed that the code cannot keep',
+        );
+      }
+    } finally {
+      fs.chmodSync(directory, 0o700);
+    }
+  });
+});
+
+test('clearing a receipt is bounded by the same state-path rules as writing one', () => {
+  withFixtureRepository((fixture) => {
+    assert.throws(
+      () => clearAdmissionState(path.join(fixture.repository, 'skills', 'changelog', 'admission.json'), {
+        repositoryRoot: fixture.repository,
+      }),
+      (error) => error.code === REFUSALS.statePathPublished,
+      'the fallback may not reach into the package either',
+    );
+    const statePath = path.join(fixture.repository, '.skill-log', 'gone.json');
+    fs.writeFileSync(statePath, '{}');
+    clearAdmissionState(statePath, { repositoryRoot: fixture.repository });
+    assert.equal(fs.existsSync(statePath), false);
+  });
 });

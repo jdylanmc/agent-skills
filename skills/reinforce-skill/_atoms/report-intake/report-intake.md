@@ -37,13 +37,22 @@ node <atoms>/report-intake/report-intake.mjs --guidance-file <path> --target <sk
 node <atoms>/report-intake/report-intake.mjs --guidance - --target <skill>
 
 node <atoms>/report-intake/report-intake.mjs \
-  --require-admitted-state <receipt> --report <report.json> --target <skill>
+  --require-admitted-state <receipt> --report <report.json> \
+  --target <skill> --root <repository root>
 ```
 
 Exit `0` admits the report, reports that an approved report applies to nothing
 here, or reports the release check satisfied. Exit `2` refuses, reports an
-unrecorded admission, or blocks. Exit `1` is a usage error. A refusal is not a
-warning to carry forward; the run stops there, before any file is edited.
+unrecorded admission, or blocks. Exit `1` is a usage error — **and a usage error
+is a stop, never a pass**: a command spelled wrongly checked nothing, so only
+exit `0` may be read as a result. A refusal is not a warning to carry forward;
+the run stops there, before any file is edited.
+
+The release check takes all four of `--require-admitted-state`, `--report`,
+`--target`, and `--root`. The set is exported as `RELEASE_CHECK_FLAGS` with a
+builder beside it, and the conformance suite extracts the command from every
+document that spells it and runs it, so a document cannot come to omit a
+required flag and turn a gate into an exit code nobody reads.
 
 **`--report` requires `--state` and `--root`.** An admission nobody wrote down
 cannot be re-derived before publication, so a report admitted without a receipt
@@ -298,7 +307,10 @@ winner, because picking is a decision that belongs to the operator.
 | `state_path_symlink` | A component of the admission state path is a symbolic link. |
 | `state_not_recorded` | A report was admitted with no `--state` to record it in. |
 | `oversized_guidance` | Guidance from a file or standard input exceeds the bound. |
-| `unreadable_guidance` | The named guidance is missing, not a regular file, or a link. |
+| `unreadable_guidance` | The named guidance is missing, not a regular file, a link, or a stalled stream. |
+| `oversized_report` | The named report exceeds the report bound. |
+| `oversized_approval` | The named approval exceeds the approval bound. |
+| `malformed_identifier` | A recommendation id, or the candidate id it cites, is not a bounded identifier. |
 | `state_unwritable` | The admission receipt could not be recorded. |
 | `state_missing` | Publication was attempted with no recorded admission. |
 | `malformed_state` | The receipt is not this schema, or not its exact field set. |
@@ -399,9 +411,15 @@ No refusal here quotes the path it refused. A state path is caller-supplied and
 usually absolute, and a boundary message that echoes it turns a refusal into a
 disclosure of somebody's home directory in a pull request.
 
-**A refusal never leaves an admitted receipt behind.** A refused run overwrites
-the receipt with a refused one, so an earlier admission at the same path can
-never be replayed as this run's authority.
+**A refusal never leaves an admitted receipt behind — unless it cannot write at
+all, and then it says so.** A refused run overwrites the receipt with a refused
+one, so an earlier admission at the same path cannot be replayed as this run's
+authority. When that write fails, the run deletes the receipt instead, and
+reports `admission_state: cleared`. When the delete fails too, there is nothing
+further this process can do to the path, and the honest statement is the one it
+makes: it reports `state_unwritable`, refuses, and says plainly that an earlier
+receipt may still be present and must be deleted before any run publishes
+against it. No guarantee is claimed that the code cannot keep.
 
 The release check validates the receipt's path on the same boundary the write
 used, before reading it: a receipt planted where the repository publishes, or
@@ -454,16 +472,40 @@ with the snippets today, which is the point: "every message is already bounded"
 is a property of the code as written, and the next message somebody adds will
 interpolate a value directly, because that is the obvious way to write one.
 
-### Guidance Is Bounded Before It Is Read
+### Every Named Input Is Bounded Before It Is Read
 
-A named guidance file is measured with `lstat` and refused on size before any of
-it is read — reading first and measuring after is how a bounded field becomes an
-unbounded read — and refused outright if it is a link or not a regular file. The
-bound is checked again on what actually arrived, because a file can grow between
-the measurement and the read. Standard input has no size to ask for, so it is
-read in chunks and abandoned the moment it passes the bound; the remainder is
-never buffered. An oversized or unreadable source is a refusal about the input,
-never a usage error about the flags.
+The report, the approval, and a guidance file are all named by the operator and
+read from disk, so all three are measured with `lstat` and refused on size
+before any of them is read — reading first and measuring after is how a bounded
+input becomes an unbounded read — and all three are refused outright if the name
+is a link or not a regular file. The bound is checked again on what actually
+arrived, because a file can grow between the measurement and the read. The
+limits differ because the inputs do: a wrapped post-mortem record is
+legitimately large, an approval is three short fields, and guidance is a
+paragraph.
+
+Standard input has no size to ask for, so it is read in chunks and abandoned the
+moment it passes the bound; the remainder is never buffered. A non-blocking
+stream that keeps reporting `EAGAIN` is waited on a bounded number of times and
+then refused, because an unbounded retry is a spin that ends in a process nobody
+is told about. An oversized, stalled, or unreadable source is a refusal about
+the input, never a usage error about the flags.
+
+### An Identifier Out of a Report Is Bounded, Not Just Escaped
+
+A recommendation id, and the candidate id it cites, must match
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Escaping at the point of display makes one
+rendering safe; bounding at intake makes the value itself something a consumer
+that never heard of this module can rely on — and these ids travel further than
+anything else in a report, into the receipt, the lineage, and the pull request a
+person reads. A report carrying a two-kilobyte id, a newline in one, or Markdown
+in one is refused before admission, so no such value ever reaches a receipt or a
+change request, whether the recommendation was applicable or excluded.
+
+A record that gives one validation-requirement id to two different requirements
+is refused as a malformed record. Resolving it by taking the first would decide
+silently which requirement governs a recommendation, and the two entries most
+worth telling apart are the ones that differ.
 
 ## Output
 
