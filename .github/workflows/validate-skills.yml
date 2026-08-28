@@ -63,8 +63,8 @@ jobs:
           skills/_base/_atoms/redact-sensitive/redact-sensitive.config.test.mjs
           skills/_base/_atoms/prompt-intake/prompt-intake.test.mjs
           skills/_base/_atoms/provider-detect/provider-detect.test.mjs
-          skills/_base/_atoms/provider-state/provider-state.test.mjs
-          skills/_base/_atoms/provider-review/provider-review.test.mjs
+          skills/shepherd/_atoms/provider-state/provider-state.test.mjs
+          skills/ship/_atoms/provider-review/provider-review.test.mjs
           skills/_base/_molecules/chronicler/chronicler.test.mjs
           skills/_base/_molecules/chronicler/chronicler.adversarial.test.mjs
           skills/_base/_molecules/roast-coordinate-review/roast-coordinate-review.adversarial.test.mjs

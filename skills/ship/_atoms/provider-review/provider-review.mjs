@@ -2,29 +2,39 @@
  * Provider review: read review threads on a change request through the
  * provider's official command-line tool.
  *
- * This unit is deliberately separate from `provider-state`. A caller that needs
- * merge state and validation status composes `provider-state` and structurally
- * cannot reach review threads, so "this skill holds no comment-handling
- * authority" is a property of the composition graph rather than a promise in
- * prose.
+ * This unit lives local to `ship` rather than shared under `_base`, because a
+ * unit is only promoted once a second skill composes it, and today no skill
+ * composes this one: its consumer arrives with issue #102, which will wire
+ * review reading into ship's review half. Until then it lands unconsumed and
+ * deliberately says so.
+ *
+ * Keeping it local also makes a boundary enforceable rather than merely
+ * promised. Cross-skill local composition is forbidden by the graph validator,
+ * so a shepherd unit cannot compose this ship-local unit; "shepherd cannot
+ * reach review threads" is therefore a property the validator checks, not a
+ * sentence in a document.
  *
  * Reading only. Nothing here replies to a thread, resolves a thread, votes,
  * approves, or merges. Every comment body that comes back is untrusted data:
  * it is carried through verbatim and flagged, never obeyed.
  */
 
-import { requireObservableProvider } from '../provider-detect/provider-detect.mjs';
 import {
-  assertReadOnlyCommand,
+  ProviderCommandError,
+  assertSanctionedCommand,
+  githubApiHostFlags,
   normalizeAzureRepository,
   normalizeChangeRequestId,
   normalizeGitHubRepository,
-} from '../provider-state/provider-state.mjs';
+  requireObservableProvider,
+} from '../../../_base/_atoms/provider-detect/provider-detect.mjs';
+
+export { ProviderCommandError };
 
 /**
  * GitHub exposes thread resolution only through its GraphQL API, which `gh api
  * graphql` reaches with the tool's own authentication, host configuration, and
- * `--paginate` cursor handling.
+ * `--paginate` cursor handling. The document is a query, never a mutation.
  */
 export const GITHUB_REVIEW_THREADS_QUERY = `query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
   repository(owner: $owner, name: $name) {
@@ -45,6 +55,42 @@ export const GITHUB_REVIEW_THREADS_QUERY = `query($owner: String!, $name: String
     }
   }
 }`;
+
+const GITHUB_REVIEW_FIELDS = [
+  '-F', { prefix: 'owner=' },
+  '-F', { prefix: 'name=' },
+  '-F', { prefix: 'number=' },
+  '-f', { graphqlQuery: true },
+];
+
+/**
+ * The exact command shapes this unit is allowed to construct. The read-only
+ * guard sanctions these reads and refuses anything else; a `gh api graphql`
+ * document is only sanctioned when it is a query, and the Azure DevOps read is
+ * pinned to an explicit `GET`.
+ */
+export const SANCTIONED_READS = Object.freeze([
+  { tool: 'gh', argv: ['api', 'graphql', '--paginate', ...GITHUB_REVIEW_FIELDS] },
+  { tool: 'gh', argv: ['api', 'graphql', '--paginate', '--hostname', { value: true }, ...GITHUB_REVIEW_FIELDS] },
+  {
+    tool: 'az',
+    argv: [
+      'devops', 'invoke',
+      '--area', 'git',
+      '--resource', 'pullRequestThreads',
+      '--route-parameters', { prefix: 'project=' }, { prefix: 'repositoryId=' }, { prefix: 'pullRequestId=' },
+      '--org', { value: true },
+      '--api-version', '7.1',
+      '--http-method', 'GET',
+      '--output', 'json',
+    ],
+  },
+]);
+
+/** Rejects a command that is not one of this unit's sanctioned reads. */
+export function assertReadOnlyCommand(command) {
+  return assertSanctionedCommand(command, SANCTIONED_READS);
+}
 
 function refused(guard) {
   return {
@@ -67,7 +113,9 @@ export function reviewThreadsCommand(detection, { changeRequest, repository } = 
   const id = normalizeChangeRequestId(changeRequest);
 
   if (detection.provider === 'github') {
-    const [owner, name] = normalizeGitHubRepository(repository).split('/');
+    // The plain owner/name go into the GraphQL variables; the enterprise host,
+    // when there is one, reaches `gh api` through `--hostname`, not the slug.
+    const [owner, name] = normalizeGitHubRepository(repository, {}).split('/');
     return assertReadOnlyCommand({
       ok: true,
       operation: 'read-review-threads',
@@ -75,6 +123,7 @@ export function reviewThreadsCommand(detection, { changeRequest, repository } = 
       tool: 'gh',
       args: [
         'api', 'graphql', '--paginate',
+        ...githubApiHostFlags(detection),
         '-F', `owner=${owner}`,
         '-F', `name=${name}`,
         '-F', `number=${id}`,
@@ -83,7 +132,7 @@ export function reviewThreadsCommand(detection, { changeRequest, repository } = 
     });
   }
 
-  const azure = normalizeAzureRepository(repository);
+  const azure = normalizeAzureRepository(repository, detection);
   return assertReadOnlyCommand({
     ok: true,
     operation: 'read-review-threads',

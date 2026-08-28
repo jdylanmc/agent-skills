@@ -1,25 +1,44 @@
 /**
  * Provider state: resolve a change-request identifier to its branch and base,
- * read merge state, and read validation status through the provider's official
- * command-line tool.
+ * read merge state, review state, and the base's up-to-date policy, and read
+ * validation status through the provider's official command-line tool.
+ *
+ * This unit is local to `shepherd`. It is not shared under `_base`, because a
+ * unit is only promoted there once a second skill composes it, and today only
+ * shepherd reads change-request state. Its command safety and its address
+ * normalization are the shared parts, and those live in `provider-detect`
+ * under `_base`; this unit imports the mechanism and supplies its own
+ * sanctioned read shapes.
  *
  * Two rules shape every function here.
  *
  * First, an unobserved answer is never an empty one. A response that omits
  * mergeability, or that carries a provider's own "not computed yet" value,
- * returns `observed: false` with a reason. Returning an empty check list or a
- * neutral merge state in that case is how a blocking check gets skipped.
+ * returns `observed: false` with a reason. A conflict-free, green change
+ * request can still be blocked by required review or a required-current-base
+ * policy, so those signals are surfaced rather than flattened into
+ * mergeable-or-conflicted.
  *
  * Second, these are reads. Commands are built as argument vectors for the
- * official tool, are checked against a read-only guard before they are handed
- * back, and no builder here merges, votes, replies, resolves, or pushes.
+ * official tool, checked against an allow-list of sanctioned read shapes before
+ * they are handed back, and no builder here merges, votes, replies, resolves,
+ * or pushes.
  */
 
-import { requireObservableProvider } from '../provider-detect/provider-detect.mjs';
+import {
+  ProviderCommandError,
+  assertSanctionedCommand,
+  normalizeAzureRepository,
+  normalizeChangeRequestId,
+  normalizeGitHubRepository,
+  requireObservableProvider,
+} from '../../../_base/_atoms/provider-detect/provider-detect.mjs';
 import {
   normalizeUpToDatePolicy,
   requiresUpToDateBranch,
-} from '../landability/landability.mjs';
+} from '../../../_base/_atoms/landability/landability.mjs';
+
+export { ProviderCommandError };
 
 /**
  * The base's up-to-date requirement is shared vocabulary: the skill that reads
@@ -32,79 +51,24 @@ import {
 export { normalizeUpToDatePolicy, requiresUpToDateBranch };
 
 /**
- * Subcommands and flags that mutate hosted state. A builder is checked against
- * this list before its command is returned, so a future edit that reaches for a
- * mutation fails at construction rather than at the provider.
+ * The exact command shapes this unit is allowed to construct. A read-only guard
+ * that tried to enumerate every mutating subcommand would miss `gh api -f`
+ * turning into a POST and `az repos pr reviewer add` hiding a write behind an
+ * unlisted subcommand, so the guard sanctions these reads and refuses anything
+ * else.
  */
-const MUTATING_TOKENS = new Set([
-  'merge', 'close', 'reopen', 'create', 'update', 'delete', 'edit', 'set',
-  'approve', 'reject', 'vote', 'comment', 'reply', 'resolve', 'complete',
-  'abandon', 'push', 'ready', 'checkout',
-  '--approve', '--request-changes', '--merge', '--squash', '--rebase',
-  '--auto', '--delete-branch', '--body', '--body-file', '--add-reviewer',
+export const SANCTIONED_READS = Object.freeze([
+  // GitHub: `gh pr view <id> --repo [HOST/]OWNER/REPO --json <fields>`.
+  { tool: 'gh', argv: ['pr', 'view', { id: true }, '--repo', { value: true }, '--json', { value: true }] },
+  // Azure DevOps pull-request show, used for both resolve-target and read-state.
+  { tool: 'az', argv: ['repos', 'pr', 'show', '--id', { id: true }, '--org', { value: true }, '--output', 'json'] },
+  // Azure DevOps policy evaluations, used for read-checks.
+  { tool: 'az', argv: ['repos', 'pr', 'policy', 'list', '--id', { id: true }, '--org', { value: true }, '--output', 'json'] },
 ]);
 
-const WRITE_HTTP_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-export class ProviderCommandError extends Error {
-  constructor(code, message) {
-    super(message);
-    this.name = 'ProviderCommandError';
-    this.code = code;
-  }
-}
-
-/** Rejects a command that would change hosted state. */
+/** Rejects a command that is not one of this unit's sanctioned reads. */
 export function assertReadOnlyCommand(command) {
-  const args = command?.args ?? [];
-  for (let index = 0; index < args.length; index += 1) {
-    const argument = String(args[index]);
-    if (MUTATING_TOKENS.has(argument)) {
-      throw new ProviderCommandError('mutating-command', `refusing a mutating provider command: ${argument}`);
-    }
-    if ((argument === '--http-method' || argument === '--method' || argument === '-X')
-      && WRITE_HTTP_METHODS.has(String(args[index + 1] ?? '').toUpperCase())) {
-      throw new ProviderCommandError('mutating-command', `refusing a mutating provider command: ${argument} ${args[index + 1]}`);
-    }
-  }
-  return command;
-}
-
-/**
- * Change-request identifiers are positive integers on both providers. Anything
- * else is rejected rather than interpolated, so a hostile identifier cannot
- * become an extra argument or a shell fragment.
- */
-export function normalizeChangeRequestId(value) {
-  const text = typeof value === 'number' ? String(value) : String(value ?? '').trim();
-  if (!/^[1-9][0-9]{0,17}$/.test(text)) {
-    throw new ProviderCommandError('invalid-change-request-identifier', `not a change-request identifier: ${JSON.stringify(value)}`);
-  }
-  return text;
-}
-
-/** GitHub repositories are addressed as `owner/name`. */
-export function normalizeGitHubRepository(repository) {
-  const slug = typeof repository === 'string' ? repository : repository?.slug;
-  const text = String(slug ?? '').trim();
-  if (!/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})\/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$/.test(text)) {
-    throw new ProviderCommandError('invalid-repository', `not an owner/name repository: ${JSON.stringify(slug)}`);
-  }
-  return text;
-}
-
-/** Azure DevOps repositories are addressed by organization URL, project, and repository. */
-export function normalizeAzureRepository(repository) {
-  const organizationUrl = String(repository?.organizationUrl ?? '').trim();
-  const project = String(repository?.project ?? '').trim();
-  const name = String(repository?.name ?? '').trim();
-  if (!/^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?(?:\/[^\s]*)?$/.test(organizationUrl) || !project || !name) {
-    throw new ProviderCommandError(
-      'invalid-repository',
-      'an Azure DevOps repository needs an https organizationUrl, project, and name',
-    );
-  }
-  return { organizationUrl, project, name };
+  return assertSanctionedCommand(command, SANCTIONED_READS);
 }
 
 function refused(guard, operation) {
@@ -130,7 +94,7 @@ function command(detection, operation, tool, args) {
 }
 
 const GITHUB_TARGET_FIELDS = 'number,url,headRefName,baseRefName,headRefOid,headRepositoryOwner,isDraft';
-const GITHUB_MERGE_FIELDS = 'number,url,mergeable,mergeStateStatus,isDraft,baseRefName,baseRefOid,headRefOid';
+const GITHUB_MERGE_FIELDS = 'number,url,mergeable,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid,headRefOid';
 const GITHUB_CHECK_FIELDS = 'number,url,headRefOid,statusCheckRollup';
 
 /** Builds the read command that resolves a change request to its branch and base. */
@@ -144,12 +108,12 @@ export function resolveTargetCommand(detection, { changeRequest, repository } = 
   if (detection.provider === 'github') {
     return command(detection, 'resolve-target', 'gh', [
       'pr', 'view', id,
-      '--repo', normalizeGitHubRepository(repository),
+      '--repo', normalizeGitHubRepository(repository, detection),
       '--json', GITHUB_TARGET_FIELDS,
     ]);
   }
 
-  const azure = normalizeAzureRepository(repository);
+  const azure = normalizeAzureRepository(repository, detection);
   return command(detection, 'resolve-target', 'az', [
     'repos', 'pr', 'show',
     '--id', id,
@@ -169,12 +133,12 @@ export function mergeStateCommand(detection, { changeRequest, repository } = {})
   if (detection.provider === 'github') {
     return command(detection, 'read-state', 'gh', [
       'pr', 'view', id,
-      '--repo', normalizeGitHubRepository(repository),
+      '--repo', normalizeGitHubRepository(repository, detection),
       '--json', GITHUB_MERGE_FIELDS,
     ]);
   }
 
-  const azure = normalizeAzureRepository(repository);
+  const azure = normalizeAzureRepository(repository, detection);
   return command(detection, 'read-state', 'az', [
     'repos', 'pr', 'show',
     '--id', id,
@@ -194,12 +158,12 @@ export function validationStatusCommand(detection, { changeRequest, repository }
   if (detection.provider === 'github') {
     return command(detection, 'read-checks', 'gh', [
       'pr', 'view', id,
-      '--repo', normalizeGitHubRepository(repository),
+      '--repo', normalizeGitHubRepository(repository, detection),
       '--json', GITHUB_CHECK_FIELDS,
     ]);
   }
 
-  const azure = normalizeAzureRepository(repository);
+  const azure = normalizeAzureRepository(repository, detection);
   return command(detection, 'read-checks', 'az', [
     'repos', 'pr', 'policy', 'list',
     '--id', id,
@@ -272,6 +236,29 @@ const GITHUB_MERGE_STATES = new Map([
   ['CONFLICTING', 'conflicted'],
 ]);
 
+/**
+ * GitHub `mergeStateStatus` carries the blocking signals `mergeable` alone
+ * cannot. A conflict-free change request may still be `BEHIND` a base that
+ * requires containing it, or `BLOCKED` by a required review, so each state is
+ * mapped to an explicit `blocked` / `behind` signal rather than collapsed.
+ * `UNKNOWN` and an absent status leave both signals unobserved.
+ */
+const GITHUB_MERGE_STATE_STATUS = new Map([
+  ['CLEAN', { status: 'clean', blocked: false, behind: false }],
+  ['HAS_HOOKS', { status: 'has-hooks', blocked: false, behind: false }],
+  ['UNSTABLE', { status: 'unstable', blocked: false, behind: false }],
+  ['BEHIND', { status: 'behind', blocked: false, behind: true }],
+  ['BLOCKED', { status: 'blocked', blocked: true, behind: false }],
+  ['DIRTY', { status: 'dirty', blocked: false, behind: false }],
+  ['DRAFT', { status: 'draft', blocked: false, behind: false }],
+]);
+
+const GITHUB_REVIEW_DECISIONS = new Map([
+  ['APPROVED', 'approved'],
+  ['CHANGES_REQUESTED', 'changes-requested'],
+  ['REVIEW_REQUIRED', 'review-required'],
+]);
+
 const AZURE_MERGE_STATES = new Map([
   ['succeeded', 'mergeable'],
   ['conflicts', 'conflicted'],
@@ -280,9 +267,56 @@ const AZURE_MERGE_STATES = new Map([
 ]);
 
 /**
- * Normalizes merge state. A provider value meaning "not computed yet" —
- * GitHub's `UNKNOWN`, Azure DevOps' `queued` or `notSet` — is unobserved, not
- * mergeable and not conflicted.
+ * Azure DevOps reports review state as reviewer votes on the pull request
+ * payload: `-10` rejected, `-5` waiting for the author, `>0` some approval, `0`
+ * no vote. An absent reviewer collection is unobserved, never approved and
+ * never "no reviews required".
+ */
+function azureReviewDecision(payload) {
+  const reviewers = Array.isArray(payload?.reviewers) ? payload.reviewers : null;
+  if (!reviewers || reviewers.length === 0) {
+    return 'unobserved';
+  }
+  const votes = reviewers.map((reviewer) => Number(reviewer?.vote));
+  if (votes.some((vote) => vote === -10)) {
+    return 'changes-requested';
+  }
+  if (votes.some((vote) => vote === -5)) {
+    return 'review-required';
+  }
+  if (votes.some((vote) => vote > 0)) {
+    return 'approved';
+  }
+  return 'review-required';
+}
+
+/**
+ * Azure DevOps up-to-date evidence: a visible "require branch up to date"-style
+ * policy evaluation on the payload yields `required`. Nothing else in a pull
+ * request show response proves the policy, so everything else is `unobserved`,
+ * never `not-required`.
+ */
+function azureUpToDateEvidence(payload) {
+  const evaluations = Array.isArray(payload?.policyEvaluations) ? payload.policyEvaluations : null;
+  if (!evaluations) {
+    return undefined;
+  }
+  const visible = evaluations.some((evaluation) => {
+    const type = evaluation?.configuration?.type ?? {};
+    return /up[\s-]?to[\s-]?date|require.*branch/i.test(String(type.displayName ?? type.id ?? ''));
+  });
+  return visible ? true : undefined;
+}
+
+/**
+ * Normalizes merge state, review state, and the up-to-date policy.
+ *
+ * A provider value meaning "not computed yet" — GitHub's `UNKNOWN`, Azure
+ * DevOps' `queued` or `notSet` — is unobserved, not mergeable and not
+ * conflicted. The up-to-date policy is `required` only from evidence that
+ * actually exists (GitHub's `BEHIND`, or a visible Azure DevOps up-to-date
+ * policy) and `unobserved` for every other state, because nothing else in the
+ * response proves the policy's presence or absence.
  */
 export function interpretMergeState(detection, payload) {
   const guard = requireObservableProvider(detection);
@@ -307,13 +341,36 @@ export function interpretMergeState(detection, payload) {
     };
   }
 
+  let mergeStateStatus = 'unobserved';
+  let blocked = null;
+  let behind = null;
+  let reviewDecision = 'unobserved';
+  let upToDatePolicy;
+
+  if (detection.provider === 'github') {
+    const statusRaw = String(payload.mergeStateStatus ?? '').toUpperCase();
+    const statusInfo = GITHUB_MERGE_STATE_STATUS.get(statusRaw) ?? null;
+    mergeStateStatus = statusInfo ? statusInfo.status : 'unobserved';
+    blocked = statusInfo ? statusInfo.blocked : null;
+    behind = statusInfo ? statusInfo.behind : null;
+    reviewDecision = GITHUB_REVIEW_DECISIONS.get(String(payload.reviewDecision ?? '').toUpperCase()) ?? 'unobserved';
+    upToDatePolicy = normalizeUpToDatePolicy(statusRaw === 'BEHIND' ? true : undefined);
+  } else {
+    reviewDecision = azureReviewDecision(payload);
+    upToDatePolicy = normalizeUpToDatePolicy(azureUpToDateEvidence(payload));
+  }
+
   return {
     observed: true,
     operation: 'read-state',
     provider: detection.provider,
     mergeState,
+    mergeStateStatus,
+    blocked,
+    behind,
+    reviewDecision,
     isDraft: typeof payload.isDraft === 'boolean' ? payload.isDraft : null,
-    upToDatePolicy: normalizeUpToDatePolicy(payload.upToDatePolicy),
+    upToDatePolicy,
     baseSha: present(payload.baseRefOid) ? String(payload.baseRefOid) : null,
     headSha: present(payload.headRefOid)
       ? String(payload.headRefOid)
@@ -385,9 +442,13 @@ function azureCheck(entry) {
 /**
  * Normalizes validation status.
  *
- * An absent rollup is unobserved. A present-but-empty rollup is observed with
- * status `no-results`, which is deliberately not `passing`: a change request
- * with no reported checks has not demonstrated anything.
+ * `az repos pr policy list` returns a top-level array of policy evaluation
+ * records, which is the shape accepted here; a wrapped `{ evaluations: [...] }`
+ * is accepted too for robustness. An absent rollup is unobserved. A
+ * present-but-empty rollup is observed with status `no-results`, which is
+ * deliberately not `passing`: a change request with no reported checks has not
+ * demonstrated anything. An unrecognized shape is `validation-status-absent`,
+ * never an empty pass.
  */
 export function interpretValidation(detection, payload) {
   const guard = requireObservableProvider(detection);
@@ -398,7 +459,9 @@ export function interpretValidation(detection, payload) {
     return unobserved('read-checks', 'response-absent');
   }
 
-  const rollup = detection.provider === 'github' ? payload.statusCheckRollup : payload.evaluations;
+  const rollup = detection.provider === 'github'
+    ? payload.statusCheckRollup
+    : (Array.isArray(payload) ? payload : payload.evaluations);
   if (!Array.isArray(rollup)) {
     return unobserved('read-checks', 'validation-status-absent', [
       detection.provider === 'github' ? 'statusCheckRollup' : 'evaluations',

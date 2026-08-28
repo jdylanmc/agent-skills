@@ -2,8 +2,8 @@
 name: pr-shepherding
 description: Coordinate pull request intake, rebase conflict policy, validation, leased push, remote check watch, and final disposition.
 level: molecule
-includes: ["_base/_atoms/provider-detect/provider-detect.md","_base/_atoms/provider-state/provider-state.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
-composes: ["_base/_atoms/provider-detect/provider-detect.md","_base/_atoms/provider-state/provider-state.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
+includes: ["_base/_atoms/provider-detect/provider-detect.md","shepherd/_atoms/provider-state/provider-state.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
+composes: ["_base/_atoms/provider-detect/provider-detect.md","shepherd/_atoms/provider-state/provider-state.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
 used-by: ["shepherd/SKILL.md"]
 allowed-tools: ["edit","execute","read","search"]
 ---
@@ -13,7 +13,7 @@ allowed-tools: ["edit","execute","read","search"]
 ## Required References
 
 1. [Provider detect](../../../_base/_atoms/provider-detect/provider-detect.md)
-2. [Provider state](../../../_base/_atoms/provider-state/provider-state.md)
+2. [Provider state](../../_atoms/provider-state/provider-state.md)
 3. [Git shepherd core](../../_atoms/git-shepherd-core/git-shepherd-core.md)
 4. [PR intake](../../_atoms/pr-intake/pr-intake.md)
 5. [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md)
@@ -29,9 +29,14 @@ allowed-tools: ["edit","execute","read","search"]
    official command-line tool, then optional resolution of a hosted
    change-request identifier, hosted merge state, and hosted validation status.
    This layer is [Provider detect](../../../_base/_atoms/provider-detect/provider-detect.md)
-   plus [Provider state](../../../_base/_atoms/provider-state/provider-state.md).
-   Review threads are deliberately absent from this composition, so shepherd
-   holds no comment-handling authority to widen.
+   plus [Provider state](../../_atoms/provider-state/provider-state.md).
+   Provider state is a shepherd-local atom, not a shared one, because only
+   shepherd reads change-request state today; a unit earns `_base` when a second
+   skill composes it. Review threads are deliberately absent from this
+   composition. The review-reading unit lives local to `ship`, and cross-skill
+   local composition is forbidden by the graph validator, so shepherd *cannot*
+   compose it: "shepherd holds no comment-handling authority" is a property the
+   validator enforces, not a promise in prose.
 
 ## Workflow
 
@@ -42,7 +47,7 @@ allowed-tools: ["edit","execute","read","search"]
    `provider-tool-missing`, `provider-tool-unauthenticated`,
    `provider-tool-unobserved`, or `provider-tool-unsupported` instead of guessing
    when provider state cannot be observed.
-2. Resolve the target with [Provider state](../../../_base/_atoms/provider-state/provider-state.md)
+2. Resolve the target with [Provider state](../../_atoms/provider-state/provider-state.md)
    when detection reports `supported-provider`, or with caller-supplied
    branch/base refs otherwise. [PR intake](../../_atoms/pr-intake/pr-intake.md)
    records the normalized target and worktree safety facts.
@@ -72,7 +77,7 @@ allowed-tools: ["edit","execute","read","search"]
    branch with an explicit lease pinned to that SHA:
    `git push --force-with-lease=refs/heads/<head>:<captured-sha> <head-remote> HEAD:refs/heads/<head>`.
    No other force-push form is allowed.
-11. Ask [Provider state](../../../_base/_atoms/provider-state/provider-state.md)
+11. Ask [Provider state](../../_atoms/provider-state/provider-state.md)
    for hosted merge state and validation status when detection reports
    `supported-provider`. Prefer one blocking wait when the tool supports it; do
    not schedule prompts or loop through repeated status rediscovery. When state

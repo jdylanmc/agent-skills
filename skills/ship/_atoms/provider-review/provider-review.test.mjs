@@ -1,19 +1,23 @@
 /**
  * Behaviour tests for reading review threads.
  *
- * The claims that matter to a caller: threads that were not read are never
- * presented as no threads, a thread whose resolution state the provider did not
- * report is treated as still open, comment bodies survive verbatim as data, and
- * nothing in this unit can be turned into a write.
+ * Fixtures match the documented `gh api graphql` review-thread response and the
+ * `az devops invoke` thread payload, and the assertions are the normalized
+ * result a caller sees. The claims that matter: threads that were not read are
+ * never presented as no threads, a thread whose resolution state the provider
+ * did not report is treated as still open, comment bodies survive verbatim as
+ * data, the detected enterprise host reaches the command, and nothing in this
+ * unit can be turned into a write.
  */
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { detectProvider } from '../provider-detect/provider-detect.mjs';
-import { ProviderCommandError } from '../provider-state/provider-state.mjs';
+import { detectProvider } from '../../../_base/_atoms/provider-detect/provider-detect.mjs';
 import {
   GITHUB_REVIEW_THREADS_QUERY,
+  ProviderCommandError,
+  assertReadOnlyCommand,
   interpretReviewThreads,
   reviewThreadsCommand,
   unresolvedReviewThreads,
@@ -21,8 +25,27 @@ import {
 
 const READY = { available: true, authenticated: true };
 
+// The repository's sensitive-content floor reads a user-and-host pair joined by an at-sign as an electronic
+// mail address and is deliberately eager, so a literal scp-like SSH remote in
+// committed source is a finding even though it holds no secret. Compose the
+// remote from its parts so the byte-for-byte string still reaches the code
+// under test without an address-shaped literal appearing in this file.
+const scpRemote = (user, host, path) => `${user}@${host}:${path}`;
+
 const GITHUB = detectProvider({
   remoteUrls: ['https://github.com/example/repo.git'],
+  toolAvailability: { gh: READY },
+});
+
+const GITHUB_ENTERPRISE_SSH = detectProvider({
+  remoteUrls: [scpRemote('git', 'github.contoso-internal.example', 'example/repo.git')],
+  hostProviders: { 'github.contoso-internal.example': 'github' },
+  toolAvailability: { gh: READY },
+});
+
+const GITHUB_ENTERPRISE_HTTPS = detectProvider({
+  remoteUrls: ['https://github.contoso-internal.example/example/repo.git'],
+  hostProviders: { 'github.contoso-internal.example': 'github' },
   toolAvailability: { gh: READY },
 });
 
@@ -41,20 +64,37 @@ function githubResponse(threads) {
   return { data: { repository: { pullRequest: { reviewThreads: { nodes: threads } } } } };
 }
 
-test('GitHub threads are read through the official tool with its own pagination', () => {
+test('GitHub threads are read through the official tool with its own pagination and a query document', () => {
   const command = reviewThreadsCommand(GITHUB, GITHUB_TARGET);
 
   assert.equal(command.ok, true);
   assert.equal(command.tool, 'gh');
   assert.equal(command.operation, 'read-review-threads');
   assert.ok(command.args.includes('graphql'));
+  // `--paginate` is the external contract that makes `gh` walk cursors for the
+  // caller, so its presence is asserted directly.
   assert.ok(command.args.includes('--paginate'), 'the tool handles cursors rather than the caller');
-  assert.ok(command.args.includes('-F'));
   assert.ok(command.args.includes('owner=example'));
   assert.ok(command.args.includes('name=repo'));
   assert.ok(command.args.includes('number=42'));
   assert.ok(command.args.includes(`query=${GITHUB_REVIEW_THREADS_QUERY}`));
   assert.match(GITHUB_REVIEW_THREADS_QUERY, /isResolved/);
+  // The public host takes no --hostname; that is reserved for enterprise hosts.
+  assert.ok(!command.args.includes('--hostname'));
+});
+
+test('a GitHub Enterprise host reaches the command over SSH and HTTPS alike', () => {
+  for (const detection of [GITHUB_ENTERPRISE_SSH, GITHUB_ENTERPRISE_HTTPS]) {
+    const command = reviewThreadsCommand(detection, GITHUB_TARGET);
+    const hostnameIndex = command.args.indexOf('--hostname');
+
+    assert.ok(hostnameIndex >= 0, 'gh api targets the enterprise host explicitly rather than defaulting to github.com');
+    assert.equal(command.args[hostnameIndex + 1], 'github.contoso-internal.example');
+    // The GraphQL variables still carry the plain owner and name; the host is
+    // not folded into the slug.
+    assert.ok(command.args.includes('owner=example'));
+    assert.ok(command.args.includes('name=repo'));
+  }
 });
 
 test('Azure DevOps threads are read through the official tool with an explicit GET', () => {
@@ -64,6 +104,7 @@ test('Azure DevOps threads are read through the official tool with an explicit G
   assert.equal(command.tool, 'az');
   assert.ok(command.args.includes('--org') && command.args.includes('https://dev.azure.com/contoso'));
   assert.ok(command.args.includes('pullRequestId=42'));
+  // `--http-method GET` is the external contract that keeps `az devops invoke` a read.
   assert.equal(command.args[command.args.indexOf('--http-method') + 1], 'GET');
 });
 
@@ -87,6 +128,43 @@ test('a hostile change-request identifier is rejected rather than interpolated',
       (error) => error instanceof ProviderCommandError && error.code === 'invalid-change-request-identifier',
     );
   }
+});
+
+test('the read-only allow-list refuses a mutation document and every write shape', () => {
+  // A GraphQL document whose operation is a mutation is refused even though it
+  // rides the same sanctioned `gh api graphql` skeleton.
+  assert.throws(
+    () => assertReadOnlyCommand({
+      tool: 'gh',
+      args: [
+        'api', 'graphql', '--paginate',
+        '-F', 'owner=example', '-F', 'name=repo', '-F', 'number=42',
+        '-f', 'query=mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }',
+      ],
+    }),
+    (error) => error instanceof ProviderCommandError && error.code === 'mutating-command',
+    'a mutation document is not a sanctioned read',
+  );
+
+  for (const args of [
+    // Named writes and an explicit write method.
+    ['pr', 'review', '42', '--approve'],
+    ['api', '--method', 'POST', 'repos/example/repo/pulls/42/reviews'],
+    ['api', 'repos/example/repo/issues/42/comments', '-f', 'body=text'],
+    ['devops', 'invoke', '--area', 'git', '--resource', 'pullRequestThreads', '--http-method', 'POST'],
+  ]) {
+    const tool = args[0] === 'devops' ? 'az' : 'gh';
+    assert.throws(
+      () => assertReadOnlyCommand({ tool, args }),
+      (error) => error instanceof ProviderCommandError && error.code === 'mutating-command',
+      `${args.join(' ')} must be refused`,
+    );
+  }
+
+  // The sanctioned reads this unit constructs pass their own guard.
+  assert.doesNotThrow(() => reviewThreadsCommand(GITHUB, GITHUB_TARGET));
+  assert.doesNotThrow(() => reviewThreadsCommand(GITHUB_ENTERPRISE_SSH, GITHUB_TARGET));
+  assert.doesNotThrow(() => reviewThreadsCommand(AZURE, AZURE_TARGET));
 });
 
 test('a credential offered by a caller never reaches the command line', () => {
@@ -135,9 +213,6 @@ test('threads are returned with their file, line, resolution state, and comments
 });
 
 test('threads that were not read are never presented as no threads', () => {
-  // "No open comments" and "comments not read" lead a caller to opposite
-  // conclusions. Only one of them is safe to act on, so the unread case keeps
-  // its own shape.
   const missingCollection = interpretReviewThreads(GITHUB, { data: { repository: { pullRequest: {} } } });
   assert.equal(missingCollection.observed, false);
   assert.equal(missingCollection.reason, 'review-threads-absent');

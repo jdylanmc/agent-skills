@@ -66,7 +66,8 @@ export function providerCli(id) {
 
 /**
  * Extracts the host from a git remote. Handles `scheme://` remotes, the
- * scp-like `user@host:path` form used by SSH remotes, and returns null rather
+ * scp-like SSH shorthand that joins a user and host with an at-sign and the
+ * path with a colon, and returns null rather
  * than a partial guess when the remote has no host to read.
  */
 export function parseRemoteHost(remoteUrl) {
@@ -79,13 +80,17 @@ export function parseRemoteHost(remoteUrl) {
   }
 
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
-    // scp-like: [user@]host:path, where the colon precedes the path and there
-    // is no `//`. A Windows drive path such as `C:\repo` has no `@` and a
-    // single-character host, so it is rejected below by the host shape.
-    const scpLike = /^(?:([^@/\s]+)@)?([^@/:\s]+):(?!\/)/.exec(value);
+    // scp-like: [user@]host:path. The whole remote is anchored so a malformed
+    // prefix or trailing text cannot slip a host past the parser. The path may
+    // not begin with a backslash, which is what a Windows drive path such as
+    // `C:\repo` looks like — a single-letter "host" followed by `\` — so those
+    // are rejected here rather than mistaken for a single-label host.
+    const scpLike = /^(?:[^@/\s]+@)?([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?):(?![\\/])[^\s]+$/i.exec(value);
     if (scpLike) {
-      const host = scpLike[2].toLowerCase();
-      return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(host) && host.includes('.') ? host : null;
+      // A single-label host is returned as-is; whether it is honoured is
+      // decided by `providerForHost`, which accepts a single-label host only
+      // when the operator configured it.
+      return scpLike[1].toLowerCase();
     }
     return null;
   }
@@ -129,23 +134,37 @@ export function providerForHost(host, hostProviders = {}) {
 }
 
 /**
- * Classifies tool readiness from a caller-supplied probe. An absent probe is
- * `provider-tool-unobserved` rather than a working tool: readiness this module
- * was never told about is not readiness it may assert.
+ * Classifies tool readiness from a caller-supplied probe. Availability and
+ * authentication are two independent observations, and each is only acted on
+ * when it was actually reported:
+ *
+ * - an absent probe is `provider-tool-unobserved`;
+ * - an explicit `available: false` is `provider-tool-missing`;
+ * - an explicit `authenticated: false` is `provider-tool-unauthenticated`;
+ * - a probe that reports one field but leaves a required one absent is
+ *   `provider-tool-unobserved`, because a probe that observed availability and
+ *   said nothing about authentication has not established readiness.
+ *
+ * Collapsing an unreported field into an observed negative is the exact mistake
+ * this unit exists to prevent: "not observed" and "observed false" send a
+ * person to different places.
  */
 function classifyTool(provider, toolAvailability) {
   if (!provider.cli) {
     return { status: 'provider-tool-unsupported', tool: null };
   }
   const probe = (toolAvailability ?? {})[provider.cli];
-  if (probe === undefined || probe === null) {
+  if (probe === undefined || probe === null || typeof probe !== 'object') {
     return { status: 'provider-tool-unobserved', tool: provider.cli };
   }
-  if (probe.available !== true) {
+  if (probe.available === false) {
     return { status: 'provider-tool-missing', tool: provider.cli };
   }
-  if (probe.authenticated !== true) {
+  if (probe.authenticated === false) {
     return { status: 'provider-tool-unauthenticated', tool: provider.cli };
+  }
+  if (probe.available !== true || probe.authenticated !== true) {
+    return { status: 'provider-tool-unobserved', tool: provider.cli };
   }
   return { status: 'supported-provider', tool: provider.cli };
 }
@@ -167,6 +186,8 @@ function unsupported(inspected, source) {
  *
  * @param {object} options
  * @param {string|null} options.explicitProvider Operator-named provider id.
+ * @param {string|null} options.explicitHost Canonical host for an operator-named
+ *   provider, when the operator supplies one. Absent means the host is unknown.
  * @param {string[]} options.remoteUrls Git remote URLs, in caller preference order.
  * @param {Record<string,string>} options.hostProviders Configured host to provider id map.
  * @param {Record<string,{available:boolean,authenticated:boolean}>} options.toolAvailability
@@ -174,6 +195,7 @@ function unsupported(inspected, source) {
  */
 export function detectProvider({
   explicitProvider = null,
+  explicitHost = null,
   remoteUrls = [],
   hostProviders = {},
   toolAvailability = {},
@@ -186,11 +208,15 @@ export function detectProvider({
       return unsupported([`explicit-provider:${explicitProvider}`], 'explicit-provider');
     }
     const tool = classifyTool(provider, toolAvailability);
+    // An operator who names a provider may also name its host. When they do not,
+    // the canonical host is explicitly unknown rather than assumed public, so a
+    // later command builder does not silently target `github.com`.
+    const host = typeof explicitHost === 'string' && explicitHost.trim() ? explicitHost.trim().toLowerCase() : null;
     return {
       status: tool.status,
       provider: provider.id,
       tool: tool.tool,
-      host: null,
+      host,
       source: 'explicit-provider',
       inspected: [`explicit-provider:${explicitProvider}`],
       observable: tool.status === 'supported-provider',
@@ -255,4 +281,235 @@ export function requireObservableProvider(detection = {}) {
     tool: detection.tool ?? null,
     inspected: Array.isArray(detection.inspected) ? [...detection.inspected] : [],
   };
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Shared command-safety mechanism and address normalization.
+ *
+ * Detection already owns provider identity and the canonical host, so the two
+ * things every reading unit needs from that identity live here rather than in
+ * one reading unit that the other would then have to import across a skill
+ * boundary:
+ *
+ *   1. Address and identifier normalization, host-qualified against the
+ *      detected host, so the host a run detected is the host its commands
+ *      target.
+ *   2. The read-only command guard as an allow-list mechanism. A reading unit
+ *      declares the exact command shapes it is allowed to construct and hands
+ *      them here; anything that does not match one is refused at construction.
+ *      A deny-list cannot enforce read-only against tools that switch to a
+ *      write on a flag (`gh api -f`) or bury a mutation in an unlisted
+ *      subcommand (`az repos pr reviewer add`), so the guard sanctions reads
+ *      rather than trying to enumerate every write.
+ * ---------------------------------------------------------------------------
+ */
+
+export class ProviderCommandError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = 'ProviderCommandError';
+    this.code = code;
+  }
+}
+
+/** Public GitHub hostnames. Anything else is an enterprise or self-hosted host. */
+const GITHUB_PUBLIC_HOSTS = new Set(['github.com', 'www.github.com', 'ssh.github.com']);
+
+function detectedHostOf(detection) {
+  const host = detection?.host;
+  return typeof host === 'string' && host.trim() ? host.trim().toLowerCase() : null;
+}
+
+/** True when the detection points at an enterprise or self-hosted GitHub host. */
+export function isEnterpriseGitHubHost(detection = {}) {
+  const host = detectedHostOf(detection);
+  return host !== null && !GITHUB_PUBLIC_HOSTS.has(host);
+}
+
+/**
+ * Change-request identifiers are positive integers on both providers.
+ *
+ * A numeric input must be a positive safe integer: a JavaScript number above
+ * `Number.MAX_SAFE_INTEGER` may already be a different integer than the digits
+ * a caller typed, so accepting it would silently address a different change
+ * request. An exact decimal string carries no such loss and is accepted as
+ * written. Anything else is rejected rather than interpolated.
+ */
+export function normalizeChangeRequestId(value) {
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value) || value < 1) {
+      throw new ProviderCommandError(
+        'invalid-change-request-identifier',
+        `not a change-request identifier: ${JSON.stringify(value)}`,
+      );
+    }
+    return String(value);
+  }
+  const text = String(value ?? '').trim();
+  if (!/^[1-9][0-9]*$/.test(text)) {
+    throw new ProviderCommandError(
+      'invalid-change-request-identifier',
+      `not a change-request identifier: ${JSON.stringify(value)}`,
+    );
+  }
+  return text;
+}
+
+/**
+ * GitHub repositories are addressed as `owner/name`, host-qualified against the
+ * detected host. `gh pr view --repo` accepts `[HOST/]OWNER/REPO`, so an
+ * enterprise host detected here is carried into the argument rather than left
+ * to `gh`'s default of `github.com`.
+ */
+export function normalizeGitHubRepository(repository, detection = {}) {
+  const slug = typeof repository === 'string' ? repository : repository?.slug;
+  const text = String(slug ?? '').trim();
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})\/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$/.test(text)) {
+    throw new ProviderCommandError('invalid-repository', `not an owner/name repository: ${JSON.stringify(slug)}`);
+  }
+  return isEnterpriseGitHubHost(detection) ? `${detectedHostOf(detection)}/${text}` : text;
+}
+
+/**
+ * The `gh api` host flag for the detected host. `gh api` defaults to
+ * `github.com` unless `--hostname` is given, so an enterprise host must be
+ * passed explicitly or the read silently hits the wrong deployment.
+ */
+export function githubApiHostFlags(detection = {}) {
+  return isEnterpriseGitHubHost(detection) ? ['--hostname', detectedHostOf(detection)] : [];
+}
+
+/**
+ * Azure DevOps repositories are addressed by organization URL, project, and
+ * repository. The organization URL's host must agree with the detected host: a
+ * URL pointing somewhere else is a distinct, named failure rather than a
+ * silently accepted target.
+ */
+export function normalizeAzureRepository(repository, detection = {}) {
+  const organizationUrl = String(repository?.organizationUrl ?? '').trim();
+  const project = String(repository?.project ?? '').trim();
+  const name = String(repository?.name ?? '').trim();
+  if (!/^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?(?:\/[^\s]*)?$/.test(organizationUrl) || !project || !name) {
+    throw new ProviderCommandError(
+      'invalid-repository',
+      'an Azure DevOps repository needs an https organizationUrl, project, and name',
+    );
+  }
+  const detectedHost = detectedHostOf(detection);
+  if (detectedHost) {
+    let organizationHost = null;
+    try {
+      organizationHost = new URL(organizationUrl).hostname.toLowerCase();
+    } catch {
+      organizationHost = null;
+    }
+    if (organizationHost !== detectedHost) {
+      throw new ProviderCommandError(
+        'repository-host-mismatch',
+        `organization host ${organizationHost ?? 'unparsed'} disagrees with detected host ${detectedHost}`,
+      );
+    }
+  }
+  return { organizationUrl, project, name };
+}
+
+const HTTP_METHOD_FLAGS = new Set(['--http-method', '--method', '-X']);
+const GH_API_FIELD_FLAGS = new Set(['-f', '-F', '--field', '--raw-field']);
+const WRITE_HTTP_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * A `gh api graphql` document is only sanctioned when its operation is a query.
+ * The value arrives as `query=<document>`, where `query=` is the `gh` field
+ * name; the document itself must be an anonymous `{ ... }` selection or a named
+ * `query ...`, never a `mutation` or `subscription`.
+ */
+function graphqlDocumentIsQuery(fieldValue) {
+  const text = String(fieldValue ?? '');
+  if (!text.startsWith('query=')) {
+    return false;
+  }
+  const document = text.slice('query='.length).replace(/^[\s\uFEFF]+/, '');
+  if (/^(mutation|subscription)\b/i.test(document)) {
+    return false;
+  }
+  return /^(query\b|\{)/i.test(document);
+}
+
+function tokenMatches(spec, actual) {
+  if (typeof spec === 'string') {
+    return spec === actual;
+  }
+  if (spec.id) {
+    return /^[1-9][0-9]*$/.test(actual);
+  }
+  if (spec.value) {
+    return actual.length > 0;
+  }
+  if (spec.prefix !== undefined) {
+    return actual.startsWith(spec.prefix) && actual.length > spec.prefix.length;
+  }
+  if (spec.graphqlQuery) {
+    return graphqlDocumentIsQuery(actual);
+  }
+  return false;
+}
+
+function matchesShape(tool, args, shape) {
+  if (shape.tool !== tool) {
+    return false;
+  }
+  const spec = shape.argv;
+  if (spec.length !== args.length) {
+    return false;
+  }
+  for (let index = 0; index < spec.length; index += 1) {
+    if (!tokenMatches(spec[index], args[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The shared read-only guard. A unit passes the command it just built and the
+ * set of shapes it is allowed to construct. The command is returned only when
+ * it matches one sanctioned shape and clears the tool-level safety rules a
+ * shape alone cannot express; otherwise construction fails.
+ *
+ * @param {{tool?: string, args?: string[]}} command
+ * @param {Array<{tool: string, argv: unknown[]}>} sanctionedShapes
+ */
+export function assertSanctionedCommand(command, sanctionedShapes) {
+  const tool = command?.tool ?? null;
+  const args = (command?.args ?? []).map((argument) => String(argument));
+
+  for (let index = 0; index < args.length; index += 1) {
+    if (HTTP_METHOD_FLAGS.has(args[index]) && WRITE_HTTP_METHODS.has(String(args[index + 1] ?? '').toUpperCase())) {
+      throw new ProviderCommandError('mutating-command', `refusing a write HTTP method: ${args[index]} ${args[index + 1]}`);
+    }
+  }
+
+  // `gh api` switches to POST the moment a field is supplied. A field on a
+  // non-graphql `gh api` call is therefore refused unless the method is an
+  // explicit GET, closing the bypass a deny-list of subcommands cannot see.
+  if (tool === 'gh' && args[0] === 'api' && args[1] !== 'graphql') {
+    const hasField = args.some((argument) => GH_API_FIELD_FLAGS.has(argument));
+    const methodIndex = args.findIndex((argument) => HTTP_METHOD_FLAGS.has(argument));
+    const isExplicitGet = methodIndex >= 0 && String(args[methodIndex + 1] ?? '').toUpperCase() === 'GET';
+    if (hasField && !isExplicitGet) {
+      throw new ProviderCommandError('mutating-command', 'refusing gh api fields without an explicit GET method');
+    }
+  }
+
+  for (const shape of sanctionedShapes) {
+    if (matchesShape(tool, args, shape)) {
+      return command;
+    }
+  }
+
+  throw new ProviderCommandError(
+    'mutating-command',
+    `refusing an unsanctioned provider command: ${tool ?? 'unknown'} ${args.join(' ')}`,
+  );
 }

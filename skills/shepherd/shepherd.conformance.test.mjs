@@ -19,7 +19,7 @@ import {
 import {
   normalizeUpToDatePolicy,
   requiresUpToDateBranch,
-} from '../_base/_atoms/provider-state/provider-state.mjs';
+} from './_atoms/provider-state/provider-state.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -89,7 +89,7 @@ test('the skill composes chronicler and the local shepherd molecule', () => {
     '_base/_molecules/chronicler/chronicler.md',
     'shepherd/_molecules/pr-shepherding/pr-shepherding.md',
     '_base/_atoms/provider-detect/provider-detect.md',
-    '_base/_atoms/provider-state/provider-state.md',
+    'shepherd/_atoms/provider-state/provider-state.md',
     'shepherd/_atoms/git-shepherd-core/git-shepherd-core.md',
     'shepherd/_atoms/pr-intake/pr-intake.md',
     'shepherd/_atoms/conflict-policy/conflict-policy.md',
@@ -107,7 +107,7 @@ test('shepherd cannot reach review threads through any composition path', () => 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
 
   assert.ok(
-    !closure.includes('_base/_atoms/provider-review/provider-review.md'),
+    !closure.includes('ship/_atoms/provider-review/provider-review.md'),
     `${ENTRY} must not reach the review-reading unit; closure was ${closure.join(', ')}`,
   );
   assert.ok(
@@ -141,7 +141,7 @@ test('the provider-independent core carries no provider-specific vocabulary', ()
 
 test('the provider seam is declared and unobservable providers degrade to core', () => {
   const detect = flat('_base/_atoms/provider-detect/provider-detect.md');
-  const state = flat('_base/_atoms/provider-state/provider-state.md');
+  const state = flat('shepherd/_atoms/provider-state/provider-state.md');
   const molecule = flat('shepherd/_molecules/pr-shepherding/pr-shepherding.md');
 
   assert.match(state, /resolve-target/);
@@ -570,7 +570,7 @@ test('shepherd states plainly that it does not watch', () => {
 });
 
 test('the required up-to-date policy is adapter evidence, not core vocabulary', () => {
-  const state = flat('_base/_atoms/provider-state/provider-state.md');
+  const state = flat('shepherd/_atoms/provider-state/provider-state.md');
   const core = flat('shepherd/_atoms/git-shepherd-core/git-shepherd-core.md');
 
   assert.match(state, /The Required Up-To-Date Policy/);
