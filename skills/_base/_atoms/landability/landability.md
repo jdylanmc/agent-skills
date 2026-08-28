@@ -32,11 +32,13 @@ shared rather than duplicated.
 
 `mergeable-and-green`, `no-op-mergeable-and-green`, `provider-unsupported`,
 `provider-tool-unsupported`, `provider-tool-missing`,
-`provider-tool-unauthenticated`, `needs-human`, `blocked`, `failing`.
+`provider-tool-unauthenticated`, `provider-tool-unobserved`, `needs-human`,
+`blocked`, `failing`.
 
 The provider conditions are separate values on purpose. A host family with no
-adapter yet, a missing tool, and an unauthenticated tool send a person to three
-different places, and mapping one onto another sends them to the wrong one.
+adapter yet, a missing tool, an unauthenticated tool, and a tool whose readiness
+was never probed send a person to four different places, and mapping one onto
+another sends them to the wrong one.
 
 ## The Up-To-Date Policy
 

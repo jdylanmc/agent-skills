@@ -2,8 +2,8 @@
 name: ship
 description: "Take one tracker issue to review-ready: ground it into a confirmed plan, then dispatch a bounded worker in an isolated worktree, reconcile every hunk against the confirmed ledger, validate through run-ci, review through roast, gate the merge, report criterion by criterion, open a change request, and invoke shepherd on it when the operator asked for that. Use when the operator asks to ship an issue, deliver a ticket, or take one deliverable unit to done. Do not use to work a whole backlog or fleet, which belongs to ship-with-squadron, and do not use to merge, approve, accept risk, or drive an existing change request, which belongs to shepherd."
 allowed-tools: ["execute","read","search","task"]
-includes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md"]
-composes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md"]
+includes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md","_base/_atoms/provider-detect/provider-detect.md"]
+composes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md","_base/_atoms/provider-detect/provider-detect.md"]
 disable-model-invocation: true
 user-invocable: true
 requires-skills: [{"id":"run-ci","source":"local","required":true},{"id":"roast","source":"local","required":true},{"id":"shepherd","source":"local","required":false}]
@@ -43,6 +43,7 @@ judges the change is grading its own work.
 5. [Change request](./_atoms/change-request/change-request.md)
 6. [Shepherd handoff](./_atoms/shepherd-handoff/shepherd-handoff.md)
 7. [Landability vocabulary](../_base/_atoms/landability/landability.md)
+8. [Provider detect](../_base/_atoms/provider-detect/provider-detect.md)
 
 ## Core Workflow
 
@@ -228,13 +229,17 @@ which of three conditions it met: the tool was ready, the tool was missing or
 unauthenticated, or no provider was recognized. They are distinct, and none of
 them is reported as a clean run with nothing to publish.
 
-A condition the adapter names and this skill does not enumerate is reported
+Detection itself lives in the shared
+[Provider detect](../_base/_atoms/provider-detect/provider-detect.md) unit, which
+`ship` composes so publication consumes one honest reading of the provider
+condition rather than carrying its own. Its vocabulary is wider than those three,
+and a condition the adapter names and this skill does not enumerate is reported
 under the adapter's own name rather than mapped onto the nearest familiar one.
 
 The seam opens one change request and reads back its identifier. It does not
 resolve merge state, read review threads, or watch checks; those belong to
-`shepherd`. Keeping it that narrow is what lets a shared provider adapter
-replace it later as a move rather than a rewrite.
+`shepherd`. Keeping it that narrow is what let the shared `provider-detect` unit
+supply detection as a move rather than a rewrite.
 
 ## The Handoff
 

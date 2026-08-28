@@ -39,6 +39,7 @@ used-by: ["shepherd/_molecules/pr-shepherding/pr-shepherding.md"]
 | `provider-tool-unsupported` | The git-level core completed, but the matched host family has no official-tool adapter yet. |
 | `provider-tool-missing` | The git-level core completed, but the matched provider's official CLI was unavailable, so hosted merge/review/check state could not be observed. |
 | `provider-tool-unauthenticated` | The git-level core completed, but the matched provider's official CLI was not authenticated, so hosted merge/review/check state could not be observed. |
+| `provider-tool-unobserved` | The git-level core completed, but the matched provider's official CLI was never probed, so its readiness — and therefore hosted merge/review/check state — was not observed. |
 | `blocked` | The run could not proceed because of environment, cancellation, unavailable provider metadata required for the requested action, or another external blocker — including a branch behind a base that requires containing it, an unread up-to-date state under that policy, and a green result carrying an incomplete freshness receipt. |
 | `failing` | Rebase completed but local validation or remote continuous integration is red. |
 

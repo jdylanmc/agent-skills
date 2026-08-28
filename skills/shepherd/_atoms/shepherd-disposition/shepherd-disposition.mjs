@@ -131,6 +131,7 @@ function providerObservationUnavailable(signals) {
     'provider-tool-unsupported',
     'provider-tool-missing',
     'provider-tool-unauthenticated',
+    'provider-tool-unobserved',
   ].includes(signals.provider?.status);
 }
 
@@ -190,6 +191,8 @@ function nextHumanActionFor(outcome) {
       return `Install the provider's official CLI, then invoke shepherd again${detail}.`;
     case 'provider-tool-unauthenticated':
       return `Authenticate the provider's official CLI, then invoke shepherd again${detail}.`;
+    case 'provider-tool-unobserved':
+      return `Probe the provider's official CLI readiness, then invoke shepherd again${detail}.`;
     case 'needs-human':
       return `Resolve ${outcome.reason}, then invoke shepherd again${detail}.`;
     case 'failing':

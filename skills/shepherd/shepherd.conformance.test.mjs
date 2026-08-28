@@ -14,10 +14,12 @@ import {
 } from './_atoms/shepherd-disposition/shepherd-disposition.mjs';
 import {
   detectProvider,
+  shouldRunProviderIndependentCore,
+} from '../_base/_atoms/provider-detect/provider-detect.mjs';
+import {
   normalizeUpToDatePolicy,
   requiresUpToDateBranch,
-  shouldRunProviderIndependentCore,
-} from './_atoms/provider-adapter/provider-adapter.mjs';
+} from '../_base/_atoms/provider-state/provider-state.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -86,7 +88,8 @@ test('the skill composes chronicler and the local shepherd molecule', () => {
   for (const unit of [
     '_base/_molecules/chronicler/chronicler.md',
     'shepherd/_molecules/pr-shepherding/pr-shepherding.md',
-    'shepherd/_atoms/provider-adapter/provider-adapter.md',
+    '_base/_atoms/provider-detect/provider-detect.md',
+    '_base/_atoms/provider-state/provider-state.md',
     'shepherd/_atoms/git-shepherd-core/git-shepherd-core.md',
     'shepherd/_atoms/pr-intake/pr-intake.md',
     'shepherd/_atoms/conflict-policy/conflict-policy.md',
@@ -94,6 +97,23 @@ test('the skill composes chronicler and the local shepherd molecule', () => {
   ]) {
     assert.ok(closure.includes(unit), `${ENTRY} must reach ${unit}`);
   }
+});
+
+test('shepherd cannot reach review threads through any composition path', () => {
+  // Shepherd holds no comment-handling authority. That is enforced by the
+  // composition graph rather than promised in prose, so the guard is that the
+  // review-reading unit is absent from the whole closure, not that a document
+  // says shepherd will not use it.
+  const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
+
+  assert.ok(
+    !closure.includes('_base/_atoms/provider-review/provider-review.md'),
+    `${ENTRY} must not reach the review-reading unit; closure was ${closure.join(', ')}`,
+  );
+  assert.ok(
+    !closure.some((unit) => /provider-review|review-thread/.test(unit)),
+    'no unit granting review-thread access may appear in the shepherd closure',
+  );
 });
 
 test('boundaries prohibit merge, unsafe force push, semantic conflict silence, and test weakening', () => {
@@ -119,16 +139,17 @@ test('the provider-independent core carries no provider-specific vocabulary', ()
   assert.doesNotMatch(core, /GitHub|Azure DevOps|GitLab|Gitea|Bitbucket|gh\b|pull request number|check-run/i);
 });
 
-test('the provider adapter seam is declared and unknown providers degrade to core', () => {
-  const adapter = flat('shepherd/_atoms/provider-adapter/provider-adapter.md');
+test('the provider seam is declared and unobservable providers degrade to core', () => {
+  const detect = flat('_base/_atoms/provider-detect/provider-detect.md');
+  const state = flat('_base/_atoms/provider-state/provider-state.md');
   const molecule = flat('shepherd/_molecules/pr-shepherding/pr-shepherding.md');
 
-  assert.match(adapter, /resolve-target/);
-  assert.match(adapter, /read-state/);
-  assert.match(adapter, /read-checks/);
-  assert.match(adapter, /`gh` for GitHub and `az` for Azure DevOps/);
-  assert.match(adapter, /authentication, token\s+refresh, enterprise host configuration, pagination, and rate-limit behavior/);
-  assert.match(adapter, /`provider-unsupported`, `provider-tool-missing`, and\s+`provider-tool-unauthenticated` are not blanket failures/);
+  assert.match(state, /resolve-target/);
+  assert.match(state, /read-state/);
+  assert.match(state, /read-checks/);
+  assert.match(detect, /`gh` for GitHub\s+and `az` for Azure DevOps/);
+  assert.match(detect, /authentication, token refresh, enterprise host\s+configuration, pagination, and rate-limit behavior/);
+  assert.match(detect, /An unobserved condition is not a blanket failure/);
   assert.match(molecule, /Always run \[Git shepherd core\]/);
 
   const detected = detectProvider({ remoteUrls: ['ssh://example.invalid/repo.git'] });
@@ -136,7 +157,7 @@ test('the provider adapter seam is declared and unknown providers degrade to cor
   assert.equal(shouldRunProviderIndependentCore(detected), true);
 });
 
-test('missing or unauthenticated provider tools are distinct from unsupported provider', () => {
+test('missing, unauthenticated, and unprobed provider tools are distinct from unsupported provider', () => {
   const missing = detectProvider({
     remoteUrls: ['https://github.com/example/repo.git'],
     toolAvailability: { gh: { available: false, authenticated: false } },
@@ -155,6 +176,22 @@ test('missing or unauthenticated provider tools are distinct from unsupported pr
   assert.equal(unauthenticated.tool, 'az');
   assert.notEqual(unauthenticated.status, 'provider-unsupported');
   assert.equal(shouldRunProviderIndependentCore(unauthenticated), true);
+
+  const unprobed = detectProvider({ remoteUrls: ['https://github.com/example/repo.git'] });
+  assert.equal(unprobed.status, 'provider-tool-unobserved');
+  assert.equal(shouldRunProviderIndependentCore(unprobed), true);
+});
+
+test('an unprobed provider tool completes the git core and is never reported as green', () => {
+  const unobserved = classifyTerminalDisposition(greenSignals({
+    provider: { status: 'provider-tool-unobserved', provider: 'github', tool: 'gh' },
+    remoteChecks: undefined,
+    mergeability: undefined,
+  }));
+
+  assert.equal(unobserved.disposition, 'provider-tool-unobserved');
+  assert.equal(unobserved.reason, 'git-core-complete-host-state-unobserved');
+  assert.deepEqual(unobserved.defects, ['gh']);
 });
 
 test('run-ci reuse is explicit instead of duplicating validation discovery', () => {
@@ -483,6 +520,7 @@ test('the terminal vocabulary is the shared one, including every provider condit
     'provider-tool-unsupported',
     'provider-tool-missing',
     'provider-tool-unauthenticated',
+    'provider-tool-unobserved',
   ]) {
     const result = classifyTerminalDisposition(greenSignals({
       provider: { status, provider: 'example', tool: 'cli' },
@@ -532,12 +570,12 @@ test('shepherd states plainly that it does not watch', () => {
 });
 
 test('the required up-to-date policy is adapter evidence, not core vocabulary', () => {
-  const adapter = flat('shepherd/_atoms/provider-adapter/provider-adapter.md');
+  const state = flat('_base/_atoms/provider-state/provider-state.md');
   const core = flat('shepherd/_atoms/git-shepherd-core/git-shepherd-core.md');
 
-  assert.match(adapter, /The Required Up-To-Date Policy/);
-  assert.match(adapter, /`unobserved` is never reported as `not-required`/);
-  assert.match(adapter, /This is a field of `read-state`, not a fourth operation/);
+  assert.match(state, /The Required Up-To-Date Policy/);
+  assert.match(state, /`unobserved` is never reported as `not-required`/);
+  assert.match(state, /This is a field of `read-state`, not a fourth operation/);
 
   // The core consumes the normalized signal and still resolves nothing itself.
   assert.match(core, /`up-to-date-policy`/);

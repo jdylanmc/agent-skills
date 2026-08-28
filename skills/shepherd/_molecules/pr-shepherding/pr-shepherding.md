@@ -2,8 +2,8 @@
 name: pr-shepherding
 description: Coordinate pull request intake, rebase conflict policy, validation, leased push, remote check watch, and final disposition.
 level: molecule
-includes: ["shepherd/_atoms/provider-adapter/provider-adapter.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
-composes: ["shepherd/_atoms/provider-adapter/provider-adapter.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
+includes: ["_base/_atoms/provider-detect/provider-detect.md","_base/_atoms/provider-state/provider-state.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
+composes: ["_base/_atoms/provider-detect/provider-detect.md","_base/_atoms/provider-state/provider-state.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
 used-by: ["shepherd/SKILL.md"]
 allowed-tools: ["edit","execute","read","search"]
 ---
@@ -12,36 +12,42 @@ allowed-tools: ["edit","execute","read","search"]
 
 ## Required References
 
-1. [Provider adapter](../../_atoms/provider-adapter/provider-adapter.md)
-2. [Git shepherd core](../../_atoms/git-shepherd-core/git-shepherd-core.md)
-3. [PR intake](../../_atoms/pr-intake/pr-intake.md)
-4. [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md)
-5. [Shepherd disposition](../../_atoms/shepherd-disposition/shepherd-disposition.md)
-6. [Landability vocabulary](../../../_base/_atoms/landability/landability.md)
+1. [Provider detect](../../../_base/_atoms/provider-detect/provider-detect.md)
+2. [Provider state](../../../_base/_atoms/provider-state/provider-state.md)
+3. [Git shepherd core](../../_atoms/git-shepherd-core/git-shepherd-core.md)
+4. [PR intake](../../_atoms/pr-intake/pr-intake.md)
+5. [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md)
+6. [Shepherd disposition](../../_atoms/shepherd-disposition/shepherd-disposition.md)
+7. [Landability vocabulary](../../../_base/_atoms/landability/landability.md)
 
 ## Layers
 
 1. Provider-independent core: plain git comparison, trigger-based rebase,
    generated conflict regeneration, repository-declared validation, and leased
    push. This layer is [Git shepherd core](../../_atoms/git-shepherd-core/git-shepherd-core.md).
-2. Provider adapter seam: optional resolution of a hosted change-request
-   identifier, hosted review/merge state, and hosted validation status. This
-   layer is [Provider adapter](../../_atoms/provider-adapter/provider-adapter.md).
+2. Provider adapter seam: optional detection of a supported provider and its
+   official command-line tool, then optional resolution of a hosted
+   change-request identifier, hosted merge state, and hosted validation status.
+   This layer is [Provider detect](../../../_base/_atoms/provider-detect/provider-detect.md)
+   plus [Provider state](../../../_base/_atoms/provider-state/provider-state.md).
+   Review threads are deliberately absent from this composition, so shepherd
+   holds no comment-handling authority to widen.
 
 ## Workflow
 
-1. Detect an adapter with [Provider adapter](../../_atoms/provider-adapter/provider-adapter.md).
-   Use explicit provider input first, then remote URL/config evidence, verify
-   the provider's official CLI is available and authenticated, and return
-   `provider-unsupported`, `provider-tool-missing`, or
-   `provider-tool-unauthenticated` instead of guessing when provider state cannot
-   be observed.
-2. Resolve the target with the adapter when supported, or with caller-supplied
-   branch/base refs when unsupported. [PR intake](../../_atoms/pr-intake/pr-intake.md)
+1. Detect the provider with [Provider detect](../../../_base/_atoms/provider-detect/provider-detect.md).
+   Use explicit provider input first, then configured-host and remote URL
+   evidence, then probe that the provider's official command-line tool is
+   available and authenticated. Report `provider-unsupported`,
+   `provider-tool-missing`, `provider-tool-unauthenticated`,
+   `provider-tool-unobserved`, or `provider-tool-unsupported` instead of guessing
+   when provider state cannot be observed.
+2. Resolve the target with [Provider state](../../../_base/_atoms/provider-state/provider-state.md)
+   when detection reports `supported-provider`, or with caller-supplied
+   branch/base refs otherwise. [PR intake](../../_atoms/pr-intake/pr-intake.md)
    records the normalized target and worktree safety facts.
 3. Always run [Git shepherd core](../../_atoms/git-shepherd-core/git-shepherd-core.md)
-   when enough git refs are known, even when provider status is
-   `provider-unsupported`.
+   when enough git refs are known, even when provider state was not observed.
 4. Fetch the current base and head, then classify whether there is a rebase
    trigger. Triggers are operator request, genuine conflict or unmergeable
    state, expired required validation, or an advanced base whose own policy
@@ -66,10 +72,12 @@ allowed-tools: ["edit","execute","read","search"]
    branch with an explicit lease pinned to that SHA:
    `git push --force-with-lease=refs/heads/<head>:<captured-sha> <head-remote> HEAD:refs/heads/<head>`.
    No other force-push form is allowed.
-11. Ask the adapter for hosted state and checks when supported. Prefer one
-   blocking wait when the adapter supports it; do not schedule prompts or loop
-   through repeated status rediscovery. When unsupported, report
-   `provider_status: provider-unsupported` beside the git-level result.
+11. Ask [Provider state](../../../_base/_atoms/provider-state/provider-state.md)
+   for hosted merge state and validation status when detection reports
+   `supported-provider`. Prefer one blocking wait when the tool supports it; do
+   not schedule prompts or loop through repeated status rediscovery. When state
+   was not observed, report the detection condition beside the git-level result
+   and never substitute an empty or clean provider result for it.
 12. Classify the terminal disposition with
    [Shepherd disposition](../../_atoms/shepherd-disposition/shepherd-disposition.md).
    Every disposition carries the freshness receipt it was observed against:

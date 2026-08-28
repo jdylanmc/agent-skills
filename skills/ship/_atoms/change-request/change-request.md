@@ -88,32 +88,30 @@ already carry authentication, token refresh, enterprise host configuration, and
 rate-limit behavior, and a hand-rolled replacement reimplements all of it badly
 against the host configuration least likely to be tested.
 
-Detection accounts for **tool availability, not only the remote URL**. Three
-conditions are distinct and must not collapse into one another:
+Detection accounts for **tool availability, not only the remote URL**, and it is
+now supplied by the shared
+[`provider-detect`](../../../_base/_atoms/provider-detect/provider-detect.md)
+unit that `ship` composes. This atom consumes the condition it reports and maps
+it to a publication outcome rather than restating its own detection, so `ship`
+and `shepherd` cannot end up disagreeing about which host a remote belongs to. A
+recognized provider whose tool is missing or unauthenticated is an environment
+problem: say which, and do not imply a clean state. An unrecognized provider
+reports the evidence inspected.
 
-| Condition | Meaning |
-| --- | --- |
-| Provider recognized, tool ready | Publish. |
-| Provider recognized, tool missing or unauthenticated | An environment problem. Say which, and do not imply a clean state. |
-| Provider unrecognized | No adapter matches. Report the evidence inspected. |
-
-A run whose isolation state is `none` reaches the third condition, because a
-target that is not a git repository has no remote to inspect and no branch to
-push. Say that rather than reporting a change request nobody can open.
+A run whose isolation state is `none` has no remote to inspect and no branch to
+push, so detection recognizes no provider. Say that rather than reporting a
+change request nobody can open.
 
 This seam is deliberately narrow: it opens one change request and reads back the
 identifier. It does not resolve merge state, read review threads, or watch
 checks. Those belong to `shepherd` and to later work, and a seam that could do
 them would make this atom the place a caller reaches for them.
 
-When a shared provider adapter exists, this atom composes it instead of carrying
-its own detection. Until then the seam is stated here so that extracting it
-later is a move rather than a rewrite.
-
-A shared adapter has a wider condition vocabulary than the three above, and it
-will grow. Conditions such as `provider-tool-unsupported` — a known host family
-with no adapter yet — and `provider-tool-unobserved` — readiness never probed —
-are **passed through under the adapter's own name**.
+The shared unit now supplies detection, so extracting it was a move rather than a
+rewrite. Its condition vocabulary is wider than the outcomes below and will grow.
+Conditions such as `provider-tool-unsupported` — a known host family with no
+adapter yet — and `provider-tool-unobserved` — readiness never probed — are
+**passed through under the adapter's own name**.
 
 Do not map an unfamiliar condition onto the nearest familiar one.
 `provider-tool-unobserved` reported as `provider-tool-missing` sends somebody to

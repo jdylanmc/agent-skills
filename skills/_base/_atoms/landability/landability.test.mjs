@@ -26,6 +26,9 @@ test('the terminal set covers every provider condition an adapter can reach', ()
   // `provider-tool-unsupported` is the one that went missing from a consumer's
   // copy: a known host family with no adapter yet is a real ending, and a
   // consumer that does not know it reads it as no ending at all.
+  // `provider-tool-unobserved` sits alongside `-unsupported`, `-missing`, and
+  // `-unauthenticated` as a distinct provider condition: a tool whose state
+  // nobody could observe is not the same ending as one known to be absent.
   assert.deepEqual([...TERMINAL_DISPOSITIONS], [
     'mergeable-and-green',
     'no-op-mergeable-and-green',
@@ -33,6 +36,7 @@ test('the terminal set covers every provider condition an adapter can reach', ()
     'provider-tool-unsupported',
     'provider-tool-missing',
     'provider-tool-unauthenticated',
+    'provider-tool-unobserved',
     'needs-human',
     'blocked',
     'failing',

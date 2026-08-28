@@ -23,6 +23,7 @@ export const TERMINAL_DISPOSITIONS = Object.freeze([
   'provider-tool-unsupported',
   'provider-tool-missing',
   'provider-tool-unauthenticated',
+  'provider-tool-unobserved',
   'needs-human',
   'blocked',
   'failing',
