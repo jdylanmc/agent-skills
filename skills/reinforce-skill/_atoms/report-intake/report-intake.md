@@ -62,7 +62,8 @@ run whose only evidence of its own authority is that it says so.
 
 The same command grounds human guidance, so both admissible sources produce one
 shape from one place rather than one shape from a script and another from a
-paragraph. Guidance arrives as `--guidance <text>`, as `--guidance-file <path>`,
+paragraph. There is exactly one owner of normalization and exactly one
+invocation per run. Guidance arrives as `--guidance <text>`, as `--guidance-file <path>`,
 or on standard input with `--guidance -`, and file and stream input are bounded
 so a paragraph-sized field cannot become an unbounded read. `--guidance` takes
 its value literally, because prose may legitimately begin with `--`; it takes no
@@ -79,9 +80,28 @@ it is a usage error rather than a merge.
 | `state` | with `report` | Where to record the admission receipt. |
 | `root` | with `state` | The repository, so the receipt's location can be proven unpublished. |
 
-This atom runs **only** when the operator supplied a report. Human guidance
-needs none of it, and never needs a synthetic post-mortem record to stand in for
-one.
+### `--root` Is a Trusted Boundary Input, Supplied by the Caller
+
+`--root` is not evidence and is never derived from the report. It is the
+repository the run is operating on, supplied by whoever invoked the run, and it
+answers exactly one question: is this receipt path somewhere the repository
+publishes? A wrong root gives a wrong answer to that question, and **nothing
+here can detect it** — a report has no idea what repository it is being applied
+to, and inferring one from its contents would be taking direction from the
+untrusted document.
+
+That is a bounded exposure rather than a hole, because the receipt is not what
+bounds the change. The write-boundary diff audit runs over the actual change set
+before a pull request opens, continuous integration re-runs the validator, the
+deriver, and the whole suite over that diff, and a human reads it. A misdirected
+receipt costs the run its admission check; it does not let anything land.
+
+**This atom runs once per run, for either source.** It owns normalization for
+both: a report and the operator's own words leave it in the same shape, and the
+caller invokes it exactly once with `--report` or with `--guidance`. What a
+report adds is a subflow — admission, approval, and the recorded receipt — not a
+separate path through anything. Guidance needs none of that subflow, and never
+needs a synthetic post-mortem record to stand in for one.
 
 ## The Approval Receipt Is Data, Not Prose
 

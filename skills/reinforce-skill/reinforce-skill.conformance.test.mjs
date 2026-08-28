@@ -44,6 +44,7 @@ import {
   resolveSkillTarget,
 } from './_atoms/reinforcement-target/reinforcement-target.mjs';
 import {
+  ADMISSION_FLAGS,
   ADMISSION_SCHEMA,
   RELEASE_CHECK_FLAGS,
   REFUSALS as REPORT_REFUSALS,
@@ -55,6 +56,7 @@ import {
   groundingFromGuidance,
   normalizeSurface,
   reconcileApplicable,
+  admissionCommand,
   releaseCheckCommand,
   requireAdmittedState,
 } from './_atoms/report-intake/report-intake.mjs';
@@ -994,7 +996,7 @@ test('report intake has exactly one owner and one invocation', () => {
     );
   }
   assert.match(entry, /Report intake is invoked there and nowhere else/);
-  assert.match(flatMolecule, /runs here and \*\*only\*\* here, once/);
+  assert.match(flatMolecule, /runs here and \*\*only\*\* here, \*\*exactly once\*\*/);
   assert.match(flatMolecule, /the target is resolved first, because the approval is checked against it/);
 
   // The publication release check is the wrapper's own, and is a different
@@ -1161,6 +1163,34 @@ test('post-mortem is untouched: intake enforces its record contract without comp
   assert.match(flat(INTAKE), /`skills\/post-mortem\/\*\*` is left exactly as it is/);
 });
 
+test('one owner normalizes both sources, invoked exactly once per run', () => {
+  // The ambiguity worth removing: guidance does not bypass intake, it goes
+  // through the same step. Only the report subflow - admission, approval,
+  // receipt - is skipped, and every document has to say the same thing.
+  for (const [name, body] of [['the skill', flat(ENTRY)], ['the molecule', flat(MOLECULE)], ['the unit', flat(INTAKE)]]) {
+    assert.match(body, /exactly once/i, `${name} must say intake runs exactly once`);
+    assert.match(body, /either source|for both|both sources/i, `${name} must say it serves both sources`);
+    assert.match(body, /subflow/i, `${name} must call the report path a subflow, not a second path`);
+  }
+  assert.match(flat(GROUNDING), /Two Admissible Sources, One Grounding/);
+  assert.match(
+    flat(MOLECULE),
+    /consumes\s+the normalized change request intake returned/,
+    'change grounding consumes the normalized shape rather than re-reading a source',
+  );
+
+  // And behaviourally: both sources leave intake in one shape.
+  const guided = admitGuidance({ target: 'changelog', guidance: 'tighten the output' });
+  const report = reportText();
+  const reported = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+  assert.deepEqual(Object.keys(guided).sort(), Object.keys(reported).sort());
+  assert.deepEqual(
+    Object.keys(guided.change_request).sort(),
+    Object.keys(reported.change_request).sort(),
+  );
+  assert.equal(guided.lineage, null, 'only the report subflow produces lineage');
+});
+
 test('the human-guidance path is unchanged and needs no report at all', () => {
   const request = groundingFromGuidance({
     target: 'changelog',
@@ -1252,7 +1282,7 @@ test('every suite this package ships runs in continuous integration', () => {
  * that omits a required flag, and a test that restates the command would agree
  * with itself while the document was wrong.
  */
-function documentedReleaseCommands() {
+function documentedCommands(marker, { excluding = [] } = {}) {
   const sources = [
     ['SKILL.md', read(ENTRY)],
     ['report-intake.md', read(INTAKE)],
@@ -1264,16 +1294,25 @@ function documentedReleaseCommands() {
     const joined = body.replace(/\\\n\s*/g, ' ');
     for (const line of joined.split('\n')) {
       // A command, not prose about one: it invokes the script.
-      if (!line.includes('--require-admitted-state') || !line.includes('report-intake.mjs')) {
+      if (!line.includes(marker) || !line.includes('report-intake.mjs')) {
         continue;
       }
-      found.push({ name, flags: [...line.matchAll(/(--[a-z-]+)/g)].map((match) => match[1]) });
+      const flags = [...line.matchAll(/(--[a-z-]+)/g)].map((match) => match[1]);
+      if (excluding.some((flag) => flags.includes(flag))) {
+        continue;
+      }
+      found.push({ name, flags });
     }
   }
   return found;
 }
 
-test('every documented release check spells every flag the command requires', () => {
+const documentedReleaseCommands = () => documentedCommands('--require-admitted-state');
+const documentedAdmissionCommands = () => documentedCommands('--approval', {
+  excluding: ['--require-admitted-state', '--guidance'],
+});
+
+test('every documented command spells every flag it requires', () => {
   const documented = documentedReleaseCommands();
   assert.ok(documented.length >= 3, 'the command is documented in the skill, the unit, and the usage text');
 
@@ -1284,6 +1323,21 @@ test('every documented release check spells every flag the command requires', ()
       `${name} spells a release check that would exit 1 on usage rather than checking anything`,
     );
   }
+
+  const admissions = documentedAdmissionCommands();
+  assert.ok(admissions.length >= 2, 'the admission command is documented in the unit and the usage text');
+  for (const { name, flags } of admissions) {
+    assert.deepEqual(
+      [...flags].sort(),
+      [...ADMISSION_FLAGS].sort(),
+      `${name} spells an admission that would return no change request`,
+    );
+  }
+  assert.deepEqual(
+    admissionCommand({ report: 'r', target: 't', approval: 'a', root: 'x', state: 's' })
+      .filter((token) => token.startsWith('--')),
+    ADMISSION_FLAGS,
+  );
 
   // The builder is the single definition the documents are checked against.
   assert.deepEqual(
@@ -1325,6 +1379,19 @@ test('the documented release check actually runs, and satisfies only a real admi
       const run = spawnSync(process.execPath, [INTAKE_CLI, ...argv], { encoding: 'utf8' });
       assert.equal(run.status, 0, `${name}'s command must run and pass, not exit on usage`);
       assert.equal(JSON.parse(run.stdout).requirement, 'satisfied');
+    }
+
+    // And the documented admission command, which produced that receipt in the
+    // first place, is run the same way.
+    values['--approval'] = approvalPath;
+    values['--state'] = path.join(fixture.repository, '.skill-log', 'redone.json');
+    for (const { name, flags } of documentedAdmissionCommands()) {
+      const argv = flags.flatMap((flag) => [flag, values[flag]]);
+      const run = spawnSync(process.execPath, [INTAKE_CLI, ...argv], { encoding: 'utf8' });
+      assert.equal(run.status, 0, `${name}'s admission command must run and admit`);
+      const parsed = JSON.parse(run.stdout);
+      assert.equal(parsed.status, 'admitted');
+      assert.equal(parsed.admission_state, 'recorded');
     }
 
     // And the builder's own spelling agrees with the documents.

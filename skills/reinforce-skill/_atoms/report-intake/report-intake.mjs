@@ -185,6 +185,16 @@ export const MAX_REPORT_BYTES = 4 * 1024 * 1024;
 export const MAX_APPROVAL_BYTES = 16 * 1024;
 
 /**
+ * The largest admission receipt the release check will read.
+ *
+ * A receipt this module wrote is a few hundred bytes. Anything at that path
+ * that is megabytes long was not written by an admission, and the release check
+ * has no more reason to read it unbounded than intake had to read the report
+ * that way.
+ */
+export const MAX_RECEIPT_BYTES = 256 * 1024;
+
+/**
  * How many times a non-blocking read may report `EAGAIN` before the stream is
  * given up on. An unbounded retry loop is a spin: a producer that never writes
  * and never closes would hold this process forever, and "forever" is not a
@@ -206,6 +216,52 @@ export const EAGAIN_RETRY_DELAY_MS = 5;
  * anything can hide in.
  */
 export const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/** The longest a routable skill name may be, matching the identifier bound. */
+export const MAX_SKILL_NAME_LENGTH = 64;
+
+/**
+ * Characters that are present without being visible.
+ *
+ * One policy, one definition, used in both places that need it: a surface
+ * refuses them outright, and a refusal message strips them on the way out. Two
+ * definitions would drift, and the drift that matters is a character a surface
+ * rejects still reaching a reviewer's terminal inside the refusal.
+ *
+ * The categories carry the rule - `Cc` and `Cf` are the control and format
+ * characters, `Zl` and `Zp` the two Unicode line and paragraph separators - and
+ * the explicit ranges beside them are the enumerated cases the tests walk:
+ * soft hyphen, Arabic letter mark, Mongolian vowel separator, the zero-width
+ * spaces and joiners, every bidirectional override and isolate, the word
+ * joiner and invisible operators, the byte-order mark, and the interlinear
+ * annotation marks. They are redundant with the categories today, and stated
+ * anyway so that a change in the Unicode version this runtime carries cannot
+ * quietly narrow the policy.
+ *
+ * The reason is one property: a character nobody can see must never be able to
+ * make one thing look like two. `SKILL.md` and `S<ZWSP>KILL.md` are one file to
+ * a reader and two strings to a comparison, and a report that could spell a
+ * surface both ways could propose a removal and a revision of one file while
+ * looking like it proposed neither.
+ */
+export const INVISIBLE_CONTROL_CHARACTERS = [
+  '\u00ad', '\u061c', '\u180e', '\u200b', '\u200c', '\u200d', '\u200e', '\u200f',
+  '\u202a', '\u202b', '\u202c', '\u202d', '\u202e',
+  '\u2060', '\u2061', '\u2062', '\u2063', '\u2064',
+  '\u2066', '\u2067', '\u2068', '\u2069', '\u206a', '\u206b', '\u206c', '\u206d', '\u206e', '\u206f',
+  '\u2028', '\u2029', '\ufeff', '\ufff9', '\ufffa', '\ufffb',
+  '\u0000', '\u001f', '\u007f', '\u009f',
+];
+
+const INVISIBLE_CLASS = '\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}'
+  + '\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u202a-\\u202e'
+  + '\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb';
+
+/** Does this value contain a character that is present without being visible? */
+export const INVISIBLE_CONTROL_PATTERN = new RegExp(`[${INVISIBLE_CLASS}]`, 'u');
+
+/** The same class, for stripping every occurrence. */
+const INVISIBLE_CONTROL_GLOBAL = new RegExp(`[${INVISIBLE_CLASS}]`, 'gu');
 
 /** The longest report-derived fragment any refusal message may quote. */
 export const MAX_SNIPPET_LENGTH = 80;
@@ -374,8 +430,11 @@ export function snippetList(values, { limit = MAX_LISTED_ITEMS, budget = MAX_LIS
  */
 export function sanitizeRefusalMessage(message) {
   const text = typeof message === 'string' ? message : String(message ?? '');
+  // The same policy a surface is held to. A character a surface refuses must
+  // not survive into the refusal that reports it: the refusal is the one thing
+  // a reviewer definitely reads.
   const flattened = text
-    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ')
+    .replace(INVISIBLE_CONTROL_GLOBAL, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
   return flattened.length > MAX_MESSAGE_LENGTH
@@ -452,12 +511,10 @@ export function normalizeSurface(surface, { target } = {}) {
   // different files depending on where it is applied - while `  SKILL.md  ` is
   // one file, sloppily quoted.
   const trimmed = surface.trim();
-  if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(trimmed)) {
-    // C1 controls, the C1 supplement, and the two Unicode line separators. All
-    // of them are invisible in a diff and several of them end a line in one
-    // renderer and not another, which is a poor property for a value that names
-    // the file a change will be applied to.
-    refuse('a surface may not contain a control character or a line separator');
+  if (INVISIBLE_CONTROL_PATTERN.test(trimmed)) {
+    // A surface names the file a change lands in, and a character nobody can
+    // see must never be able to make one file look like two.
+    refuse('a surface may not contain an invisible control, format, or bidirectional character');
   }
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
     refuse(`a surface is a path inside the target skill, never a URL: ${snippet(trimmed)}`);
@@ -1504,7 +1561,7 @@ export function clearAdmissionState(statePath, { repositoryRoot = null } = {}) {
   } catch (error) {
     throw new IntakeError(
       REFUSALS.stateUnwritable,
-      `the admission receipt could neither be written nor removed: ${error.code}`,
+      `the admission receipt could not be removed: ${error.code ?? 'unremovable'}`,
     );
   }
   return real;
@@ -1686,6 +1743,25 @@ export function requireAdmittedState({ state = null, report = null, target = nul
  */
 export const RELEASE_CHECK_FLAGS = ['--require-admitted-state', '--report', '--target', '--root'];
 
+/**
+ * The flags an admission must be invoked with. Same reasoning as the release
+ * check: a documented admission missing `--state` exits 2 as
+ * `admitted-unrecorded`, which is safe but useless, and a document that spells
+ * it that way is a document nobody can follow.
+ */
+export const ADMISSION_FLAGS = ['--report', '--target', '--approval', '--root', '--state'];
+
+/** Build the admission argument vector. The only supported way to spell it. */
+export function admissionCommand({ report, target, approval, root, state } = {}) {
+  return [
+    '--report', report,
+    '--target', target,
+    '--approval', approval,
+    '--root', root,
+    '--state', state,
+  ];
+}
+
 /** Build the release-check argument vector. The only supported way to spell it. */
 export function releaseCheckCommand({ state, report, target, root } = {}) {
   return [
@@ -1697,8 +1773,7 @@ export function releaseCheckCommand({ state, report, target, root } = {}) {
 }
 
 export const USAGE = `Usage:
-  report-intake.mjs --report <path> --target <skill> --approval <path>
-                    --root <repository root> --state <absolute receipt path>
+  report-intake.mjs ${ADMISSION_FLAGS.map((flag) => `${flag} <value>`).join(' ')}
   report-intake.mjs --guidance <text> --target <skill>
   report-intake.mjs --guidance-file <path> --target <skill>
   report-intake.mjs --guidance - --target <skill>          (reads standard input)
@@ -1806,6 +1881,7 @@ function readReport(candidate) {
       text: readBoundedFile(candidate, {
         max: MAX_REPORT_BYTES,
         kind: 'unreadableReport',
+        label: 'report',
         oversized: REFUSALS.oversizedReport,
       }),
       refusal: null,
@@ -1831,7 +1907,7 @@ function readReport(candidate) {
  * not guidance. The limit is checked on bytes read, not on a promise about the
  * source.
  */
-export function readBoundedFile(source, { max, kind, oversized, fileSystem = fs } = {}) {
+export function readBoundedFile(source, { max, kind, label = 'input', oversized, fileSystem = fs } = {}) {
   // Ask the filesystem how big it is before reading any of it. Reading first
   // and measuring after is how a bounded input becomes an unbounded read: by the
   // time the check runs, the process is already holding the thing the check
@@ -1840,31 +1916,28 @@ export function readBoundedFile(source, { max, kind, oversized, fileSystem = fs 
   try {
     stats = fileSystem.lstatSync(source);
   } catch (error) {
-    throw new IntakeError(
-      REFUSALS[kind],
-      `the ${kind === 'unreadableGuidance' ? 'guidance' : kind} could not be read: ${error.code ?? 'unreadable'}`,
-    );
+    throw new IntakeError(REFUSALS[kind], `the ${label} could not be read: ${error.code ?? 'unreadable'}`);
   }
   if (stats.isSymbolicLink()) {
-    throw new IntakeError(REFUSALS[kind], 'an input is read where it is named, never through a symbolic link');
+    throw new IntakeError(REFUSALS[kind], `the ${label} is read where it is named, never through a symbolic link`);
   }
   if (!stats.isFile()) {
-    throw new IntakeError(REFUSALS[kind], 'an input comes from a regular file');
+    throw new IntakeError(REFUSALS[kind], `the ${label} comes from a regular file`);
   }
   if (stats.size > max) {
-    throw new IntakeError(oversized, `this input is bounded at ${max} bytes; the named file holds ${stats.size}`);
+    throw new IntakeError(oversized, `the ${label} is bounded at ${max} bytes; the named file holds ${stats.size}`);
   }
   let text;
   try {
     text = fileSystem.readFileSync(source, 'utf8');
   } catch (error) {
-    throw new IntakeError(REFUSALS[kind], `an input could not be read: ${error.code ?? 'unreadable'}`);
+    throw new IntakeError(REFUSALS[kind], `the ${label} could not be read: ${error.code ?? 'unreadable'}`);
   }
   // A file can grow between the measurement and the read, so the bound is
   // checked again on what actually arrived rather than on what was promised.
   const bytes = Buffer.byteLength(text, 'utf8');
   if (bytes > max) {
-    throw new IntakeError(oversized, `this input is bounded at ${max} bytes; ${bytes} arrived`);
+    throw new IntakeError(oversized, `the ${label} is bounded at ${max} bytes; ${bytes} arrived`);
   }
   return text;
 }
@@ -1874,6 +1947,7 @@ export function readBoundedGuidance(source, { fileSystem = fs, sleep = null } = 
     return readBoundedFile(source, {
       max: MAX_GUIDANCE_BYTES,
       kind: 'unreadableGuidance',
+      label: 'guidance',
       oversized: REFUSALS.oversizedGuidance,
       fileSystem,
     });
@@ -2013,7 +2087,12 @@ export function run(argv, streams = process) {
       // The same boundary the write used: a receipt read from somewhere the
       // repository publishes, or through a link, is not this run's state.
       assertStatePath(parsed.requireState, { repositoryRoot: parsed.root });
-      state = JSON.parse(fs.readFileSync(parsed.requireState, 'utf8'));
+      state = JSON.parse(readBoundedFile(parsed.requireState, {
+        max: MAX_RECEIPT_BYTES,
+        kind: 'stateMissing',
+        label: 'admission receipt',
+        oversized: REFUSALS.malformedState,
+      }));
     } catch (error) {
       reasons.push({
         code: error instanceof SyntaxError
@@ -2059,6 +2138,7 @@ export function run(argv, streams = process) {
       approval = JSON.parse(readBoundedFile(parsed.approval, {
         max: MAX_APPROVAL_BYTES,
         kind: 'malformedApproval',
+        label: 'approval receipt',
         oversized: REFUSALS.oversizedApproval,
       }));
     } catch (error) {

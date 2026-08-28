@@ -31,10 +31,14 @@ import {
   assertStatePath,
   buildAdmissionReceipt,
   IDENTIFIER_PATTERN,
+  INVISIBLE_CONTROL_CHARACTERS,
+  INVISIBLE_CONTROL_PATTERN,
   MAX_APPROVAL_BYTES,
   MAX_EAGAIN_RETRIES,
   MAX_GUIDANCE_BYTES,
+  MAX_RECEIPT_BYTES,
   MAX_REPORT_BYTES,
+  MAX_SKILL_NAME_LENGTH,
   clearAdmissionState,
   normalizeAnchorId,
   normalizeSurface,
@@ -42,13 +46,16 @@ import {
   readBoundedGuidance,
   MAX_LISTED_ITEMS,
   MAX_MESSAGE_LENGTH,
+  admissionCommand,
   reconcileApplicable,
+  releaseCheckCommand,
   requireAdmittedState,
   sanitizeRefusalMessage,
   snippet,
   snippetList,
   surfaceKey,
 } from './report-intake.mjs';
+import { SKILL_NAME_PATTERN } from '../reinforcement-target/reinforcement-target.mjs';
 import {
   assertRecordContract,
 } from '../../../post-mortem/_atoms/postmortem-render-record/postmortem-render-record.mjs';
@@ -1686,5 +1693,204 @@ test('clearing a receipt is bounded by the same state-path rules as writing one'
     fs.writeFileSync(statePath, '{}');
     clearAdmissionState(statePath, { repositoryRoot: fixture.repository });
     assert.equal(fs.existsSync(statePath), false);
+  });
+});
+
+/**
+ * Every character the policy calls invisible, enumerated rather than described.
+ *
+ * The list is the test's own, built independently of the module's, so a change
+ * that narrows the module's policy fails here instead of agreeing with itself.
+ */
+const INVISIBLE_CORPUS = [
+  // C0 controls and the C1 supplement.
+  '\u0000', '\u0001', '\u0008', '\u0009', '\u000a', '\u000d', '\u001b', '\u001f',
+  '\u007f', '\u0085', '\u009f',
+  // Unicode line and paragraph separators.
+  '\u2028', '\u2029',
+  // Format characters that are simply not there to look at.
+  '\u00ad', '\u061c', '\u180e', '\ufeff',
+  // Zero-width spaces and joiners.
+  '\u200b', '\u200c', '\u200d',
+  // Bidirectional marks, embeddings, overrides, and isolates.
+  '\u200e', '\u200f', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e',
+  '\u2066', '\u2067', '\u2068', '\u2069',
+  // Word joiner and the invisible operators.
+  '\u2060', '\u2061', '\u2062', '\u2063', '\u2064',
+  // Deprecated format characters and the interlinear annotation marks.
+  '\u206a', '\u206b', '\u206c', '\u206d', '\u206e', '\u206f',
+  '\ufff9', '\ufffa', '\ufffb',
+];
+
+test('one invisible-character policy covers every case, and the guard applies it', () => {
+  // Two independent assertions on purpose. The first pins the policy; the
+  // second pins that the surface guard actually consults it. Deleting the guard
+  // from normalizeSurface leaves the first passing and fails the second, which
+  // is what makes this sensitive to that mutation rather than to a reworded
+  // comment.
+  for (const character of INVISIBLE_CORPUS) {
+    const code = character.codePointAt(0).toString(16).padStart(4, '0');
+    assert.ok(
+      INVISIBLE_CONTROL_PATTERN.test(character),
+      `U+${code.toUpperCase()} must be covered by the policy`,
+    );
+    assert.throws(
+      () => normalizeSurface(`SKILL${character}.md`, { target: 'changelog' }),
+      (error) => error.code === REFUSALS.malformedSurface,
+      `U+${code.toUpperCase()} must be refused in a surface`,
+    );
+    assert.ok(
+      !INVISIBLE_CONTROL_PATTERN.test(sanitizeRefusalMessage(`before${character}after`)),
+      `U+${code.toUpperCase()} must not survive into a refusal message`,
+    );
+  }
+
+  // Every character the module enumerates is one the policy matches, so the two
+  // lists cannot drift apart in either direction.
+  for (const character of INVISIBLE_CONTROL_CHARACTERS) {
+    assert.ok(INVISIBLE_CONTROL_PATTERN.test(character), 'the module enumerates only what it matches');
+  }
+  assert.ok(INVISIBLE_CORPUS.every((character) => INVISIBLE_CONTROL_PATTERN.test(character)));
+
+  // And ordinary text is untouched, so the policy is a filter and not a ban.
+  assert.equal(normalizeSurface('_atoms/caf\u00e9-target.md', { target: 'changelog' }), '_atoms/caf\u00e9-target.md');
+  assert.equal(sanitizeRefusalMessage('an ordinary message'), 'an ordinary message');
+});
+
+test('an invisible character cannot make one file look like two', () => {
+  // The attack the policy exists to stop: a removal and a revision of one file,
+  // spelled so a comparison sees two surfaces and a reader sees one.
+  const recommendations = conformingRecommendations();
+  recommendations[0].change.surface = 'SKILL.md';
+  recommendations[1].target_skill = 'changelog';
+  recommendations[1].change = {
+    surface: 'S\u200bKILL.md',
+    directive: 'remove',
+    statement: 'drop the output contract entirely',
+  };
+  const report = reportText({ recommendations });
+  const result = admitReport({ report, approval: approvalFor(report), target: 'changelog' });
+
+  assert.equal(result.status, 'refused');
+  assert.ok(
+    codesOf(result).includes(REFUSALS.malformedSurface),
+    'the disguised spelling is refused outright rather than admitted as a second file',
+  );
+  assert.equal(result.change_request, null);
+});
+
+test('a governance root disguised by an invisible character is still a governance root', () => {
+  for (const surface of [
+    'doctrine\u200b/manifest.md',
+    'doc\u00adtrine/manifest.md',
+    '.g\u200cit/config',
+    '.git\u202e/config',
+    'skills\u200b/roast/SKILL.md',
+    '\u202eskills/roast/SKILL.md',
+    'SKILL\ufeff.md',
+  ]) {
+    assert.throws(
+      () => normalizeSurface(surface, { target: 'changelog' }),
+      (error) => error.code === REFUSALS.malformedSurface,
+      `${JSON.stringify(surface)} must be refused`,
+    );
+  }
+});
+
+test('a skill name is bounded like every other identifier out of a report', () => {
+  assert.equal(MAX_SKILL_NAME_LENGTH, 64);
+  const longest = 'a'.repeat(MAX_SKILL_NAME_LENGTH);
+  const overlong = 'a'.repeat(MAX_SKILL_NAME_LENGTH + 1);
+  const absurd = 'a'.repeat(50_000);
+
+  assert.ok(SKILL_NAME_PATTERN.test(longest));
+  for (const name of [overlong, absurd]) {
+    assert.ok(!SKILL_NAME_PATTERN.test(name), 'the shared definition carries the bound');
+
+    // As the run's target.
+    const report = reportText();
+    const asTarget = admitReport({ report, approval: approvalFor(report, name), target: name });
+    assert.equal(asTarget.status, 'refused');
+    assert.ok(codesOf(asTarget).includes(REFUSALS.invalidTarget));
+
+    // As a recommendation's target, on the excluded path - which still reaches
+    // the excluded list, the receipt, and the pull request.
+    const recommendations = conformingRecommendations();
+    recommendations[2].target_skill = name;
+    const foreign = reportText({ recommendations });
+    const asForeign = admitReport({ report: foreign, approval: approvalFor(foreign), target: 'changelog' });
+    assert.equal(asForeign.status, 'refused');
+    assert.ok(codesOf(asForeign).includes(REFUSALS.targetlessRecommendation));
+    assert.equal(asForeign.lineage, null);
+    assert.equal(asForeign.change_request, null);
+  }
+});
+
+test('the admission receipt is read bounded, and never through a link', () => {
+  withFixtureRepository((fixture) => {
+    const { reportPath, approvalPath, statePath } = scenario(fixture);
+    spawnSync(process.execPath, [
+      INTAKE_CLI, ...admissionCommand({
+        report: reportPath, target: 'changelog', approval: approvalPath,
+        root: fixture.repository, state: statePath,
+      }),
+    ], { encoding: 'utf8' });
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).status, 'admitted');
+
+    // A receipt larger than any admission could produce is refused, unread.
+    const huge = path.join(fixture.repository, '.skill-log', 'huge.json');
+    fs.writeFileSync(huge, `{"padding":"${'x'.repeat(MAX_RECEIPT_BYTES + 16)}"}`);
+    const oversized = spawnSync(process.execPath, [
+      INTAKE_CLI, ...releaseCheckCommand({
+        state: huge, report: reportPath, target: 'changelog', root: fixture.repository,
+      }),
+    ], { encoding: 'utf8' });
+    assert.equal(oversized.status, 2);
+    assert.match(oversized.stdout, /"malformed_state"/);
+
+    // A receipt reached through a link is refused before the path check even
+    // needs to decide where it points.
+    const link = path.join(fixture.repository, '.skill-log', 'link.json');
+    fs.symlinkSync(statePath, link);
+    const linked = spawnSync(process.execPath, [
+      INTAKE_CLI, ...releaseCheckCommand({
+        state: link, report: reportPath, target: 'changelog', root: fixture.repository,
+      }),
+    ], { encoding: 'utf8' });
+    assert.equal(linked.status, 2);
+    assert.match(linked.stdout, /"state_path_symlink"|"state_missing"/);
+
+    // And the real receipt still releases, so the refusals above are about the
+    // receipts and not about the check.
+    const intact = spawnSync(process.execPath, [
+      INTAKE_CLI, ...releaseCheckCommand({
+        state: statePath, report: reportPath, target: 'changelog', root: fixture.repository,
+      }),
+    ], { encoding: 'utf8' });
+    assert.equal(intact.status, 0);
+  });
+});
+
+test('a refusal message names the input, not this module\'s internal key', () => {
+  withFixtureRepository((fixture) => {
+    const report = reportText();
+    const reportPath = path.join(fixture.outside, 'report.json');
+    fs.writeFileSync(reportPath, report);
+    const statePath = path.join(fixture.repository, '.skill-log', 'admission.json');
+
+    const missingApproval = spawnSync(process.execPath, [
+      INTAKE_CLI, ...admissionCommand({
+        report: reportPath,
+        target: 'changelog',
+        approval: path.join(fixture.outside, 'absent.json'),
+        root: fixture.repository,
+        state: statePath,
+      }),
+    ], { encoding: 'utf8' });
+    assert.equal(missingApproval.status, 2);
+    for (const internal of ['unreadableReport', 'malformedApproval', 'unreadableGuidance', 'stateMissing']) {
+      assert.ok(!missingApproval.stdout.includes(internal), `${internal} is an internal key, not prose`);
+    }
+    assert.match(missingApproval.stdout, /the approval receipt could not be read/);
   });
 });

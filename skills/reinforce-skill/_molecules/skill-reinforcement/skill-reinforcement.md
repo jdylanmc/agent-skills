@@ -38,11 +38,14 @@ describes it.
    package, and refuses `_base`, a missing target, and a traversal. It reports
    whether the target has an intent to judge against.
 2. [Report intake](../../_atoms/report-intake/report-intake.md) runs here and
-   **only** here, once, and **only** when the operator supplied a post-mortem
-   recommendation report. This molecule owns the ordering — the target is
+   **only** here, **exactly once**, for **either** source: with `--report` when
+   the operator supplied a post-mortem recommendation report, or with
+   `--guidance` when he supplied his own words. It owns normalization for both,
+   and what a report adds is a subflow — admission, approval, and the recorded
+   receipt — not a separate path. This molecule owns the ordering: the target is
    resolved first, because the approval is checked against it, and the change is
-   grounded afterwards on what intake returned — so nothing above re-runs it and
-   no second invocation rewrites the receipt. It admits at
+   grounded afterwards on what intake returned. Nothing above re-runs it and no
+   second invocation rewrites the receipt. It admits at
    most one, binds authority to the operator's approval over that report's exact
    digest and this target, keeps the recommendations that name this skill and
    reports the rest unapplied, and refuses a missing, ambiguous, malformed,
@@ -52,14 +55,17 @@ describes it.
    and one proposal per file, and records the admission as a bounded receipt in
    run-owned state that publication rechecks — a report admitted without that
    receipt grounds nothing. An approved report that applies to nothing here ends
-   the run with its exclusions reported and no change made. With no report, this
-   step does not run and the operator's own words are the change request,
-   grounded through the same command in the same shape; nothing manufactures a
-   report to fill the shape.
+   the run with its exclusions reported and no change made.
+
+   Invoked with `--guidance`, the same step returns the same normalized shape
+   from the operator's own words, unchanged. Only the report subflow is skipped:
+   there is no admission to record, no approval to check, and no receipt for
+   publication to re-derive. Nothing manufactures a report to fill the shape.
 3. [Change grounding](../../_atoms/change-grounding/change-grounding.md) reads
-   that intent as the standard, reads the current implementation, and takes the
-   change request from whichever source produced it, without inferring one. A
-   missing intent is reported and never blocks.
+   that intent as the standard, reads the current implementation, and consumes
+   the normalized change request intake returned — it never re-reads a report,
+   re-reads guidance, or infers a change request of its own. A missing intent is
+   reported and never blocks.
 4. [Intent decision](../../_atoms/intent-decision/intent-decision.md) decides
    explicitly whether the change alters what the skill is for. When it does, the
    revised intent is synthesized, confirmed with the operator on its exact

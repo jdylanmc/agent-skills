@@ -32,7 +32,7 @@ workflow:
 
 | Source | What the operator supplies | What supplies authority |
 | --- | --- | --- |
-| **Human guidance** | His own words, in whatever shape they arrive. | Invoking the run. |
+| **Human guidance** | His own words, in whatever shape they arrive, normalized by the same intake. | Invoking the run. |
 | **An approved report** | One post-mortem recommendation report, the skill it applies to, and an approval receipt. | The receipt, bound to that report's exact SHA-256 and that one target skill. |
 
 **A report is evidence, never permission.** It carries findings, anchors, and
@@ -64,10 +64,13 @@ approves that exact digest and that one target for this run.
    change; re-derive the graph; run the repository's real validation; and roast
    the result under `create-skill`'s rules.
 
-   Report intake is invoked there and nowhere else. Invoking it again from here
-   would re-run the admission and rewrite its receipt, which is how a run comes
-   to hold two receipts and publish against whichever it happened to keep. The
-   command and its rules live with
+   Report intake is invoked there and nowhere else, **exactly once, for either
+   source** — `--report` for an approved report, `--guidance` for the operator's
+   own words. It owns normalization for both; a report adds a subflow
+   (admission, approval, recorded receipt), not a second path. Invoking it again
+   from here would re-run the admission and rewrite its receipt, which is how a
+   run comes to hold two receipts and publish against whichever it happened to
+   keep. The command and its rules live with
    [report intake](./_atoms/report-intake/report-intake.md); what matters at
    this level is that an admission is recorded, because step 4 re-derives it.
 
@@ -81,11 +84,12 @@ approves that exact digest and that one target for this run.
      the run stops before the intent decision, the changelog, and the pull
      request, because there is no change to make.
 
-   With no report, intake does not run at all. Human guidance grounds through
-   the same command — `--guidance <text>`, `--guidance-file <path>`, or
-   `--guidance -` for standard input — producing the same normalized shape with
-   no report, no approval, and no receipt. No synthetic report is manufactured
-   to fill the shape.
+   With no report, intake still runs — with `--guidance <text>`,
+   `--guidance-file <path>`, or `--guidance -` for standard input — and returns
+   the same normalized shape from the operator's own words, unchanged. What is
+   skipped is only the report subflow: no admission, no approval, no receipt,
+   and no release check at publication. No synthetic report is manufactured to
+   fill the shape.
 
 3. **Record the change in the changelog.** Invoke `changelog` for an entry
    describing what changed for someone who uses the skill, and place the

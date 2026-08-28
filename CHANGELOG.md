@@ -161,8 +161,11 @@ below is unreleased and no comparison links are available.
   surface is canonicalized first and compared on file identity rather than
   spelling, so `SKILL.md`, `skills/<skill>/SKILL.md`, and `skill.md` are one
   file and a contradiction spelled two ways is still caught; a path naming
-  another package, `doctrine/`, an absolute location, a URL, or a name that
-  resolves differently on Windows than on Linux is refused rather than repaired.
+  another package, `doctrine/`, an absolute location, a URL, a name that resolves
+  differently on Windows than on Linux, or a name carrying a character nobody
+  can see — a soft hyphen, a zero-width space, a bidirectional override — is
+  refused rather than repaired, so an invisible character can never make one
+  file look like two.
   One file takes one proposal: the same proposal made twice deduplicates, and
   two different proposals about one file go back to you rather than being
   guessed into compatibility. Recommendation identifiers are bounded to a plain
@@ -180,8 +183,9 @@ below is unreleased and no comparison links are available.
   after the fact, stops the run rather than shipping. The pull request quotes that receipt, and
   says plainly that it binds bytes and choices rather than proving who was
   present. Nothing about the human-guidance path changed — it grounds through
-  the same command, from an argument, a file, or standard input; every named
-  input — report, approval, and guidance alike — is measured before it is read,
+  the same command — one place normalizes both sources, invoked exactly once a
+  run, with a report adding an admission subflow rather than a second path — from
+  an argument, a file, or standard input; every named input — report, approval, and guidance alike — is measured before it is read,
   refused through a symbolic link, and abandoned mid-stream once it passes its
   bound, and guidance needs no report, approval, or receipt; `post-mortem` is untouched, and no report is
   ever manufactured to satisfy a shape.

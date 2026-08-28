@@ -58,8 +58,13 @@ export class TargetError extends Error {
  * skill name?" with this definition rather than a second one. Two definitions
  * would eventually disagree, and the disagreement that matters is intake
  * admitting a target this guard would refuse.
+ *
+ * The length bound is part of the definition rather than a separate check for
+ * the same reason. A name arriving from an untrusted document is bounded where
+ * the shape is decided, so nothing downstream inherits a fifty-kilobyte "skill
+ * name" it then has to remember to truncate.
  */
-const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SKILL_NAME = /^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** Where classified paths may land. Only these are edited in a reinforcement. */
 export const WRITE_CLASS = {
