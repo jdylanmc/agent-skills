@@ -1553,11 +1553,16 @@ export function buildRefusalReceipt(result) {
  * earlier admitted receipt in place would let publication re-derive it and
  * proceed, so if this run cannot say "refused" at that path, the next best
  * outcome is that the path says nothing at all.
+ *
+ * `fileSystem` is the same substitution `readBoundedFile` takes: the boundary
+ * where this module touches storage, named so a caller can supply one that
+ * denies an operation. A denial is what this path exists for, and a permission
+ * mode does not produce one on every operating system this runs on.
  */
-export function clearAdmissionState(statePath, { repositoryRoot = null } = {}) {
+export function clearAdmissionState(statePath, { repositoryRoot = null, fileSystem = fs } = {}) {
   const { real } = assertStatePath(statePath, { repositoryRoot });
   try {
-    fs.rmSync(real, { force: true });
+    fileSystem.rmSync(real, { force: true });
   } catch (error) {
     throw new IntakeError(
       REFUSALS.stateUnwritable,
@@ -1575,21 +1580,21 @@ export function clearAdmissionState(statePath, { repositoryRoot = null } = {}) {
  * temporary file lives beside the destination so the rename stays on one
  * filesystem and is therefore atomic.
  */
-export function writeAdmissionState(statePath, receipt, { repositoryRoot = null } = {}) {
+export function writeAdmissionState(statePath, receipt, { repositoryRoot = null, fileSystem = fs } = {}) {
   const { real } = assertStatePath(statePath, { repositoryRoot });
   const directory = path.dirname(real);
   const temporary = path.join(directory, `.${path.basename(real)}.${crypto.randomUUID()}.part`);
   try {
-    fs.mkdirSync(directory, { recursive: true });
-    fs.writeFileSync(temporary, `${JSON.stringify(receipt, null, 2)}\n`);
-    fs.renameSync(temporary, real);
+    fileSystem.mkdirSync(directory, { recursive: true });
+    fileSystem.writeFileSync(temporary, `${JSON.stringify(receipt, null, 2)}\n`);
+    fileSystem.renameSync(temporary, real);
   } catch (error) {
     throw new IntakeError(REFUSALS.stateUnwritable, `the admission receipt could not be written: ${error.code}`);
   } finally {
     // A failed rename leaves the part file behind, and a directory slowly
     // filling with half-receipts is the kind of litter nobody attributes to the
     // run that made it.
-    fs.rmSync(temporary, { force: true });
+    fileSystem.rmSync(temporary, { force: true });
   }
   return real;
 }
@@ -2004,7 +2009,7 @@ export function readBoundedGuidance(source, { fileSystem = fs, sleep = null } = 
   return Buffer.concat(chunks, total).toString('utf8');
 }
 
-export function run(argv, streams = process) {
+export function run(argv, streams = process, { fileSystem = fs } = {}) {
   let parsed;
   try {
     parsed = parseArguments(argv);
@@ -2193,7 +2198,7 @@ export function run(argv, streams = process) {
     ? buildRefusalReceipt(decided)
     : buildAdmissionReceipt(decided);
   try {
-    writeAdmissionState(parsed.state, receipt, { repositoryRoot: parsed.root });
+    writeAdmissionState(parsed.state, receipt, { repositoryRoot: parsed.root, fileSystem });
   } catch (error) {
     const failures = [{ code: error.code, message: error.message }];
     // A refusal whose receipt could not be written is the dangerous case: an
@@ -2203,7 +2208,7 @@ export function run(argv, streams = process) {
     admissionState = 'not-recorded';
     if (receipt.status !== 'admitted') {
       try {
-        clearAdmissionState(parsed.state, { repositoryRoot: parsed.root });
+        clearAdmissionState(parsed.state, { repositoryRoot: parsed.root, fileSystem });
         admissionState = 'cleared';
       } catch (removalError) {
         failures.push({
