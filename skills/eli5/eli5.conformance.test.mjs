@@ -4,6 +4,35 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * What this suite verifies, and what it can only pin as a stated contract.
+ *
+ * Issue criterion 10 asks for deterministic coverage of six properties. They do
+ * not all admit the same kind of proof, and this file does not pretend they do.
+ *
+ * ENFORCED BEHAVIOURALLY — asserted against executed code or parsed structure,
+ * so a real regression fails the test:
+ *   - section count and order, concise style constraints (criteria 2, 3): read
+ *     straight off the checker's exported constants and the parsed headings; and
+ *   - the read-only boundary (criteria 1, 9): read off the resolved tool grant
+ *     and the pinned frontmatter, which a widening change would break.
+ *
+ * PINNED AS A STATED CONTRACT — asserted only as authored prose in the atoms'
+ * Markdown, so these are drift detectors on a promise, not proofs of behaviour:
+ *   - adaptive audience (criterion 4),
+ *   - repository grounding (criteria 5, 6), and
+ *   - evidence honesty for an ungroundable subject (criteria 7, 8).
+ * These are semantic properties of a generated explanation, observable only at
+ * runtime. A static suite that claimed to verify them would be making exactly
+ * the promise the checker's own "structure and repetition, not depth" disclaimer
+ * refuses to make: no arithmetic decides whether the junior rung adapted to the
+ * right field, whether grounding went deep enough, or whether a limit was stated
+ * instead of invented. The prose-pinning tests still earn their place — they
+ * catch a silent reword that would erase the contract from the docs — but their
+ * titles say "pins the contract", never "verifies the behaviour", so no reader
+ * mistakes a passing suite for a runtime guarantee.
+ */
+
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import {
@@ -126,7 +155,7 @@ test('the concise, bullet-heavy style is stated and pinned to the checker consta
   assert.ok(ladder.includes(String(MINIMUM_BULLETS)), `states the ${MINIMUM_BULLETS}-bullet minimum`);
 });
 
-test('the junior audience adapts to the subject domain rather than defaulting to software (criterion 4)', () => {
+test('the package pins the adaptive-audience contract in prose — the junior rung names the subject\'s own field, not a software default (criterion 4)', () => {
   const ladder = flat(LADDER);
 
   assert.match(ladder, /junior practitioner of the subject's own field/);
@@ -137,7 +166,7 @@ test('the junior audience adapts to the subject domain rather than defaulting to
   assert.match(ladder, /do not silently fall back to software engineering/);
 });
 
-test('repository subjects are grounded before explaining, and grounding is bounded (criteria 5, 6)', () => {
+test('the package pins the repository-grounding contract in prose — ground first, bounded, no inventory dump (criteria 5, 6)', () => {
   const grounding = flat(GROUNDING);
   const entry = flat(ENTRY);
 
@@ -150,7 +179,7 @@ test('repository subjects are grounded before explaining, and grounding is bound
   assert.match(grounding, /warm context, not a complete one/);
 });
 
-test('deeper levels may qualify earlier simplifications and must not repeat them (criterion 7)', () => {
+test('the package pins the progression-not-repetition contract in prose — deeper rungs may qualify, never restate (criterion 7)', () => {
   const ladder = flat(LADDER);
 
   assert.match(ladder, /Each rung \*\*adds depth\*\*/);
@@ -159,7 +188,7 @@ test('deeper levels may qualify earlier simplifications and must not repeat them
   assert.match(ladder, /content-repeated/);
 });
 
-test('an ungroundable or ambiguous subject yields a bounded limit, never invention (criterion 8)', () => {
+test('the package pins the evidence-honesty contract in prose — an ungroundable subject yields a bounded limit, never invention (criterion 8)', () => {
   const grounding = flat(GROUNDING);
 
   assert.match(grounding, /unresolvable/);

@@ -93,10 +93,15 @@ them is not concise.
 - Each rung **adds depth** the rung below it did not have.
 - A deeper rung may **qualify or correct** an earlier simplification. That is
   the point of the ladder, not a contradiction.
-- No rung **restates** a line from another rung. Repeating a sentence — even
-  reworded, re-emphasised, or repunctuated — is the failure the checker calls
-  `content-repeated`, and it is the issue's explicit non-goal: one explanation
-  with three headings.
+- No rung **restates** a line from another rung. That rule is a contract the
+  drafting agent must honour; one explanation with three headings is the issue's
+  explicit non-goal. What the checker actually catches is narrower: repeating a
+  line that differs only by **punctuation, emphasis, bullet style, or letter
+  case** is the failure it calls `content-repeated`. A genuinely **reworded**
+  restatement — the same point in different words — normalises differently and
+  passes as `ladder-ok`, so keeping each rung distinct in substance is a
+  judgement the checker cannot make, consistent with its "structure and
+  repetition, not depth" disclaimer below.
 
 ## Required Files
 

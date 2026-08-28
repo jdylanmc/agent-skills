@@ -67,6 +67,11 @@ Return, concisely:
 
 ## Boundaries
 
+- The ladder checker enforces **structure** — three levels, once each, in
+  order, concise, bulleted, no line literally restated. **Audience adaptation**,
+  **grounding depth**, and **evidence honesty** are contracts a reviewer judges,
+  not arithmetic anyone can run: they are semantic properties of a generated
+  explanation, visible only at runtime, so no static check verifies them.
 - Read-only. This skill writes no files, opens no issues, edits no work items,
   changes no branches, and commits nothing. It performs no edits, mutations, or
   publication. Its only permitted write is the bounded Chronicler Skill Run Log.
