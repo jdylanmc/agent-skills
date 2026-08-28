@@ -28,6 +28,7 @@ import { GOVERNANCE } from './_atoms/doctrine-select/doctrine-select.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
+const AGENTS_ROOT = path.join(REPOSITORY_ROOT, 'agents');
 const ENTRY = 'roast/SKILL.md';
 
 /** The exact grant every predecessor skill declared. Widening is a decision. */
@@ -37,8 +38,36 @@ function read(relativePath) {
   return fs.readFileSync(path.join(SKILLS_ROOT, ...relativePath.split('/')), 'utf8');
 }
 
+function readAgent(relativePath) {
+  return fs.readFileSync(path.join(AGENTS_ROOT, ...relativePath.split('/')), 'utf8');
+}
+
 function frontmatter(relativePath) {
   return readFrontmatter(read(relativePath), relativePath);
+}
+
+function markdownSection(document, heading) {
+  const level = heading.match(/^#+/)?.[0].length;
+  assert.ok(level, `invalid heading: ${heading}`);
+  const lines = document.replace(/\r\n/g, '\n').split('\n');
+  const body = [];
+  let inside = false;
+  for (const line of lines) {
+    if (line.trim() === heading) {
+      inside = true;
+      continue;
+    }
+    if (!inside) {
+      continue;
+    }
+    const nextHeading = /^(#{1,6})\s+/.exec(line);
+    if (nextHeading && nextHeading[1].length <= level) {
+      break;
+    }
+    body.push(line);
+  }
+  assert.ok(inside, `${heading} must exist`);
+  return body.join('\n');
 }
 
 test('the roast skill declares exactly the pinned tool grant', () => {
@@ -150,6 +179,29 @@ test('the spec type is a profile row rather than a second review framework', () 
   assert.ok(branch.includes('roast/_atoms/spec-pair/spec-pair.md'));
   assert.ok(branch.includes('roast/_atoms/spec-authority-screen/spec-authority-screen.md'));
   assert.ok(branch.includes('roast/_atoms/roast-contract/roast-contract.md'));
+});
+
+test('the roastmaster contract admits the spec pair record it stages', () => {
+  const contract = readAgent('artifact-roastmaster.agent.md');
+  const role = markdownSection(contract, '## Role');
+  assert.match(role, /specification pair/);
+
+  const bothModes = markdownSection(contract, '### Both modes');
+  const artifactTypeInput = bothModes
+    .split('\n')
+    .find((line) => line.includes('`artifact type`'));
+  assert.ok(artifactTypeInput, 'the shared inputs must declare the artifact type');
+  assert.match(artifactTypeInput, /`spec`/);
+
+  const coordinateMode = markdownSection(contract, '### Coordinate mode only');
+  const specInput = coordinateMode
+    .split(/\n(?=- )/)
+    .find((block) => block.startsWith('- for artifact type `spec`,'));
+  assert.ok(specInput, 'coordinate mode must accept the supplied spec pair record');
+  assert.match(specInput, /spec pair record/);
+  assert.match(specInput, /verified guidance about the structure of the pair/);
+  assert.match(specInput, /never as a finding/);
+  assert.match(specInput, /never carrying a severity/);
 });
 
 test('a spec pair reaches the artifact branch end to end, and never the code branch', (t) => {

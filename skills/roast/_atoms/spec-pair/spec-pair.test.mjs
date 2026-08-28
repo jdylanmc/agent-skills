@@ -609,6 +609,41 @@ test('a quoted requirement inside a fenced block is evidence, not a requirement'
   assert.deepEqual(record.observations, []);
 });
 
+test('a shorter marker does not close a longer fenced block', (t) => {
+  const root = workspace(t);
+  writePair(root, {
+    full: [
+      '# Checkout hold, in full',
+      '',
+      '## Quoted example',
+      '',
+      '````markdown',
+      '```text',
+      'The basket must never expire.',
+      '````',
+      '',
+      'Every reservation must pass a fraud screen before it is confirmed.',
+      '',
+    ].join('\n'),
+  });
+
+  const record = stageSpecPair({
+    specPath: path.join(root, 'checkout-hold.nano.md'),
+    repositoryRoot: root,
+  });
+
+  assert.deepEqual(
+    record.traceability.untracedRequirements.map((entry) => entry.text),
+    ['Every reservation must pass a fraud screen before it is confirmed.'],
+  );
+  assert.deepEqual(
+    record.observations
+      .filter((entry) => entry.rule === 'untraced-requirement')
+      .map((entry) => entry.excerpt),
+    ['Every reservation must pass a fraud screen before it is confirmed.'],
+  );
+});
+
 test('a nano artifact missing its identifier, criteria, or scope is recorded', (t) => {
   const root = workspace(t);
   writePair(root, {

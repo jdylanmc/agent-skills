@@ -186,10 +186,10 @@ function scan(text) {
     const raw = lines[index];
     const fenceMatch = FENCE_LINE.exec(raw);
     if (fenceMatch) {
-      const token = fenceMatch[1];
+      const marker = fenceMatch[1];
       if (fence === null) {
-        fence = token[0];
-      } else if (token[0] === fence) {
+        fence = marker;
+      } else if (marker[0] === fence[0] && marker.length >= fence.length) {
         fence = null;
       }
       records.push({ number: index + 1, text: raw, fenced: true });
