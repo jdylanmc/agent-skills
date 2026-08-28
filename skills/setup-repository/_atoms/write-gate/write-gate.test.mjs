@@ -1288,3 +1288,74 @@ test('WIN-1: with neither primitive available the gate fails closed', (t) => {
   assert.equal(result.status, 'blocked');
   assert.match(result.detail, /no safe-open primitive/);
 });
+
+test('WIN-1: check-open-verify branch overwrites an existing target and reads it back', (t) => {
+  // Regression: an earlier version opened the target with O_WRONLY on the
+  // Windows branch. `fstatSync` on a write-only handle needs
+  // FILE_READ_ATTRIBUTES, which Windows' GENERIC_WRITE alone does not
+  // grant, so every fstat threw EACCES and every real overwrite returned
+  // `blocked`. This test forces the check-open-verify branch on POSIX,
+  // seeds a target with different content, and requires the overwrite to
+  // land AND read back.
+  const restore = _setPlatformCapabilityForTests({ atomicNoFollow: false, oNoFollow: 0 });
+  t.after(restore);
+
+  const root = workspace(t);
+  const artifacts = renderArtifacts(normalizeContext(PROVIDER_INPUTS.github).context);
+  const seedPath = path.join(root, artifacts[0].path);
+  fs.mkdirSync(path.dirname(seedPath), { recursive: true });
+  fs.writeFileSync(seedPath, 'an older configuration');
+
+  const preview = buildPreview({ repositoryRoot: root, artifacts });
+  assert.equal(preview.entries[0].action, 'overwrite');
+
+  const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
+  assert.equal(result.status, 'configured', result.detail);
+  assert.equal(result.readback[0].change, 'overwritten');
+  assert.equal(fs.readFileSync(seedPath, 'utf8'), artifacts[0].content);
+});
+
+test('WIN-1: check-open-verify rollback residue names a target whose restore failed', (t) => {
+  // Regression: the same O_WRONLY defect made rollback's own write open a
+  // fresh handle whose fstat failed, so a commit-time write failure
+  // returned `blocked` with an EMPTY residue instead of naming the file.
+  // This test forces the check-open-verify branch on POSIX and injects a
+  // failure on BOTH the commit write and the rollback restore write; the
+  // residue must name the target.
+  const restore = _setPlatformCapabilityForTests({ atomicNoFollow: false, oNoFollow: 0 });
+  t.after(restore);
+
+  const root = workspace(t);
+  const artifacts = renderArtifacts(normalizeContext(PROVIDER_INPUTS.github).context);
+  const target = path.join(root, artifacts[0].path);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, 'prior');
+  const preview = buildPreview({ repositoryRoot: root, artifacts });
+
+  const originalWriteFileSync = fs.writeFileSync;
+  let commitDone = false;
+  fs.writeFileSync = (target_, data, ...rest) => {
+    if (typeof target_ === 'number') {
+      if (!commitDone) {
+        commitDone = true;
+        const error = new Error('injected commit write failure');
+        error.code = 'EIO';
+        throw error;
+      }
+      const error = new Error('injected rollback write failure');
+      error.code = 'EIO';
+      throw error;
+    }
+    return originalWriteFileSync(target_, data, ...rest);
+  };
+  t.after(() => { fs.writeFileSync = originalWriteFileSync; });
+
+  const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
+  assert.equal(result.status, 'blocked', result.detail);
+  assert.equal(result.written, false);
+  assert.ok(Array.isArray(result.rollbackRemaining));
+  assert.ok(
+    result.rollbackRemaining.some((entry) => entry.relativePath === artifacts[0].path),
+    `residue must name ${artifacts[0].path}: ${JSON.stringify(result.rollbackRemaining)}`,
+  );
+});

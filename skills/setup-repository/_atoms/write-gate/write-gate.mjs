@@ -638,8 +638,8 @@ function openTargetForWrite(absolutePath, action) {
   }
 
   const flags = action === 'create'
-    ? (fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY)
-    : (fs.constants.O_TRUNC | fs.constants.O_WRONLY);
+    ? (fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_RDWR)
+    : (fs.constants.O_TRUNC | fs.constants.O_RDWR);
 
   let fd;
   try {
@@ -649,6 +649,15 @@ function openTargetForWrite(absolutePath, action) {
   }
 
   try {
+    // The post-open fstat is what confirms the descriptor still identifies
+    // the entry the pre-open `lstat` saw. On Windows this is why the open
+    // uses `O_RDWR` rather than `O_WRONLY`: NtQueryInformationFile
+    // (which powers fstat under libuv) needs FILE_READ_ATTRIBUTES on the
+    // handle, and Windows' GENERIC_WRITE (the mapping for O_WRONLY alone)
+    // omits that right — so an O_WRONLY handle would fail every fstat call
+    // with EACCES and turn every overwrite into `blocked` on the Windows
+    // job. GENERIC_READ | GENERIC_WRITE (the mapping for O_RDWR) includes
+    // FILE_READ_ATTRIBUTES and lets the identity check run.
     const postStat = fs.fstatSync(fd);
     if (!postStat.isFile()) {
       try { fs.closeSync(fd); } catch { /* noop */ }

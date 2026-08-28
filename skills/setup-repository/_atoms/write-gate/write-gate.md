@@ -95,11 +95,13 @@ capability-selected safe open. On POSIX the gate uses a single atomic
 the final component fails at the open call itself. On Windows `O_NOFOLLOW`
 does not exist, so the gate uses **check-open-verify**: `lstatSync` the
 target and refuse a symbolic link or reparse point, `openSync` (with the
-same `O_CREAT | O_EXCL` or `O_TRUNC` flags), then `fstatSync` the descriptor
-and confirm `(dev, ino)` still identify the entry the pre-open `lstat` saw.
-The same capability selection is applied to every snapshot read, every
-rollback restoration open, and every readback. If a hypothetical platform
-exposed neither the atomic `O_NOFOLLOW` open nor the `lstat`/`open`/`fstat`
+same `O_CREAT | O_EXCL` or `O_TRUNC` flags, but `O_RDWR` in place of
+`O_WRONLY` so the post-open `fstatSync` has the `FILE_READ_ATTRIBUTES`
+right it needs on Windows), then `fstatSync` the descriptor and confirm
+`(dev, ino)` still identify the entry the pre-open `lstat` saw. The same
+capability selection is applied to every snapshot read, every rollback
+restoration open, and every readback. If a hypothetical platform exposed
+neither the atomic `O_NOFOLLOW` open nor the `lstat`/`open`/`fstat`
 sequence, the gate would **fail closed** with `blocked` rather than open a
 symbolic link.
 
