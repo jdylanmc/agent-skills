@@ -576,9 +576,11 @@ test('the required up-to-date policy is adapter evidence, not core vocabulary', 
   assert.match(state, /The Required Up-To-Date Policy/);
   assert.match(state, /`unobserved` is never reported as `not-required`/);
   assert.match(state, /This unit still exposes exactly the three operations above/);
-  // Azure's policy is read from the policy list in read-checks, not inferred
-  // from a pull-request-show response.
-  assert.match(state, /read instead from the\s+policy-evaluation list that `read-checks`/);
+  // GitHub surfaces the requirement through `mergeStateStatus: BEHIND`; Azure
+  // DevOps does not surface it at all, so its policy is always `unobserved`
+  // rather than inferred from a policy display name.
+  assert.match(state, /`mergeStateStatus: BEHIND`.*yields\s+`required`/s);
+  assert.match(state, /Azure's `upToDatePolicy` is always `unobserved`/);
 
   // The core consumes the normalized signal and still resolves nothing itself.
   assert.match(core, /`up-to-date-policy`/);

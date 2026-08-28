@@ -54,11 +54,13 @@ consumes, and the translation shapes live in the shared
   the policy/administrative block, and the review decision in separate fields,
   so a blocked or review-required change request reaches `needs-human` rather
   than a green disposition, and a review block never triggers a rebase.
-- **Base up-to-date policy.** Source `basePolicy.upToDate` per provider from the
-  read that actually carries it: for GitHub, from the `read-state` result
-  (`mergeStateStatus: BEHIND`); for Azure DevOps, from the `read-checks` result,
-  whose policy list carries the up-to-date evaluation. A pull-request-show
-  response does not carry the Azure policy, so it is never sourced from there.
+- **Base up-to-date policy.** Only GitHub surfaces this policy, from the
+  `read-state` result (`mergeStateStatus: BEHIND`); source `basePolicy.upToDate`
+  from there. Azure DevOps' up-to-date requirement is not observable — there is
+  no first-class branch-policy type equivalent to GitHub's "require branches to
+  be up to date", and neither a pull-request-show response nor the policy list
+  carries it — so `basePolicy.upToDate` is `unobserved` for Azure, and an
+  `unobserved` policy is never treated as a requirement.
 
 ## Workflow
 
@@ -84,6 +86,14 @@ consumes, and the translation shapes live in the shared
    adapter reported that the base requires the branch to contain it and git
    ancestry says it does not. That branch is already unlandable, so it is a
    trigger rather than a no-op. An `unobserved` policy is not a requirement.
+   The green no-op also requires three exclusions the disposition planner
+   applies: the change request is **not explicitly blocked** (`blocked !== true`
+   — a policy or administrative block no rebase can clear), its **merge-block
+   state was observed** (not `unobserved`/`null`), and **no review decision
+   blocks it** (the review is `approved` or `unobserved`, never
+   `changes-requested` or `review-required`). If any holds, do not return a
+   green no-op; fall through to observe state so the terminal classifier renders
+   `blocked`/`needs-human`.
 6. When a trigger exists, rebase the branch onto the fetched base SHA and report
    the commits that moved.
 7. If the rebase stops, use [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md).

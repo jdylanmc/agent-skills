@@ -73,6 +73,14 @@ Shepherd has two explicit layers:
 4. If the base moved while the branch remains mergeable and green by available
    git/provider evidence, and the base does not require the branch to contain
    it, return `no-op-mergeable-and-green`; do not rebase and do not force-push.
+   A green no-op additionally requires that the change request is **not
+   explicitly blocked** (`blocked !== true` — a policy or administrative block a
+   rebase cannot clear), that its **merge-block state was observed** (not
+   `unobserved`/`null`, which is not clearance), and that **no review decision
+   blocks it** — the review is `approved` or `unobserved`, never
+   `changes-requested` or `review-required`. If any of those holds, this is not
+   a green no-op; fall through to observe state and let the terminal classifier
+   render `blocked`/`needs-human`.
 5. When a rebase trigger exists, rebase the pull request branch onto the fetched
    base SHA. Report the old base, new base, original head, final head, and moved
    commits.

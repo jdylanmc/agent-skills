@@ -48,8 +48,9 @@ Use this only when detection reports `supported-provider`.
 | `unresolved-review-threads` | A read result. | Threads not reported resolved, or an explicit statement that threads were not read. |
 
 GitHub exposes thread resolution only through GraphQL, which `gh api graphql`
-reaches with the tool's own authentication, host configuration, and `--paginate`
-cursor handling. The document is a query; a mutation document is refused. On an
+reaches with the tool's own authentication, host configuration, and
+`--paginate --slurp` cursor handling (`--slurp` merges the paginated pages into
+one JSON array). The document is a query; a mutation document is refused. On an
 enterprise or self-hosted host, the host detected by `provider-detect` is passed
 to `gh api` as `--hostname`, because `gh api` otherwise defaults to `github.com`.
 Azure DevOps has no first-class thread subcommand, so threads are read through
@@ -72,9 +73,9 @@ only one of them is safe to act on, so an unread result is never normalized to
 an empty list. A thread with unknown resolution state counts as unresolved,
 because an unknown blocking comment is treated as blocking.
 
-A partial read is its own case. `gh api graphql --paginate` emits one JSON
-object per page, so a GitHub response may be a single page object or an array of
-them; the pages are aggregated. Outer completeness comes from the final page's
+A partial read is its own case. `gh api graphql --paginate --slurp` collects the
+per-page JSON into a single array, so a GitHub response may be a single page
+object or an array of them; the pages are aggregated. Outer completeness comes from the final page's
 `reviewThreads.pageInfo.hasNextPage`, and each thread's nested `comments`
 connection carries its own `pageInfo.hasNextPage`. Completeness is confirmed
 only by an explicit `hasNextPage === false`: a `true` is a truncated read, and
@@ -86,9 +87,19 @@ and names it in `incomplete`, and that `complete` flag — with the `incomplete`
 list — propagates through `unresolved-review-threads`. An unread or unconfirmed
 read must never masquerade as a complete one, because "these are all the
 threads" and "these are the threads I managed to read" are different claims. The
-Azure DevOps branch sets `complete: true`: `az devops invoke` returns the whole
-thread collection without a cursor, so there is no completeness signal to
-confirm.
+Azure DevOps branch is unconfirmed for the same reason, so it reports
+`complete: false`: `az devops invoke` returns the thread collection without any
+pagination cursor in its JSON body, so a truncated list would read as the whole
+conversation. There is no completeness signal to confirm, so the Azure read
+keeps the threads it read but marks the thread list `completeness-unconfirmed`
+in `incomplete` — it is never reported complete.
+
+## `--paginate --slurp`
+
+`gh api graphql --paginate` alone emits concatenated JSON values, not one array,
+so pages after the first would never merge; the built command and the sanctioned
+shapes therefore pass `--slurp` immediately after `--paginate`, which collects
+the pages into a single JSON array that the aggregation above consumes.
 
 ## Untrusted Data
 

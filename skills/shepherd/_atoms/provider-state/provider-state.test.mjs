@@ -59,7 +59,10 @@ const AZURE = detectProvider({
 const GITHUB_TARGET = { changeRequest: 42, repository: { slug: 'example/repo' } };
 const AZURE_TARGET = {
   changeRequest: 42,
-  repository: { organizationUrl: 'https://dev.azure.com/contoso', project: 'project', name: 'repo' },
+  // The state reads (`az repos pr show` / `policy list`) address a pull request
+  // by organization alone, so only `organizationUrl` is required here — the
+  // project and repository name the old requirement demanded are not used.
+  repository: { organizationUrl: 'https://dev.azure.com/contoso' },
 };
 
 const ALL_BUILDERS = [resolveTargetCommand, mergeStateCommand, validationStatusCommand];
@@ -134,11 +137,11 @@ test('a malformed repository address is rejected rather than interpolated', () =
     (error) => error.code === 'invalid-repository',
   );
   assert.throws(
-    () => resolveTargetCommand(AZURE, { changeRequest: 42, repository: { organizationUrl: 'http://insecure.example', project: 'p', name: 'r' } }),
+    () => resolveTargetCommand(AZURE, { changeRequest: 42, repository: { organizationUrl: 'http://insecure.example' } }),
     (error) => error.code === 'invalid-repository',
   );
   assert.throws(
-    () => resolveTargetCommand(AZURE, { changeRequest: 42, repository: { organizationUrl: 'https://dev.azure.com/contoso', project: '', name: 'r' } }),
+    () => resolveTargetCommand(AZURE, { changeRequest: 42, repository: { organizationUrl: '' } }),
     (error) => error.code === 'invalid-repository',
   );
   // An organization URL pointing at a different host than detection is a
@@ -146,10 +149,22 @@ test('a malformed repository address is rejected rather than interpolated', () =
   assert.throws(
     () => resolveTargetCommand(AZURE, {
       changeRequest: 42,
-      repository: { organizationUrl: 'https://dev.azure.example.invalid/contoso', project: 'project', name: 'repo' },
+      repository: { organizationUrl: 'https://dev.azure.example.invalid/contoso' },
     }),
     (error) => error.code === 'repository-host-mismatch',
   );
+});
+
+test('an Azure state read needs only an organization URL, not project or name', () => {
+  // `az repos pr show` and `az repos pr policy list` take only `--id` and
+  // `--org`; a pull-request id is unique per organization, so requiring project
+  // and name would validate an address the command never uses.
+  for (const build of ALL_BUILDERS) {
+    const command = build(AZURE, { changeRequest: 42, repository: { organizationUrl: 'https://dev.azure.com/contoso' } });
+    assert.equal(command.ok, true);
+    assert.ok(command.args.includes('--org') && command.args.includes('https://dev.azure.com/contoso'));
+    assert.ok(command.args.includes('--id') && command.args.includes('42'));
+  }
 });
 
 test('the read-only allow-list refuses every write, including the ones a deny-list misses', () => {
@@ -296,6 +311,20 @@ test('a change request blocked by required review is not flattened to mergeable'
   assert.equal(changesRequested.reviewDecision, 'changes-requested');
 });
 
+test('a DRAFT merge-state status is blocking even when isDraft is absent', () => {
+  // A payload can carry `mergeStateStatus: DRAFT` without `isDraft: true`; a
+  // draft change request is not mergeable and must reach a human.
+  const draft = interpretMergeState(GITHUB, {
+    mergeable: 'MERGEABLE',
+    mergeStateStatus: 'DRAFT',
+    reviewDecision: 'APPROVED',
+  });
+
+  assert.equal(draft.mergeStateStatus, 'draft');
+  assert.equal(draft.blocked, true, 'a draft is blocked regardless of the isDraft field');
+  assert.equal(draft.isDraft, null, 'the isDraft field was absent, but the status still blocks');
+});
+
 test('an unreported merge-state status or review decision is unobserved, never a negative', () => {
   const state = interpretMergeState(GITHUB, { mergeable: 'MERGEABLE', mergeStateStatus: 'UNKNOWN' });
 
@@ -331,32 +360,32 @@ test('Azure review state comes from reviewer votes on the pull request payload',
   assert.equal(noReviewers.reviewDecision, 'unobserved', 'no reviewer collection is unobserved, never approved');
 });
 
-test('an Azure up-to-date policy is read from the policy list, required only when a matching evaluation is visible', () => {
-  // The policy comes from `az repos pr policy list` (read-checks), which
-  // genuinely carries policy evaluations — not from a pull-request-show
-  // response, which never carried the field the old test fabricated onto it.
-  const required = interpretValidation(AZURE, [
-    { evaluationId: 'e1', status: 'approved', configuration: { isBlocking: true, type: { displayName: 'Require branch to be up to date' } } },
+test('the Azure up-to-date requirement is not observable, so it is always unobserved', () => {
+  // There is no first-class Azure DevOps branch-policy type equivalent to
+  // GitHub's "require branches to be up to date", so it cannot be read from
+  // `az repos pr policy list` — regardless of what evaluations the list carries.
+  const withBuild = interpretValidation(AZURE, [
+    { evaluationId: 'e1', status: 'approved', configuration: { isBlocking: true, type: { displayName: 'Build' } } },
   ]);
-  assert.equal(required.upToDatePolicy, 'required');
+  assert.equal(withBuild.observed, true);
+  assert.equal(withBuild.upToDatePolicy, 'unobserved');
 
-  // A readable list with no up-to-date policy is direct evidence of its absence.
-  const notRequired = interpretValidation(AZURE, [
-    { evaluationId: 'e1', status: 'approved', configuration: { isBlocking: true, type: { displayName: 'Minimum number of reviewers' } } },
-  ]);
-  assert.equal(notRequired.upToDatePolicy, 'not-required', 'a present list with no such policy proves it is absent');
+  const emptyList = interpretValidation(AZURE, []);
+  assert.equal(emptyList.observed, true);
+  assert.equal(emptyList.upToDatePolicy, 'unobserved', 'an empty policy list does not prove absence of the requirement either');
 
-  // An unreadable list is unobserved: the read never produced a policy list.
-  const unreadable = interpretValidation(AZURE, { count: 3 });
-  assert.equal(unreadable.observed, false);
-  assert.equal(unreadable.upToDatePolicy, undefined);
-
-  // The Azure pull-request-show response no longer carries an up-to-date policy;
-  // read-state reports it unobserved regardless of any evaluations on the show.
+  // The Azure pull-request-show response likewise carries no up-to-date policy;
+  // read-state reports it unobserved.
   const fromShow = interpretMergeState(AZURE, { mergeStatus: 'succeeded' });
   assert.equal(fromShow.upToDatePolicy, 'unobserved');
 
-  // GitHub's status rollup proves nothing about branch policy.
+  // GitHub still surfaces the requirement from read-state `mergeStateStatus: BEHIND`.
+  const behind = interpretMergeState(GITHUB, {
+    mergeable: 'MERGEABLE', mergeStateStatus: 'BEHIND', reviewDecision: 'APPROVED',
+  });
+  assert.equal(behind.upToDatePolicy, 'required');
+
+  // GitHub's status rollup (read-checks) proves nothing about branch policy.
   const github = interpretValidation(GITHUB, {
     statusCheckRollup: [{ name: 'validate', status: 'COMPLETED', conclusion: 'SUCCESS' }],
   });

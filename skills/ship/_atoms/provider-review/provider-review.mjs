@@ -35,7 +35,10 @@ export { ProviderCommandError };
 /**
  * GitHub exposes thread resolution only through its GraphQL API, which `gh api
  * graphql` reaches with the tool's own authentication, host configuration, and
- * `--paginate` cursor handling. The document is a query, never a mutation.
+ * `--paginate` cursor handling. `--slurp` collects the concatenated per-page
+ * JSON values `--paginate` emits into a single JSON array, so pages after the
+ * first are actually merged rather than dropped; `interpretReviewThreads`
+ * accepts that array. The document is a query, never a mutation.
  */
 export const GITHUB_REVIEW_THREADS_QUERY = `query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
   repository(owner: $owner, name: $name) {
@@ -72,8 +75,8 @@ const GITHUB_REVIEW_FIELDS = [
  * pinned to an explicit `GET`.
  */
 export const SANCTIONED_READS = Object.freeze([
-  { tool: 'gh', argv: ['api', 'graphql', '--paginate', ...GITHUB_REVIEW_FIELDS] },
-  { tool: 'gh', argv: ['api', 'graphql', '--paginate', '--hostname', { value: true }, ...GITHUB_REVIEW_FIELDS] },
+  { tool: 'gh', argv: ['api', 'graphql', '--paginate', '--slurp', ...GITHUB_REVIEW_FIELDS] },
+  { tool: 'gh', argv: ['api', 'graphql', '--paginate', '--slurp', '--hostname', { value: true }, ...GITHUB_REVIEW_FIELDS] },
   {
     tool: 'az',
     argv: [
@@ -124,7 +127,7 @@ export function reviewThreadsCommand(detection, { changeRequest, repository } = 
       provider: 'github',
       tool: 'gh',
       args: [
-        'api', 'graphql', '--paginate',
+        'api', 'graphql', '--paginate', '--slurp',
         ...githubApiHostFlags(detection),
         '-F', `owner=${owner}`,
         '-F', `name=${name}`,
@@ -203,16 +206,22 @@ const AZURE_RESOLVED_STATUSES = new Set(['fixed', 'closed', 'wontFix', 'byDesign
  * list, because "no threads" and "threads not read" lead a caller to opposite
  * conclusions and only one of them is safe to act on.
  *
- * `gh api graphql --paginate` emits one JSON object per page, so the GitHub
- * payload may be either a single page object or an array of them; the pages are
- * aggregated here. A read is `complete` only when every connection our query
- * requested `pageInfo` for confirms it with `hasNextPage === false`. A
- * `hasNextPage === true` is a truncated read; an absent or non-boolean
- * `hasNextPage` on a requested connection is unconfirmed, which is not a
- * complete read either. A read that is truncated or unconfirmed keeps the
- * threads it did read but reports `complete: false` and names what was
- * truncated or left unconfirmed, so an incomplete read never masquerades as a
- * complete one.
+ * `gh api graphql --paginate --slurp` collects the per-page JSON values into a
+ * single array, so the GitHub payload may be either a single page object or an
+ * array of them; the pages are aggregated here. A read is `complete` only when
+ * every connection our query requested `pageInfo` for confirms it with
+ * `hasNextPage === false`. A `hasNextPage === true` is a truncated read; an
+ * absent or non-boolean `hasNextPage` on a requested connection is unconfirmed,
+ * which is not a complete read either. A read that is truncated or unconfirmed
+ * keeps the threads it did read but reports `complete: false` and names what
+ * was truncated or left unconfirmed, so an incomplete read never masquerades as
+ * a complete one.
+ *
+ * Azure DevOps (`az devops invoke`) surfaces no pagination cursor in its JSON
+ * body, so its completeness cannot be confirmed. The Azure path therefore
+ * reports `complete: false` with an `incomplete` entry marking the thread list
+ * as `completeness-unconfirmed`, keeping the threads it read — it is never
+ * reported complete.
  */
 export function interpretReviewThreads(detection, payload) {
   const guard = requireObservableProvider(detection);
@@ -286,11 +295,17 @@ export function interpretReviewThreads(detection, payload) {
   if (!value) {
     return unobserved('review-threads-absent', ['value']);
   }
+  // `az devops invoke` surfaces no pagination cursor in its JSON body, so a
+  // truncated thread list would read as the whole conversation. There is no
+  // explicit completeness signal available, so the Azure read is unconfirmed,
+  // never complete: it keeps the threads it read but reports `complete: false`.
+  const incomplete = [{ truncated: 'threads', reason: 'completeness-unconfirmed' }];
   return {
     observed: true,
     operation: 'read-review-threads',
     provider: 'azure-devops',
-    complete: true,
+    complete: false,
+    incomplete,
     threads: value.map((thread) => {
       const status = text(thread?.status);
       return {

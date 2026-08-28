@@ -40,7 +40,7 @@ with that condition attached rather than returning a result.
 | --- | --- | --- |
 | `resolve-target` | Change-request identifier and repository address. | Branch, base, head commit, change-request URL, draft state when reported, head-repository identity (owner, name, and cross-repository/fork indication) as push-safety metadata, and an observation timestamp. |
 | `read-state` | Change-request identifier and repository address. | Merge state, the blocking `mergeStateStatus` signal, review decision, draft state, the up-to-date policy, base/head commits, and the provider's raw value. |
-| `read-checks` | Change-request identifier and repository address. | Normalized validation results with the raw provider fields preserved, plus the Azure DevOps up-to-date policy read from the policy list. |
+| `read-checks` | Change-request identifier and repository address. | Normalized validation results with the raw provider fields preserved. |
 
 Commands are built as argument vectors for the official tool — `gh` for GitHub
 and `az` for Azure DevOps — never as a shell string. A change-request identifier
@@ -104,8 +104,8 @@ here and reaches a caller only as a normalized value.
 | `not-required` | The policy was read, and it imposes no such requirement. |
 | `unobserved` | The policy could not be read. |
 
-The policy is derived only from evidence that actually exists, and the two
-providers surface it from different reads:
+The policy is derived only from evidence that actually exists, and only one
+provider surfaces it:
 
 - **GitHub** reports `mergeStateStatus: BEHIND` exactly when the base requires
   the branch to contain it, so `BEHIND` on the `read-state` response yields
@@ -113,13 +113,13 @@ providers surface it from different reads:
   GitHub state is `unobserved` there — and GitHub `read-checks`
   (`statusCheckRollup`) proves nothing about branch policy, so it stays
   `unobserved` too.
-- **Azure DevOps** does *not* carry the policy on a pull-request-show response,
-  so `read-state` reports it `unobserved`. It is read instead from the
-  policy-evaluation list that `read-checks` (`az repos pr policy list`) already
-  fetches: a visible "require branch up to date"-style blocking evaluation
-  yields `required`, and a readable list with no such evaluation yields
-  `not-required` — a present list is direct evidence of the policy's absence.
-  Only an unreadable list is `unobserved`.
+- **Azure DevOps** does not surface this requirement at all. There is no
+  first-class Azure DevOps branch-policy type equivalent to GitHub's "require
+  branches to be up to date": the build-validation policy's settings
+  (`validDuration`, `queueOnSourceUpdateOnly`) govern build freshness, not
+  whether a branch contains the base. So it is not observable from
+  `az repos pr policy list`, nor from a pull-request-show response, nor from any
+  other read this unit runs — Azure's `upToDatePolicy` is always `unobserved`.
 
 `unobserved` is never reported as `not-required`. One says the policy imposes
 nothing; the other says nobody could look. Only `required` changes what a caller

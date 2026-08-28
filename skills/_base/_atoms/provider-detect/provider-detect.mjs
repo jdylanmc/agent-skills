@@ -492,38 +492,35 @@ export function githubApiHostFlags(detection = {}) {
 }
 
 /**
- * Azure DevOps repositories are addressed by organization URL, project, and
- * repository. The organization URL's host must agree with the detected host: a
- * URL pointing somewhere else is a distinct, named failure rather than a
- * silently accepted target.
+ * Parses and validates an Azure DevOps organization URL, shared by the
+ * organization-only and full-repository normalizers. Parse with `URL` rather
+ * than a permissive regex so an organization URL that smuggles credentials in
+ * userinfo, or carries a query or fragment, is rejected instead of interpolated
+ * verbatim into the argv. Only a clean https origin is accepted. Returns the
+ * parsed URL when valid, or `null` so the caller can raise its own message.
  */
-export function normalizeAzureRepository(repository, detection = {}) {
-  const organizationUrl = String(repository?.organizationUrl ?? '').trim();
-  const project = String(repository?.project ?? '').trim();
-  const name = String(repository?.name ?? '').trim();
-
-  // Parse with `URL` rather than a permissive regex so an organization URL that
-  // smuggles credentials in userinfo, or carries a query or fragment, is
-  // rejected instead of interpolated verbatim into the argv. Only a clean
-  // https origin with a path is accepted.
+function parseAzureOrganizationUrl(organizationUrl) {
   let parsed = null;
   try {
     parsed = new URL(organizationUrl);
   } catch {
     parsed = null;
   }
-  const validOrganizationUrl = parsed !== null
+  const valid = parsed !== null
     && parsed.protocol === 'https:'
     && parsed.username === ''
     && parsed.password === ''
     && parsed.search === ''
     && parsed.hash === '';
-  if (!validOrganizationUrl || !project || !name) {
-    throw new ProviderCommandError(
-      'invalid-repository',
-      'an Azure DevOps repository needs an https organizationUrl without credentials, query, or fragment, plus a project and name',
-    );
-  }
+  return valid ? parsed : null;
+}
+
+/**
+ * The organization URL's host must agree with the detected host: a URL pointing
+ * somewhere else is a distinct, named failure rather than a silently accepted
+ * target.
+ */
+function assertAzureOrganizationHost(parsed, detection) {
   const detectedHost = detectedHostOf(detection);
   if (detectedHost) {
     const organizationHost = canonicalizeEndpoint(parsed.host);
@@ -534,7 +531,50 @@ export function normalizeAzureRepository(repository, detection = {}) {
       );
     }
   }
+}
+
+/**
+ * Azure DevOps repositories are addressed by organization URL, project, and
+ * repository. Used by callers that genuinely need the project and repository
+ * name as route parameters (for example `az devops invoke`).
+ */
+export function normalizeAzureRepository(repository, detection = {}) {
+  const organizationUrl = String(repository?.organizationUrl ?? '').trim();
+  const project = String(repository?.project ?? '').trim();
+  const name = String(repository?.name ?? '').trim();
+
+  const parsed = parseAzureOrganizationUrl(organizationUrl);
+  if (!parsed || !project || !name) {
+    throw new ProviderCommandError(
+      'invalid-repository',
+      'an Azure DevOps repository needs an https organizationUrl without credentials, query, or fragment, plus a project and name',
+    );
+  }
+  assertAzureOrganizationHost(parsed, detection);
   return { organizationUrl, project, name };
+}
+
+/**
+ * Some Azure DevOps reads are addressed by organization alone: `az repos pr
+ * show` and `az repos pr policy list` take only `--id` and `--org`, because a
+ * pull-request id is unique per organization. Requiring `project`/`name` for
+ * those reads would validate an address the command never uses, so this
+ * normalizer validates only the organization URL — with the same hygiene and
+ * detected-host agreement as `normalizeAzureRepository` — and returns just the
+ * organization URL.
+ */
+export function normalizeAzureOrganization(repository, detection = {}) {
+  const organizationUrl = String(repository?.organizationUrl ?? '').trim();
+
+  const parsed = parseAzureOrganizationUrl(organizationUrl);
+  if (!parsed) {
+    throw new ProviderCommandError(
+      'invalid-repository',
+      'an Azure DevOps organization needs an https organizationUrl without credentials, query, or fragment',
+    );
+  }
+  assertAzureOrganizationHost(parsed, detection);
+  return { organizationUrl };
 }
 
 const HTTP_METHOD_FLAGS = new Set(['--http-method', '--method', '-X']);

@@ -22,6 +22,7 @@ import {
   githubApiHostFlags,
   isEnterpriseGitHubHost,
   isProviderStateUnobserved,
+  normalizeAzureOrganization,
   normalizeAzureRepository,
   normalizeChangeRequestId,
   normalizeGitHubRepository,
@@ -566,6 +567,46 @@ test('an Azure organization URL whose host disagrees with detection is a distinc
   assert.throws(
     () => normalizeAzureRepository({ organizationUrl: 'http://insecure.example', project: 'p', name: 'r' }, detection),
     (error) => error.code === 'invalid-repository',
+  );
+});
+
+test('normalizeAzureOrganization validates only the organization URL, returning just the org', () => {
+  const detection = detectProvider({
+    remoteUrls: ['https://dev.azure.com/contoso/project/_git/repo'],
+    toolAvailability: { az: READY },
+  });
+
+  // A valid org URL is accepted with no project or name required, and the
+  // result carries only the organization URL — the address `az repos pr show`
+  // and `az repos pr policy list` actually use.
+  assert.deepEqual(
+    normalizeAzureOrganization({ organizationUrl: 'https://dev.azure.com/contoso' }, detection),
+    { organizationUrl: 'https://dev.azure.com/contoso' },
+  );
+
+  // The same hygiene as the full normalizer: missing, credential-bearing,
+  // query-bearing, and fragment-bearing URLs are rejected as invalid.
+  const withUserinfo = (userinfo, host, path) => `https://${userinfo}@${host}/${path}`;
+  for (const organizationUrl of [
+    undefined,
+    '',
+    'http://insecure.example',
+    withUserinfo('user:token', 'dev.azure.com', 'contoso'),
+    'https://dev.azure.com/contoso?token=secret',
+    'https://dev.azure.com/contoso#frag',
+  ]) {
+    assert.throws(
+      () => normalizeAzureOrganization({ organizationUrl }, detection),
+      (error) => error instanceof ProviderCommandError && error.code === 'invalid-repository',
+      `${organizationUrl} must be rejected`,
+    );
+  }
+
+  // Host agreement is enforced exactly as for the full normalizer.
+  assert.throws(
+    () => normalizeAzureOrganization({ organizationUrl: 'https://dev.azure.example.invalid/contoso' }, detection),
+    (error) => error instanceof ProviderCommandError && error.code === 'repository-host-mismatch',
+    'a mismatched organization host is refused, not silently accepted',
   );
 });
 

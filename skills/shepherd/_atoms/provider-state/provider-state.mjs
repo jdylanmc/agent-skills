@@ -28,7 +28,7 @@
 import {
   ProviderCommandError,
   assertSanctionedCommand,
-  normalizeAzureRepository,
+  normalizeAzureOrganization,
   normalizeChangeRequestId,
   normalizeGitHubRepository,
   requireObservableProvider,
@@ -116,7 +116,7 @@ export function resolveTargetCommand(detection, { changeRequest, repository } = 
     ]);
   }
 
-  const azure = normalizeAzureRepository(repository, detection);
+  const azure = normalizeAzureOrganization(repository, detection);
   return command(detection, 'resolve-target', 'az', [
     'repos', 'pr', 'show',
     '--id', id,
@@ -141,7 +141,7 @@ export function mergeStateCommand(detection, { changeRequest, repository } = {})
     ]);
   }
 
-  const azure = normalizeAzureRepository(repository, detection);
+  const azure = normalizeAzureOrganization(repository, detection);
   return command(detection, 'read-state', 'az', [
     'repos', 'pr', 'show',
     '--id', id,
@@ -166,7 +166,7 @@ export function validationStatusCommand(detection, { changeRequest, repository }
     ]);
   }
 
-  const azure = normalizeAzureRepository(repository, detection);
+  const azure = normalizeAzureOrganization(repository, detection);
   return command(detection, 'read-checks', 'az', [
     'repos', 'pr', 'policy', 'list',
     '--id', id,
@@ -286,6 +286,8 @@ const GITHUB_MERGE_STATES = new Map([
  * cannot. A conflict-free change request may still be `BEHIND` a base that
  * requires containing it, or `BLOCKED` by a required review, so each state is
  * mapped to an explicit `blocked` / `behind` signal rather than collapsed.
+ * `DRAFT` is blocking: a draft change request is not mergeable and must reach a
+ * human, so it is `blocked: true` even when a payload omits `isDraft`.
  * `UNKNOWN` and an absent status leave both signals unobserved.
  */
 const GITHUB_MERGE_STATE_STATUS = new Map([
@@ -295,7 +297,7 @@ const GITHUB_MERGE_STATE_STATUS = new Map([
   ['BEHIND', { status: 'behind', blocked: false, behind: true }],
   ['BLOCKED', { status: 'blocked', blocked: true, behind: false }],
   ['DIRTY', { status: 'dirty', blocked: false, behind: false }],
-  ['DRAFT', { status: 'draft', blocked: false, behind: false }],
+  ['DRAFT', { status: 'draft', blocked: true, behind: false }],
 ]);
 
 const GITHUB_REVIEW_DECISIONS = new Map([
@@ -350,9 +352,8 @@ function azureReviewDecision(payload) {
  * DevOps' `queued`, `notSet`, or `failure` — is unobserved, not mergeable and
  * not conflicted. The up-to-date policy here is `required` only from evidence a
  * pull-request-show response actually carries: GitHub's `mergeStateStatus:
- * BEHIND`. Azure DevOps' up-to-date policy is *not* readable from the show
- * response, so it is `unobserved` here and is instead read from the
- * policy-evaluation list in `read-checks`.
+ * BEHIND`. Azure DevOps' up-to-date requirement is not observable from any read
+ * this unit runs, so it is always `unobserved` for Azure.
  */
 export function interpretMergeState(detection, payload) {
   const guard = requireObservableProvider(detection);
@@ -403,8 +404,10 @@ export function interpretMergeState(detection, payload) {
   } else {
     blocked = azureBlocked;
     reviewDecision = azureReviewDecision(payload);
-    // The Azure up-to-date policy is not carried by a pull-request-show
-    // response; it is read from the policy list in `read-checks`.
+    // Azure DevOps' up-to-date requirement is not observable from any command
+    // this unit runs — neither the pull-request-show response nor the policy
+    // list carries a first-class equivalent of GitHub's BEHIND signal — so it
+    // is reported unobserved.
     upToDatePolicy = normalizeUpToDatePolicy(undefined);
   }
 
@@ -449,23 +452,6 @@ const AZURE_POLICY_STATUS = new Map([
   ['running', 'pending'],
   ['notApplicable', 'skipped'],
 ]);
-
-/**
- * Reads the Azure DevOps up-to-date policy from a *policy list* — the
- * `az repos pr policy list` response, which genuinely carries policy
- * evaluations. A present, readable list is direct evidence in both directions:
- * a visible "require branch up to date"-style blocking evaluation yields
- * `required`, and a readable list with no such evaluation yields `not-required`
- * (a present list is direct evidence of the policy's absence). Only an
- * unreadable list is `unobserved`.
- */
-function azureUpToDatePolicy(evaluations) {
-  const visible = evaluations.some((evaluation) => {
-    const type = evaluation?.configuration?.type ?? {};
-    return /up[\s-]?to[\s-]?date|require.*branch/i.test(String(type.displayName ?? type.id ?? ''));
-  });
-  return visible ? 'required' : 'not-required';
-}
 
 function githubCheck(entry) {
   const name = present(entry?.name) ? String(entry.name) : (present(entry?.context) ? String(entry.context) : null);
@@ -515,10 +501,13 @@ function azureCheck(entry) {
  * demonstrated anything. An unrecognized shape is `validation-status-absent`,
  * never an empty pass.
  *
- * For Azure DevOps this response is also where the base's up-to-date policy is
- * read, because the policy list — unlike a pull-request-show response —
- * genuinely carries policy evaluations. GitHub's `statusCheckRollup` proves
- * nothing about branch policy, so `upToDatePolicy` stays `unobserved` there.
+ * Neither provider surfaces the base's up-to-date policy from this read.
+ * GitHub's `statusCheckRollup` proves nothing about branch policy, and Azure
+ * DevOps' up-to-date requirement is not observable from `az repos pr policy
+ * list` — there is no first-class branch-policy type equivalent to GitHub's
+ * "require branches to be up to date" (the build-validation policy governs
+ * build freshness, not whether a branch contains the base). So `upToDatePolicy`
+ * is `unobserved` for both providers here.
  */
 export function interpretValidation(detection, payload) {
   const guard = requireObservableProvider(detection);
@@ -557,9 +546,7 @@ export function interpretValidation(detection, payload) {
     operation: 'read-checks',
     provider: detection.provider,
     status,
-    upToDatePolicy: detection.provider === 'github'
-      ? normalizeUpToDatePolicy(undefined)
-      : normalizeUpToDatePolicy(azureUpToDatePolicy(rollup)),
+    upToDatePolicy: normalizeUpToDatePolicy(undefined),
     checks,
   };
 }

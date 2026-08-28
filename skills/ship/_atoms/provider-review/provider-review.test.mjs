@@ -72,8 +72,14 @@ test('GitHub threads are read through the official tool with its own pagination 
   assert.equal(command.operation, 'read-review-threads');
   assert.ok(command.args.includes('graphql'));
   // `--paginate` is the external contract that makes `gh` walk cursors for the
-  // caller, so its presence is asserted directly.
+  // caller, and `--slurp` (immediately after it) collects the concatenated
+  // per-page JSON into a single array so pages actually merge.
   assert.ok(command.args.includes('--paginate'), 'the tool handles cursors rather than the caller');
+  assert.equal(
+    command.args[command.args.indexOf('--paginate') + 1],
+    '--slurp',
+    '--slurp follows --paginate so multi-page output is one JSON array',
+  );
   assert.ok(command.args.includes('owner=example'));
   assert.ok(command.args.includes('name=repo'));
   assert.ok(command.args.includes('number=42'));
@@ -228,6 +234,19 @@ test('threads are returned with their file, line, resolution state, and comments
   assert.equal(azure.observed, true);
   assert.equal(azure.threads[0].isResolved, false);
   assert.equal(azure.threads[1].isResolved, true);
+  // `az devops invoke` surfaces no pagination cursor, so completeness cannot be
+  // confirmed — the Azure read is never reported complete.
+  assert.equal(azure.complete, false, 'Azure completeness is unconfirmed, never complete');
+  assert.ok(
+    azure.incomplete.some((entry) => entry.truncated === 'threads' && entry.reason === 'completeness-unconfirmed'),
+    'the Azure thread list is marked completeness-unconfirmed',
+  );
+  // The unconfirmed signal propagates through the unresolved view.
+  const azureView = unresolvedReviewThreads(azure);
+  assert.equal(azureView.complete, false);
+  assert.ok(
+    azureView.incomplete.some((entry) => entry.truncated === 'threads' && entry.reason === 'completeness-unconfirmed'),
+  );
 });
 
 test('threads that were not read are never presented as no threads', () => {
