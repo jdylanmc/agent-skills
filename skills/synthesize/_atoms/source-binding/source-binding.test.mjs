@@ -153,6 +153,41 @@ test('a directory in the source position is unreadable', (t) => {
   );
 });
 
+test('final stat and read failures are normalized to unreadable with native detail', (t) => {
+  const root = workspace(t);
+  writeSource(root, SOURCE, CONTENT);
+  for (const operation of ['lstatSync', 'readFileSync']) {
+    let calls = 0;
+    const io = {
+      lstatSync(value) {
+        calls += 1;
+        if (operation === 'lstatSync' && calls > SOURCE.split('/').length) {
+          const error = new Error('denied');
+          error.code = 'EACCES';
+          throw error;
+        }
+        return fs.lstatSync(value);
+      },
+      readFileSync(value) {
+        if (operation === 'readFileSync') {
+          const error = new Error('denied');
+          error.code = 'EACCES';
+          throw error;
+        }
+        return fs.readFileSync(value);
+      },
+    };
+    try {
+      bindSource({ repositoryRoot: root, sourcePath: SOURCE, declaredRevision: REVISION, profileId: PROFILE, io });
+      assert.fail(`expected ${operation} to refuse`);
+    } catch (error) {
+      assert.ok(error instanceof SourceBindingError);
+      assert.equal(error.code, 'unreadable');
+      assert.equal(error.detail.filesystemCode, 'EACCES');
+    }
+  }
+});
+
 test('a symlinked path component is unsafe-path', (t) => {
   const root = workspace(t);
   writeSource(root, 'docs/agent/real/faster-checkout.full.md', CONTENT);
@@ -168,6 +203,26 @@ test('a symlinked path component is unsafe-path', (t) => {
   }
   assert.equal(
     code(() => bindSource({ repositoryRoot: root, sourcePath: SOURCE, declaredRevision: REVISION, profileId: PROFILE })),
+    'unsafe-path',
+  );
+});
+
+test('a symlinked repository root is unsafe-path', (t) => {
+  const real = workspace(t);
+  writeSource(real, SOURCE, CONTENT);
+  const link = `${real}-link`;
+  t.after(() => fs.rmSync(link, { force: true }));
+  try {
+    fs.symlinkSync(real, link, 'dir');
+  } catch (error) {
+    if (error.code === 'EPERM') {
+      t.skip('the platform does not permit creating a test symlink');
+      return;
+    }
+    throw error;
+  }
+  assert.equal(
+    code(() => bindSource({ repositoryRoot: link, sourcePath: SOURCE, declaredRevision: REVISION, profileId: PROFILE })),
     'unsafe-path',
   );
 });

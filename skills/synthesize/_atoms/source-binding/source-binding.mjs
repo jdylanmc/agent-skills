@@ -90,6 +90,17 @@ function workspaceOf(profileId) {
  */
 function resolveWorkspacePath(repositoryRoot, sourcePath, workspaceRoot) {
   const root = path.resolve(repositoryRoot);
+  let rootStat;
+  let canonicalRoot;
+  try {
+    rootStat = fs.lstatSync(root);
+    canonicalRoot = fs.realpathSync(root);
+  } catch (error) {
+    throw new SourceBindingError('unreadable', 'repository root cannot be inspected', { filesystemCode: error?.code ?? 'unknown' });
+  }
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || canonicalRoot !== root) {
+    throw new SourceBindingError('unsafe-path', 'repository root must be an existing canonical directory without symbolic links');
+  }
   const workspace = path.resolve(root, workspaceRoot);
   const absolute = path.resolve(root, sourcePath);
   const relativeToWorkspace = path.relative(workspace, absolute);
@@ -107,16 +118,16 @@ function resolveWorkspacePath(repositoryRoot, sourcePath, workspaceRoot) {
   return { root, absolute };
 }
 
-function refuseSymlinkComponents(root, absolute) {
+function refuseSymlinkComponents(root, absolute, io) {
   const relative = path.relative(root, absolute);
   let current = root;
   for (const segment of relative.split(path.sep)) {
     current = path.join(current, segment);
     let stat;
     try {
-      stat = fs.lstatSync(current);
-    } catch {
-      throw new SourceBindingError('unreadable', `source path does not exist: ${toPosix(path.relative(root, current))}`);
+      stat = io.lstatSync(current);
+    } catch (error) {
+      throw new SourceBindingError('unreadable', `source path cannot be inspected: ${toPosix(path.relative(root, current))}`, { filesystemCode: error?.code ?? 'unknown' });
     }
     if (stat.isSymbolicLink()) {
       throw new SourceBindingError('unsafe-path', `source path passes through a symbolic link: ${toPosix(path.relative(root, current))}`);
@@ -133,6 +144,7 @@ export function bindSource({
   sourcePath,
   declaredRevision,
   profileId,
+  io = fs,
 }) {
   if (typeof repositoryRoot !== 'string' || repositoryRoot.trim() === '') {
     throw new SourceBindingError('unbound-source', 'repositoryRoot is required');
@@ -150,14 +162,24 @@ export function bindSource({
   const workspaceRoot = workspaceOf(profileId);
   const slug = slugOf(sourcePath);
   const { root, absolute } = resolveWorkspacePath(repositoryRoot, sourcePath, workspaceRoot);
-  refuseSymlinkComponents(root, absolute);
+  refuseSymlinkComponents(root, absolute, io);
 
-  const stat = fs.lstatSync(absolute);
+  let stat;
+  let bytes;
+  try {
+    stat = io.lstatSync(absolute);
+    bytes = io.readFileSync(absolute);
+  } catch (error) {
+    throw new SourceBindingError(
+      'unreadable',
+      `source cannot be read: ${sourcePath}`,
+      { filesystemCode: error?.code ?? 'unknown' },
+    );
+  }
   if (!stat.isFile()) {
     throw new SourceBindingError('unreadable', `source is not a regular file: ${sourcePath}`);
   }
 
-  const bytes = fs.readFileSync(absolute);
   const observedRevision = createHash('sha256').update(bytes).digest('hex');
 
   if (declaredRevision !== observedRevision) {

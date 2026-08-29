@@ -2,8 +2,8 @@
 name: bounded-synthesis
 description: Coordinate a bounded synthesis run from one bound source through profile resolution, candidate rendering, disclosure-ledger validation, split evaluation, and deterministic outcome resolution, so a smaller variant is produced only when meaning is accounted for.
 level: molecule
-includes: ["synthesize/_atoms/disclosure-ledger/disclosure-ledger.md","synthesize/_atoms/source-binding/source-binding.md","synthesize/_atoms/split-proposal/split-proposal.md","synthesize/_atoms/synthesis-outcome/synthesis-outcome.md","synthesize/_atoms/synthesis-profile/synthesis-profile.md"]
-composes: ["synthesize/_atoms/disclosure-ledger/disclosure-ledger.md","synthesize/_atoms/source-binding/source-binding.md","synthesize/_atoms/split-proposal/split-proposal.md","synthesize/_atoms/synthesis-outcome/synthesis-outcome.md","synthesize/_atoms/synthesis-profile/synthesis-profile.md"]
+includes: ["synthesize/_atoms/candidate-persistence/candidate-persistence.md","synthesize/_atoms/disclosure-ledger/disclosure-ledger.md","synthesize/_atoms/source-binding/source-binding.md","synthesize/_atoms/split-proposal/split-proposal.md","synthesize/_atoms/synthesis-outcome/synthesis-outcome.md","synthesize/_atoms/synthesis-profile/synthesis-profile.md","synthesize/_molecules/bounded-synthesis/bounded-synthesis.mjs"]
+composes: ["synthesize/_atoms/candidate-persistence/candidate-persistence.md","synthesize/_atoms/disclosure-ledger/disclosure-ledger.md","synthesize/_atoms/source-binding/source-binding.md","synthesize/_atoms/split-proposal/split-proposal.md","synthesize/_atoms/synthesis-outcome/synthesis-outcome.md","synthesize/_atoms/synthesis-profile/synthesis-profile.md"]
 used-by: ["synthesize/SKILL.md"]
 allowed-tools: ["execute"]
 ---
@@ -17,7 +17,7 @@ for every difference.
 bind the source -> resolve the named profile -> render the candidate variant
                 -> validate the disclosure ledger against the rendered candidate
                 -> evaluate a split when over budget
-                -> resolve the outcome
+                -> resolve the outcome -> atomically persist complete output
 ```
 
 ## Required References
@@ -27,6 +27,8 @@ bind the source -> resolve the named profile -> render the candidate variant
 3. [Disclosure ledger](../../_atoms/disclosure-ledger/disclosure-ledger.md)
 4. [Split proposal](../../_atoms/split-proposal/split-proposal.md)
 5. [Synthesis outcome](../../_atoms/synthesis-outcome/synthesis-outcome.md)
+6. [Candidate persistence](../../_atoms/candidate-persistence/candidate-persistence.md)
+7. [Bounded synthesis finalizer](./bounded-synthesis.mjs)
 
 ## Operation
 
@@ -62,12 +64,31 @@ bind the source -> resolve the named profile -> render the candidate variant
    deliberately separate from the synthesis it judges: the step that decides
    whether the run passed is not the step that rendered the candidate, so a run
    cannot grade its own output by narrating success.
+7. Only when the resolved outcome is `complete`, run
+   [Candidate persistence](../../_atoms/candidate-persistence/candidate-persistence.md).
+   Render to its unique sibling staging path first; do not write the canonical
+   path during rendering or validation. The persistence atom verifies the staged
+   bytes against the digest returned by outcome resolution, refuses every
+   existing destination, checks path components and staging identifiers, and
+   publishes with atomic create-if-absent semantics. Every other outcome removes
+   or abandons staging and leaves the canonical destination untouched. Any
+   persistence refusal changes the final run status to `blocked`; an outcome
+   resolver result of `complete` is not the final status until persistence
+   succeeds.
+
+Invoke the final transition with:
+
+```text
+node <molecules>/bounded-synthesis/bounded-synthesis.mjs \
+  --finalize <absolute-json-path>
+```
 
 ## Output
 
-Return the source binding with its digest, the resolved profile id, the rendered
-candidate path, the word count against budget, the disclosure ledger with its
-digest, any proposed secondary boundaries, and the resolved status.
+Return the source binding with its digest, the resolved profile id, the staged
+candidate evidence when rendering occurred, the word count and disclosure
+ledger when those stages occurred, any proposed secondary boundaries, the
+resolved status, and the persistence receipt only for `complete`.
 
 ## Determinism
 

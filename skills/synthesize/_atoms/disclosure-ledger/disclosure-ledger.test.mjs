@@ -9,6 +9,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -168,6 +169,8 @@ test('a clean ledger validates and carries the profile id and a digest', () => {
   assert.equal(result.status, 'clean');
   assert.equal(result.profileId, 'spec-nano');
   assert.equal(result.digest, ledgerDigest(baseEntries()));
+  assert.equal(result.candidatePath, CANDIDATE_PATH);
+  assert.equal(result.candidateDigest, createHash('sha256').update(VARIANT_TEXT).digest('hex'));
 });
 
 test('an unknown or absent profile id refuses with unknown-profile', () => {

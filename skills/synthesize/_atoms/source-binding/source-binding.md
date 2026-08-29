@@ -59,7 +59,7 @@ declared revision to that digest. The two never come from the same hand.
 | `unknown-profile` | The named profile is absent from the profile table, so no workspace can be derived. |
 | `outside-workspace` | The resolved path is not beneath the profile's workspace root. |
 | `unsafe-path` | Any component of the resolved path is a symbolic link. |
-| `unreadable` | The source is absent or is not a regular file. |
+| `unreadable` | The source is absent, cannot be inspected or read, or is not a regular file. Native filesystem detail is retained separately and never escapes as the public refusal code. |
 | `stale-source` | The declared revision does not equal the SHA-256 digest of the bytes on disk. Both revisions are reported. |
 | `usage` | The command line is malformed, or a second `--source` is supplied. |
 

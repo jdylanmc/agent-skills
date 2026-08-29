@@ -141,6 +141,7 @@ jobs:
           skills/spec/_atoms/spec-outcome/spec-outcome.test.mjs
           skills/spec/_atoms/spec-pair/spec-pair.test.mjs
           skills/synthesize/synthesize.conformance.test.mjs
+          skills/synthesize/_atoms/candidate-persistence/candidate-persistence.test.mjs
           skills/synthesize/_atoms/source-binding/source-binding.test.mjs
           skills/synthesize/_atoms/synthesis-profile/synthesis-profile.test.mjs
           skills/synthesize/_atoms/disclosure-ledger/disclosure-ledger.test.mjs

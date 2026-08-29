@@ -25,15 +25,16 @@ the thing that produced the candidate.
 `resolveOutcome({profileId, candidatePath, binding, budget, ledger, split})`
 requires STRUCTURAL evidence, never a bare status stub:
 
-- top-level `profileId` (non-empty string) and `candidatePath` (non-empty
-  string);
+- top-level `profileId` and `candidatePath` (non-empty strings);
 - `binding`: `{status, sourcePath, revision, digest}` — `status` is `bound` or
   `stale-source`, `sourcePath` and `revision` are non-empty, and `digest`
   matches `^[0-9a-f]{64}$`;
 - `budget`: `{words, budget, status, profileId}` — integer `words` and `budget`,
   a recognized `status`, and a `profileId`;
-- `ledger`: `{status, digest, profileId, entries}` for a clean result, or a
-  defect result carrying a `code`. A clean ledger's `digest` must equal
+- `ledger`: `{status, digest, profileId, entries, candidatePath,
+  candidateDigest}` for a clean result, or a defect result carrying a `code`.
+  The ledger validator computes the candidate path and SHA-256 digest from the
+  same rendered text it reviewed. Its ledger `digest` must equal
   `ledgerDigest(entries)` recomputed here;
 - `split`: `{status: 'needs-split', ledgerDigest, profileId, proposals}`,
   required only when the budget is `over`. Each proposal must be a COMPLETE
@@ -43,6 +44,8 @@ requires STRUCTURAL evidence, never a bare status stub:
   them. A sparse array such as `Array(1)` — length one but no member at index 0 —
   names no cohesive unit; each index is checked as an own property holding a
   non-empty string, so a hole is not vacuously accepted.
+  When the budget is not over, split evidence must be absent or carry
+  `not-required`/`within-budget`; contradictory `needs-split` evidence blocks.
 
 The `profileId` must be identical across the top level, the budget, and the
 clean ledger. A mismatch is `blocked` with reason `evidence-profile-mismatch`.
@@ -79,6 +82,8 @@ and appears here — so a prose reason emitted anywhere fails the suite.
 | `profile-id-missing` | No non-empty top-level `profileId` accompanies the evidence. |
 | `unknown-profile` | The top-level `profileId` names no profile in the table. |
 | `candidate-path-missing` | No non-empty `candidatePath` accompanies the evidence. |
+| `candidate-digest-missing` | The clean ledger carries no 64-hex digest pinning the exact rendered candidate bytes it validated. |
+| `candidate-evidence-mismatch` | The clean ledger's candidate path differs from the profile-derived candidate path. |
 | `binding-evidence-incomplete` | `binding.sourcePath` or `binding.revision` is empty, or `binding.digest` is not a 64-hex digest. |
 | `budget-evidence-incomplete` | `budget` is not `{words: integer, budget: integer, status, profileId}` with a recognized status. |
 | `evidence-profile-mismatch` | The `profileId` is not identical across the top level, the budget, and the clean ledger. |
@@ -98,6 +103,8 @@ and appears here — so a prose reason emitted anywhere fails the suite.
 | `split-ledger-mismatch` | The over-budget `split.ledgerDigest` is not the clean ledger's digest, so the split partitions a different ledger. |
 | `split-profile-mismatch` | The over-budget `split.profileId` is not the run's `profileId`. |
 | `split-proposals-incomplete` | The over-budget `split.proposals` has fewer than two entries, or any entry lacks a non-empty `slug`, `title`, `boundary`, `rationale`, or `units`, or any member of an entry's `units` array is not a non-empty string. A structurally empty `{}` proposal proposes no boundary, and a `units: [null]` or sparse `Array(1)` array — which a valid split partition never produces — names no cohesive unit. |
+| `split-status-inconsistent` | A within-budget or at-limit run supplies split evidence other than `not-required` or `within-budget`, contradicting the budget result. |
+| `split-partition-inconsistent` | Well-shaped split proposals cite an unknown or duplicate non-omittable ledger unit, or fail to cover every such unit exactly once. |
 
 ## A Status Stub Is Not Evidence
 
@@ -115,7 +122,8 @@ budget, the status is what the profile's rule recomputes, both paths are
 relative and contained — an absolute path or a `..` that escapes the relative
 root is refused outright rather than normalized into a workspace-looking
 remainder — the candidate path is the profile's pattern with the source's slug,
-the source is inside the profile's workspace, the clean ledger's digest is the
+the candidate bytes are pinned by digest, the source is inside the profile's
+workspace, the clean ledger's digest is the
 digest of its own entries, and an over-budget run's split evidence names the same
 ledger and profile with at least two complete proposals. It is a **pure
 resolver** over the evidence the other atoms produced in the same run: it

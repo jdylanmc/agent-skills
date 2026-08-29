@@ -71,6 +71,8 @@ export const BLOCKED_REASONS = [
   'profile-id-missing',
   'unknown-profile',
   'candidate-path-missing',
+  'candidate-digest-missing',
+  'candidate-evidence-mismatch',
   'binding-evidence-incomplete',
   'budget-evidence-incomplete',
   'evidence-profile-mismatch',
@@ -90,6 +92,8 @@ export const BLOCKED_REASONS = [
   'split-ledger-mismatch',
   'split-profile-mismatch',
   'split-proposals-incomplete',
+  'split-status-inconsistent',
+  'split-partition-inconsistent',
 ];
 
 function toPosix(value) {
@@ -294,6 +298,12 @@ export function resolveOutcome(input) {
   if (!DIGEST_PATTERN.test(String(ledger.digest)) || !isNonEmptyString(ledger.profileId)) {
     return blocked('ledger-evidence-incomplete');
   }
+  if (!DIGEST_PATTERN.test(String(ledger.candidateDigest))) {
+    return blocked('candidate-digest-missing');
+  }
+  if (ledger.candidatePath !== normalizedCandidate) {
+    return blocked('candidate-evidence-mismatch');
+  }
   if (ledger.profileId !== profileId) {
     return blocked('evidence-profile-mismatch');
   }
@@ -330,12 +340,37 @@ export function resolveOutcome(input) {
       || !split.proposals.every(isCompleteProposal)) {
       return blocked('split-proposals-incomplete');
     }
+    const required = new Set(
+      ledger.entries
+        .filter((entry) => profile.nonOmittableKinds.includes(entry.kind))
+        .map((entry) => entry.id),
+    );
+    const seen = new Set();
+    for (const proposal of split.proposals) {
+      for (const unit of proposal.units) {
+        if (!required.has(unit) || seen.has(unit)) {
+          return blocked('split-partition-inconsistent');
+        }
+        seen.add(unit);
+      }
+    }
+    if (seen.size !== required.size) {
+      return blocked('split-partition-inconsistent');
+    }
     return { status: 'needs-split', reasons: ['required meaning does not fit the budget'] };
+  }
+  if (split !== undefined
+    && (!isObject(split) || !['not-required', 'within-budget'].includes(split.status))) {
+    return blocked('split-status-inconsistent');
   }
 
   // 5. complete: fresh bound source, budget satisfied, clean ledger, one
   //    profile named throughout. Not approval — the variant is a candidate.
-  return { status: 'complete', reasons: [] };
+  return {
+    status: 'complete',
+    reasons: [],
+    candidate: { path: normalizedCandidate, digest: ledger.candidateDigest },
+  };
 }
 
 export const USAGE = 'Usage: synthesis-outcome.mjs --input <absolute-json-path>';

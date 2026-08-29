@@ -19,7 +19,8 @@ record -> bind one revision-bound source -> resolve one named profile
        -> render the candidate variant -> count words against the budget
        -> validate the disclosure ledger against the rendered candidate
        -> propose a split when meaning does not fit
-       -> resolve the outcome -> hand a candidate to a human
+       -> resolve the outcome -> atomically persist complete output
+       -> hand a candidate to a human
 ```
 
 ## Required References
@@ -38,7 +39,8 @@ record -> bind one revision-bound source -> resolve one named profile
 2. Run [Bounded synthesis](./_molecules/bounded-synthesis/bounded-synthesis.md).
    It binds one source, resolves one profile, renders the candidate, validates
    the disclosure ledger against the rendered candidate, evaluates a split when
-   over budget, and resolves the status.
+   over budget, resolves the status, and atomically promotes a staged candidate
+   only for `complete`.
 3. Present the resolved status and the candidate variant to a human. The
    candidate is never approved by this run.
 
@@ -119,23 +121,34 @@ this change does not modify `/spec`.
 
 ## Output Contract
 
-Return:
+Return fields are status-dependent; a run reports only evidence produced before
+it stopped and never fabricates candidate evidence for an early refusal:
 
 - `status`: one of `complete`, `needs-split`, `refused`, `stale-source`, or
   `blocked`;
-- the candidate variant path;
 - the source identity, its revision, and its content digest;
 - the profile id;
-- the word count against the budget;
-- the disclosure ledger with its digest;
+- for `complete`: the canonical candidate path, word count, disclosure ledger
+  with its digest, the validated candidate digest, and persistence revision;
+- for `needs-split`: staged candidate identity, word count, disclosure ledger
+  with its digest, and proposed secondary boundaries; no canonical candidate is
+  written;
+- for `refused`: any staged candidate, budget, or ledger evidence that existed
+  before refusal, plus the named refusal reason; no canonical candidate is
+  written;
+- for `stale-source` and an early `blocked`: `candidate: not-produced`,
+  `budget: not-produced`, and `ledger: not-produced`;
 - the named refusal reason when the status is `refused`, `stale-source`, or
   `blocked`;
-- the proposed secondary boundaries when the status is `needs-split`;
 - the Chronicler log path, or the recording defect when recording was
   unavailable.
 
 `complete` is a statement about mechanical checks. It is not approval; the
 variant remains a candidate until a human approves it.
+
+If staging or persistence fails after outcome resolution, the final run status
+is `blocked` with the candidate-persistence refusal code and diagnostic detail.
+The run never reports `complete` unless the canonical candidate was created.
 
 ## Boundaries
 
@@ -159,11 +172,12 @@ pass, not this skill.
 
 `read` opens only the explicitly supplied source artifact and the required
 artifacts beneath the resolved workspace; there is no repository-wide discovery.
-`edit` writes the candidate variant only beneath the caller-authorized
-`docs/agent/` workspace. `execute` records through Chronicler and runs the
-deterministic binding, profile, ledger, split, and outcome validators. This skill
-invokes no other skill; Roast is a separate downstream pass owned by the delivery
-workflow.
+`edit` renders only to the run-scoped sibling staging artifact beneath the
+caller-authorized `docs/agent/` workspace. `execute` records through Chronicler,
+runs the deterministic binding, profile, ledger, split, and outcome validators,
+and atomically promotes a verified staged candidate only after `complete`. This
+skill invokes no other skill; Roast is a separate downstream pass owned by the
+delivery workflow.
 
 ---
 

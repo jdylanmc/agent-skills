@@ -27,6 +27,7 @@ const DOCUMENT = fs.readFileSync(path.join(UNIT_ROOT, 'synthesis-outcome.md'), '
 const DIGEST = 'a'.repeat(64);
 const OTHER_DIGEST = 'b'.repeat(64);
 const PROFILE = 'spec-nano';
+const CANDIDATE_DIGEST = 'c'.repeat(64);
 
 const BINDING = {
   status: 'bound',
@@ -40,7 +41,14 @@ const LEDGER_ENTRIES = [
   { id: 'ac-1', kind: 'criterion' },
 ];
 const LEDGER_DIGEST = ledgerDigest(LEDGER_ENTRIES);
-const CLEAN = { status: 'clean', profileId: PROFILE, digest: LEDGER_DIGEST, entries: LEDGER_ENTRIES };
+const CLEAN = {
+  status: 'clean',
+  profileId: PROFILE,
+  digest: LEDGER_DIGEST,
+  entries: LEDGER_ENTRIES,
+  candidatePath: 'docs/agent/specs/faster-checkout.nano.md',
+  candidateDigest: CANDIDATE_DIGEST,
+};
 const OVER = { ...WITHIN, words: 620, status: 'over' };
 
 // A COMPLETE proposal set is the shape `evaluateSplit` returns: at least two
@@ -66,7 +74,11 @@ function evidence(overrides = {}) {
 }
 
 test('a fresh bound source with complete budget and ledger evidence is complete', () => {
-  assert.deepEqual(resolveOutcome(evidence()), { status: 'complete', reasons: [] });
+  assert.deepEqual(resolveOutcome(evidence()), {
+    status: 'complete',
+    reasons: [],
+    candidate: { path: 'docs/agent/specs/faster-checkout.nano.md', digest: CANDIDATE_DIGEST },
+  });
   assert.equal(
     resolveOutcome(evidence({ budget: { ...WITHIN, words: 500, status: 'at-limit' } })).status,
     'complete',
@@ -113,6 +125,18 @@ test('over budget with no valid split is blocked', () => {
     resolveOutcome(evidence({ budget: OVER })).status,
     'blocked',
   );
+});
+
+test('within-budget evidence cannot contradict itself by claiming needs-split', () => {
+  assert.deepEqual(
+    resolveOutcome(evidence({ split: SPLIT })),
+    { status: 'blocked', reasons: ['split-status-inconsistent'] },
+  );
+  assert.deepEqual(
+    resolveOutcome(evidence({ budget: { ...WITHIN, words: 500, status: 'at-limit' }, split: { status: 'insufficient-split' } })),
+    { status: 'blocked', reasons: ['split-status-inconsistent'] },
+  );
+  assert.equal(resolveOutcome(evidence({ split: { status: 'not-required' } })).status, 'complete');
 });
 
 test('a bare needs-split status stub over budget resolves blocked, never needs-split', () => {
@@ -265,6 +289,7 @@ test('a profile id mismatch across evidence is blocked with evidence-profile-mis
 test('missing top-level profile id or candidate path is blocked', () => {
   assert.equal(resolveOutcome(evidence({ profileId: undefined })).status, 'blocked');
   assert.equal(resolveOutcome(evidence({ candidatePath: '' })).status, 'blocked');
+  assert.equal(resolveOutcome(evidence({ ledger: { ...CLEAN, candidateDigest: '' } })).status, 'blocked');
 });
 
 test('malformed binding, budget, or ledger evidence is blocked', () => {
@@ -360,6 +385,8 @@ const BLOCKED_PATHS = {
   'profile-id-missing': evidence({ profileId: undefined }),
   'unknown-profile': evidence({ profileId: 'fabricated-profile' }),
   'candidate-path-missing': evidence({ candidatePath: '' }),
+  'candidate-digest-missing': evidence({ ledger: { ...CLEAN, candidateDigest: '' } }),
+  'candidate-evidence-mismatch': evidence({ ledger: { ...CLEAN, candidatePath: 'docs/agent/specs/other.nano.md' } }),
   'binding-evidence-incomplete': evidence({ binding: { ...BINDING, digest: 'not-a-digest' } }),
   'budget-evidence-incomplete': evidence({ budget: { ...WITHIN, words: 3.5 } }),
   'evidence-profile-mismatch': evidence({ budget: { ...WITHIN, profileId: 'spec-mini' } }),
@@ -379,7 +406,26 @@ const BLOCKED_PATHS = {
   'split-ledger-mismatch': evidence({ budget: OVER, split: { ...SPLIT, ledgerDigest: OTHER_DIGEST } }),
   'split-profile-mismatch': evidence({ budget: OVER, split: { ...SPLIT, profileId: 'spec-mini' } }),
   'split-proposals-incomplete': evidence({ budget: OVER, split: { ...SPLIT, proposals: [{}] } }),
+  'split-status-inconsistent': evidence({ split: SPLIT }),
+  'split-partition-inconsistent': evidence({ budget: OVER, split: { ...SPLIT, proposals: [
+    { ...completeProposals()[0], units: ['invented'] },
+    completeProposals()[1],
+  ] } }),
 };
+
+test('well-shaped split proposals must exactly partition non-omittable ledger entries', () => {
+  const [first, second] = completeProposals();
+  for (const proposals of [
+    [{ ...first, units: ['invented'] }, second],
+    [{ ...first, units: ['intention', 'ac-1'] }, second],
+    [{ ...first, units: ['intention'] }, { ...second, units: ['intention'] }],
+  ]) {
+    assert.deepEqual(
+      resolveOutcome(evidence({ budget: OVER, split: { ...SPLIT, proposals } })),
+      { status: 'blocked', reasons: ['split-partition-inconsistent'] },
+    );
+  }
+});
 
 test('every blocked reason is EMITTED by a real payload, exported, and documented', () => {
   const section = DOCUMENT.split(/^## Blocked Reasons\s*$/m)[1].split(/^## /m)[0];

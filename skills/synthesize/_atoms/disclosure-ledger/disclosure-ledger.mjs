@@ -855,6 +855,8 @@ export function validateLedger(input) {
     profileId: resolveProfile(input.profileId).id,
     entries: input.entries,
     digest: ledgerDigest(input.entries),
+    candidatePath: input.candidatePath,
+    candidateDigest: createHash('sha256').update(input.variantText).digest('hex'),
   };
 }
 

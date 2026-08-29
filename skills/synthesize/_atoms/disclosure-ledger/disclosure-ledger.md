@@ -377,7 +377,10 @@ node <atoms>/disclosure-ledger/disclosure-ledger.mjs --input <absolute-json-path
 
 The input JSON carries `entries`, `sourceText`, `variantText`, `profileId`,
 `sourcePath`, and `candidatePath`. The profile is resolved internally. Exit `0`
-prints a clean result with the resolved `profileId` and the digest.
+prints a clean result with the resolved `profileId`, ledger digest, normalized
+candidate path, and SHA-256 digest of the exact `variantText` bytes validated.
+That candidate attestation binds outcome resolution and persistence to this
+reviewed rendering rather than to a separately asserted digest.
 `validateLedger` throws the first defect; `collectLedgerDefects` returns every
 defect so a caller can report them together.
 

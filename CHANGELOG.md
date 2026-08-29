@@ -71,6 +71,8 @@ below is unreleased and no comparison links are available.
   `$5`, an invented `5–10` or `5 – 10` range, a `5:1` ratio assembled from a
   separate `5` and `1`, or a `2026.08.29` date assembled from `2026.08` and `29`,
   is an invented claim;
+  a validated candidate is digest-bound to its outcome and published with
+  atomic create-if-absent semantics, so an existing nano is never overwritten;
   fenced content is parsed with a state machine, so a delimiter-shaped line
   inside a different fence, and an opening fence whose tail is not a defensible
   lowercase language tag (at most twenty characters and two separators) followed

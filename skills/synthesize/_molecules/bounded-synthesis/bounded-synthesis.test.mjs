@@ -27,6 +27,8 @@ import { countWords, evaluateBudget, resolveProfile } from '../../_atoms/synthes
 import { validateLedger } from '../../_atoms/disclosure-ledger/disclosure-ledger.mjs';
 import { evaluateSplit } from '../../_atoms/split-proposal/split-proposal.mjs';
 import { resolveOutcome } from '../../_atoms/synthesis-outcome/synthesis-outcome.mjs';
+import { CandidatePersistenceError, persistCandidate } from '../../_atoms/candidate-persistence/candidate-persistence.mjs';
+import { finalizeSynthesis } from './bounded-synthesis.mjs';
 
 const UNIT_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(UNIT_ROOT, '..', '..', '..', '..');
@@ -167,6 +169,48 @@ test('deterministic repeatability: the same inputs produce byte-identical stage 
     assert.equal(JSON.stringify(first[stage]), JSON.stringify(second[stage]), `${stage} is not byte-identical across runs`);
   }
   assert.equal(first.outcome.status, 'complete');
+});
+
+test('the successful molecule path reaches atomic canonical persistence', (t) => {
+  const root = sandbox(t);
+  const variantText = candidateOf(SHORT_PADDING);
+  const declaredRevision = writeSource(root, sourceBodyOf(SHORT_PADDING));
+  const result = pipeline(root, {
+    declaredRevision,
+    variantText,
+    entries: entriesOf(SHORT_PADDING),
+  });
+  const final = finalizeSynthesis({
+    repositoryRoot: root,
+    candidatePath: CANDIDATE_PATH,
+    candidateText: variantText,
+    outcome: result.outcome,
+    runId: 'molecule-success',
+  }, { persist: (input) => persistCandidate(input, { uuid: () => 'candidate' }) });
+  assert.equal(result.outcome.status, 'complete');
+  assert.equal(final.status, 'complete');
+  assert.equal(final.persistence.status, 'persisted');
+  assert.equal(
+    fs.readFileSync(path.join(root, CANDIDATE_PATH), 'utf8'),
+    variantText,
+  );
+});
+
+test('the molecule maps persistence refusal to blocked and leaves non-complete outcomes unchanged', () => {
+  const outcome = { status: 'complete', candidate: { path: CANDIDATE_PATH, digest: 'a'.repeat(64) } };
+  const blocked = finalizeSynthesis(
+    { outcome },
+    { persist: () => { throw new CandidatePersistenceError('replacement-not-authorized', 'exists'); } },
+  );
+  assert.deepEqual(blocked, {
+    status: 'blocked',
+    reasons: ['candidate-persistence-replacement-not-authorized'],
+    detail: {},
+  });
+  assert.deepEqual(
+    finalizeSynthesis({ outcome: { status: 'needs-split', reasons: ['over'] } }),
+    { status: 'needs-split', reasons: ['over'] },
+  );
 });
 
 test('the budget fixtures carry exactly 499, 500, and 501 words', () => {

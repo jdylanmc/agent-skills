@@ -13,6 +13,7 @@ const ENTRY = 'synthesize/SKILL.md';
 const MOLECULE = 'synthesize/_molecules/bounded-synthesis/bounded-synthesis.md';
 const PINNED_TOOLS = ['edit', 'execute', 'read'];
 const ATOMS = [
+  'synthesize/_atoms/candidate-persistence/candidate-persistence.md',
   'synthesize/_atoms/source-binding/source-binding.md',
   'synthesize/_atoms/synthesis-profile/synthesis-profile.md',
   'synthesize/_atoms/disclosure-ledger/disclosure-ledger.md',
@@ -67,7 +68,7 @@ test('composition reaches chronicler, the molecule, and every atom without widen
   assert.deepEqual(derived.grantViolations, []);
 });
 
-test('the molecule composes all five atoms', () => {
+test('the molecule composes all six atoms', () => {
   const parsed = frontmatter(MOLECULE);
   assert.equal(parsed.level, 'molecule');
   assert.deepEqual([...parsed.composes].sort(), [...ATOMS].sort());
@@ -134,6 +135,17 @@ test('needs-split and the full status vocabulary are in the output contract', ()
   }
   assert.match(skill, /proposed secondary boundaries/i);
   assert.match(skill, /disclosure ledger with its digest/i);
+});
+
+test('candidate output is staged, status-dependent, and promoted only after complete', () => {
+  const skill = flat(ENTRY);
+  const molecule = flat(MOLECULE);
+  assert.match(skill, /status-dependent/i);
+  assert.match(skill, /candidate: not-produced/i);
+  assert.match(skill, /atomically promotes? a verified staged candidate only after `?complete`?/i);
+  assert.match(molecule, /do not write the canonical path during rendering or validation/i);
+  assert.match(molecule, /refuses every existing destination/i);
+  assert.match(skill, /never reports `?complete`? unless the canonical candidate was created/i);
 });
 
 test('the workflow relationship places roast downstream and defers the /spec reinforcement', () => {
