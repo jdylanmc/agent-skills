@@ -464,6 +464,53 @@ test('every published change request leaves the run with an obligation', () => {
   }
 });
 
+test('a handoff nobody performed cannot supply the base the obligation binds to', () => {
+  // The sharpest version of the failure this unit exists for. A narrated
+  // handoff, an unavailable shepherd, and a failed dispatch all arrive with a
+  // well-formed result attached, because the thing in doubt is the invocation
+  // and not the sentence describing it. An obligation that read the base out
+  // of that result would inherit from a narration the very fact the decision
+  // just refused to believe — and would report `unresolved: []`, meaning
+  // checkable, about a base no shepherd ever saw.
+  const narrated = [
+    ['not-invoked', { invocation: { mode: 'narrated', status: 'returned' } }],
+    ['shepherd-unavailable', { invocation: { mode: NESTED_INVOCATION, status: 'unavailable' } }],
+    ['invocation-failed', { invocation: { mode: NESTED_INVOCATION, status: 'failed' } }],
+    ['intent-unrecorded', { intent: undefined }],
+  ];
+
+  for (const [state, overrides] of narrated) {
+    const result = evaluateHandoff(completeHandoff(overrides));
+
+    assert.equal(result.state, state);
+    assert.equal(result.setObligation.baseSha, PUBLISHED_BASE, `${state} trusted a refused receipt`);
+    assert.notEqual(result.setObligation.baseSha, REBASED_BASE);
+  }
+
+  // The states that did get past the invocation gates keep the base shepherd
+  // actually observed, so the rule above is a refusal rather than a blanket
+  // preference for the publication snapshot.
+  for (const [state, overrides] of [
+    ['shepherd-mergeable-and-green', {}],
+    ['stale-disposition', { observedBase: { observedAt: '2026-08-25T22:06:00Z', baseSha: 'aaaaaaa', headSha: REBASED_HEAD } }],
+    ['freshness-unobserved', { observedBase: undefined }],
+  ]) {
+    const result = evaluateHandoff(completeHandoff(overrides));
+
+    assert.equal(result.state, state);
+    assert.equal(result.setObligation.baseSha, REBASED_BASE, `${state} lost the observed base`);
+  }
+
+  // A disposition whose receipt never validated is not an observation either,
+  // however terminal the disposition reads.
+  const unusable = evaluateHandoff(completeHandoff({
+    result: { disposition: 'mergeable-and-green', receipt: { baseSha: REBASED_BASE } },
+  }));
+
+  assert.equal(unusable.state, 'result-receipt-incomplete');
+  assert.equal(unusable.setObligation.baseSha, PUBLISHED_BASE);
+});
+
 test('an obligation follows publication succeeding, not an identifier appearing', () => {
   // The trap: a failed publication can still carry the identifier a provider
   // echoed back. Building an obligation from a bare identifier addresses the

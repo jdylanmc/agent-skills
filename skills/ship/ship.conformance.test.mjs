@@ -112,10 +112,13 @@ test('the routing description promises review-ready, not merged', () => {
   assert.match(description, /do not use to merge, approve, accept risk/);
   assert.match(description, /drive an existing change request, which belongs to shepherd/);
 
-  // Routing metadata is read before any in-body disclaimer, so every route it
+  // Routing metadata is read before any in-body disclaimer, so a route it
   // names has to resolve. Advertising a package with no entry point reads as
   // coverage while providing none, and the reader who follows it finds
-  // nothing. This is derived from the repository rather than pinned to a
+  // nothing. This checks the `belongs to <skill>` routes specifically, which is
+  // how this description hands work to another package; work it declines
+  // without naming a package, such as work kept by the caller, names nothing to
+  // resolve. It is derived from the repository rather than pinned to a
   // spelling, so a route that stops resolving fails here.
   const routable = fs.readdirSync(SKILLS_ROOT)
     .filter((name) => fs.existsSync(path.join(SKILLS_ROOT, name, 'SKILL.md')));
