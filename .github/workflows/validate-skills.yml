@@ -104,6 +104,8 @@ jobs:
           skills/interrogate/interrogate.conformance.test.mjs
           skills/discovery/discovery.conformance.test.mjs
           skills/discovery/_atoms/uri-seed/uri-seed.test.mjs
+          skills/discovery/_atoms/foundation-persist/foundation-persist.test.mjs
+          skills/discovery/_atoms/foundation-rehydrate/foundation-rehydrate.test.mjs
           skills/proof-of-concept/proof-of-concept.conformance.test.mjs
           skills/next-step-selection/next-step-selection.conformance.test.mjs
           skills/sanity-check/sanity-check.conformance.test.mjs
