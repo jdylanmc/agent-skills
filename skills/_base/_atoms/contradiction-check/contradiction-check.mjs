@@ -67,6 +67,18 @@ export const MAX_SURFACE_WORDS = 500;
  */
 export const MAX_SURFACE_CHARACTERS = MAX_SURFACE_WORDS * 10;
 
+/**
+ * The identifier ceiling. An identifier is a stable label, not a payload, and a
+ * label longer than the whole comparison surface is not a label — it is a
+ * document smuggled through an id field. So it is derived from the surface
+ * character bound rather than introduced as a fresh magic number: nothing that
+ * would not fit in the surface may masquerade as one of its labels. It caps
+ * `artifact.id`, `artifact.kind`, `assertions[].id`, `evidence[].ref`, and both
+ * members of every `accepted` pair. A finding's identifiers are not capped here
+ * because they must ground in an already-capped assertion id and evidence ref.
+ */
+export const MAX_IDENTIFIER_CHARACTERS = MAX_SURFACE_CHARACTERS;
+
 export const ASSERTION_KINDS = Object.freeze(['intention', 'acceptance-criterion', 'non-goal']);
 
 export const CONFIDENCE_LEVELS = Object.freeze(['high', 'medium', 'low']);
@@ -111,10 +123,14 @@ function hasOwn(target, key) {
 /**
  * One source of truth for "is this a usable string", per the laziness
  * discipline: a validator that disagrees with another validator is two bugs
- * waiting to diverge. A string is usable when, after trimming ASCII whitespace
- * and stripping zero-width and other Unicode format characters (`\p{Cf}`),
- * meaningful characters remain. A lone zero-width space is therefore not a
- * non-empty identifier.
+ * waiting to diverge. A string is usable when, after trimming ECMAScript
+ * whitespace (what `String.prototype.trim` removes — not only ASCII spaces and
+ * tabs, but every Unicode whitespace code point) and stripping zero-width and
+ * other Unicode format characters (`\p{Cf}`), meaningful characters remain. A
+ * lone zero-width space is therefore not a non-empty identifier. Trimming and
+ * stripping decide emptiness only; the returned record keeps each value's
+ * original characters unchanged — no format character is removed from a stored
+ * identifier or text.
  */
 const FORMAT_OR_ZERO_WIDTH = /[\p{Cf}\u200B-\u200D\uFEFF]/gu;
 function usableString(value) {
@@ -123,15 +139,26 @@ function usableString(value) {
 }
 
 /**
- * An identifier is a stable label, not a payload. A control character
- * (U+0000–U+001F, U+007F) in one is never a legitimate identifier. Refusing it
- * states the contract; belt-and-braces with `pairKey`'s collision-proof
- * encoding it means a future widening of the identifier vocabulary cannot
- * silently reintroduce a false clean check through a serialization collision.
+ * An identifier is a stable label, not a payload. Refused in one place so the
+ * rule cannot drift between call sites: it must be a usable string, carry no
+ * control character (U+0000–U+001F, U+007F), and be no longer than the
+ * identifier ceiling. The control-character refusal states the contract;
+ * belt-and-braces with `pairKey`'s collision-proof encoding it means a future
+ * widening of the identifier vocabulary cannot silently reintroduce a false
+ * clean check through a serialization collision. The ceiling refuses a whole
+ * document smuggled through a label field.
  */
 const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/;
-function usableIdentifier(value) {
-  return usableString(value) && !CONTROL_CHARACTERS.test(value);
+function refuseBadIdentifier(value, where) {
+  if (!usableString(value)) {
+    fail(`${where} must be a non-empty identifier`);
+  }
+  if (CONTROL_CHARACTERS.test(value)) {
+    fail(`${where} must not contain a control character`);
+  }
+  if (characterCount(value) > MAX_IDENTIFIER_CHARACTERS) {
+    fail(`${where} exceeds the identifier ceiling of ${MAX_IDENTIFIER_CHARACTERS} characters; an identifier longer than the whole comparison surface is not a label`);
+  }
 }
 
 /**
@@ -149,10 +176,32 @@ function object(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function refuseUnknownFields(value, allowed, where) {
+/**
+ * One source of truth for "every field on this schema object is a supplied, own
+ * property". It refuses two failure modes together so no schema object can be
+ * validated for one and not the other:
+ *
+ * - an unknown own field (something not in `allowed`), which is how untrusted
+ *   material would smuggle a `severity`, an `instruction`, or a proposed edit;
+ * - an allowed field reachable only through the prototype chain, which is how a
+ *   record built with `Object.create` mutes a real finding — `Object.keys` sees
+ *   nothing unknown, yet the value is later read through the prototype. `key in`
+ *   walks the prototype where `hasOwnProperty` does not, so a field must be both
+ *   present and own.
+ *
+ * Applied to the record and to every nested object — `artifact`, each
+ * assertion, each evidence item, each accepted pair, each finding — so the
+ * inherited-field rule has one home rather than being re-applied per object.
+ */
+function refuseUnknownOrInheritedFields(value, allowed, where) {
   const unknown = Object.keys(value).filter((key) => !allowed.includes(key)).sort();
   if (unknown.length) {
     fail(`${where}: unknown field(s): ${unknown.join(', ')}`);
+  }
+  for (const key of allowed) {
+    if (key in value && !hasOwn(value, key)) {
+      fail(`${where}: field must be an own property, not inherited: ${key}`);
+    }
   }
 }
 
@@ -178,17 +227,7 @@ function parseRecord(input, mode) {
   if (!object(input)) {
     fail('record must be an object');
   }
-  refuseUnknownFields(input, RECORD_KEYS, 'record');
-  // A schema field reachable only through the prototype chain is not a supplied
-  // field. Refusing it in both modes closes the gap where `key in input` (which
-  // walks the prototype) disagrees with own-property validation: a record that
-  // inherits `findings` from its prototype must not slip past --resolve as a
-  // clean check, nor be seen by --bound as legitimately absent.
-  for (const key of RECORD_KEYS) {
-    if (key in input && !hasOwn(input, key)) {
-      fail(`field must be an own property, not inherited: ${key}`);
-    }
-  }
+  refuseUnknownOrInheritedFields(input, RECORD_KEYS, 'record');
   for (const key of REQUIRED_KEYS) {
     if (!hasOwn(input, key)) {
       fail(`missing field: ${key}`);
@@ -202,11 +241,9 @@ function parseRecord(input, mode) {
   if (!object(input.artifact)) {
     fail('artifact must be an object');
   }
-  refuseUnknownFields(input.artifact, ARTIFACT_KEYS, 'artifact');
+  refuseUnknownOrInheritedFields(input.artifact, ARTIFACT_KEYS, 'artifact');
   for (const key of ARTIFACT_KEYS) {
-    if (!usableString(input.artifact[key])) {
-      fail(`artifact.${key} must be a non-empty string`);
-    }
+    refuseBadIdentifier(input.artifact[key], `artifact.${key}`);
   }
 
   if (!Array.isArray(input.assertions) || input.assertions.length === 0) {
@@ -217,10 +254,8 @@ function parseRecord(input, mode) {
     if (!object(assertion)) {
       fail(`assertions[${index}] must be an object`);
     }
-    refuseUnknownFields(assertion, ASSERTION_KEYS, `assertions[${index}]`);
-    if (!usableIdentifier(assertion.id)) {
-      fail(`assertions[${index}].id must be a non-empty identifier without control characters`);
-    }
+    refuseUnknownOrInheritedFields(assertion, ASSERTION_KEYS, `assertions[${index}]`);
+    refuseBadIdentifier(assertion.id, `assertions[${index}].id`);
     if (!ASSERTION_KINDS.includes(assertion.kind)) {
       fail(`assertions[${index}].kind must be one of ${ASSERTION_KINDS.join(', ')}; got ${JSON.stringify(assertion.kind)}`);
     }
@@ -241,10 +276,8 @@ function parseRecord(input, mode) {
     if (!object(item)) {
       fail(`evidence[${index}] must be an object`);
     }
-    refuseUnknownFields(item, EVIDENCE_KEYS, `evidence[${index}]`);
-    if (!usableIdentifier(item.ref)) {
-      fail(`evidence[${index}].ref must be a non-empty identifier without control characters`);
-    }
+    refuseUnknownOrInheritedFields(item, EVIDENCE_KEYS, `evidence[${index}]`);
+    refuseBadIdentifier(item.ref, `evidence[${index}].ref`);
     if (!usableString(item.text)) {
       fail(`evidence[${index}].text must be a non-empty string`);
     }
@@ -262,13 +295,20 @@ function parseRecord(input, mode) {
     if (!object(pair)) {
       fail(`accepted[${index}] must be an object`);
     }
-    refuseUnknownFields(pair, ACCEPTED_KEYS, `accepted[${index}]`);
+    refuseUnknownOrInheritedFields(pair, ACCEPTED_KEYS, `accepted[${index}]`);
     for (const key of ACCEPTED_KEYS) {
-      if (!usableIdentifier(pair[key])) {
-        fail(`accepted[${index}].${key} must be a non-empty identifier without control characters`);
-      }
+      refuseBadIdentifier(pair[key], `accepted[${index}].${key}`);
     }
-    acceptedPairs.add(pairKey(pair.assertionId, pair.evidenceRef));
+    // A duplicate accepted pair is a caller defect, never a second mute: the
+    // (assertionId, evidenceRef) pair is the identity of one divergence, the
+    // same identity rule findings key on, so a repeated acceptance is refused
+    // rather than silently collapsed. Refusing here keeps the acceptance side
+    // and the finding side from disagreeing about what one divergence is.
+    const key = pairKey(pair.assertionId, pair.evidenceRef);
+    if (acceptedPairs.has(key)) {
+      fail(`accepted[${index}] duplicates an earlier accepted pair: (${pair.assertionId}, ${pair.evidenceRef})`);
+    }
+    acceptedPairs.add(key);
   });
 
   const assertionWords = input.assertions.reduce((total, assertion) => total + wordCount(assertion.text), 0);
@@ -315,11 +355,12 @@ function parseRecord(input, mode) {
       fail('findings must be an array');
     }
     const seenFindingPairs = new Set();
+    let descriptionCharacters = 0;
     findings = input.findings.map((finding, index) => {
       if (!object(finding)) {
         fail(`findings[${index}] must be an object`);
       }
-      refuseUnknownFields(finding, FINDING_KEYS, `findings[${index}]`);
+      refuseUnknownOrInheritedFields(finding, FINDING_KEYS, `findings[${index}]`);
       for (const key of FINDING_KEYS) {
         if (!hasOwn(finding, key)) {
           fail(`findings[${index}] missing field: ${key}`);
@@ -337,6 +378,7 @@ function parseRecord(input, mode) {
       if (!usableString(finding.description)) {
         fail(`findings[${index}].description must be a non-empty string`);
       }
+      descriptionCharacters += characterCount(finding.description);
       // One divergence is one finding. The (assertionId, evidenceRef) pair is
       // the identity of a divergence — the very key suppression uses — so a
       // repeated pair cannot be allowed to land in escalated and recorded at
@@ -355,6 +397,16 @@ function parseRecord(input, mode) {
         description: finding.description,
       };
     });
+    // The finding descriptions are a third comparison side and must be bounded
+    // like the assertion and evidence sides, or an unbounded description would
+    // slip past every other cap. The same character ceiling applies to the
+    // total of all descriptions, refused with the finding-description side named.
+    if (descriptionCharacters > MAX_SURFACE_CHARACTERS) {
+      throw new ContradictionCheckError(
+        'surface-unbounded',
+        `finding descriptions have ${descriptionCharacters} characters; the ceiling is ${MAX_SURFACE_CHARACTERS}`,
+      );
+    }
   }
 
   return {
@@ -450,7 +502,14 @@ export function resolveContradictions(input) {
 export const USAGE = 'Usage: contradiction-check.mjs (--bound | --resolve) --input <absolute-json-path>';
 
 export function run(argv, streams = process) {
-  if (argv.length !== 3 || argv[1] !== '--input' || !path.isAbsolute(argv[2])) {
+  // Validate the mode and argument shape fully BEFORE reading the file, so a
+  // usage error is classified as usage regardless of unrelated filesystem
+  // state: an unknown mode is a usage failure whether or not the path exists.
+  const mode = argv[0];
+  if (argv.length !== 3
+    || (mode !== '--bound' && mode !== '--resolve')
+    || argv[1] !== '--input'
+    || !path.isAbsolute(argv[2])) {
     throw new ContradictionCheckError('usage', USAGE);
   }
   // Reading and parsing the input file is a boundary of trust, and its failures
@@ -466,14 +525,7 @@ export function run(argv, streams = process) {
       `cannot read or parse ${argv[2]}: ${cause.message}`,
     );
   }
-  let output;
-  if (argv[0] === '--bound') {
-    output = boundSurface(input);
-  } else if (argv[0] === '--resolve') {
-    output = resolveContradictions(input);
-  } else {
-    throw new ContradictionCheckError('usage', USAGE);
-  }
+  const output = mode === '--bound' ? boundSurface(input) : resolveContradictions(input);
   streams.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
   return 0;
 }

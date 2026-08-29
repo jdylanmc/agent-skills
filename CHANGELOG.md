@@ -32,7 +32,8 @@ below is unreleased and no comparison links are available.
   evidence contradict its assertions? It compares changed evidence against a
   small, capped set of assertions rather than a whole document, escalates only
   what a person needs to see and returns the rest for the caller to record, and
-  does not raise a divergence again once someone has accepted it. It reports and
+  does not re-raise a divergence the caller supplies as already accepted,
+  reporting each suppressed finding rather than dropping it. It reports and
   never edits, approves, invalidates, or proposes an edit. `/spec` uses it on the
   held path — recording the non-escalated findings through Chronicler so a
   lower-confidence divergence survives the run — so an approved specification is

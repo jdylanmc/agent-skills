@@ -35,6 +35,36 @@ that may reopen approved work. Two more consumers are already approved designs,
 and a strategic driver is named, so the shared placement is justified under the
 `CONTEXT.md` definition of a shared unit rather than speculative.
 
+### The `_base` placement is a disclosed bet, not a settled fact
+
+Two repository rules point in different directions here, and honesty requires
+naming the tension rather than implying it away. `AGENTS.md` says:
+
+> "Do not promote a unit to `_base` until more than one skill composes it."
+
+`CONTEXT.md` defines the term that rule turns on:
+
+> "**Shared unit** — An atom or molecule stored under `skills/_base/` because at
+> least two named consumers are either current skills or explicitly approved
+> skill designs."
+
+Read literally against today's tree these disagree: only `spec` **composes**
+this unit, so the `AGENTS.md` line read on its own would keep it skill-local,
+while `CONTEXT.md` counts `spec` plus the two approved designs (#115, #116) and
+places it in `_base`. `CONTEXT.md` governs the reading for two reasons: it
+defines the very term — "shared unit" — that `AGENTS.md` leans on, and it
+explicitly counts approved designs as qualifying consumers, which is exactly the
+case issue #123 directs. `AGENTS.md` states the ordinary guardrail; `CONTEXT.md`
+states the definition the guardrail is measured against.
+
+The consequence, stated plainly: **today exactly one skill composes this unit.**
+The `_base` placement is therefore a bet that the named consumers (#115, #116,
+and the #65 driver) land. If they do not — if #115 and #116 are abandoned or
+absorbed so that `spec` remains the only consumer — this unit belongs back
+inside `spec` as a skill-local atom, and that regression to skill-local is the
+condition under which it should be moved. This is a decision disclosed for a
+human to accept or reverse, not one settled by this document.
+
 ## Named Consumers
 
 | Consumer | Status | Approved assertions | Evidence compared against |
@@ -64,13 +94,20 @@ grade itself or widen its own scope.
 
 ### Identifiers, uniqueness, and strings
 
-`assertions[].id`, `evidence[].ref`, and both members of every `accepted` pair
-are **identifiers**: stable labels, not payloads. An identifier carrying an
-ASCII control character (U+0000–U+001F, U+007F) is refused, and identifiers are
-serialized into suppression and finding-identity keys with an unambiguous
-encoding, so a collision between two distinct pairs is impossible even if the
-identifier vocabulary later widens. The refusal states the contract; the
-encoding is the belt-and-braces guarantee.
+`artifact.id`, `artifact.kind`, `assertions[].id`, `evidence[].ref`, and both
+members of every `accepted` pair are **identifiers**: stable labels, not
+payloads. An identifier is refused, in one shared place so the rule cannot drift
+between fields, when it is empty, carries an ASCII control character
+(U+0000–U+001F, U+007F), or exceeds the identifier ceiling. The ceiling is
+`MAX_IDENTIFIER_CHARACTERS`, derived as exactly `MAX_SURFACE_CHARACTERS` rather
+than a fresh literal: a label longer than the whole comparison surface is a
+document smuggled through a label field, not a label. Over-length, empty, and
+control-character identifiers are all refused as `invalid-input`, naming the
+field. Identifiers are also serialized into suppression and finding-identity
+keys with an unambiguous encoding, so a collision between two distinct pairs is
+impossible even if the identifier vocabulary later widens — even for identifiers
+containing quotation marks, backslashes, brackets, or commas. The refusal states
+the contract; the encoding is the belt-and-braces guarantee.
 
 Duplicate `assertions[].id` and duplicate `evidence[].ref` are refused as
 `invalid-input`, naming the duplicated identifier. Uniqueness is what makes
@@ -80,9 +117,13 @@ last assertion would silently win the severity lookup, and with a duplicate ref
 a finding could not say which evidence text grounded it.
 
 One validator decides whether any string is usable, everywhere: a string counts
-as empty when nothing meaningful remains after trimming ASCII whitespace and
-stripping zero-width and other Unicode format characters, so a lone zero-width
-space is not a non-empty identifier.
+as empty when nothing meaningful remains after trimming ECMAScript whitespace —
+what `String.prototype.trim` removes, which is every Unicode whitespace code
+point, not only ASCII spaces and tabs — and stripping zero-width and other
+Unicode format characters, so a lone zero-width space is not a non-empty
+identifier. Trimming and stripping decide emptiness only. The stored record
+keeps each value's original characters unchanged: no format character is
+stripped from a returned identifier or text.
 
 ## Two Modes, And Why They Are Two
 
@@ -118,6 +159,14 @@ and both numbers.
   without whitespace (many CJK texts) counts an entire paragraph as a single
   word. The character bound is what actually refuses a surface too large to
   compare.
+
+The finding `description` text is a third side of the same surface, bounded the
+same way. Under `--resolve` the total characters across every finding
+`description` are summed and refused when they exceed `MAX_SURFACE_CHARACTERS`,
+separately from the assertion and evidence sides. A `surface-unbounded` refusal
+on this side names the **finding descriptions**, so a caller can tell it apart
+from an over-large assertion or evidence set. Without it an unbounded
+description would slip past every other cap.
 
 The rationale: the assertion set comes from an artifact that is itself small — a
 nano specification of roughly a dozen short declarative claims, capped at 500
@@ -188,6 +237,13 @@ emitted twice. Refusing it is what keeps escalation, recording, and suppression
 from disagreeing — they all key on the same identity, so that identity must be
 singular.
 
+A duplicate `accepted` pair is refused the same way, as `invalid-input` naming
+the duplicated pair. A second acceptance of the same divergence mutes nothing
+extra — the first already mutes it — so a repeat is a caller defect rather than a
+stronger mute. Refusing it applies the identity rule already enforced on
+findings to the acceptance side, so the two sides cannot disagree about what one
+divergence is.
+
 A suppressed finding is returned under `suppressed`, never silently dropped, so
 a mute is auditable — even an otherwise-escalating `high` finding does not
 escalate once its pair is accepted. The narrowness is deliberate: an acceptance
@@ -205,10 +261,10 @@ failure without parsing prose:
 
 | Code | Meaning |
 | --- | --- |
-| `usage` | The command line was invoked wrongly (wrong flags, or a non-absolute `--input` path). |
+| `usage` | The command line was invoked wrongly: a missing or unknown mode, wrong flags, a wrong argument count, or a non-absolute `--input` path. The mode and argument shape are validated **before** the file is read, so a usage error is never misclassified as a file failure. |
 | `unreadable-input` | The `--input` path cannot be read, or its contents are not valid JSON. The underlying condition is carried in the message, not the code, so the cause is not swallowed. |
-| `invalid-input` | The record is malformed: an unknown or inherited field, a missing required field, a bad type, a control character or duplicate identifier, a duplicate finding pair, or a finding that grounds in no supplied assertion or evidence. |
-| `surface-unbounded` | The assertion set or the evidence set exceeds the word or character bound. |
+| `invalid-input` | The record is malformed: an unknown or inherited field (at the record or at any nested object), a missing required field, a bad type, a control-character, over-length, or duplicate identifier, a duplicate `accepted` pair, a duplicate finding pair, or a finding that grounds in no supplied assertion or evidence. |
+| `surface-unbounded` | The assertion set, the evidence set, or the total of the finding descriptions exceeds the word or character bound. The message names which of the three sides. |
 
 Reading and parsing the input file is a boundary of trust, so Node's `ENOENT`
 and `EISDIR` are classified into `unreadable-input` rather than leaking out as
@@ -245,11 +301,37 @@ read an assertion and know whether the evidence really contradicts it; it checks
 grounding, bounding, and counting, not truth. Shrinking the judgement surface is
 honest about the boundary rather than pretending the gate is computed.
 
+Because the semantic step is exactly what this unit does **not** perform, **no
+test in `contradiction-check.test.mjs` can prove it.** The tests supply the
+findings a caller's judgement would have produced and assert on what the unit
+then does with them, so they establish the structural contract — that an empty
+`findings` array resolves to an explicit clean check, that a supplied finding
+drives the verdict, that severity is derived, that suppression is exact, that
+the surface and identifiers are bounded. They do **not** establish that any
+particular evidence sentence "contradicts" or "is additive to" any particular
+assertion; a fixture's evidence text and its supplied findings are chosen to
+agree so the test reads honestly, but the agreement is the test author's, not
+the unit's. Whether the evidence truly contradicts the assertion is the caller's
+judgement, and it is untested here on purpose.
+
 ## Boundaries
 
-- **Reports only.** It never edits, approves, re-approves, invalidates, revises,
-  or proposes an edit. There is no field in the input or the output through which
-  an edit, patch, or suggestion may travel; any such field is refused as unknown.
+- **Reports only.** It never edits, approves, re-approves, invalidates, or
+  revises anything, and this rests on two different guarantees that must not be
+  conflated:
+  - **Structurally impossible.** The unit holds no `edit` grant beyond
+    `execute`, performs no mutation, reaches no artifact, and has no field —
+    input or output — *named* for an edit, a patch, or a suggestion. Any such
+    named field is refused as unknown. This is what makes "never edits,
+    approves, or invalidates" in criterion 8 a mechanical guarantee.
+  - **A rule on judgement, not on the schema.** A finding `description` is free
+    prose and *could* contain a sentence proposing an edit; the schema cannot
+    detect that, and the unit returns the description unchanged. "Does not
+    propose an edit" is therefore a constraint on whoever **writes** the finding,
+    not something this unit enforces. Overclaiming it as a structural guarantee
+    would be worse than naming the boundary: the honest statement is that the
+    description must not carry a proposed edit, and nothing here can stop it if a
+    caller ignores that.
 - **Reaches nothing.** It reads only its one `--input` JSON file — no git, no
   `gh`, no network, no other filesystem access. It is pure and deterministic
   given its input.

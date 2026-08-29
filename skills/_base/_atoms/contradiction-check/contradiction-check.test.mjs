@@ -15,8 +15,8 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import {
-  MAX_SURFACE_WORDS,
   MAX_SURFACE_CHARACTERS,
+  MAX_IDENTIFIER_CHARACTERS,
   boundSurface,
   resolveContradictions,
   run,
@@ -34,7 +34,7 @@ function record(overrides = {}) {
       { id: 'NG-001', kind: 'non-goal', text: 'Do not choose architecture.' },
     ],
     evidence: [
-      { ref: 'ev-1', text: 'The enriched foundation now serves two sources.' },
+      { ref: 'ev-1', text: 'The enriched foundation adds an onboarding walkthrough note.' },
     ],
     accepted: [],
     ...overrides,
@@ -45,18 +45,21 @@ function judged(findings, overrides = {}) {
   return { ...record(overrides), findings };
 }
 
-test('evidence that produces no finding yields an explicit clean check, not an error or an absent result', () => {
-  // The record carries real, non-additive evidence text; the client judged it
-  // and produced no finding. The contract is that this is a reported clean
-  // check driven by the findings, distinct from a thrown error and from a
-  // missing/absent result.
+test('the resolver reports an explicit clean check when judgement returned nothing', () => {
+  // The evidence here is genuinely additive to the assertions — an onboarding
+  // note that neither serves a second source, changes the pair count, nor
+  // touches architecture — so the fixture and the claim agree. This test proves
+  // the RESOLVER reports an explicit clean check when judgement returns no
+  // finding; it does not and cannot prove that the additive evidence "produced"
+  // no finding, because judging the evidence is the one step this unit does not
+  // perform. See the judgement-boundary note in contradiction-check.md.
   const input = judged([]);
-  assert.ok(input.evidence.length > 0 && input.evidence[0].text.length > 0,
-    'the arrangement supplies real evidence, so a clean result is about the judged findings');
+  assert.ok(input.evidence[0].text.length > 0,
+    'the arrangement supplies additive evidence; the clean result is about the empty findings');
 
   let result;
   assert.doesNotThrow(() => { result = resolveContradictions(input); },
-    'evidence with no finding is a clean check, never an error');
+    'an empty findings array is a clean check, never an error');
   assert.notEqual(result, undefined, 'a clean check is a reported result, not an absent one');
   assert.equal(result.clean, true);
   assert.equal(result.verdict, 'none');
@@ -67,14 +70,29 @@ test('evidence that produces no finding yields an explicit clean check, not an e
     recorded: [],
     suppressed: [],
   });
+});
 
-  // The result is driven by the judged findings: the same evidence with one
-  // real finding is no longer a clean check.
-  const withFinding = resolveContradictions(judged([
-    { assertionId: 'INT', evidenceRef: 'ev-1', confidence: 'high', description: 'x' },
-  ]));
-  assert.equal(withFinding.clean, false);
+test('the outcome is driven by the judged findings, not by the evidence text', () => {
+  // Contrasting fixture: the evidence text genuinely contradicts the intention
+  // ("serve one confirmed Discovery source"), and this time judgement is
+  // represented by a corresponding finding. The pair with the clean test above
+  // shows the result follows the findings the caller supplies, never the words
+  // in the evidence — the same contradictory sentence with NO finding would
+  // still resolve clean.
+  const contradictory = {
+    evidence: [{ ref: 'ev-1', text: 'The enriched foundation now serves two Discovery sources.' }],
+  };
+  const withoutFinding = resolveContradictions(judged([], contradictory));
+  assert.equal(withoutFinding.clean, true, 'contradictory evidence with no finding is still a clean check');
+  assert.equal(withoutFinding.verdict, 'none');
+
+  const withFinding = resolveContradictions(judged(
+    [{ assertionId: 'INT', evidenceRef: 'ev-1', confidence: 'high', description: 'serves a second source' }],
+    contradictory,
+  ));
+  assert.equal(withFinding.clean, false, 'the same evidence with a finding is no longer clean');
   assert.equal(withFinding.verdict, 'escalated');
+  assert.equal(withFinding.escalated[0].assertionId, 'INT');
 });
 
 test('a high-confidence finding escalates and is reported under escalated', () => {
@@ -170,7 +188,10 @@ test('an acceptance for a different evidence ref does not suppress the finding',
 });
 
 test('the surface bound refuses an over-large assertion set with a distinct code', () => {
-  const bigText = Array.from({ length: MAX_SURFACE_WORDS + 1 }, () => 'word').join(' ');
+  // A fixed, externally meaningful size (501 whitespace tokens) that exceeds the
+  // documented 500-word bound. Fixed rather than derived from the exported
+  // constant so the test pins the bound itself: raise the ceiling and this fails.
+  const bigText = Array.from({ length: 501 }, () => 'word').join(' ');
   assert.throws(
     () => boundSurface(record({
       assertions: [{ id: 'INT', kind: 'intention', text: bigText }],
@@ -180,7 +201,7 @@ test('the surface bound refuses an over-large assertion set with a distinct code
 });
 
 test('the surface bound refuses an over-large evidence set separately', () => {
-  const bigText = Array.from({ length: MAX_SURFACE_WORDS + 1 }, () => 'word').join(' ');
+  const bigText = Array.from({ length: 501 }, () => 'word').join(' ');
   assert.throws(
     () => boundSurface(record({
       evidence: [{ ref: 'ev-1', text: bigText }],
@@ -348,7 +369,9 @@ test('a duplicate finding pair is refused so one divergence stays one finding', 
 });
 
 test('an oversized single token is refused as surface-unbounded even though it is one word', () => {
-  const oneHugeToken = 'x'.repeat(MAX_SURFACE_CHARACTERS + 1);
+  // A fixed 5001-character single token, one over the documented 5000-character
+  // bound, held as a literal size rather than derived from the constant.
+  const oneHugeToken = 'x'.repeat(5001);
   assert.equal(oneHugeToken.trim().split(/\s+/).length, 1, 'the arrangement is a single whitespace token');
   assert.throws(
     () => boundSurface(record({
@@ -361,7 +384,7 @@ test('an oversized single token is refused as surface-unbounded even though it i
 });
 
 test('a whitespace-free oversized string is refused as surface-unbounded', () => {
-  const noWhitespace = '字'.repeat(MAX_SURFACE_CHARACTERS + 1);
+  const noWhitespace = '字'.repeat(5001);
   assert.equal(noWhitespace.trim().split(/\s+/).length, 1, 'a script without whitespace counts as one word');
   assert.throws(
     () => boundSurface(record({
@@ -424,4 +447,150 @@ test('the command line round-trips a valid record to stdout, proving the failure
   } finally {
     fs.rmSync(scratch, { force: true });
   }
+});
+
+// --- #123 second-pass remediation: nested prototype pollution, whole-record bounds,
+// mode-before-file classification, and a collision proof driven through the public API ---
+
+test('an accepted pair inheriting its members from a prototype cannot manufacture a false clean check', () => {
+  // The reproduction: refuseUnknownFields used Object.keys (own only), so an
+  // Object.create pair flagged nothing unknown, yet the members were read
+  // through the prototype and muted a real high-confidence finding. The nested
+  // own-property rule must refuse the inherited pair rather than resolve clean.
+  const inheritedPair = Object.create({ assertionId: 'AC-001', evidenceRef: 'ev-1' });
+  const input = judged(
+    [{ assertionId: 'AC-001', evidenceRef: 'ev-1', confidence: 'high', description: 'real divergence' }],
+    { accepted: [inheritedPair] },
+  );
+  assert.throws(
+    () => resolveContradictions(input),
+    (error) => error.code === 'invalid-input' && /own property|inherited/i.test(error.message),
+  );
+});
+
+test('an inherited field on artifact, an assertion, and an evidence item are each refused', () => {
+  const inheritedArtifact = Object.assign(Object.create({ id: 'ghost' }), { kind: 'nano-specification' });
+  assert.throws(
+    () => boundSurface(record({ artifact: inheritedArtifact })),
+    (error) => error.code === 'invalid-input' && /own property|inherited/i.test(error.message),
+  );
+
+  const inheritedAssertion = Object.assign(Object.create({ id: 'INT' }), { kind: 'intention', text: 'one' });
+  assert.throws(
+    () => boundSurface(record({ assertions: [inheritedAssertion] })),
+    (error) => error.code === 'invalid-input' && /own property|inherited/i.test(error.message),
+  );
+
+  const inheritedEvidence = Object.assign(Object.create({ ref: 'ev-1' }), { text: 'one' });
+  assert.throws(
+    () => boundSurface(record({ evidence: [inheritedEvidence] })),
+    (error) => error.code === 'invalid-input' && /own property|inherited/i.test(error.message),
+  );
+});
+
+test('the identifier ceiling is the surface character ceiling, and an over-long identifier is refused', () => {
+  assert.equal(MAX_IDENTIFIER_CHARACTERS, MAX_SURFACE_CHARACTERS,
+    'the identifier ceiling is derived from the surface character ceiling, not a fresh literal');
+  // A fixed 5001-character identifier, one over the 5000-character ceiling.
+  const overLong = 'a'.repeat(5001);
+  assert.throws(
+    () => boundSurface(record({ artifact: { id: overLong, kind: 'nano-specification' } })),
+    (error) => error.code === 'invalid-input' && /identifier ceiling/i.test(error.message),
+  );
+  assert.throws(
+    () => boundSurface(record({
+      assertions: [{ id: overLong, kind: 'intention', text: 'one' }],
+    })),
+    (error) => error.code === 'invalid-input' && /identifier ceiling/i.test(error.message),
+  );
+});
+
+test('the total of all finding descriptions is bounded separately, naming the finding-description side', () => {
+  // Two findings whose descriptions individually fit but together exceed the
+  // 5000-character ceiling, proving the bound is on the total description side,
+  // not on a single description or on the assertion/evidence sides.
+  const half = 'd'.repeat(3000);
+  assert.throws(
+    () => resolveContradictions(judged(
+      [
+        { assertionId: 'INT', evidenceRef: 'ev-1', confidence: 'low', description: half },
+        { assertionId: 'AC-001', evidenceRef: 'ev-1', confidence: 'low', description: half },
+      ],
+    )),
+    (error) => error.code === 'surface-unbounded'
+      && /finding description/i.test(error.message)
+      && /character/.test(error.message),
+  );
+});
+
+test('a duplicate accepted pair is refused as invalid-input, naming the duplicate', () => {
+  assert.throws(
+    () => resolveContradictions(judged(
+      [{ assertionId: 'AC-001', evidenceRef: 'ev-1', confidence: 'high', description: 'x' }],
+      {
+        accepted: [
+          { assertionId: 'AC-001', evidenceRef: 'ev-1' },
+          { assertionId: 'AC-001', evidenceRef: 'ev-1' },
+        ],
+      },
+    )),
+    (error) => error.code === 'invalid-input'
+      && /duplicat/i.test(error.message)
+      && /AC-001/.test(error.message),
+  );
+});
+
+test('an unknown mode returns usage whether or not the path exists, and never writes stdout', () => {
+  const existing = path.join(HERE, 'contradiction-check.usage.tmp.json');
+  fs.writeFileSync(existing, JSON.stringify(judged([])), 'utf8');
+  try {
+    for (const target of [existing, path.join(HERE, 'no-such-file.json')]) {
+      const captured = [];
+      const streams = { stdout: { write: (chunk) => captured.push(chunk) } };
+      assert.throws(
+        () => run(['--wat', '--input', target], streams),
+        (error) => error.code === 'usage',
+        `an unknown mode must classify as usage, not as a file failure (${target})`,
+      );
+      assert.equal(captured.join(''), '', 'a usage failure writes nothing to stdout');
+    }
+  } finally {
+    fs.rmSync(existing, { force: true });
+  }
+});
+
+test('distinct identifier pairs with punctuation the validator accepts never suppress one another', () => {
+  // Drives the public API with identifiers containing quotation marks,
+  // backslashes, brackets, and commas — characters the validator accepts — to
+  // exercise the collision-proof pairKey encoding rather than only the
+  // control-character refusal. A delimiter-joined key would collide the accepted
+  // pair (a,b | c) with the finding pair (a | b,c); the JSON encoding keeps them
+  // distinct, so the real finding is never muted.
+  const input = {
+    version: 1,
+    artifact: { id: 'spec-x', kind: 'nano-specification' },
+    assertions: [
+      { id: 'a,b', kind: 'intention', text: 'one' },
+      { id: 'a', kind: 'acceptance-criterion', text: 'two' },
+      { id: 'p["q"]', kind: 'non-goal', text: 'three' },
+    ],
+    evidence: [
+      { ref: 'c', text: 'e1' },
+      { ref: 'b,c', text: 'e2' },
+      { ref: 'r\\s', text: 'e3' },
+    ],
+    accepted: [{ assertionId: 'a,b', evidenceRef: 'c' }],
+    findings: [
+      { assertionId: 'a,b', evidenceRef: 'c', confidence: 'high', description: 'the accepted divergence' },
+      { assertionId: 'a', evidenceRef: 'b,c', confidence: 'high', description: 'a distinct pair, must not be muted' },
+      { assertionId: 'p["q"]', evidenceRef: 'r\\s', confidence: 'high', description: 'a bracketed, quoted, backslashed pair' },
+    ],
+  };
+  const result = resolveContradictions(input);
+  assert.equal(result.suppressed.length, 1, 'only the exactly-accepted pair is muted');
+  assert.equal(result.suppressed[0].assertionId, 'a,b');
+  assert.equal(result.suppressed[0].evidenceRef, 'c');
+  assert.equal(result.escalated.length, 2, 'the two distinct pairs survive, uncollided');
+  assert.ok(result.escalated.some((f) => f.assertionId === 'a' && f.evidenceRef === 'b,c'));
+  assert.ok(result.escalated.some((f) => f.assertionId === 'p["q"]' && f.evidenceRef === 'r\\s'));
 });

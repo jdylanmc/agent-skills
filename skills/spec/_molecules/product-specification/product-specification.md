@@ -52,7 +52,11 @@ resolve approval state -> resolve source with state-dependent freshness
    over the approved artifact's assertion set and the enriched Discovery
    evidence — `--bound` to hand judgement exactly the capped surface, then
    `--resolve` on the judged findings — to produce the contradiction verdict
-   (`escalated` or `none`). Record the `recorded` and `suppressed` findings the
+   (`escalated` or `none`). The caller is responsible for supplying only the
+   changed Discovery material as that evidence; no deterministic extractor of
+   "changed evidence only" exists yet, so keeping the evidence to the delta is
+   the caller's boundary to hold rather than one this molecule enforces. Record
+   the `recorded` and `suppressed` findings the
    resolver returns through Chronicler **before** routing the verdict onward, so
    a `medium` or `low` divergence survives the run rather than being discarded
    with the verdict; only an `escalated` finding interrupts a human. Then run

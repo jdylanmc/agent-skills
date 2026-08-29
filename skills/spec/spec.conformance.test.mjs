@@ -481,3 +481,34 @@ test('the held path documents recording the non-escalated findings through Chron
   assert.match(molecule, /through Chronicler/i);
   assert.match(molecule, /medium.{0,20}low|`recorded`.{0,40}`suppressed`/i);
 });
+
+// #123 second-pass remediation: a TIGHTER pin on the held-path section
+// specifically, rather than the whole flattened file, so the recording contract
+// is checked where it lives. `recorded`, `suppressed`, and the recorder
+// (Chronicler) must all be named together in the held-path step of each file.
+//
+// This is a PROSE pin, and that is correct: prose is the contract for a Markdown
+// unit, so asserting on prose is the right instrument here. Its failure mode is
+// brittleness to rewording — reword the held path and it fails loudly — NOT
+// blindness to regression: delete the recording sentence and it fails. Loud
+// over-firing is the safe direction for a contract this load-bearing.
+test('the held-path section names recorded, suppressed, and the recorder together', () => {
+  const heldSection = (relative, marker) => {
+    const body = read(relative);
+    const start = body.indexOf(marker);
+    assert.notEqual(start, -1, `${relative} must contain the held-path marker ${JSON.stringify(marker)}`);
+    const rest = body.slice(start);
+    const next = rest.slice(marker.length).search(/\n\d+\. /);
+    return next === -1 ? rest : rest.slice(0, next + marker.length);
+  };
+
+  const molecule = heldSection('skills/spec/_molecules/product-specification/product-specification.md', 'On `held`');
+  assert.match(molecule, /`recorded`/, 'the molecule held-path step must name the recorded findings');
+  assert.match(molecule, /`suppressed`/, 'the molecule held-path step must name the suppressed findings');
+  assert.match(molecule, /Chronicler/, 'the molecule held-path step must name the recorder');
+
+  const skill = heldSection('skills/spec/SKILL.md', 'When the source is `held`');
+  assert.match(skill, /`recorded`/, 'the skill held-path step must name the recorded findings');
+  assert.match(skill, /`suppressed`/, 'the skill held-path step must name the suppressed findings');
+  assert.match(skill, /Chronicler/, 'the skill held-path step must name the recorder');
+});
