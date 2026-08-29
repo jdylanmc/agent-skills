@@ -16,7 +16,8 @@ turning requirements into design.
 
 ```text
 record -> resolve approval state -> resolve confirmed Discovery source
-       -> on held: route through spec-outcome with contradiction verdict
+       -> on held: check contradiction, record the non-escalated findings,
+          then route through spec-outcome with the resulting verdict
        -> model product intent -> render nano/full siblings
        -> validate and reread -> one independent Roast pass
        -> resolve status -> publish for approval -> human decision
@@ -57,13 +58,22 @@ record -> resolve approval state -> resolve confirmed Discovery source
    written. This run cannot approve its own output because approval is a merge
    it cannot perform, so a newly written pair returns `needs-decision` awaiting
    the human merge, and a later run observes `approved`.
-4. When the source is `held`, route through the deterministic resolver. Run
+4. When the source is `held`, check contradiction and then route through the
+   deterministic resolver. Run the shared contradiction check over the approved
+   artifact's assertion set and the enriched Discovery evidence to produce a
+   verdict of `escalated` or `none`; it compares against the capped assertion
+   set, never the whole document, and reports without editing, approving, or
+   invalidating anything. Record the check's non-escalated `recorded` and
+   `suppressed` findings through Chronicler before routing the verdict onward,
+   so a `medium` or `low` divergence survives the run and the record stays
+   auditable rather than being dropped with the verdict; only an escalated
+   finding interrupts the human. Then run
    [Specification outcome](./_atoms/spec-outcome/spec-outcome.md) with
-   `sourceStatus: 'held'`, the approval state, and the contradiction verdict
-   (`not-checked` when #123 is not yet implemented). Return whatever it
-   resolves — `held` or `needs-decision`. Nothing else is derived, written,
-   roasted, or published on this path; the resolver call is the only additional
-   step.
+   `sourceStatus: 'held'`, the approval state, and that verdict. Return whatever
+   it resolves — `held` when nothing new contradicts, `needs-decision` when the
+   contradiction escalated. Nothing else is derived, written, roasted, or
+   published on this path; the contradiction check, the Chronicler recording,
+   and the resolver call are the only additional steps.
 5. The molecule preserves the source's evidence distinctions, formalizes product
    intent, writes the sibling Product Requirements Documents beneath
    `docs/agent/specs/`, rereads and validates them, and resolves every

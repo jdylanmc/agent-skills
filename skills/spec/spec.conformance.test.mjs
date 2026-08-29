@@ -353,3 +353,162 @@ test('observedWith is documented as a checked field', () => {
   // The text explicitly states it is checked, not merely an audit note
   assert.match(approvalAtom, /observedWith.*records.*commands/i);
 });
+
+// --- #123: the shared contradiction-check unit is the seam spec depends on ---
+
+// Criterion 1: one unit, composed by every consumer that needs the question
+// answered. spec is a current consumer, and it must reach the shared unit
+// rather than carry its own copy.
+test('spec reaches the shared contradiction-check unit through the molecule', () => {
+  const closure = closureFor(validateRepository(ROOT), ENTRY);
+  assert.ok(
+    closure.includes('_base/_atoms/contradiction-check/contradiction-check.md'),
+    'spec must reach the shared contradiction-check unit',
+  );
+  const molecule = frontmatter('spec/_molecules/product-specification/product-specification.md');
+  assert.ok(
+    molecule.composes.includes('_base/_atoms/contradiction-check/contradiction-check.md'),
+    'the molecule that owns the held path composes the shared unit',
+  );
+  const skill = frontmatter(ENTRY);
+  assert.ok(
+    !skill.composes.includes('_base/_atoms/contradiction-check/contradiction-check.md'),
+    'the skill reaches the unit through the molecule, not by direct composition',
+  );
+});
+
+// Criterion 1 (evidence): the unit's verdict is exactly what feeds spec-outcome
+// on the held path, and the values the unit produces are the ones spec-outcome
+// accepts. 'not-checked' is the caller's not-run value and is never produced by
+// the unit.
+test("the contradiction unit's verdict is what feeds spec-outcome on the held path", async () => {
+  const cc = await import('../_base/_atoms/contradiction-check/contradiction-check.mjs');
+  const so = await import('./_atoms/spec-outcome/spec-outcome.mjs');
+
+  const base = {
+    version: 1,
+    artifact: { id: 'spec-x', kind: 'nano-specification' },
+    assertions: [{ id: 'AC-001', kind: 'acceptance-criterion', text: 'write exactly one pair' }],
+    evidence: [{ ref: 'ev-1', text: 'the enriched foundation now writes two pairs' }],
+    accepted: [],
+  };
+  const none = cc.resolveContradictions({ ...base, findings: [] });
+  const escalated = cc.resolveContradictions({
+    ...base,
+    findings: [{ assertionId: 'AC-001', evidenceRef: 'ev-1', confidence: 'high', description: 'the pair count changed' }],
+  });
+  assert.equal(none.verdict, 'none');
+  assert.equal(escalated.verdict, 'escalated');
+  assert.notEqual(none.verdict, 'not-checked');
+  assert.notEqual(escalated.verdict, 'not-checked');
+
+  const outcome = (contradiction) => so.resolveSpecOutcome({
+    sourceStatus: 'held',
+    pairStatus: 'valid',
+    discoveryGaps: 0,
+    openDecisions: 0,
+    siblingConflicts: 0,
+    roastStatus: 'complete',
+    openMustFix: 0,
+    approval: 'approved',
+    contradiction,
+  });
+  assert.equal(outcome(none.verdict).status, 'held');
+  assert.equal(outcome(escalated.verdict).status, 'needs-decision');
+});
+
+// The held path now produces the verdict with the unit rather than passing
+// 'not-checked' because #123 was unimplemented.
+test('the held path produces the verdict with the unit, not a not-checked placeholder', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
+  assert.doesNotMatch(skill, /not-checked.{0,40}#123 is not yet implemented/i);
+  assert.doesNotMatch(molecule, /not-checked.{0,40}#123 is not yet implemented/i);
+  assert.match(molecule, /contradiction-check\/contradiction-check\.md/);
+  assert.match(molecule, /check contradiction/i);
+  assert.match(skill, /shared contradiction check/i);
+});
+
+// #123 remediation: the seam is a behavioural round trip through both modes of
+// the shared unit, and the held path documents recording the non-escalated
+// findings so a lower-confidence divergence is not discarded with the verdict.
+test('the contradiction seam round-trips through --bound and --resolve and records non-escalated findings', async () => {
+  const cc = await import('../_base/_atoms/contradiction-check/contradiction-check.mjs');
+  const so = await import('./_atoms/spec-outcome/spec-outcome.mjs');
+
+  const base = {
+    version: 1,
+    artifact: { id: 'spec-x', kind: 'nano-specification' },
+    assertions: [{ id: 'AC-001', kind: 'acceptance-criterion', text: 'write exactly one pair' }],
+    evidence: [{ ref: 'ev-1', text: 'the enriched foundation elaborates the pair' }],
+    accepted: [],
+  };
+
+  // --bound half: judgement receives exactly the capped comparison surface.
+  const surface = cc.boundSurface(base);
+  assert.deepEqual(Object.keys(surface).sort(), ['accepted', 'artifact', 'assertions', 'counts', 'evidence']);
+
+  // --resolve half: a medium finding is recorded rather than escalated, does
+  // not move the verdict off 'none', and survives in the returned result.
+  const recordedRun = cc.resolveContradictions({
+    ...base,
+    findings: [{ assertionId: 'AC-001', evidenceRef: 'ev-1', confidence: 'medium', description: 'a possible divergence' }],
+  });
+  assert.equal(recordedRun.verdict, 'none');
+  assert.equal(recordedRun.escalated.length, 0);
+  assert.equal(recordedRun.recorded.length, 1);
+
+  // The verdict feeds spec-outcome, which holds on 'none'.
+  const held = so.resolveSpecOutcome({
+    sourceStatus: 'held',
+    pairStatus: 'valid',
+    discoveryGaps: 0,
+    openDecisions: 0,
+    siblingConflicts: 0,
+    roastStatus: 'complete',
+    openMustFix: 0,
+    approval: 'approved',
+    contradiction: recordedRun.verdict,
+  });
+  assert.equal(held.status, 'held');
+});
+
+test('the held path documents recording the non-escalated findings through Chronicler', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
+  assert.match(skill, /findings through Chronicler/i);
+  assert.match(skill, /non-escalated/i);
+  assert.match(molecule, /through Chronicler/i);
+  assert.match(molecule, /medium.{0,20}low|`recorded`.{0,40}`suppressed`/i);
+});
+
+// #123 second-pass remediation: a TIGHTER pin on the held-path section
+// specifically, rather than the whole flattened file, so the recording contract
+// is checked where it lives. `recorded`, `suppressed`, and the recorder
+// (Chronicler) must all be named together in the held-path step of each file.
+//
+// This is a PROSE pin, and that is correct: prose is the contract for a Markdown
+// unit, so asserting on prose is the right instrument here. Its failure mode is
+// brittleness to rewording — reword the held path and it fails loudly — NOT
+// blindness to regression: delete the recording sentence and it fails. Loud
+// over-firing is the safe direction for a contract this load-bearing.
+test('the held-path section names recorded, suppressed, and the recorder together', () => {
+  const heldSection = (relative, marker) => {
+    const body = read(relative);
+    const start = body.indexOf(marker);
+    assert.notEqual(start, -1, `${relative} must contain the held-path marker ${JSON.stringify(marker)}`);
+    const rest = body.slice(start);
+    const next = rest.slice(marker.length).search(/\n\d+\. /);
+    return next === -1 ? rest : rest.slice(0, next + marker.length);
+  };
+
+  const molecule = heldSection('skills/spec/_molecules/product-specification/product-specification.md', 'On `held`');
+  assert.match(molecule, /`recorded`/, 'the molecule held-path step must name the recorded findings');
+  assert.match(molecule, /`suppressed`/, 'the molecule held-path step must name the suppressed findings');
+  assert.match(molecule, /Chronicler/, 'the molecule held-path step must name the recorder');
+
+  const skill = heldSection('skills/spec/SKILL.md', 'When the source is `held`');
+  assert.match(skill, /`recorded`/, 'the skill held-path step must name the recorded findings');
+  assert.match(skill, /`suppressed`/, 'the skill held-path step must name the suppressed findings');
+  assert.match(skill, /Chronicler/, 'the skill held-path step must name the recorder');
+});
