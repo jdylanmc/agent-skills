@@ -57,6 +57,7 @@ const MERGE_GATE = 'ship/_atoms/merge-gate/merge-gate.md';
 const PUBLISH = 'ship/_atoms/change-request/change-request.md';
 const HANDOFF = 'ship/_atoms/shepherd-handoff/shepherd-handoff.md';
 const LANDABILITY = '_base/_atoms/landability/landability.md';
+const DETECT = '_base/_atoms/provider-detect/provider-detect.md';
 
 /** The grant stage two was reviewed with. Nothing here may widen it. */
 const PINNED_TOOLS = ['execute', 'read', 'search', 'task'];
@@ -174,6 +175,7 @@ test('the execute-bearing closure is pinned, because execute can mutate', () => 
   assert.deepEqual(executeBearing, [
     '_base/_atoms/chronicle-append/chronicle-append.md',
     '_base/_atoms/chronicle-replay/chronicle-replay.md',
+    '_base/_atoms/provider-detect/provider-detect.md',
     '_base/_molecules/chronicler/chronicler.md',
     'ship/SKILL.md',
     'ship/_atoms/change-request/change-request.md',
@@ -210,6 +212,7 @@ test('the skill composes chronicler, the grounding units, the merge gate, and pu
     PUBLISH,
     HANDOFF,
     LANDABILITY,
+    DETECT,
   ]);
 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
@@ -810,18 +813,24 @@ test('the provider seam is narrow, uses the official tool, and never fakes a cle
 
   // A wider seam is how shepherd's job, and the review-thread work that has
   // its own issue, would arrive here by convenience rather than by decision.
+  // Merge state and checks belong to shepherd; review threads belong to ship's
+  // own later review work, not to shepherd.
   assert.match(
     publish,
-    /It does not resolve merge state, read review threads, or watch\s+checks/,
+    /It does not resolve merge state or watch\s+checks[\s\S]*?it does not read review threads, which belong to `ship`'s own\s+later review work rather than to `shepherd`/,
   );
   assert.match(entry, /those belong to\s+`shepherd`/);
   assert.match(
     publish,
-    /When a shared provider adapter exists, this atom composes it instead of carrying\s+its own detection/,
+    /Detection[\s\S]*?is\s+now supplied by the shared/,
   );
   assert.match(
     publish,
-    /A run whose isolation state is `none` reaches the third condition/,
+    /The shared unit now supplies detection, so extracting it was a move rather than a\s+rewrite/,
+  );
+  assert.match(
+    publish,
+    /A run whose isolation state is `none` has no remote to inspect and no branch to\s+push/,
   );
 
   // Publication writes to a shared remote and holds nothing else. No `task`,

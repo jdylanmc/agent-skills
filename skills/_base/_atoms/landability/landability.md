@@ -32,11 +32,13 @@ shared rather than duplicated.
 
 `mergeable-and-green`, `no-op-mergeable-and-green`, `provider-unsupported`,
 `provider-tool-unsupported`, `provider-tool-missing`,
-`provider-tool-unauthenticated`, `needs-human`, `blocked`, `failing`.
+`provider-tool-unauthenticated`, `provider-tool-unobserved`, `needs-human`,
+`blocked`, `failing`.
 
 The provider conditions are separate values on purpose. A host family with no
-adapter yet, a missing tool, and an unauthenticated tool send a person to three
-different places, and mapping one onto another sends them to the wrong one.
+adapter yet, a missing tool, an unauthenticated tool, and a tool whose readiness
+was never probed send a person to four different places, and mapping one onto
+another sends them to the wrong one.
 
 ## The Up-To-Date Policy
 
@@ -49,6 +51,33 @@ different places, and mapping one onto another sends them to the wrong one.
 `unobserved` is never `not-required`. A boolean is normalized rather than
 refused, because that is the shape a provider client returns; anything else
 becomes `unobserved`.
+
+## The Mergeability Signal
+
+The disposition side does not consume a raw provider merge reading. It consumes
+a normalized **mergeability signal**, and the translation from what the
+change-request reader observed into that signal lives here, at the seam, because
+the reader and the disposition are in two different skills.
+
+| Field | Meaning |
+| --- | --- |
+| `observed` | Whether the merge reading was observed at all. |
+| `state` | The **content** merge state only: `mergeable`, `conflicted`, or `unobserved`. |
+| `blocked` | A policy or administrative block, carried explicitly. `true`, `false`, or `null` when unread. |
+| `behind` | Whether the branch is behind a base that must contain it. `true`, `false`, or `null`. |
+| `reviewDecision` | The review gate: `approved`, `changes-requested`, `review-required`, or `unobserved`. |
+| `isDraft` | Draft state when reported, else `null`. |
+| `baseSha` / `headSha` | The commits the reading was taken against. |
+| `upToDatePolicy` | The normalized up-to-date policy from the reading. |
+
+`state` is deliberately content-only. Whether the branch's content merges is a
+different question from whether policy or review permits it, so a policy block
+or a required review is **never** folded into `state`; each is carried in its
+own field. `normalizeMergeabilitySignal` performs the mapping, and an unobserved
+reading yields `state: 'unobserved'` with every blocking gate unobserved rather
+than reported as one that permits a merge. A disposition consuming this signal
+gates `blocked === true` and a `review-required` / `changes-requested` decision
+to `needs-human`, and rebasing is never treated as a way to clear either.
 
 ## The Freshness Receipt
 

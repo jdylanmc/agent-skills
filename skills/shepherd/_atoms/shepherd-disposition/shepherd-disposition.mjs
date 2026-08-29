@@ -65,6 +65,20 @@ export function classifyShepherdPlan(signals = {}) {
   const behindStrictBase = behindUnderRequiredPolicy(signals);
   const receipt = freshnessReceipt(signals);
 
+  // A rebase cannot clear a policy/administrative block or a blocking review,
+  // and an unobserved merge gate (`blocked === null`) is not clearance either.
+  // So content that is mergeable and green must NOT read as a green no-op when
+  // any of these is reported: it falls through to watch-or-report, and the
+  // authoritative terminal classifier renders `blocked`/`needs-human`. Strict
+  // comparisons keep hand-built green signals (both fields `undefined`) and a
+  // real clean PR (`blocked: false`, review `approved`/`unobserved`) on the
+  // no-op path; only an explicit block, an explicit blocking review, or an
+  // explicitly-unobserved gate is excluded.
+  const blockedOrReviewGated = mergeability.blocked === true
+    || mergeability.blocked === null
+    || mergeability.reviewDecision === 'review-required'
+    || mergeability.reviewDecision === 'changes-requested';
+
   if (
     signals.base?.moved === true
     && mergeable
@@ -73,6 +87,7 @@ export function classifyShepherdPlan(signals = {}) {
     && !requiredCheckExpired
     && !conflicted
     && !behindStrictBase
+    && !blockedOrReviewGated
   ) {
     if (!receipt.complete) {
       return {
@@ -131,6 +146,7 @@ function providerObservationUnavailable(signals) {
     'provider-tool-unsupported',
     'provider-tool-missing',
     'provider-tool-unauthenticated',
+    'provider-tool-unobserved',
   ].includes(signals.provider?.status);
 }
 
@@ -190,6 +206,8 @@ function nextHumanActionFor(outcome) {
       return `Install the provider's official CLI, then invoke shepherd again${detail}.`;
     case 'provider-tool-unauthenticated':
       return `Authenticate the provider's official CLI, then invoke shepherd again${detail}.`;
+    case 'provider-tool-unobserved':
+      return `Probe the provider's official CLI readiness, then invoke shepherd again${detail}.`;
     case 'needs-human':
       return `Resolve ${outcome.reason}, then invoke shepherd again${detail}.`;
     case 'failing':
@@ -252,6 +270,30 @@ function classifyOutcome(signals, receipt) {
   }
   if (mergeability.isDraft === true || !['mergeable', 'clean', 'has_hooks'].includes(mergeability.state)) {
     return { disposition: 'needs-human', reason: `pull-request-${mergeability.state ?? 'not-mergeable'}`, defects };
+  }
+
+  // A policy or administrative block and a required/changes-requested review are
+  // carried separately from content merge state, and neither is cleared by a
+  // rebase. Both send the change request to a person. These gates fire only on
+  // an explicit block (`blocked === true`) or an explicit blocking review
+  // decision, so a hand-built green signal that omits them is unaffected.
+  if (mergeability.blocked === true) {
+    return { disposition: 'needs-human', reason: 'pull-request-blocked', defects };
+  }
+  if (mergeability.reviewDecision === 'review-required' || mergeability.reviewDecision === 'changes-requested') {
+    return { disposition: 'needs-human', reason: `review-${mergeability.reviewDecision}`, defects };
+  }
+
+  // Content merged and neither an explicit block nor a blocking review is not
+  // yet clearance: the provider may not have computed the merge gate at all.
+  // A merge-block state read as `null` — GitHub `mergeStateStatus` UNKNOWN or
+  // absent, carried through as `blocked: null` — is unobserved, not permissive,
+  // and an unobserved block must never read as green. The check is strict
+  // `=== null`: a hand-built green signal omits `blocked` entirely (`undefined`)
+  // and a real clean reading normalizes to `blocked: false`; only the genuinely
+  // unobserved `null` is gated here.
+  if (mergeability.blocked === null) {
+    return { disposition: 'blocked', reason: 'merge-block-state-unobserved', defects };
   }
 
   // Mergeable content and green checks are not landability when the base

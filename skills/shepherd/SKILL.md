@@ -15,8 +15,8 @@ Shepherd takes one existing git-hosted change request or explicit branch/base
 pair and drives its branch to a terminal disposition: `mergeable-and-green`,
 `no-op-mergeable-and-green`, `provider-unsupported`,
 `provider-tool-unsupported`, `provider-tool-missing`,
-`provider-tool-unauthenticated`, `needs-human`, `blocked`, or `failing`. It
-never creates or merges the change request.
+`provider-tool-unauthenticated`, `provider-tool-unobserved`, `needs-human`,
+`blocked`, or `failing`. It never creates or merges the change request.
 
 ```text
 record -> detect adapter -> resolve target -> git core -> run-ci -> leased push when needed -> provider status when available -> disposition
@@ -35,11 +35,14 @@ Shepherd has two explicit layers:
    generated conflict regeneration, repository-declared validation, and leased
    push. This layer contains no provider vocabulary.
 2. Provider adapter seam: optional resolution of a hosted change-request
-   identifier, hosted review/merge state, and hosted validation status. Adapter
-   detection uses explicit operator input first, then remote URL or configured
-   provider evidence, and then verifies the official provider CLI. A missing or
-   unauthenticated CLI is reported as its own tool condition; an unmatched host
-   reports `provider-unsupported` without guessing.
+   identifier, hosted merge state, and hosted validation status, through the
+   shared `provider-detect` and `provider-state` atoms. Detection uses explicit
+   operator input first, then configured-host or remote URL evidence, and then
+   probes the official provider CLI. A missing, unauthenticated, or unprobed CLI
+   is reported as its own tool condition; an unmatched host reports
+   `provider-unsupported` and lists the evidence inspected, without guessing.
+   Shepherd composes no review-thread unit, so it holds no comment-handling
+   authority a caller could assert its way into.
 
 ## Core Workflow
 
@@ -70,6 +73,15 @@ Shepherd has two explicit layers:
 4. If the base moved while the branch remains mergeable and green by available
    git/provider evidence, and the base does not require the branch to contain
    it, return `no-op-mergeable-and-green`; do not rebase and do not force-push.
+   A green no-op additionally requires that the change request is **not
+   explicitly blocked** (`blocked !== true` — a policy or administrative block a
+   rebase cannot clear), that its **merge-block state was observed** (not
+   `unobserved`/`null`, which is not clearance), and that **no review decision
+   blocks it** — the review is `approved` or `unobserved`, never
+   `changes-requested` or `review-required`. If instead the change request is
+   explicitly blocked, its merge-block state was not observed, or a review
+   decision blocks it, this is not a green no-op; fall through to observe state
+   and let the terminal classifier render `blocked`/`needs-human`.
 5. When a rebase trigger exists, rebase the pull request branch onto the fetched
    base SHA. Report the old base, new base, original head, final head, and moved
    commits.
@@ -110,9 +122,9 @@ Shepherd has two explicit layers:
      adapter matched;
    - `provider-tool-unsupported` when the git-level core completed but the
      matched host family has no official-tool adapter yet;
-   - `provider-tool-missing` or `provider-tool-unauthenticated` when the git-level
-     core completed but the matched provider's official CLI could not observe
-     hosted state;
+   - `provider-tool-missing`, `provider-tool-unauthenticated`, or
+     `provider-tool-unobserved` when the git-level core completed but the matched
+     provider's official CLI could not observe hosted state;
    - `needs-human` when a semantic conflict, unsafe worktree, or missing policy
      decision needs a person;
    - `blocked` when tooling, permissions, cancellation, missing checks, or
@@ -149,8 +161,9 @@ Return:
 - provider validation table when available with raw provider fields, normalized
   status, required-result flag, and URL when available;
 - unsupported-provider evidence listing inspected remotes/config when no adapter
-  matched, or provider tool evidence naming a missing or unauthenticated
-  official CLI;
+  matched, or provider tool evidence naming a missing, unauthenticated, or
+  unprobed official CLI. State that was not observed is reported as unobserved
+  and never as an empty or clean result;
 - terminal disposition and reason;
 - the freshness receipt the disposition is bound to, and whether it is complete;
 - explicit next human action when disposition is not `mergeable-and-green`;
