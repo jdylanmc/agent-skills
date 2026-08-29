@@ -891,6 +891,7 @@ test('the handoff is a nested invocation the run waits for, not a described one'
   assert.match(entry, /`shipped-to-review` is never reported as though a handoff occurred/);
   assert.match(handoff, /A Handoff Is An Invocation/);
   assert.match(handoff, /a handoff that did\s+not leave this context did not happen/);
+  assert.match(handoff, /A dispatched or unknown invocation status is not a completed handoff/);
 
   // Behavioral: the vocabulary a narrated handoff would report with cannot
   // reach a completed handoff.

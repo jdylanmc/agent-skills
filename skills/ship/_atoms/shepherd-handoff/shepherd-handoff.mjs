@@ -221,6 +221,14 @@ function decideHandoff(input) {
     });
   }
 
+  if (invocation.status !== 'returned') {
+    return notPerformed('invocation-not-returned', {
+      target,
+      unmet: [`invocation: status is ${describe(invocation?.status)}, not returned`],
+      humanAction: humanActionFor(target, 'the shepherd invocation did not return'),
+    });
+  }
+
   if (!isTerminalDisposition(result?.disposition)) {
     // A dispatch nobody waited on looks exactly like this. Reporting
     // completion here would be reporting somebody else's unfinished work.

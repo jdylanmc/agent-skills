@@ -17,7 +17,8 @@ Take one issue to done, without doing more than it asked for.
 record -> ask about shepherd -> ground on one issue -> fix the scope -> confirm
        -> isolate -> dispatch -> reconcile -> validate -> review -> remediate
        -> verdict -> evaluate the merge gate -> open the change request
-       -> ask for the merge grant -> invoke shepherd and wait
+       -> ask for the merge grant -> evaluate handoff
+       -> invoke shepherd and wait when requested
 ```
 
 Ship is an orchestration around a **single deliverable unit**. It coordinates

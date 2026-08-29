@@ -102,8 +102,18 @@ test('a described handoff is not a handoff', () => {
 });
 
 test('a dispatch nobody waited on is not a terminal disposition', () => {
+  for (const status of [undefined, null, '', 'dispatched', 'running', 'complete']) {
+    const result = evaluateHandoff(completeHandoff({
+      invocation: { mode: NESTED_INVOCATION, status },
+    }));
+
+    assert.equal(result.handoff, 'not-performed');
+    assert.equal(result.state, 'invocation-not-returned');
+    assert.equal(result.shipStatus, 'blocked');
+    assert.ok(!handoffSatisfied(result));
+  }
+
   for (const dispatched of [
-    { invocation: { mode: NESTED_INVOCATION, status: 'dispatched' }, result: undefined },
     { result: { disposition: 'in-progress' } },
     { result: { disposition: 'shepherd-required' } },
     { result: { disposition: 'watch-or-report' } },
@@ -482,6 +492,7 @@ test('every published change request leaves the run with an obligation', () => {
     ['intent-unrecorded', { intent: undefined }],
     ['not-invoked', { invocation: { mode: 'narrated', status: 'returned' } }],
     ['shepherd-unavailable', { invocation: { mode: NESTED_INVOCATION, status: 'unavailable' } }],
+    ['invocation-not-returned', { invocation: { mode: NESTED_INVOCATION, status: 'dispatched' } }],
     ['no-terminal-disposition', { result: { disposition: 'in-progress' } }],
     ['stale-disposition', { observedBase: { observedAt: '2026-08-25T22:06:00Z', baseSha: 'aaaaaaa', headSha: REBASED_HEAD } }],
     ['freshness-unobserved', { observedBase: undefined }],

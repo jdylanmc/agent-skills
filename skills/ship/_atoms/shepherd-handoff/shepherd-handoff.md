@@ -151,6 +151,7 @@ leaves the run with an actor's name on it.
 | `not-invoked` | `not-performed` | `blocked`. A narrated packet reaches here. |
 | `shepherd-unavailable` | `not-performed` | `blocked`. |
 | `invocation-failed` | `not-performed` | `blocked`. |
+| `invocation-not-returned` | `not-performed` | `blocked`. A dispatched or unknown invocation status is not a completed handoff. |
 | `no-terminal-disposition` | `not-performed` | `blocked`. |
 | `result-receipt-incomplete` | `not-performed` | `blocked`. |
 | `stale-disposition` | `not-performed` | `blocked`, and re-invocation is required. |
