@@ -350,6 +350,22 @@ test('a publication and target mismatch cannot cross-wire readiness provenance',
   assert.deepEqual(mismatched.setObligation.unresolved, ['baseBranch', 'baseSha']);
 });
 
+test('a missing target identity cannot donate base provenance to the published request', () => {
+  for (const intent of ['yes', 'no']) {
+    for (const changeRequest of [undefined, null, '', '   ']) {
+      const result = evaluateHandoff(completeHandoff({
+        intent,
+        target: publicationTarget({ changeRequest }),
+      }));
+
+      assert.equal(result.setObligation.changeRequest, '#111');
+      assert.equal(result.setObligation.baseBranch, null);
+      assert.equal(result.setObligation.baseSha, null);
+      assert.deepEqual(result.setObligation.unresolved, ['baseBranch', 'baseSha']);
+    }
+  }
+});
+
 test('the publication receipt falls back to the captured target commits but never to nothing', () => {
   const { target, missing } = buildHandoffTarget({
     changeRequest: '#111',

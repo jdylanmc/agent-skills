@@ -353,14 +353,13 @@ export function buildSetObligation(input = {}, evaluation = {}) {
     return null;
   }
 
-  // A mismatched target cannot donate provenance to the published request.
-  // Keep the evidence on the handoff evaluation, but leave the obligation's
-  // base unresolved rather than combining one request's identity with
-  // another's base.
-  const target = evaluation?.state === 'target-publication-mismatch'
-    ? null
-    : evaluation?.target ?? null;
   const changeRequest = nonEmptyString(input.publication.identifier);
+  // Target provenance belongs to the published request only when its identity
+  // was positively established as the same one. A missing identity is not a
+  // weaker match: it is no match, and may not donate another request's base.
+  const target = nonEmptyString(evaluation?.target?.changeRequest) === changeRequest
+    ? evaluation.target
+    : null;
   const observed = nonEmptyString(evaluation?.disposition) !== null
     && validateFreshnessReceipt(input?.result?.receipt).valid;
   const baseBranch = nonEmptyString(target?.baseBranch);
