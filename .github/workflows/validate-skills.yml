@@ -144,3 +144,7 @@ jobs:
           skills/post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.test.mjs
           skills/post-mortem/_atoms/reinforcement-assign-state/reinforcement-assign-state.test.mjs
           skills/post-mortem/post-mortem.regression.test.mjs
+          skills/setup-repository/setup-repository.conformance.test.mjs
+          skills/setup-repository/_atoms/repository-context/repository-context.test.mjs
+          skills/setup-repository/_atoms/context-artifacts/context-artifacts.test.mjs
+          skills/setup-repository/_atoms/write-gate/write-gate.test.mjs
