@@ -25,6 +25,10 @@ import {
 
 const READY = { available: true, authenticated: true };
 
+// An endpoint-less probe answers only for the provider's default public
+// endpoint, so an enterprise fixture probes its own endpoint by name.
+const readyAt = (host) => ({ available: true, authenticated: true, host });
+
 // The repository's sensitive-content floor reads a user-and-host pair joined by an at-sign as an electronic
 // mail address and is deliberately eager, so a literal scp-like SSH remote in
 // committed source is a finding even though it holds no secret. Compose the
@@ -40,13 +44,13 @@ const GITHUB = detectProvider({
 const GITHUB_ENTERPRISE_SSH = detectProvider({
   remoteUrls: [scpRemote('git', 'github.contoso-internal.example', 'example/repo.git')],
   hostProviders: { 'github.contoso-internal.example': 'github' },
-  toolAvailability: { gh: READY },
+  toolAvailability: { gh: readyAt('github.contoso-internal.example') },
 });
 
 const GITHUB_ENTERPRISE_HTTPS = detectProvider({
   remoteUrls: ['https://github.contoso-internal.example/example/repo.git'],
   hostProviders: { 'github.contoso-internal.example': 'github' },
-  toolAvailability: { gh: READY },
+  toolAvailability: { gh: readyAt('github.contoso-internal.example') },
 });
 
 const AZURE = detectProvider({
@@ -285,6 +289,48 @@ test('a change request that genuinely has no threads is observed and empty', () 
     complete: true,
     threads: [],
   });
+});
+
+test('a GraphQL response that reports errors beside its data is unobserved, never an empty conversation', () => {
+  // GitHub answers a field the token cannot see with `null` plus an error rather
+  // than a failed request, and no cursor says a thread was refused. Reading only
+  // `data` would turn "some threads were withheld" into "there were no threads",
+  // which is how a blocking comment gets skipped.
+  const withErrors = {
+    ...githubResponse([]),
+    errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by integration' }],
+  };
+  const refused = interpretReviewThreads(GITHUB, withErrors);
+  assert.equal(refused.observed, false);
+  assert.equal(refused.reason, 'provider-error-reported');
+  assert.deepEqual(unresolvedReviewThreads(refused).threads, null, 'no caller can read an empty list from it');
+
+  // The same holds when the errors arrive on one page of a slurped read that
+  // otherwise carries threads: what the error omitted is not observable.
+  const partial = interpretReviewThreads(GITHUB, [
+    githubResponse([{ id: 'T1', isResolved: false, comments: { pageInfo: { hasNextPage: false }, nodes: [] } }]),
+    { errors: [{ type: 'FORBIDDEN' }] },
+  ]);
+  assert.equal(partial.observed, false);
+  assert.equal(partial.reason, 'provider-error-reported');
+
+  // An empty `errors` array is not an error and does not withhold a real read.
+  const clean = interpretReviewThreads(GITHUB, { ...githubResponse([]), errors: [] });
+  assert.equal(clean.observed, true);
+});
+
+test('an Azure DevOps error body is unobserved even when it carries a value', () => {
+  const refused = interpretReviewThreads(AZURE, {
+    typeKey: 'ProjectDoesNotExistWithNameException',
+    message: 'The project does not exist',
+    value: [],
+  });
+  assert.equal(refused.observed, false);
+  assert.equal(refused.reason, 'provider-error-reported');
+
+  const byCode = interpretReviewThreads(AZURE, { errorCode: 3000, value: [] });
+  assert.equal(byCode.observed, false);
+  assert.equal(byCode.reason, 'provider-error-reported');
 });
 
 test('a single fully-read page is complete', () => {

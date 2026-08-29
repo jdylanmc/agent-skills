@@ -238,6 +238,16 @@ export function interpretReviewThreads(detection, payload) {
     if (!pages.some(isPage)) {
       return unobserved('response-absent');
     }
+    // A GraphQL response may carry `errors` beside a partially populated `data`,
+    // and GitHub answers a field the token cannot see with `null` plus an error
+    // rather than a failed request. Reading only `data` turns "some threads were
+    // refused" into "there were no threads", and there is no cursor that would
+    // say otherwise. Any reported error therefore makes the whole read
+    // unobserved rather than an incomplete one, because what an error omitted is
+    // not itself observable.
+    if (pages.some((page) => Array.isArray(page?.errors) && page.errors.length > 0)) {
+      return unobserved('provider-error-reported');
+    }
     const rawThreads = [];
     let sawConnection = false;
     let outerHasNextPage;
@@ -291,6 +301,13 @@ export function interpretReviewThreads(detection, payload) {
     };
   }
 
+  // `az devops invoke` returns an Azure DevOps REST error body — identified by
+  // `typeKey`/`errorCode` — with HTTP semantics the caller may not have
+  // inspected. Reading past one would turn a refused request into an empty
+  // conversation, so an error body is unobserved even if a `value` is present.
+  if (typeof payload?.typeKey === 'string' || typeof payload?.errorCode === 'number') {
+    return unobserved('provider-error-reported');
+  }
   const value = Array.isArray(payload?.value) ? payload.value : null;
   if (!value) {
     return unobserved('review-threads-absent', ['value']);

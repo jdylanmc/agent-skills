@@ -33,6 +33,12 @@ import {
 
 const READY = { available: true, authenticated: true };
 
+// A probe that names the endpoint it observed. An endpoint-less probe answers
+// only for the provider's default public endpoint, so every case below that
+// targets an enterprise, legacy, or non-default-port deployment probes that
+// deployment by name.
+const readyAt = (host) => ({ available: true, authenticated: true, host });
+
 // The repository's sensitive-content floor reads a user-and-host pair joined by an at-sign as an electronic
 // mail address and is deliberately eager, so a literal SSH remote written in
 // committed source is a finding even though it holds no secret. Compose the
@@ -78,7 +84,7 @@ test('an Azure DevOps SSH remote and a legacy account host both resolve to Azure
   });
   const legacy = detectProvider({
     remoteUrls: ['https://contoso.visualstudio.com/project/_git/repo'],
-    toolAvailability: { az: READY },
+    toolAvailability: { az: readyAt('contoso.visualstudio.com') },
   });
 
   assert.equal(modern.provider, 'azure-devops');
@@ -91,7 +97,7 @@ test('a configured enterprise host is recognized as its named provider', () => {
   const detection = detectProvider({
     remoteUrls: [scpRemote('git', 'github.contoso-internal.example', 'platform/repo.git')],
     hostProviders: { 'github.contoso-internal.example': 'github' },
-    toolAvailability: { gh: READY },
+    toolAvailability: { gh: readyAt('github.contoso-internal.example') },
   });
 
   assert.equal(detection.status, 'supported-provider');
@@ -121,7 +127,7 @@ test('a configured malformed host matched by name has no resolvable endpoint and
   const wellFormed = detectProvider({
     remoteUrls: ['https://github.contoso-internal.example/platform/repo.git'],
     hostProviders: { 'github.contoso-internal.example': 'github' },
-    toolAvailability: { gh: READY },
+    toolAvailability: { gh: readyAt('github.contoso-internal.example') },
   });
   assert.equal(wellFormed.status, 'supported-provider');
   assert.equal(wellFormed.host, 'github.contoso-internal.example');
@@ -325,12 +331,82 @@ test('a probe that observed a different endpoint than the one queried is unobser
   });
   assert.equal(matched.status, 'supported-provider');
 
-  // A probe that omits the endpoint stays permissive, as before.
+  // A probe that omits the endpoint answers for the provider's default public
+  // endpoint, and this run targets exactly that, so it is honoured.
   const permissive = detectProvider({
     remoteUrls: ['https://github.com/example/repo.git'],
     toolAvailability: { gh: READY },
   });
   assert.equal(permissive.status, 'supported-provider');
+});
+
+test('an endpoint-less probe cannot establish readiness against a non-default endpoint', () => {
+  // `gh auth status` and `az account show` are run without a host argument all
+  // the time, and their answer is about the default deployment. Authenticated to
+  // github.com and unauthenticated to an enterprise host is the environment
+  // problem this unit exists to report, so an unqualified probe against an
+  // enterprise, legacy, or ported endpoint is unobserved rather than ready.
+  const enterprise = detectProvider({
+    remoteUrls: ['https://ghe.contoso-internal.example/platform/repo.git'],
+    hostProviders: { 'ghe.contoso-internal.example': 'github' },
+    toolAvailability: { gh: READY },
+  });
+  assert.equal(enterprise.status, 'provider-tool-unobserved');
+  assert.equal(enterprise.provider, 'github', 'the provider is still identified');
+  assert.equal(enterprise.host, 'ghe.contoso-internal.example');
+  assert.equal(canObserveProviderState(enterprise), false);
+  assert.equal(shouldRunProviderIndependentCore(enterprise), true, 'the git core still runs');
+
+  const legacyAzure = detectProvider({
+    remoteUrls: ['https://contoso.visualstudio.com/project/_git/repo'],
+    toolAvailability: { az: READY },
+  });
+  assert.equal(legacyAzure.status, 'provider-tool-unobserved');
+
+  const ported = detectProvider({
+    remoteUrls: ['https://github.com:8443/example/repo.git'],
+    hostProviders: { 'github.com:8443': 'github' },
+    toolAvailability: { gh: READY },
+  });
+  assert.equal(ported.status, 'provider-tool-unobserved', 'a non-default port is a different deployment');
+
+  // Naming the endpoint is what establishes readiness against it.
+  const named = detectProvider({
+    remoteUrls: ['https://ghe.contoso-internal.example/platform/repo.git'],
+    hostProviders: { 'ghe.contoso-internal.example': 'github' },
+    toolAvailability: { gh: readyAt('ghe.contoso-internal.example') },
+  });
+  assert.equal(named.status, 'supported-provider');
+
+  // The default endpoint is unaffected, for both providers.
+  for (const [remote, tool] of [
+    ['https://github.com/example/repo.git', 'gh'],
+    ['https://dev.azure.com/contoso/project/_git/repo', 'az'],
+  ]) {
+    const base = detectProvider({ remoteUrls: [remote], toolAvailability: { [tool]: READY } });
+    assert.equal(base.status, 'supported-provider', `${remote} is the default endpoint`);
+  }
+});
+
+test('an endpoint-less probe still reports a missing or unauthenticated tool on any endpoint', () => {
+  // Endpoint binding withholds a positive claim. A negative observation stands
+  // whichever endpoint produced it, so an enterprise host with an absent tool is
+  // still `provider-tool-missing` and never flattened into unobserved.
+  const missing = detectProvider({
+    remoteUrls: ['https://ghe.contoso-internal.example/platform/repo.git'],
+    hostProviders: { 'ghe.contoso-internal.example': 'github' },
+    toolAvailability: { gh: { available: false, authenticated: false } },
+  });
+  assert.equal(missing.status, 'provider-tool-missing');
+
+  const unauthenticated = detectProvider({
+    remoteUrls: ['https://ghe.contoso-internal.example/platform/repo.git'],
+    hostProviders: { 'ghe.contoso-internal.example': 'github' },
+    toolAvailability: { gh: { available: true, authenticated: false } },
+  });
+  assert.equal(unauthenticated.status, 'provider-tool-unauthenticated');
+
+  assert.notEqual(missing.status, unauthenticated.status, 'the two conditions never collapse');
 });
 
 test('an Azure SSH remote canonicalizes to the API endpoint and matches the organization URL', () => {
@@ -357,7 +433,7 @@ test('a non-default port is preserved through detection and host matching', () =
   const detection = detectProvider({
     remoteUrls: ['https://github.enterprise.example:8443/platform/repo.git'],
     hostProviders: { 'github.enterprise.example:8443': 'github' },
-    toolAvailability: { gh: READY },
+    toolAvailability: { gh: readyAt('github.enterprise.example:8443') },
   });
   assert.equal(detection.status, 'supported-provider');
   assert.equal(detection.host, 'github.enterprise.example:8443', 'the port is part of the canonical endpoint');
@@ -408,7 +484,27 @@ test('an explicitly named provider nobody implements is unsupported, not assumed
 
   assert.equal(detection.status, 'provider-unsupported');
   assert.equal(detection.provider, null);
-  assert.deepEqual(detection.inspected, ['explicit-provider:perforce']);
+  // The rejected value is not echoed back. An unrecognized provider id is
+  // whatever the caller passed, which is exactly where a token or a pasted URL
+  // arrives, so evidence records the refusal without reproducing the input.
+  assert.deepEqual(detection.inspected, ['explicit-provider:unrecognized']);
+  for (const entry of detection.inspected) {
+    assert.ok(!entry.includes('perforce'), 'the rejected provider value never reaches evidence');
+  }
+});
+
+test('a rejected explicit provider that looks like a credential is not echoed anywhere', () => {
+  // A credential-shaped value, composed from its parts so no token-shaped literal
+  // appears in committed source for the repository's sensitive-content floor to
+  // flag. The bytes the code under test sees are unchanged.
+  const secret = ['ghp', '_', '0123456789abcdefghijklmnopqrstuvwxyzAB'].join('');
+  const detection = detectProvider({ explicitProvider: secret });
+
+  assert.equal(detection.status, 'provider-unsupported');
+  assert.ok(
+    !JSON.stringify(detection).includes(secret),
+    'no field of the result reproduces the rejected value',
+  );
 });
 
 test('a run with no remotes at all is unsupported with nothing claimed', () => {
@@ -480,7 +576,7 @@ test('a configured single-label host is honoured end to end, an unconfigured one
   const configured = detectProvider({
     remoteUrls: [scpRemote('git', 'githost', 'platform/repo.git')],
     hostProviders: { githost: 'github' },
-    toolAvailability: { gh: READY },
+    toolAvailability: { gh: readyAt('githost') },
   });
   assert.equal(configured.status, 'supported-provider');
   assert.equal(configured.provider, 'github');
@@ -642,5 +738,50 @@ test('the shared guard refuses a write HTTP method regardless of the shapes offe
       () => assertSanctionedCommand({ tool: 'az', args: ['devops', 'invoke', '--http-method', method] }, shapes),
       (error) => error instanceof ProviderCommandError && error.code === 'mutating-command',
     );
+  }
+});
+
+test('a refusal names the tool and never reproduces the refused arguments', () => {
+  // A refusal message is the one place a rejected value reliably reaches a log,
+  // and the argument vector carries caller-supplied values: an organization URL,
+  // a hostname, an identifier, a `gh api` field body.
+  const shapes = [{ tool: 'gh', argv: ['pr', 'view', { id: true }] }];
+  // A credential-shaped value, composed from its parts so no token-shaped literal
+  // appears in committed source for the repository's sensitive-content floor to
+  // flag. The bytes the code under test sees are unchanged.
+  const secret = ['ghp', '_', '0123456789abcdefghijklmnopqrstuvwxyzAB'].join('');
+
+  const refusals = [
+    { tool: 'gh', args: ['api', 'repos/o/r/issues', '--method', 'POST', '-f', `body=${secret}`] },
+    { tool: 'gh', args: ['api', 'repos/o/r/issues', '-f', `title=${secret}`] },
+    { tool: 'az', args: ['repos', 'pr', 'reviewer', 'add', '--org', `https://user:${secret}@dev.azure.com/contoso`] },
+  ];
+
+  for (const command of refusals) {
+    let thrown = null;
+    try {
+      assertSanctionedCommand(command, shapes);
+    } catch (error) {
+      thrown = error;
+    }
+    assert.ok(thrown instanceof ProviderCommandError, `${command.tool} command must be refused`);
+    assert.equal(thrown.code, 'mutating-command');
+    assert.ok(!thrown.message.includes(secret), 'the refusal never reproduces a refused value');
+    for (const argument of command.args) {
+      // Fixed command grammar — a subcommand or a flag name — may be named,
+      // because it is this module's own vocabulary rather than caller data. A
+      // value position may not: it is where an organization URL, a hostname, an
+      // identifier, or a field body arrives.
+      const isValuePosition = argument.includes('=') || argument.includes('://');
+      if (!isValuePosition) {
+        continue;
+      }
+      assert.ok(!thrown.message.includes(argument), `the refusal never reproduces ${argument}`);
+    }
+    assert.ok(
+      !thrown.message.includes(command.args.join(' ')),
+      'the refusal never reproduces the whole argument vector',
+    );
+    assert.ok(thrown.message.includes(command.tool), 'the refusal still names the tool it refused');
   }
 });

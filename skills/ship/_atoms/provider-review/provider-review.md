@@ -65,6 +65,7 @@ hand-rolls a call against a raw REST endpoint.
 | Detection is not `supported-provider`. | Refused, carrying the detection condition. |
 | No response, or a response that is not an object or an array of page objects. | `observed: false`, reason `response-absent`. |
 | A response with no thread collection. | `observed: false`, reason `review-threads-absent`, naming the missing field. |
+| A GraphQL response carrying a non-empty top-level `errors`, on any page, or an Azure DevOps error body identified by `typeKey`/`errorCode`. | `observed: false`, reason `provider-error-reported`. |
 | A thread whose resolution state the provider did not report. | Counted as unresolved. |
 | A read whose outer thread page or a thread's nested comment page was truncated, or whose requested `pageInfo` completeness signal was absent or non-boolean. | `observed: true` with `complete: false` and an `incomplete` list naming what was truncated or left unconfirmed (`reason: 'completeness-unconfirmed'`). |
 
@@ -100,6 +101,20 @@ in `incomplete` — it is never reported complete.
 so pages after the first would never merge; the built command and the sanctioned
 shapes therefore pass `--slurp` immediately after `--paginate`, which collects
 the pages into a single JSON array that the aggregation above consumes.
+
+## A Reported Error Is Not An Empty Conversation
+
+GitHub answers a field a token cannot see with `null` in `data` plus an entry in
+a top-level `errors` array, rather than with a failed request. Reading only
+`data` would turn "some threads were withheld" into "there were no threads", and
+unlike truncation there is no cursor that would say otherwise.
+
+So any page carrying a non-empty `errors` makes the whole read `observed: false`
+with reason `provider-error-reported`, even when other pages carried threads:
+what an error omitted is not itself observable, so the read cannot be reported
+as an incomplete one either. An empty `errors` array is not an error. The Azure
+DevOps branch does the same for an error body — identified by `typeKey` or
+`errorCode` — even when a `value` is present beside it.
 
 ## Untrusted Data
 

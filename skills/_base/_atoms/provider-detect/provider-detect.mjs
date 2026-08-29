@@ -16,11 +16,11 @@
  */
 
 export const PROVIDERS = [
-  { id: 'github', cli: 'gh' },
-  { id: 'azure-devops', cli: 'az' },
-  { id: 'gitlab', cli: null },
-  { id: 'bitbucket', cli: null },
-  { id: 'gitea', cli: null },
+  { id: 'github', cli: 'gh', defaultEndpoint: 'github.com' },
+  { id: 'azure-devops', cli: 'az', defaultEndpoint: 'dev.azure.com' },
+  { id: 'gitlab', cli: null, defaultEndpoint: 'gitlab.com' },
+  { id: 'bitbucket', cli: null, defaultEndpoint: 'bitbucket.org' },
+  { id: 'gitea', cli: null, defaultEndpoint: null },
 ];
 
 /**
@@ -216,9 +216,17 @@ export function canonicalizeEndpoint(transportHost) {
  * A probe may optionally name the endpoint it observed (`host` or `endpoint`).
  * When it does and that endpoint disagrees with the one this run targets, the
  * probe observed a different account or deployment than the one being queried,
- * so readiness against the queried endpoint is unobserved. A probe that omits
- * the field stays permissive, so existing `{available,authenticated}` probes
- * are unaffected.
+ * so readiness against the queried endpoint is unobserved.
+ *
+ * A probe that omits the endpoint establishes readiness only against the
+ * provider's **default public endpoint**, because that is the only endpoint an
+ * unqualified probe can be about: `gh auth status` and `az account show` are
+ * run without a host argument all the time, and their answer is about the
+ * default deployment. Against an enterprise or self-hosted endpoint that same
+ * answer proves nothing, so it is `provider-tool-unobserved` rather than
+ * readiness. Authenticated to `github.com` and unauthenticated to
+ * `ghe.example.com` is exactly the environment problem this unit exists to
+ * report, and reading it as ready is the collapse it exists to prevent.
  */
 function classifyTool(provider, toolAvailability, canonicalEndpoint = null) {
   if (!provider.cli) {
@@ -232,19 +240,29 @@ function classifyTool(provider, toolAvailability, canonicalEndpoint = null) {
   const probedEndpoint = canonicalizeEndpoint(rawProbeEndpoint);
   // A probe that names an endpoint which does not resolve to a plausible host
   // cannot be confirmed to match the queried endpoint, so readiness is
-  // unobserved rather than assumed. A probe that omits the field entirely stays
-  // permissive.
+  // unobserved rather than assumed.
   if (rawProbeEndpoint !== null && rawProbeEndpoint !== undefined && probedEndpoint === null) {
     return { status: 'provider-tool-unobserved', tool: provider.cli };
   }
   if (probedEndpoint !== null && canonicalEndpoint !== null && probedEndpoint !== canonicalEndpoint) {
     return { status: 'provider-tool-unobserved', tool: provider.cli };
   }
+  // An endpoint-less probe is an answer about the provider's default public
+  // endpoint. Against any other endpoint — enterprise, self-hosted, or a
+  // non-default port — it has not observed the deployment being queried.
+  // Negative observations still stand: an absent or unauthenticated tool is an
+  // absent or unauthenticated tool whichever endpoint it was probed against.
+  const probeEndpointUnbound = probedEndpoint === null
+    && canonicalEndpoint !== null
+    && canonicalEndpoint !== canonicalizeEndpoint(provider.defaultEndpoint);
   if (probe.available === false) {
     return { status: 'provider-tool-missing', tool: provider.cli };
   }
   if (probe.authenticated === false) {
     return { status: 'provider-tool-unauthenticated', tool: provider.cli };
+  }
+  if (probeEndpointUnbound) {
+    return { status: 'provider-tool-unobserved', tool: provider.cli };
   }
   if (probe.available !== true || probe.authenticated !== true) {
     return { status: 'provider-tool-unobserved', tool: provider.cli };
@@ -299,7 +317,11 @@ export function detectProvider({
   if (explicitProvider) {
     const provider = providerById(explicitProvider);
     if (!provider) {
-      return unsupported([`explicit-provider:${explicitProvider}`], 'explicit-provider');
+      // The rejected value is not echoed. An operator-supplied provider id is
+      // caller input, and an unrecognized one is exactly the input a token or a
+      // pasted URL arrives as, so evidence records that an explicit provider was
+      // named and refused rather than reproducing what was named.
+      return unsupported(['explicit-provider:unrecognized'], 'explicit-provider');
     }
     // An operator who names a provider may also name its host. When they do not,
     // the canonical endpoint is explicitly unknown rather than assumed public.
@@ -320,7 +342,7 @@ export function detectProvider({
       tool: tool.tool,
       host,
       source: 'explicit-provider',
-      inspected: [`explicit-provider:${explicitProvider}`],
+      inspected: [`explicit-provider:${provider.id}`],
       observable: status === 'supported-provider',
     };
   }
@@ -656,7 +678,7 @@ export function assertSanctionedCommand(command, sanctionedShapes) {
 
   for (let index = 0; index < args.length; index += 1) {
     if (HTTP_METHOD_FLAGS.has(args[index]) && WRITE_HTTP_METHODS.has(String(args[index + 1] ?? '').toUpperCase())) {
-      throw new ProviderCommandError('mutating-command', `refusing a write HTTP method: ${args[index]} ${args[index + 1]}`);
+      throw new ProviderCommandError('mutating-command', `refusing a write HTTP method supplied through ${args[index]}`);
     }
   }
 
@@ -678,8 +700,13 @@ export function assertSanctionedCommand(command, sanctionedShapes) {
     }
   }
 
+  // The refused argument vector is not echoed. It carries caller-supplied
+  // values — an organization URL, a hostname, an identifier, a `gh api` field —
+  // and a refusal message is the one place a rejected value reliably reaches a
+  // log. The tool and the argument count locate the refusal without reproducing
+  // anything the caller passed in.
   throw new ProviderCommandError(
     'mutating-command',
-    `refusing an unsanctioned provider command: ${tool ?? 'unknown'} ${args.join(' ')}`,
+    `refusing an unsanctioned provider command for ${tool ?? 'an unnamed tool'} with ${args.length} argument(s)`,
   );
 }

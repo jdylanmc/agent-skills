@@ -128,7 +128,9 @@ test('the full chain from detection through a provider-native blocked payload la
   const detection = detectProvider({
     remoteUrls: ['https://github.contoso-internal.example/example/repo.git'],
     hostProviders: { 'github.contoso-internal.example': 'github' },
-    toolAvailability: { gh: READY },
+    // An endpoint-less probe answers only for the default public endpoint, so an
+    // enterprise deployment is probed by name.
+    toolAvailability: { gh: { ...READY, host: 'github.contoso-internal.example' } },
   });
   assert.equal(detection.status, 'supported-provider');
   assert.equal(detection.host, 'github.contoso-internal.example');

@@ -189,6 +189,34 @@ function present(value) {
 }
 
 /**
+ * A provider-supplied URL, with its credential positions removed.
+ *
+ * A change-request URL and a check's details URL are provider data and are
+ * reported so a person can follow them, but a URL is also the one field that
+ * can carry a credential in a structural position: `https://user:token@host/…`.
+ * Userinfo is stripped because nothing navigates by it, while the path and
+ * query are kept because a provider deep link needs them. A value that does not
+ * parse as an absolute URL is returned unchanged rather than guessed at.
+ */
+function sanitizeProviderUrl(value) {
+  if (!present(value)) {
+    return null;
+  }
+  const text = String(value);
+  try {
+    const url = new URL(text);
+    if (!url.username && !url.password) {
+      return text;
+    }
+    url.username = '';
+    url.password = '';
+    return url.toString();
+  } catch {
+    return text;
+  }
+}
+
+/**
  * Head-repository identity a run needs before it may push: the owner and name
  * of the repository the change request's head lives in, and whether that repo
  * differs from the base (a fork or cross-repository change request). This is
@@ -269,9 +297,15 @@ export function interpretTarget(detection, payload, { observedAt = new Date().to
     branch: String(fields.branch),
     base: String(fields.base),
     headSha: String(fields.headSha),
-    url: present(fields.url) ? String(fields.url) : null,
+    url: sanitizeProviderUrl(fields.url),
     isDraft: typeof fields.isDraft === 'boolean' ? fields.isDraft : null,
     headRepository: detection.provider === 'github' ? githubHeadRepository(payload) : azureHeadRepository(payload),
+    // Branch names, repository identity, and the change-request URL are written
+    // by whoever opened the change request. They are data to route on, never
+    // text to act on, and they are marked here for the same reason a review
+    // comment is: a consumer that forgets which strings came from the provider
+    // is a consumer an attacker can address.
+    untrusted: true,
     observedAt,
   };
 }
@@ -427,6 +461,10 @@ export function interpretMergeState(detection, payload) {
       ? String(payload.headRefOid)
       : (present(payload.lastMergeSourceCommit?.commitId) ? String(payload.lastMergeSourceCommit.commitId) : null),
     raw: String(raw),
+    // `raw` is the provider's own vocabulary, carried verbatim so a reader can
+    // check the normalization. It is provider-written text like every other
+    // string here, and it is marked as such.
+    untrusted: true,
   };
 }
 
@@ -472,8 +510,12 @@ function githubCheck(entry) {
     name,
     status: normalized,
     required: entry?.isRequired === true,
-    url: present(entry?.detailsUrl) ? String(entry.detailsUrl) : (present(entry?.targetUrl) ? String(entry.targetUrl) : null),
+    url: sanitizeProviderUrl(entry?.detailsUrl ?? entry?.targetUrl),
     raw: { state: entry?.state ?? null, status: entry?.status ?? null, conclusion: entry?.conclusion ?? null },
+    // A check name and its details URL are written by whoever configured the
+    // check, which on a fork-aware provider is not necessarily the repository
+    // owner. They are display data, never instructions.
+    untrusted: true,
   };
 }
 
@@ -487,6 +529,7 @@ function azureCheck(entry) {
     required: entry?.configuration?.isBlocking === true,
     url: null,
     raw: { status: entry?.status ?? null },
+    untrusted: true,
   };
 }
 
