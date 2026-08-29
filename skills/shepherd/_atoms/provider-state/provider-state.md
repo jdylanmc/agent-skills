@@ -107,12 +107,28 @@ here and reaches a caller only as a normalized value.
 The policy is derived only from evidence that actually exists, and only one
 provider surfaces it:
 
-- **GitHub** reports `mergeStateStatus: BEHIND` exactly when the base requires
-  the branch to contain it, so `BEHIND` on the `read-state` response yields
-  `required`. Nothing else on that response proves the policy, so every other
-  GitHub state is `unobserved` there — and GitHub `read-checks`
-  (`statusCheckRollup`) proves nothing about branch policy, so it stays
-  `unobserved` too.
+- **GitHub** reports `mergeStateStatus: BEHIND` when the base's merge gate is
+  refusing the branch for being out of date, which GitHub computes only where
+  the base requires the branch to contain it — without that requirement an
+  out-of-date branch reads `CLEAN` or `UNSTABLE` and stays mergeable. So
+  `BEHIND` on the `read-state` response yields `required`.
+
+  This is a **derivation from a provider-computed merge state, not a reading of
+  the branch-protection record.** The record itself
+  (`requiresStrictStatusChecks`) is not on any response this unit is allowed to
+  fetch — `gh pr view --json` does not carry branch protection, and reading it
+  would need a second command outside the sanctioned reads. The derivation is
+  named here rather than presented as an observation, and its one assumption is
+  stated so it can be checked: if a base ever reported `BEHIND` without such a
+  requirement, this would over-report `required`, whose only consequence is a
+  rebase that was not strictly needed. The alternative — reporting `unobserved`
+  — is worse in a way that is not symmetric: a caller treats a `behind` branch
+  under an unread policy as unlandable, so every out-of-date change request
+  would stop for a person instead of being rebased.
+
+  Nothing else on that response proves the policy, so every other GitHub state
+  is `unobserved` there — and GitHub `read-checks` (`statusCheckRollup`) proves
+  nothing about branch policy, so it stays `unobserved` too.
 - **Azure DevOps** does not surface this requirement at all. There is no
   first-class Azure DevOps branch-policy type equivalent to GitHub's "require
   branches to be up to date": the build-validation policy's settings
@@ -166,9 +182,9 @@ result for the refusal.
   from the provider is a consumer an attacker can address.
 - Secrets and tokens are never accepted as input and never reproduced in output.
   Authentication belongs to the official tool; report the tool and its condition
-  only. A provider-supplied URL is reported with its userinfo removed — nothing
-  navigates by `user:token@`, while the path and query a deep link needs are
-  kept.
+  only. A provider-supplied URL is reported with its userinfo removed and any
+  credential-named query parameter redacted, through the shared sanitizer in
+  `provider-detect` — one implementation, so both consumers redact the same way.
 - Review threads are out of scope. The review-reading unit is `provider-review`,
   local to `ship`, and cross-skill local composition is forbidden — so a shepherd
   caller that composes this unit structurally cannot reach review threads.

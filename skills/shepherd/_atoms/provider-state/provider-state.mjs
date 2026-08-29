@@ -32,6 +32,7 @@ import {
   normalizeChangeRequestId,
   normalizeGitHubRepository,
   requireObservableProvider,
+  sanitizeProviderUrl,
 } from '../../../_base/_atoms/provider-detect/provider-detect.mjs';
 import {
   normalizeMergeabilitySignal,
@@ -186,34 +187,6 @@ function shortRef(value) {
 
 function present(value) {
   return value !== undefined && value !== null && String(value).length > 0;
-}
-
-/**
- * A provider-supplied URL, with its credential positions removed.
- *
- * A change-request URL and a check's details URL are provider data and are
- * reported so a person can follow them, but a URL is also the one field that
- * can carry a credential in a structural position: `https://user:token@host/…`.
- * Userinfo is stripped because nothing navigates by it, while the path and
- * query are kept because a provider deep link needs them. A value that does not
- * parse as an absolute URL is returned unchanged rather than guessed at.
- */
-function sanitizeProviderUrl(value) {
-  if (!present(value)) {
-    return null;
-  }
-  const text = String(value);
-  try {
-    const url = new URL(text);
-    if (!url.username && !url.password) {
-      return text;
-    }
-    url.username = '';
-    url.password = '';
-    return url.toString();
-  } catch {
-    return text;
-  }
 }
 
 /**
@@ -418,6 +391,7 @@ export function interpretMergeState(detection, payload) {
     return {
       ...unobserved('read-state', 'provider-has-not-computed-mergeability'),
       raw: String(raw),
+      untrusted: true,
     };
   }
 

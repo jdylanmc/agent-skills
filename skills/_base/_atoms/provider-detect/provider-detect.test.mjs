@@ -28,6 +28,7 @@ import {
   normalizeGitHubRepository,
   parseRemoteHost,
   requireObservableProvider,
+  sanitizeProviderUrl,
   shouldRunProviderIndependentCore,
 } from './provider-detect.mjs';
 
@@ -784,4 +785,67 @@ test('a refusal names the tool and never reproduces the refused arguments', () =
     );
     assert.ok(thrown.message.includes(command.tool), 'the refusal still names the tool it refused');
   }
+});
+
+test('a negative readiness observation is reported on every endpoint, never softened by endpoint binding', () => {
+  // Endpoint binding withholds a positive claim. It must not turn an observed
+  // negative into `unobserved`, because "the tool is missing" and "nobody
+  // looked" send a person to different places.
+  const enterprise = {
+    remoteUrls: ['https://ghe.contoso-internal.example/platform/repo.git'],
+    hostProviders: { 'ghe.contoso-internal.example': 'github' },
+  };
+
+  for (const [probe, expected] of [
+    [{ available: false, authenticated: false, host: 'github.com' }, 'provider-tool-missing'],
+    [{ available: true, authenticated: false, host: 'github.com' }, 'provider-tool-unauthenticated'],
+    [{ available: false, authenticated: false }, 'provider-tool-missing'],
+    [{ available: true, authenticated: false }, 'provider-tool-unauthenticated'],
+    [{ available: false, authenticated: false, host: 'not a host' }, 'provider-tool-missing'],
+  ]) {
+    const detection = detectProvider({ ...enterprise, toolAvailability: { gh: probe } });
+    assert.equal(detection.status, expected, `${JSON.stringify(probe)} is an observed negative`);
+  }
+});
+
+test('a provider-supplied URL is reported without its credential positions', () => {
+  const withUserinfo = (userinfo, rest) => `https://${userinfo}@${rest}`;
+
+  assert.equal(
+    sanitizeProviderUrl(withUserinfo('user:token-value', 'github.com/example/repo/pull/42')),
+    'https://github.com/example/repo/pull/42',
+  );
+
+  const signed = sanitizeProviderUrl('https://ci.example.invalid/run/1?access_token=token-value&check_suite_focus=true');
+  assert.ok(!signed.includes('token-value'), 'a credential-named query value is redacted');
+  assert.ok(signed.includes('check_suite_focus=true'), 'a navigational query parameter is kept');
+
+  // A clean URL is returned byte-for-byte, and a value that is not an absolute
+  // URL is returned unchanged rather than guessed at.
+  const clean = 'https://github.com/example/repo/pull/42?check_suite_focus=true';
+  assert.equal(sanitizeProviderUrl(clean), clean);
+  assert.equal(sanitizeProviderUrl('/runs/1'), '/runs/1');
+  assert.equal(sanitizeProviderUrl(null), null);
+  assert.equal(sanitizeProviderUrl(''), null);
+});
+
+test('a host-mismatch refusal names the detected host and not the supplied one', () => {
+  const detection = detectProvider({
+    remoteUrls: ['https://dev.azure.com/contoso/project/_git/repo'],
+    toolAvailability: { az: READY },
+  });
+
+  let thrown = null;
+  try {
+    normalizeAzureOrganization({ organizationUrl: 'https://internal-tfs.contoso-secret.example/contoso' }, detection);
+  } catch (error) {
+    thrown = error;
+  }
+  assert.ok(thrown instanceof ProviderCommandError);
+  assert.equal(thrown.code, 'repository-host-mismatch');
+  assert.ok(
+    !thrown.message.includes('internal-tfs.contoso-secret.example'),
+    'the rejected host is not echoed back',
+  );
+  assert.ok(thrown.message.includes('dev.azure.com'), 'the detected host is this run own evidence and is named');
 });

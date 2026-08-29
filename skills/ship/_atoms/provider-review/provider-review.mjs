@@ -28,6 +28,7 @@ import {
   normalizeChangeRequestId,
   normalizeGitHubRepository,
   requireObservableProvider,
+  sanitizeProviderUrl,
 } from '../../../_base/_atoms/provider-detect/provider-detect.mjs';
 
 export { ProviderCommandError };
@@ -192,7 +193,7 @@ function githubThreadComments(thread) {
     author: text(comment?.author?.login),
     body: text(comment?.body),
     createdAt: text(comment?.createdAt),
-    url: text(comment?.url),
+    url: sanitizeProviderUrl(comment?.url),
     untrusted: true,
   }));
 }
@@ -223,6 +224,29 @@ const AZURE_RESOLVED_STATUSES = new Set(['fixed', 'closed', 'wontFix', 'byDesign
  * as `completeness-unconfirmed`, keeping the threads it read — it is never
  * reported complete.
  */
+/**
+ * Whether a provider response reports an error beside whatever data it carried.
+ *
+ * GraphQL answers a field a token cannot see with `null` in `data` plus an entry
+ * in a top-level `errors`, rather than with a failed request. Azure DevOps
+ * returns a REST error body identified by `typeKey`, `typeName`, or
+ * `errorCode`. Neither is required to be a particular JavaScript type, so the
+ * test is presence rather than shape: an `errors` that is not an array is still
+ * an error, and an `errorCode` that arrives as a string is still an error.
+ */
+function reportsProviderError(page) {
+  if (page === undefined || page === null || typeof page !== 'object') {
+    return false;
+  }
+  const errors = page.errors;
+  if (Array.isArray(errors) ? errors.length > 0 : (errors !== undefined && errors !== null)) {
+    return true;
+  }
+  return page.typeKey !== undefined && page.typeKey !== null
+    || page.typeName !== undefined && page.typeName !== null
+    || page.errorCode !== undefined && page.errorCode !== null;
+}
+
 export function interpretReviewThreads(detection, payload) {
   const guard = requireObservableProvider(detection);
   if (!guard.ok) {
@@ -238,14 +262,17 @@ export function interpretReviewThreads(detection, payload) {
     if (!pages.some(isPage)) {
       return unobserved('response-absent');
     }
-    // A GraphQL response may carry `errors` beside a partially populated `data`,
-    // and GitHub answers a field the token cannot see with `null` plus an error
-    // rather than a failed request. Reading only `data` turns "some threads were
-    // refused" into "there were no threads", and there is no cursor that would
-    // say otherwise. Any reported error therefore makes the whole read
-    // unobserved rather than an incomplete one, because what an error omitted is
-    // not itself observable.
-    if (pages.some((page) => Array.isArray(page?.errors) && page.errors.length > 0)) {
+    // A slurped read is a sequence of pages, and every element of it has to be a
+    // page. An element that is not an object is a page that did not parse as
+    // JSON, and skipping it would silently drop whatever threads it held.
+    if (!pages.every(isPage)) {
+      return unobserved('response-absent');
+    }
+    // Any page reporting an error makes the whole read unobserved. What an error
+    // omitted is not itself observable, so this cannot be downgraded to an
+    // incomplete read either: unlike truncation, no cursor says a thread was
+    // withheld.
+    if (pages.some(reportsProviderError)) {
       return unobserved('provider-error-reported');
     }
     const rawThreads = [];
@@ -275,6 +302,12 @@ export function interpretReviewThreads(detection, payload) {
         incomplete.push({ threadId: text(thread?.id), truncated: 'comments' });
       } else if (commentsHasNextPage !== false) {
         incomplete.push({ threadId: text(thread?.id), truncated: 'comments', reason: 'completeness-unconfirmed' });
+      } else if (!Array.isArray(thread?.comments?.nodes)) {
+        // A connection that confirms it has no further pages but carries no
+        // `nodes` array did not deliver the comments it claims to have finished.
+        // Reading that as a thread with no comments is the empty-for-unobserved
+        // substitution one level down.
+        incomplete.push({ threadId: text(thread?.id), truncated: 'comments', reason: 'comment-nodes-absent' });
       }
       return {
         id: text(thread?.id),
@@ -283,6 +316,10 @@ export function interpretReviewThreads(detection, payload) {
         isResolved: typeof thread?.isResolved === 'boolean' ? thread.isResolved : null,
         isOutdated: typeof thread?.isOutdated === 'boolean' ? thread.isOutdated : null,
         comments: githubThreadComments(thread),
+        // A thread's path, its comment bodies, and its authors are all written
+        // by whoever reviewed the change request. They are the object of the
+        // work, never instructions to the reader.
+        untrusted: true,
       };
     });
     if (outerHasNextPage === true) {
@@ -302,10 +339,11 @@ export function interpretReviewThreads(detection, payload) {
   }
 
   // `az devops invoke` returns an Azure DevOps REST error body — identified by
-  // `typeKey`/`errorCode` — with HTTP semantics the caller may not have
-  // inspected. Reading past one would turn a refused request into an empty
-  // conversation, so an error body is unobserved even if a `value` is present.
-  if (typeof payload?.typeKey === 'string' || typeof payload?.errorCode === 'number') {
+  // `typeKey`, `typeName`, or `errorCode` — with HTTP semantics the caller may
+  // not have inspected. Reading past one would turn a refused request into an
+  // empty conversation, so an error body is unobserved even if a `value` is
+  // present.
+  if (reportsProviderError(payload)) {
     return unobserved('provider-error-reported');
   }
   const value = Array.isArray(payload?.value) ? payload.value : null;
@@ -334,6 +372,7 @@ export function interpretReviewThreads(detection, payload) {
         isResolved: status === null ? null : AZURE_RESOLVED_STATUSES.has(status),
         isOutdated: null,
         comments: azureThreadComments(thread),
+        untrusted: true,
       };
     }),
   };

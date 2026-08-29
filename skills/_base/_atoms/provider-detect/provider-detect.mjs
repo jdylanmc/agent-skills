@@ -238,6 +238,19 @@ function classifyTool(provider, toolAvailability, canonicalEndpoint = null) {
   }
   const rawProbeEndpoint = probe.host ?? probe.endpoint ?? null;
   const probedEndpoint = canonicalizeEndpoint(rawProbeEndpoint);
+
+  // Negative observations are settled first, and they stand on every endpoint.
+  // An absent tool is absent and an unauthenticated tool is unauthenticated
+  // whichever deployment was probed, so endpoint binding withholds a positive
+  // claim and never softens a negative one into `unobserved`, which would send a
+  // person somewhere else entirely.
+  if (probe.available === false) {
+    return { status: 'provider-tool-missing', tool: provider.cli };
+  }
+  if (probe.authenticated === false) {
+    return { status: 'provider-tool-unauthenticated', tool: provider.cli };
+  }
+
   // A probe that names an endpoint which does not resolve to a plausible host
   // cannot be confirmed to match the queried endpoint, so readiness is
   // unobserved rather than assumed.
@@ -250,18 +263,11 @@ function classifyTool(provider, toolAvailability, canonicalEndpoint = null) {
   // An endpoint-less probe is an answer about the provider's default public
   // endpoint. Against any other endpoint — enterprise, self-hosted, or a
   // non-default port — it has not observed the deployment being queried.
-  // Negative observations still stand: an absent or unauthenticated tool is an
-  // absent or unauthenticated tool whichever endpoint it was probed against.
-  const probeEndpointUnbound = probedEndpoint === null
+  if (
+    probedEndpoint === null
     && canonicalEndpoint !== null
-    && canonicalEndpoint !== canonicalizeEndpoint(provider.defaultEndpoint);
-  if (probe.available === false) {
-    return { status: 'provider-tool-missing', tool: provider.cli };
-  }
-  if (probe.authenticated === false) {
-    return { status: 'provider-tool-unauthenticated', tool: provider.cli };
-  }
-  if (probeEndpointUnbound) {
+    && canonicalEndpoint !== canonicalizeEndpoint(provider.defaultEndpoint)
+  ) {
     return { status: 'provider-tool-unobserved', tool: provider.cli };
   }
   if (probe.available !== true || probe.authenticated !== true) {
@@ -291,6 +297,55 @@ function unsupported(inspected, source) {
  */
 function inspectedLabel(host) {
   return host ? `host:${host}` : 'host:unparsed';
+}
+
+/**
+ * Query parameter names whose value is a credential rather than a coordinate.
+ * Matched case-insensitively as whole words so a deep-link parameter such as
+ * `check_suite_focus` is untouched while `access_token` is not.
+ */
+const CREDENTIAL_QUERY_KEYS = /(^|[_-])(token|access[_-]?token|secret|password|passwd|pwd|apikey|api[_-]?key|key|sig|signature|credential|auth|authorization|pat|session)([_-]|$)/i;
+
+/**
+ * A provider-supplied URL, with its credential-bearing positions removed.
+ *
+ * A change-request URL, a check's details URL, and a comment permalink are all
+ * provider data, reported so a person can follow them. A URL is also the one
+ * field that can carry a credential in a structural position: `user:token@` in
+ * the userinfo, or a signed-link parameter in the query. Userinfo is dropped
+ * outright, because nothing navigates by it, and a query parameter whose name
+ * says it holds a credential is redacted while the rest of the query is kept —
+ * a provider deep link genuinely needs parameters like `check_suite_focus`.
+ *
+ * A value that does not parse as an absolute URL is returned unchanged rather
+ * than guessed at; it is not a URL, and rewriting it would corrupt whatever it
+ * actually is. This lives in the shared unit so both consumers redact the same
+ * way rather than each carrying their own idea of it.
+ */
+export function sanitizeProviderUrl(value) {
+  if (value === undefined || value === null || String(value).length === 0) {
+    return null;
+  }
+  const raw = String(value);
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return raw;
+  }
+  let changed = false;
+  if (url.username || url.password) {
+    url.username = '';
+    url.password = '';
+    changed = true;
+  }
+  for (const key of [...url.searchParams.keys()]) {
+    if (CREDENTIAL_QUERY_KEYS.test(key)) {
+      url.searchParams.set(key, 'redacted');
+      changed = true;
+    }
+  }
+  return changed ? url.toString() : raw;
 }
 
 /**
@@ -547,9 +602,13 @@ function assertAzureOrganizationHost(parsed, detection) {
   if (detectedHost) {
     const organizationHost = canonicalizeEndpoint(parsed.host);
     if (organizationHost !== detectedHost) {
+      // The caller's host is not echoed. It is rejected input, and an internal
+      // deployment hostname is exactly the kind of value that should not reach a
+      // log through a refusal message. The detected host is this run's own
+      // evidence and is named so a person can see what the address had to match.
       throw new ProviderCommandError(
         'repository-host-mismatch',
-        `organization host ${organizationHost ?? 'unparsed'} disagrees with detected host ${detectedHost}`,
+        `the supplied organization host disagrees with the detected host ${detectedHost}`,
       );
     }
   }
