@@ -41,6 +41,47 @@ below is unreleased and no comparison links are available.
   distinguishes a stale continuation (absent, moved, or now a different subject)
   from unreadable bytes (a read or parse failure, a symlinked component, or a
   basename that disagrees with the declared slug), failing closed either way.
+- **Bounded synthesis (`synthesize`).** A new user-invocable skill converts one
+  identified, revision-bound source artifact into a smaller variant under one
+  named profile, and refuses rather than degrades. It keeps a claim-to-source
+  trace, returns a disclosure ledger that accounts for everything kept, merged,
+  reworded, or dropped, and proposes a cohesive split when the required meaning
+  will not fit. Its first profile, `spec-nano`, produces a candidate
+  `<slug>.nano.md` bounded at 500 words — never by truncating, relocating
+  authority into the full companion, or weakening an acceptance criterion. The
+  result is always a candidate a human must still approve; the skill does not
+  review, roast, publish, implement, or merge it. Its disclosure ledger closes
+  several ways an account could look honest while hiding a change: coverage is
+  order-independent — every anchor's matched spans are masked against the
+  original line, so a short anchor listed before a longer overlapping one no
+  longer consumes the text the longer one needs — and a whole-line anchor must
+  pinpoint exactly one line, or name the occurrence coordinate that binds it to
+  the one line it accounts for, so two identical `Not applicable.` cells can each
+  be traced without a false ambiguity and a coordinate never silently covers an
+  identical line elsewhere; a short anchor may not certify a required or
+  authoritative item, so a one-character anchor can no longer stand in for real
+  coverage; a candidate number or identifier counts as structural only when the
+  covering claim's own source material carries it, and numbers are read as atomic
+  compounds — a currency amount, range, colon ratio or time, hyphenated or dotted
+  date, dotted version, exponent, hexadecimal literal, or ordinal is one token,
+  including its spaced (`5 – 10`, `5 : 10`) and unit- or symbol-bearing
+  (`5ms–10ms`, `5%–10%`, `$5–$10`) forms, while a sentence-final period, an em
+  dash between words, and a colon before a list stay separate — so a threshold
+  borrowed from an unrelated sentence, a bare count `5` reworded into a price
+  `$5`, an invented `5–10` or `5 – 10` range, a `5:1` ratio assembled from a
+  separate `5` and `1`, or a `2026.08.29` date assembled from `2026.08` and `29`,
+  is an invented claim;
+  fenced content is parsed with a state machine, so a delimiter-shaped line
+  inside a different fence, and an opening fence whose tail is not a defensible
+  lowercase language tag (at most twenty characters and two separators) followed
+  by a real `.class`/`#id`/`key=value` attribute list — a capitalised imperative
+  such as `Erase-user-data`, a hyphenated sentence, or a brace of
+  prose — are both treated as the content they are; the outcome resolver refuses
+  an absolute or workspace-escaping path outright instead of normalizing it away,
+  requires at least two complete split proposals — each naming real cohesive
+  units, not a malformed `[null]` or a sparse array — before it will say a
+  variant needs splitting, and reports every blocked run with a stable,
+  documented code rather than free prose.
 - **Specification approval durability.** Approval of a specification is a merge
   to the default branch, not a field the producing agent writes. The observation
   is verified against git objects and refused when it disagrees, so a forged
