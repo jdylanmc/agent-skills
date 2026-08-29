@@ -121,19 +121,21 @@ judges the change is grading its own work.
    `granted` is not a merge and is not an approval. It records that somebody
    authorized one, and the change request is updated to say so.
 
-8. **Invoke `shepherd` and wait for it** when, and only when, the shepherd
-   intent recorded in step 2 said so. Follow
+8. **Evaluate the shepherd handoff after every successful publication.** Follow
    [Shepherd handoff](./_atoms/shepherd-handoff/shepherd-handoff.md), which
-   builds the target, dispatches the nested invocation, and classifies the
-   result with
+   builds the target and classifies the result with
    [shepherd-handoff.mjs](./_atoms/shepherd-handoff/shepherd-handoff.mjs).
+   This evaluation is unconditional once a change request exists, because it
+   also emits the set obligation. Condition only the nested shepherd invocation
+   on the intent recorded in step 2.
 
-   The invocation is a **nested one in a separate worker**, dispatched with
-   `task`, carrying the change request identifier, the branch, the captured head
-   and base SHAs, the base's up-to-date policy when it was observed, the
-   validation evidence, the merge disposition, and the outstanding defects.
-   Shepherd drives it toward mergeable; ship does not follow it there and does
-   not merge it.
+   When that intent is `yes`, **invoke `shepherd` and wait for it**. The
+   invocation is a **nested one in a separate worker**, dispatched with `task`,
+   carrying the change request identifier, the branch, the captured head and
+   base SHAs, the base's up-to-date policy when it was observed, the validation
+   evidence, the merge disposition, and the outstanding defects. Shepherd
+   drives it toward mergeable; ship does not follow it there and does not merge
+   it.
 
    **This run does not report its own completion until shepherd returns a
    terminal disposition.** A described handoff and a real one read identically
@@ -157,9 +159,11 @@ judges the change is grading its own work.
    status is `blocked`, naming the target and the one exact human action.
    `shipped-to-review` is never reported as though a handoff occurred.
 
-   When shepherd intent was `no`, stop and report. The absence of an instruction
-   is not permission to continue, and an explicit `no` keeps the option an
-   option.
+   When shepherd intent was `no`, do not dispatch shepherd. Evaluate the
+   declined handoff anyway and return its `setObligation`, then stop and report.
+   The absence of an instruction is not permission to continue, and an explicit
+   `no` keeps the invocation optional without making the readiness expiry
+   optional.
 
    Handover also needs something to hand over. When publication returned
    anything but `published`, report that outcome and stop, whatever the shepherd

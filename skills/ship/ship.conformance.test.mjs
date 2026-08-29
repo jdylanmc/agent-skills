@@ -725,7 +725,7 @@ test('the change request opens only after reconciliation, validation, and review
   const evaluateIndex = entry.indexOf('**Evaluate the merge gate**');
   const openIndex = entry.indexOf('**Open the change request**');
   const askIndex = entry.indexOf('**Ask for the merge grant**');
-  const handoverIndex = entry.indexOf('**Invoke `shepherd` and wait for it**');
+  const handoverIndex = entry.indexOf('**Evaluate the shepherd handoff after every successful publication.**');
   assert.ok(cycleIndex > 0 && evaluateIndex > 0 && openIndex > 0 && askIndex > 0 && handoverIndex > 0);
   assert.ok(cycleIndex < openIndex, 'the cycle runs before the change request opens');
   assert.ok(evaluateIndex < openIndex, 'the disposition is evaluated before it goes in the body');
@@ -861,7 +861,8 @@ test('the provider seam is narrow, uses the official tool, and never fakes a cle
 test('handover happens only on recorded intent, and ship never merges', () => {
   const entry = flat(ENTRY);
 
-  assert.match(entry, /when, and only when, the shepherd intent recorded\s+in step 2 said so/);
+  assert.match(entry, /Condition only the nested shepherd invocation\s+on the intent recorded in step 2/);
+  assert.match(entry, /When that intent is `yes`, \*\*invoke `shepherd` and wait for it\*\*/);
   assert.match(entry, /ship does not follow it there and does not merge it/);
   assert.match(entry, /The absence of an instruction\s+is not permission to continue/);
 
@@ -880,7 +881,8 @@ test('the handoff is a nested invocation the run waits for, not a described one'
 
   // Structural: the step dispatches and blocks on a result, and the atom that
   // classifies it is composed rather than described.
-  assert.match(entry, /\*\*Invoke `shepherd` and wait for it\*\*/);
+  assert.match(entry, /\*\*Evaluate the shepherd handoff after every successful publication\.\*\*/);
+  assert.match(entry, /\*\*invoke `shepherd` and wait for it\*\*/);
   assert.match(entry, /nested one in a separate worker\*\*, dispatched with\s+`task`/);
   assert.match(
     entry,
@@ -1003,12 +1005,20 @@ test('ship accepts the actual terminal result shape shepherd produces', () => {
 });
 
 test('a declined handoff stays optional and an unrecorded one does not', () => {
+  const entry = flat(ENTRY);
   const declined = evaluateHandoff({
     intent: 'no',
     publication: { outcome: 'published', identifier: '#1' },
   });
   assert.equal(declined.handoff, 'not-required');
   assert.ok(handoffSatisfied(declined));
+  assert.ok(declined.setObligation, 'declining shepherd must not drop the readiness expiry');
+
+  // The root workflow must traverse the evaluator on the declined path rather
+  // than relying on the helper being capable of a call the orchestration never
+  // makes.
+  assert.match(entry, /Evaluate the\s+declined handoff anyway and return its `setObligation`/);
+  assert.match(entry, /evaluation is unconditional once a change request exists/);
 
   // `shepherd` stays an optional dependency precisely because `no` is a real
   // answer. An unasked question is not that answer.

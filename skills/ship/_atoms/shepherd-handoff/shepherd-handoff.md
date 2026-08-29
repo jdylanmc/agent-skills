@@ -147,6 +147,7 @@ leaves the run with an actor's name on it.
 | `intent-unrecorded` | `not-performed` | `blocked`. An unasked question is not a `no`. |
 | `no-published-target` | `not-required` | Unconstrained; the publication outcome is reported as given. |
 | `target-incomplete` | `not-performed` | `blocked`. |
+| `target-publication-mismatch` | `not-performed` | `blocked`; the provider identifier and handoff target name different change requests. |
 | `not-invoked` | `not-performed` | `blocked`. A narrated packet reaches here. |
 | `shepherd-unavailable` | `not-performed` | `blocked`. |
 | `invocation-failed` | `not-performed` | `blocked`. |
@@ -175,6 +176,10 @@ The policy explains the result but does not replace the freshness check.
 - **Never invokes shepherd when the recorded intent was `no`.** The option stays
   an option.
 - **Never invents a target.** No published identifier means nothing to hand over.
+- **Never combines identities.** When the provider identifier and handoff
+  target name different change requests, it blocks and emits an obligation
+  whose base is unresolved rather than borrowing provenance from the other
+  request.
 - **Never merges, approves, rebases, or pushes.** It hands over; shepherd acts.
 - **Never treats a stale disposition as current.**
 - **Never watches, waits, or polls.** The obligation is emitted and the run

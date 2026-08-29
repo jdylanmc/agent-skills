@@ -333,6 +333,23 @@ test('publication success requires both the outcome and the provider identifier'
   }
 });
 
+test('a publication and target mismatch cannot cross-wire readiness provenance', () => {
+  const mismatched = evaluateHandoff(completeHandoff({
+    publication: { outcome: 'published', identifier: '#222' },
+  }));
+
+  assert.equal(mismatched.state, 'target-publication-mismatch');
+  assert.equal(mismatched.handoff, 'not-performed');
+  assert.equal(mismatched.shipStatus, 'blocked');
+  assert.ok(mismatched.unmet.some((entry) => entry.includes('#111') && entry.includes('#222')));
+  assert.match(mismatched.humanAction, /#222/);
+
+  assert.equal(mismatched.setObligation.changeRequest, '#222');
+  assert.equal(mismatched.setObligation.baseBranch, null);
+  assert.equal(mismatched.setObligation.baseSha, null);
+  assert.deepEqual(mismatched.setObligation.unresolved, ['baseBranch', 'baseSha']);
+});
+
 test('the publication receipt falls back to the captured target commits but never to nothing', () => {
   const { target, missing } = buildHandoffTarget({
     changeRequest: '#111',

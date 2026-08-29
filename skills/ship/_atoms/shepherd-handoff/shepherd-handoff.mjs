@@ -157,6 +157,22 @@ function decideHandoff(input) {
     });
   }
 
+  const publishedChangeRequest = nonEmptyString(publication.identifier);
+  if (
+    target.changeRequest !== null
+    && publishedChangeRequest !== null
+    && target.changeRequest !== publishedChangeRequest
+  ) {
+    return notPerformed('target-publication-mismatch', {
+      target,
+      unmet: [
+        `target.changeRequest is ${target.changeRequest}, but publication.identifier is ${publishedChangeRequest}`,
+      ],
+      humanAction:
+        `Rebuild the handoff target for ${publishedChangeRequest} from that publication receipt before invoking shepherd.`,
+    });
+  }
+
   if (intent === 'no') {
     // The operator declined it. Conditional means conditional, and a decline
     // is a decision rather than an omission.
@@ -337,7 +353,13 @@ export function buildSetObligation(input = {}, evaluation = {}) {
     return null;
   }
 
-  const target = evaluation?.target ?? null;
+  // A mismatched target cannot donate provenance to the published request.
+  // Keep the evidence on the handoff evaluation, but leave the obligation's
+  // base unresolved rather than combining one request's identity with
+  // another's base.
+  const target = evaluation?.state === 'target-publication-mismatch'
+    ? null
+    : evaluation?.target ?? null;
   const changeRequest = nonEmptyString(input.publication.identifier);
   const observed = nonEmptyString(evaluation?.disposition) !== null
     && validateFreshnessReceipt(input?.result?.receipt).valid;
