@@ -312,15 +312,20 @@ export function handoffSatisfied(evaluation) {
  * atom exists for is a change request nobody was watching; a run that hands
  * back `blocked` has told somebody it needs an owner, and telling them it also
  * expires costs nothing and is the same sentence they will need next.
+ *
+ * Nothing published is nothing to own, and that is decided by
+ * {@link publicationSucceeded} rather than by an identifier being present. A
+ * failed publication can still carry the identifier the provider echoed back,
+ * and an obligation built from it would name a change request that does not
+ * exist — a duty addressed to a caller about nothing.
  */
 export function buildSetObligation(input = {}, evaluation = {}) {
-  const target = evaluation?.target ?? null;
-  const changeRequest = nonEmptyString(target?.changeRequest)
-    ?? nonEmptyString(input?.publication?.identifier);
-  if (changeRequest === null) {
+  if (!publicationSucceeded(input?.publication)) {
     return null;
   }
 
+  const target = evaluation?.target ?? null;
+  const changeRequest = nonEmptyString(input.publication.identifier);
   const observed = input?.intent === 'yes'
     && isTerminalDisposition(input?.result?.disposition)
     && validateFreshnessReceipt(input?.result?.receipt).valid;
@@ -337,6 +342,14 @@ export function buildSetObligation(input = {}, evaluation = {}) {
     expiresWhen: `anything else merges into ${into}`,
     reinvocation: `Invoke shepherd on ${changeRequest} again, then re-read its base and head, `
       + 'before it is presented as ready.',
+    // An obligation whose base was never captured cannot be checked against
+    // anything later. It is still emitted, because the change request is still
+    // real and still somebody's, and the missing facts are named rather than
+    // left for a reader to notice their absence.
+    unresolved: [
+      ...(baseBranch === null ? ['baseBranch'] : []),
+      ...(baseSha === null ? ['baseSha'] : []),
+    ],
   };
 }
 

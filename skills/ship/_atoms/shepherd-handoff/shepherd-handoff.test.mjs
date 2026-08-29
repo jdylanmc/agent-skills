@@ -464,18 +464,56 @@ test('every published change request leaves the run with an obligation', () => {
   }
 });
 
-test('an obligation names a change request, or there is none to own', () => {
-  // Nothing was published, so there is nothing for anyone to inherit. An
-  // obligation invented here would name a change request that does not exist.
+test('an obligation follows publication succeeding, not an identifier appearing', () => {
+  // The trap: a failed publication can still carry the identifier a provider
+  // echoed back. Building an obligation from a bare identifier addresses the
+  // set owner about a change request that does not exist, which is worse than
+  // saying nothing — it is a duty with no subject.
   assert.equal(evaluateHandoff().setObligation, null);
-  assert.equal(evaluateHandoff({ publication: { outcome: 'withheld-by-outcome' } }).setObligation, null);
+
+  for (const outcome of [
+    'withheld-by-outcome',
+    'publication-failed',
+    'provider-unsupported',
+    'provider-tool-missing',
+    undefined,
+  ]) {
+    const unpublished = evaluateHandoff(completeHandoff({
+      publication: { outcome, identifier: '#ghost' },
+    }));
+
+    assert.equal(unpublished.state, 'no-published-target');
+    assert.equal(unpublished.setObligation, null, `outcome ${String(outcome)} owns nothing`);
+  }
 
   // A target that omitted the identifier is a refused handoff, but publication
-  // did return one, and that is the change request somebody now owns.
+  // did succeed, and the identifier the provider returned is the change
+  // request somebody now owns.
   const incomplete = evaluateHandoff(completeHandoff({
     target: publicationTarget({ changeRequest: undefined }),
   }));
 
   assert.equal(incomplete.state, 'target-incomplete');
   assert.equal(incomplete.setObligation.changeRequest, '#111');
+});
+
+test('an obligation with no captured base says so rather than reading as checkable', () => {
+  // An expiry nobody can compare against a later base is unverifiable. It is
+  // still emitted, because the change request is still real, but the missing
+  // facts are named instead of leaving a confident-looking obligation bound to
+  // nothing.
+  const baseless = evaluateHandoff(completeHandoff({
+    intent: undefined,
+    target: publicationTarget({ baseBranch: undefined, baseSha: undefined, receipt: {} }),
+  }));
+
+  assert.equal(baseless.setObligation.changeRequest, '#111');
+  assert.equal(baseless.setObligation.baseBranch, null);
+  assert.equal(baseless.setObligation.baseSha, null);
+  assert.deepEqual(baseless.setObligation.unresolved, ['baseBranch', 'baseSha']);
+  assert.match(baseless.setObligation.expiresWhen, /its base branch/);
+
+  // A complete one carries nothing unresolved, so the field distinguishes the
+  // two rather than always being present and always ignored.
+  assert.deepEqual(evaluateHandoff(completeHandoff()).setObligation.unresolved, []);
 });

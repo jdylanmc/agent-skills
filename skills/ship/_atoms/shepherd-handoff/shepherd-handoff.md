@@ -119,6 +119,7 @@ So every evaluation naming a published change request returns `setObligation`:
 | `expiresWhen` | The condition that ends the claim: anything else merging into that base. |
 | `owner` | The caller that owns the set. The obligation is addressed to an actor, never left unassigned. |
 | `reinvocation` | The exact next call: invoke shepherd on it again, then re-read its base and head, before it is presented as ready. |
+| `unresolved` | The base facts that were never captured, named rather than left for a reader to notice their absence. Empty when the obligation is checkable. |
 
 `baseSha` is the base the readiness was *observed against*, so it follows the
 shepherd receipt exactly as freshness does — but only once this run asked for
@@ -129,8 +130,10 @@ to a commit the change request no longer sits on.
 
 **A change request with no owner still carries one.** The states that end
 `blocked` are exactly the ones least likely to be watched by anybody, so the
-obligation is emitted there too. It is absent only when publication returned no
-identifier: an obligation naming no change request would name nothing to own.
+obligation is emitted there too. It is absent only when publication did not
+succeed: a failed publication can still echo back an identifier, and an
+obligation built from that would address a caller about a change request that
+does not exist. Publication success decides it, never the presence of a name.
 
 Emitting it is not watching. This unit returns and holds nothing — no timer, no
 poll, no authority kept past the return. What changes is that the duty now

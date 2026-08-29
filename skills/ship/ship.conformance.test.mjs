@@ -109,9 +109,22 @@ test('the routing description promises review-ready, not merged', () => {
   assert.match(description, /reconcile every hunk against the confirmed ledger/);
   assert.match(description, /gate the merge/);
   assert.match(description, /Do not use to work a whole backlog or fleet/);
-  assert.match(description, /ship-with-squadron/);
   assert.match(description, /do not use to merge, approve, accept risk/);
   assert.match(description, /drive an existing change request, which belongs to shepherd/);
+
+  // Routing metadata is read before any in-body disclaimer, so every route it
+  // names has to resolve. Advertising a package with no entry point reads as
+  // coverage while providing none, and the reader who follows it finds
+  // nothing. This is derived from the repository rather than pinned to a
+  // spelling, so a route that stops resolving fails here.
+  const routable = fs.readdirSync(SKILLS_ROOT)
+    .filter((name) => fs.existsSync(path.join(SKILLS_ROOT, name, 'SKILL.md')));
+  const routed = [...description.matchAll(/belongs to `?([a-z][a-z0-9-]*)`?/g)].map((match) => match[1]);
+
+  assert.ok(routed.length > 0, 'the description routes the work it declines somewhere');
+  for (const name of routed) {
+    assert.ok(routable.includes(name), `the description routes to ${name}, which has no entry point here`);
+  }
 
   // Stage two delivers to review. Advertising that it lands the change would
   // route merge expectations here, and routing metadata is read before any
