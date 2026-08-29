@@ -107,17 +107,22 @@ so parsing necessarily precedes them.
      repository, so each component is classified individually: an absent
      component → `foundation-missing`; a symlinked or non-directory component, or
      one that cannot be inspected → `foundation-unreadable`.
-   - Each `*.md` entry is `lstat`ed; a symbolic-link entry is reported under
-     `ignored` and never read. Each remaining file is read and parsed. Matching
-     is on the **parsed** artifact identity: `parsed.subject.id === subject.id`
-     **and** `parsed.subject.slug === subject.slug`. Non-matching artifacts are
+   - Each `*.md` entry is `lstat`ed; a symbolic-link entry is never read or
+     followed, and because its bytes are never recovered its true subject is
+     unknowable, so it **fails closed** as `foundation-unreadable` (it is also
+     reported under `ignored` with the reason it was skipped), exactly as a
+     symlinked component does in compacted mode. Each remaining file is read and
+     parsed. Matching is on the **parsed** artifact identity:
+     `parsed.subject.id === subject.id` **and**
+     `parsed.subject.slug === subject.slug`. Non-matching artifacts are
      reported under `ignored` with the subject they actually declare.
-   - If any regular `*.md` could not be read or parsed → `foundation-unreadable`
-     naming those files, **whether or not** a match was found, because an
-     unreadable artifact could itself be this subject's. This fails closed
-     unconditionally, so `foundation-missing` means every artifact was readable
-     and none is this subject's, and `rehydrated` means every artifact was
-     readable and exactly one is this subject's at its canonical path.
+   - If any `*.md` could not be read or parsed — including a symbolic-link entry,
+     which is deliberately never followed → `foundation-unreadable` naming those
+     files, **whether or not** a match was found, because an unrecovered artifact
+     could itself be this subject's. This fails closed unconditionally, so
+     `foundation-missing` means every artifact was readable and none is this
+     subject's, and `rehydrated` means every artifact was readable and exactly
+     one is this subject's at its canonical path.
    - More than one match (genuinely different paths) → `foundation-ambiguous`,
      naming every matching locator. The helper never chooses.
    - Zero matches → `foundation-missing`.
@@ -143,9 +148,9 @@ bytes that exist but cannot be recovered.
 
 | State | Meaning |
 | --- | --- |
-| `foundation-missing` | No aligned foundation exists for this subject yet, and every artifact in the directory was readable and none is this subject's. |
+| `foundation-missing` | No aligned foundation exists for this subject yet, and every artifact in the directory was read and parsed (none was skipped as unreadable) and none is this subject's. |
 | `foundation-ambiguous` | More than one artifact declared this subject; every matching locator is named and none is chosen. |
-| `foundation-unreadable` | The bytes exist but cannot be recovered: a read error, a parse failure, a symlinked component, a discovery directory that is symlinked, non-directory, or unenumerable, or a basename that disagrees with the declared slug. It fails closed rather than reporting missing, and this holds in both cold-start and compacted modes. |
+| `foundation-unreadable` | The bytes exist but cannot be recovered: a read error, a parse failure, a symbolic-link `*.md` entry (never followed), a symlinked component, a discovery directory that is symlinked, non-directory, or unenumerable, or a basename that disagrees with the declared slug. It fails closed rather than reporting missing, and this holds in both cold-start and compacted modes. |
 | `foundation-unaligned` | The resolved artifact's alignment was not `confirmed`. Alignment is human-owned. |
 | `foundation-stale` | The carried continuation no longer describes this subject's foundation: the expected artifact is absent, its revision moved, or it now declares a different subject. No rehydrated state is returned. |
 

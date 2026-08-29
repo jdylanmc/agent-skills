@@ -240,9 +240,13 @@ function safeRead(io, target) {
 /**
  * Read one `.md` entry safely. A symbolic link is never followed; it is reported
  * so the caller can see it was skipped. Returns a descriptor: an unreadable or
- * unparsable file carries `error` and no `parsed`. `unreadable: true` marks a
- * genuine read/parse failure (as opposed to a deliberate symlink skip), so the
- * caller can fail closed rather than silently continue (R7).
+ * unparsable file carries `error` and no `parsed`. `unreadable: true` marks any
+ * artifact that could not be recovered — a read/parse failure OR a deliberate
+ * symlink skip — so the caller can fail closed rather than silently continue
+ * (R7). A skipped symbolic link additionally carries `symlink: true` to record
+ * why it was not read; it is never followed and its bytes are never recovered,
+ * so like every other unrecovered artifact it cannot be dismissed as not this
+ * subject's.
  */
 function readArtifact(io, dir, name) {
   const locator = `${DISCOVERY_DIR_POSIX}/${name}`;
@@ -255,7 +259,7 @@ function readArtifact(io, dir, name) {
     return { locator, error: 'the file disappeared before it could be read', unreadable: true };
   }
   if (stat.isSymbolicLink()) {
-    return { locator, error: 'entry is a symbolic link and was not followed', symlink: true };
+    return { locator, error: 'entry is a symbolic link and was not followed', symlink: true, unreadable: true };
   }
   if (!stat.isFile()) {
     return { locator, error: 'entry is not a regular file', unreadable: true };
@@ -516,16 +520,18 @@ export function rehydrateFoundation(intake, { io = realIo } = {}) {
     }
   }
 
-  // Fail closed on genuine read/parse failures (MF-2): if any regular `*.md` in
-  // the discovery directory could not be read or parsed, the state is
+  // Fail closed on any artifact that could not be recovered (MF-2): if any
+  // `*.md` in the discovery directory could not be read or parsed — including a
+  // symbolic link, which is deliberately never followed — the state is
   // `foundation-unreadable` naming those files, whether or not a match was
-  // found, because an unreadable artifact could itself be this subject's
-  // foundation. This precedes match resolution and ambiguity. A file that
-  // parsed but whose basename disagrees with its declared slug is handled by the
-  // match logic below, not here, so two same-subject artifacts still surface as
-  // a genuine ambiguity for the human. As a result, `foundation-missing` means
-  // every artifact was readable and none is this subject's, and `rehydrated`
-  // means every artifact was readable and exactly one is this subject's, at its
+  // found, because an unrecovered artifact could itself be this subject's
+  // foundation and its true subject is unknowable without reading it. This
+  // precedes match resolution and ambiguity. A file that parsed but whose
+  // basename disagrees with its declared slug is handled by the match logic
+  // below, not here, so two same-subject artifacts still surface as a genuine
+  // ambiguity for the human. As a result, `foundation-missing` means every
+  // artifact was readable and none is this subject's, and `rehydrated` means
+  // every artifact was readable and exactly one is this subject's, at its
   // canonical path (R7/MF-7).
   if (unreadableFiles.length) {
     return {

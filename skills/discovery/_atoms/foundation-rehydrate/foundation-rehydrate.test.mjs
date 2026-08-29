@@ -208,7 +208,7 @@ test('a parsed artifact whose alignment is not confirmed is unaligned', () => {
   assert.equal(result.alignment, 'offered');
 });
 
-test('a symlinked .md entry is reported under ignored and never read', () => {
+test('a symlinked .md entry fails closed as unreadable, still reported under ignored and never read', () => {
   const root = freshRepo();
   seed(root);
   const dir = path.join(root, 'docs', 'agent', 'discovery');
@@ -216,10 +216,67 @@ test('a symlinked .md entry is reported under ignored and never read', () => {
   fs.writeFileSync(target, 'secret bytes');
   fs.symlinkSync(target, path.join(dir, 'linked.md'));
   const result = rehydrateFoundation(intake(root));
-  // The real foundation still rehydrates; the symlink is ignored, not followed.
-  assert.equal(result.status, REHYDRATED);
+  // A symlinked artifact is never read or followed, so its true subject is
+  // unknowable — the run fails closed rather than rehydrating from the real
+  // foundation as if the symlink were absent.
+  assert.equal(result.status, RECOVERY.unreadable);
+  assert.match(result.readFailure, /docs\/agent\/discovery\/linked\.md/);
+  assert.match(result.readFailure, /symbolic link/);
+  // No rehydrated payload leaks despite a genuine foundation existing on disk.
+  assert.equal(result.confirmedFacts, undefined);
+  // The reason it was skipped is still surfaced under ignored.
   const linkIgnored = result.ignored.find((entry) => entry.locator === 'docs/agent/discovery/linked.md');
   assert.match(linkIgnored.reason, /symbolic link/);
+});
+
+test('a symlinked artifact for THIS subject fails closed as unreadable, not missing', () => {
+  const root = freshRepo();
+  // A genuine, aligned foundation for this subject lives outside the discovery
+  // directory; the canonical locator is a symbolic link to it. It is never
+  // followed, so cold start cannot dismiss it as absent.
+  const outside = path.join(root, 'real');
+  fs.mkdirSync(outside, { recursive: true });
+  seed(outside);
+  const realFoundation = path.join(outside, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+  const dir = path.join(root, 'docs', 'agent', 'discovery');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.symlinkSync(realFoundation, path.join(dir, `${SLUG}.md`));
+  const result = rehydrateFoundation(intake(root));
+  assert.equal(result.status, RECOVERY.unreadable);
+  assert.notEqual(result.status, RECOVERY.missing);
+  assert.match(result.readFailure, new RegExp(`docs/agent/discovery/${SLUG}\\.md`));
+  assert.match(result.readFailure, /symbolic link/);
+  assert.equal(result.confirmedFacts, undefined);
+});
+
+test('cold start and compacted mode agree on a symlinked artifact: both foundation-unreadable', () => {
+  // Build one on-disk condition: the canonical locator is a symbolic link to a
+  // genuine, aligned foundation for this subject. Resolve it in BOTH modes and
+  // assert the recovery states are equal — the identical bytes must not diverge.
+  function symlinkedFoundationRepo() {
+    const root = freshRepo();
+    const outside = path.join(root, 'real');
+    fs.mkdirSync(outside, { recursive: true });
+    const { revision } = seed(outside);
+    const realFoundation = path.join(outside, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+    const dir = path.join(root, 'docs', 'agent', 'discovery');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.symlinkSync(realFoundation, path.join(dir, `${SLUG}.md`));
+    return { root, revision };
+  }
+
+  const coldRepo = symlinkedFoundationRepo();
+  const coldStart = rehydrateFoundation(intake(coldRepo.root));
+
+  const compactedRepo = symlinkedFoundationRepo();
+  const compacted = rehydrateFoundation(
+    intake(compactedRepo.root, { expected: { locator: LOCATOR, revision: compactedRepo.revision } }),
+  );
+
+  assert.equal(coldStart.status, compacted.status);
+  assert.equal(coldStart.status, RECOVERY.unreadable);
+  assert.equal(coldStart.confirmedFacts, undefined);
+  assert.equal(compacted.confirmedFacts, undefined);
 });
 
 test('a symlinked discovery directory is refused rather than followed', () => {
