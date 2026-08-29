@@ -36,6 +36,7 @@ import { MERGE_GRANT_TOKEN, evaluateMergeGate, mayMerge } from './_atoms/merge-g
 import { reconcile as reconcileDiff } from './_atoms/diff-reconciliation/diff-reconciliation.mjs';
 import {
   NESTED_INVOCATION,
+  SET_OWNER,
   evaluateHandoff,
   handoffSatisfied,
   publicationSucceeded,
@@ -1083,6 +1084,58 @@ test('the set of open change requests is somebody else, and it is named', () => 
   assert.deepEqual(frontmatter(HANDOFF).allowedTools, ['task', 'read', 'execute']);
   assert.match(handoff, /\*\*Never merges, approves, rebases, or pushes\.\*\*/);
 });
+
+test('the expiry leaves the run, addressed to the caller that owns the set', () => {
+  const handoff = flat(HANDOFF);
+  const entry = flat(ENTRY);
+
+  // The failure this pins: the duty was already written down here, and being
+  // written down is not being inherited. A caller reads what the run returns,
+  // so the obligation has to be an emitted element of the output contract and
+  // not a paragraph in a unit nobody opens.
+  assert.match(handoff, /The Obligation Is Emitted, Not Recorded Here/);
+  for (const field of ['changeRequest', 'baseSha', 'expiresWhen', 'owner', 'reinvocation']) {
+    assert.match(handoff, new RegExp(`\`${field}\``), `the obligation must name ${field}`);
+  }
+  assert.match(entry, /the set obligation\*\*, whenever a change request was published/);
+
+  // Emitting a duty is not accepting it. The wording must keep ship out of the
+  // daemon it refuses to be, on both surfaces.
+  assert.match(handoff, /Emitting it is not watching/);
+  assert.match(entry, /Reporting it is not watching/);
+
+  // A published change request carries the obligation whether or not anybody
+  // shepherded it, because the base moves either way.
+  const declined = evaluateHandoff({
+    intent: 'no',
+    publication: { outcome: 'published', identifier: '#1' },
+    target: {
+      changeRequest: '#1',
+      headBranch: 'issue-1',
+      headSha: 'head',
+      baseBranch: 'main',
+      baseSha: 'published-base',
+      upToDatePolicy: 'unobserved',
+      receipt: { observedAt: '2026-08-25T20:35:56Z', baseSha: 'published-base', headSha: 'head' },
+    },
+  });
+
+  assert.equal(declined.handoff, 'not-required');
+  assert.equal(declined.setObligation.owner, SET_OWNER);
+  assert.equal(declined.setObligation.changeRequest, '#1');
+  assert.equal(declined.setObligation.baseSha, 'published-base');
+  assert.match(declined.setObligation.expiresWhen, /anything else merges into main/);
+  assert.match(declined.setObligation.reinvocation, /Invoke shepherd on #1 again/);
+
+  // Nothing published means nothing to own, so no obligation is invented.
+  assert.equal(evaluateHandoff({ publication: { outcome: 'withheld-by-outcome' } }).setObligation, null);
+
+  // A route to a package that cannot be invoked reads as coverage while
+  // providing none, so the boundary says which owner actually holds the set.
+  assert.match(entry, /\*\*Not a fleet\.\*\*/);
+  assert.match(entry, /no routable entry point in this repository yet/);
+});
+
 test('an incomplete outcome is not quietly reported as success', () => {
   const cycle = flat(CYCLE);
 

@@ -273,10 +273,13 @@ promised here:
 **What this run cannot own is the set.** After anything merges into the base,
 every still-open change request previously reported ready is stale, and one
 single-issue run sees only its own. That set belongs to a caller that holds it —
-the strategic delivery front door in issue #65, or a squadron working a backlog
-— and the requirement is recorded in the handoff atom so it is inherited rather
-than rediscovered. It is deliberately not solved by making `shepherd` wait for
-events; that would be a daemon holding push authority the whole time.
+the strategic delivery front door in issue #65, or a squadron working a backlog.
+So the handoff atom **emits** that duty as a set obligation rather than
+recording it where only a reader of that unit would find it: the change request,
+the base its readiness was observed against, the condition that expires it, the
+caller as the actor, and the exact re-invocation. This run reports it and
+returns. It is deliberately not solved by making `shepherd` wait for events;
+that would be a daemon holding push authority the whole time.
 
 ## Output Contract
 
@@ -298,6 +301,14 @@ Return:
   handoff target with its captured head and base SHAs and up-to-date policy, the
   freshness receipt, the effective policy reported after shepherd returns, and
   shepherd's terminal disposition when one came back;
+- **the set obligation**, whenever a change request was published: the change
+  request, the base branch and base SHA its reported readiness was observed
+  against, the condition that expires that readiness — anything else merging
+  into that base — the caller that owns the set as the actor, and the exact
+  re-invocation that owner must perform. It is reported even when the handoff
+  was declined or could not be performed, and is absent only when nothing was
+  published. Reporting it is not watching: this run holds nothing after it
+  returns;
 - the proposed approach, its laziness verdict, and every reduction applied;
 - the exhaustive change ledger, and the reconciliation verdict with any
   undisclosed, ambiguous, or unfulfilled entries named;
@@ -337,11 +348,15 @@ Return:
   returned a terminal disposition bound to the current base.
 - **Never watches a change request after handing it over**, and never watches
   its siblings. Re-shepherding a set after a sibling merge belongs to the caller
-  that owns the set.
+  that owns the set, which is why the set obligation names that caller and the
+  exact re-invocation instead of leaving the duty implied.
 - **Pushes only its own isolation branch, and never with force.** Ship creates
   the change request; moving an existing branch belongs to `shepherd`.
 - **Not a fleet.** Working a whole dependency-aware backlog belongs to
-  `ship-with-squadron`. Ship is one issue, one deliverable unit.
+  `ship-with-squadron`. Ship is one issue, one deliverable unit. That package
+  has no routable entry point in this repository yet, so until it lands the set
+  is held by whichever caller invoked this run — which is why the obligation is
+  addressed to that caller rather than to a skill nobody can invoke.
 - **Does not grade its own work.** Validation is `run-ci`'s job and adversarial
   review is `roast`'s. Ship reports their results rather than substituting its
   own judgement.

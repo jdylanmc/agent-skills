@@ -15,6 +15,7 @@ import test from 'node:test';
 import { TERMINAL_DISPOSITIONS } from '../../../_base/_atoms/landability/landability.mjs';
 import {
   NESTED_INVOCATION,
+  SET_OWNER,
   buildHandoffTarget,
   evaluateHandoff,
   handoffSatisfied,
@@ -395,4 +396,86 @@ test('a non-object input is a defect rather than a silently empty handoff', () =
   const empty = evaluateHandoff();
   assert.equal(empty.state, 'no-published-target');
   assert.equal(empty.shipStatus, null);
+});
+
+test('the set obligation binds to the base the readiness was observed against', () => {
+  // The regression that would make the obligation worse than useless: dating
+  // the expiry to the publication base rather than the one shepherd rebased
+  // onto tells the set owner a claim expired against a commit the change
+  // request no longer sits on. It is the same two-snapshot confusion freshness
+  // already refuses, and it must be refused here too.
+  const result = evaluateHandoff(completeHandoff());
+
+  assert.equal(result.setObligation.changeRequest, '#111');
+  assert.equal(result.setObligation.baseBranch, 'main');
+  assert.equal(result.setObligation.baseSha, REBASED_BASE);
+  assert.notEqual(result.setObligation.baseSha, PUBLISHED_BASE);
+  assert.match(result.setObligation.expiresWhen, /anything else merges into main/);
+  assert.match(result.setObligation.reinvocation, /Invoke shepherd on #111 again/);
+});
+
+test('the obligation is addressed to the caller, and never to this run', () => {
+  // An obligation with no actor reads as a note, and one addressed to this run
+  // would be an instruction to watch — the daemon the handoff refuses to be.
+  const result = evaluateHandoff(completeHandoff());
+
+  assert.equal(result.setObligation.owner, SET_OWNER);
+  assert.match(result.setObligation.owner, /caller/);
+
+  const words = JSON.stringify(result.setObligation);
+  for (const daemon of [/\bwatch/i, /\bpoll/i, /\bwait for\b/i, /\bmonitor/i]) {
+    assert.doesNotMatch(words, daemon, `the obligation must not promise to ${String(daemon)}`);
+  }
+});
+
+test('declining shepherd declines an owner, not the expiry', () => {
+  // The operator saying no settles who drives this change request. It settles
+  // nothing about the base, which moves whether or not anyone was asked.
+  const declined = evaluateHandoff(completeHandoff({ intent: 'no' }));
+
+  assert.equal(declined.handoff, 'not-required');
+  assert.equal(declined.state, 'declined-by-operator');
+  assert.ok(handoffSatisfied(declined));
+  assert.equal(declined.setObligation.changeRequest, '#111');
+  assert.equal(declined.setObligation.baseSha, PUBLISHED_BASE, 'no shepherd receipt, so the captured base');
+});
+
+test('every published change request leaves the run with an obligation', () => {
+  // The states below are the ones that end `blocked`, which is exactly when a
+  // change request is least likely to be watched by anybody. An obligation
+  // that appeared only on the happy path would be missing from every case that
+  // needs it.
+  const blocked = [
+    ['intent-unrecorded', { intent: undefined }],
+    ['not-invoked', { invocation: { mode: 'narrated', status: 'returned' } }],
+    ['shepherd-unavailable', { invocation: { mode: NESTED_INVOCATION, status: 'unavailable' } }],
+    ['no-terminal-disposition', { result: { disposition: 'in-progress' } }],
+    ['stale-disposition', { observedBase: { observedAt: '2026-08-25T22:06:00Z', baseSha: 'aaaaaaa', headSha: REBASED_HEAD } }],
+    ['freshness-unobserved', { observedBase: undefined }],
+  ];
+
+  for (const [state, overrides] of blocked) {
+    const result = evaluateHandoff(completeHandoff(overrides));
+
+    assert.equal(result.state, state);
+    assert.equal(result.shipStatus, 'blocked');
+    assert.equal(result.setObligation.changeRequest, '#111', `${state} lost the obligation`);
+    assert.equal(result.setObligation.owner, SET_OWNER);
+  }
+});
+
+test('an obligation names a change request, or there is none to own', () => {
+  // Nothing was published, so there is nothing for anyone to inherit. An
+  // obligation invented here would name a change request that does not exist.
+  assert.equal(evaluateHandoff().setObligation, null);
+  assert.equal(evaluateHandoff({ publication: { outcome: 'withheld-by-outcome' } }).setObligation, null);
+
+  // A target that omitted the identifier is a refused handoff, but publication
+  // did return one, and that is the change request somebody now owns.
+  const incomplete = evaluateHandoff(completeHandoff({
+    target: publicationTarget({ changeRequest: undefined }),
+  }));
+
+  assert.equal(incomplete.state, 'target-incomplete');
+  assert.equal(incomplete.setObligation.changeRequest, '#111');
 });
