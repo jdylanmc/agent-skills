@@ -320,6 +320,30 @@ test("a profile's extra envelope rules are numbered after the fixed items", () =
   for (const artifactType of ['agent', 'skill']) {
     assert.doesNotMatch(render(template, artifactType), /^12\. /m);
   }
+
+  // The spec profile contributes three, so it is the case that would have
+  // collided first had a new fixed item been added without renumbering.
+  const spec = render(template, 'spec');
+  assert.match(spec, /^12\. Both siblings appear in `## Evidence Manifest`/m);
+  assert.match(spec, /^13\. No entry recommends changing the nano specification/m);
+  assert.match(spec, /^14\. Every entry citing an acceptance criterion/m);
+  assert.doesNotMatch(spec, /^15\. /m);
+});
+
+test('the spec envelope rules name the deterministic screen that checks them', () => {
+  // A rule stated only in prose is a rule a reviewer inverts. Items 10 and 11
+  // each point at a checker; items 12 to 14 point at theirs the same way.
+  const template = readShared('roast/_atoms/roast-contract/roast-contract.md');
+  const spec = render(template, 'spec');
+
+  assert.match(spec, /Check items 12, 13, and 14 with the spec authority screen/);
+  assert.match(spec, /spec-authority-screen\/spec-authority-screen\.mjs/);
+  assert.match(spec, /--report "\$absolute_report_path" --pair "\$absolute_pair_record_path"/);
+  assert.match(spec, /cannot be satisfied by handing it a record with nothing to check against/);
+
+  for (const artifactType of ['agent', 'prompt', 'skill']) {
+    assert.doesNotMatch(render(template, artifactType), /spec-authority-screen/);
+  }
 });
 
 test('the command line validates, rejects, and probes with stable exit codes', (t) => {

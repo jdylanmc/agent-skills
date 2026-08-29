@@ -1,11 +1,15 @@
 /**
  * Seam tests for the artifact-profile atom.
  *
- * The point of this atom is that the agent, prompt, and skill roasts share one
- * authored contract, one authored failure reference, and one authored lens
- * reference. These tests hold that property mechanically: a field added to one
- * profile and not the others fails here, and a placeholder used in a shared
- * document with no matching field fails here.
+ * The point of this atom is that every artifact roast shares one authored
+ * contract, one authored failure reference, and one authored lens reference.
+ * These tests hold that property mechanically: a field added to one profile and
+ * not the others fails here, and a placeholder used in a shared document with
+ * no matching field fails here.
+ *
+ * `spec` is the type that proves the property. It arrived after the table
+ * existed and had to cost one row; a fourth authored contract would fail the
+ * conformance suite beside this one.
  */
 
 import assert from 'node:assert/strict';
@@ -65,7 +69,7 @@ function readShared(relativePath) {
 }
 
 test('every declared artifact type carries every declared field', () => {
-  assert.deepEqual(ARTIFACT_TYPES, ['agent', 'prompt', 'skill']);
+  assert.deepEqual(ARTIFACT_TYPES, ['agent', 'prompt', 'skill', 'spec']);
   for (const type of ARTIFACT_TYPES) {
     const profile = profileFor(type);
     const missing = PROFILE_FIELDS.filter((field) => !(field in profile));
@@ -136,6 +140,7 @@ test('each type resolves both of its mandatory roasters with their identifiers',
     agent: ['prompt-coach-roaster', 'agent-contract-roaster'],
     prompt: ['prompt-coach-roaster', 'responsible-ai-roaster'],
     skill: ['skill-reviewer-roaster', 'contract-safety-roaster'],
+    spec: ['spec-authority-roaster', 'spec-traceability-roaster'],
   };
   for (const [type, ids] of Object.entries(expected)) {
     const rendered = renderField(profileFor(type), 'mandatoryRoasters');
@@ -199,6 +204,92 @@ test('an unknown field refuses rather than returning undefined', () => {
     assert.equal(error.code, 'unknown_field');
     return true;
   });
+});
+
+test('the spec profile stages both siblings and their stable identities', () => {
+  const contract = render(readShared('roast/_atoms/roast-contract/roast-contract.md'), 'spec');
+
+  assert.match(contract, /## Specification Pair Staging/);
+  assert.match(contract, /<spec>\.nano\.md` and `<spec>\.full\.md`/);
+  assert.match(contract, /spec-pair\/spec-pair\.mjs --spec/);
+  assert.match(contract, /SHA-256 digest, byte length, and line count the record pinned/);
+  assert.match(contract, /Carry `specId` and every entry of `criteria`/);
+  assert.match(contract, /Stage an absent sibling as a manifest entry carrying its status/);
+
+  for (const type of ['agent', 'prompt', 'skill']) {
+    assert.doesNotMatch(render(readShared('roast/_atoms/roast-contract/roast-contract.md'), type), /## Specification Pair Staging/);
+  }
+});
+
+test('the resolved spec contract makes the nano authority a checked envelope rule', () => {
+  // The rule that decides whether this review is worth anything: the full
+  // specification never wins. Stating it in prose alone is what lets it erode,
+  // so it is also an item the envelope check enumerates.
+  const contract = render(readShared('roast/_atoms/roast-contract/roast-contract.md'), 'spec');
+
+  assert.match(contract, /may elaborate the nano artifact and may never override it/);
+  assert.match(
+    contract,
+    /^13\. No entry recommends changing the nano specification so that it agrees with$/m,
+  );
+  assert.match(contract, /names exactly the nano locator\s+as the authority/);
+  assert.match(
+    contract,
+    /^14\. Every entry citing an acceptance criterion cites an identifier the spec pair$/m,
+  );
+  assert.match(contract, /^12\. Both siblings appear in `## Evidence Manifest`/m);
+});
+
+test('the resolved spec contract states the empty result and the consumer boundary', () => {
+  const contract = render(readShared('roast/_atoms/roast-contract/roast-contract.md'), 'spec');
+
+  assert.match(contract, /A crisp pair returns a complete empty finding set/);
+  assert.match(contract, /never padded with\nmanufactured findings/);
+
+  assert.match(contract, /## Downstream Consumption/);
+  assert.match(contract, /gains no authority from\nit/);
+  assert.match(contract, /Nothing here approves a specification/);
+  assert.match(contract, /A caller that reads it as\n  approval has made a decision this review did not make/);
+});
+
+test('the spec profile keeps this review out of every neighbouring job', () => {
+  const contract = render(readShared('roast/_atoms/roast-contract/roast-contract.md'), 'spec');
+
+  assert.match(contract, /never write a replacement for/);
+  assert.match(
+    contract,
+    /Selecting architecture, authoring Gherkin, breaking the specification into\ntickets, and approving it are all outside this scope/,
+  );
+  assert.match(contract, /It never\n  answers the product question the specification left open/);
+});
+
+test('the nano specification is evidence under review, never the intent', () => {
+  // An intent is never a review target. Treating the nano artifact as one would
+  // exempt the exact file this review exists to examine.
+  const contract = render(readShared('roast/_atoms/roast-contract/roast-contract.md'), 'spec');
+
+  assert.match(contract, /Intent status: Not applicable for this artifact type/);
+  assert.match(contract, /The nano specification is not this pair's intent/);
+  assert.match(contract, /it is staged evidence, and it is itself reviewed/);
+});
+
+test('the spec lens is bundled, scoped by the profile, and has no repository copy', () => {
+  const lenses = readShared('roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md');
+  assert.ok(placeholdersIn(lenses).includes('specReviewerScope'));
+
+  const resolved = render(lenses, 'spec');
+  assert.match(resolved, /## Spec Pair Lens/);
+  assert.match(resolved, /whether the nano artifact stays minimal and authoritative/);
+  assert.match(resolved, /Native severity labels: Blocker, Improvement, Nit, Evidence gap\./);
+  assert.match(resolved, /\| Spec Pair \| none; bundled only \| `## Spec Pair Lens` \|/);
+
+  for (const type of ['agent', 'prompt', 'skill']) {
+    assert.match(
+      render(lenses, type),
+      /it does\nnot apply, and it is never convened over/,
+      `${type} must state that the spec lens does not apply to it`,
+    );
+  }
 });
 
 test('the command line renders one field, one template, and the whole profile', (t) => {

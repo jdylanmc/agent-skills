@@ -1,6 +1,6 @@
 ---
 name: artifact-profile
-description: Resolve the artifact-type variation of an artifact roast from one declared profile table, so the shared roast contract, failure reference, and lens reference are authored once for agent, prompt, and skill.
+description: Resolve the artifact-type variation of an artifact roast from one declared profile table, so the shared roast contract, failure reference, and lens reference are authored once for agent, prompt, skill, and spec.
 level: atom
 allowed-tools: ["execute"]
 includes: ["roast/_atoms/artifact-profile/artifact-profile.mjs"]
@@ -28,12 +28,21 @@ inside it.
 ## What a Profile Covers
 
 A profile is one artifact type and every place a shared document must say
-something type-specific. The three declared types are `agent`, `prompt`, and
-`skill`.
+something type-specific. The declared types are `agent`, `prompt`, `skill`, and
+`spec`.
+
+`spec` is one artifact even though it is two files. The reviewed thing is one
+specification, staged as the exact sibling pair `<spec>.nano.md` and
+`<spec>.full.md`, so it shares the coordinate-and-synthesize shape and cost one
+row here rather than a second review framework. What is genuinely different
+about it — staging two files under one authority, and the rule that the full
+specification never overrides the nano one — is carried in
+`supplementalSections` and `envelopeExtraRules`, exactly like the prompt type's
+supplied-text rules.
 
 `code` is deliberately not a profile. Code-review scope takes a pull request, a
 branch diff, working-tree changes, named files, or pasted code, and it does not
-use the coordinate-and-synthesize shape these three share. Adding a fourth row
+use the coordinate-and-synthesize shape these types share. Adding a row for it
 here would make the table lie about what it parameterises. The code branch has
 its own units.
 
@@ -57,7 +66,7 @@ its own units.
 | `evidenceManifestNote`, `envelopeExtraRules` | Type-specific envelope checks. |
 | `staleEvidenceMeaning`, `awaitingArtifactMeaning`, `unsupportedTypeMeaning` | Status meanings. |
 | `staleRecovery`, `awaitingRecovery`, `rerouteGuidance` | Recovery actions. |
-| `skillReviewerScope`, `promptCoachScope`, `steCoachScope`, `lensRerouteNote` | Per-lens scope statements. |
+| `skillReviewerScope`, `promptCoachScope`, `steCoachScope`, `specReviewerScope`, `lensRerouteNote` | Per-lens scope statements. |
 
 ## Operation
 
@@ -65,7 +74,7 @@ A shared document is authored once and marks each varying span with a
 `{{field}}` placeholder. Resolve it for one artifact type:
 
 ```text
-node <atoms>/artifact-profile/artifact-profile.mjs --type <agent|prompt|skill> \
+node <atoms>/artifact-profile/artifact-profile.mjs --type <agent|prompt|skill|spec> \
   --render "$absolute_template_path"
 ```
 
@@ -89,6 +98,9 @@ error: `usage`, `unknown_artifact_type`, `unknown_field`, or `unsafe_path`.
 4. **Every placeholder used in a shared document is a declared field, and every
    declared field is used by a shared document.** The suite checks both
    directions, so neither a hole nor an orphan survives review.
+5. **Adding an artifact type is a row, not a fork.** A new type must fill every
+   declared field before the suite passes, which is what stops a fourth copy of
+   the contract appearing beside the authored one.
 
 ## Boundaries
 

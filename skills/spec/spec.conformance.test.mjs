@@ -88,13 +88,19 @@ test('one-pass Roast stays separate from Ship remediation and human approval', (
   const skill = flat('skills/spec/SKILL.md');
   const intent = flat('skills/spec/intent.md');
   assert.match(skill, /Submit the exact candidate pair to `roast`/);
+  assert.match(skill, /artifact type `spec`/);
   assert.match(skill, /Roast is read-only/);
+  assert.match(skill, /does not repair the pair or approve it/);
+  assert.match(skill, /`spec` artifact profile stages both siblings/);
   assert.match(skill, /outer delivery workflow may apply repairs/);
   assert.match(intent, /A roast is one read-only review pass/);
   assert.match(intent, /delivery workflow owns any repeated roast, repair, and re-roast loop/);
   assert.match(skill, /Silence and unrelated replies are not approval/);
-  assert.match(skill, /issue #118/);
-  assert.match(skill, /`complete` remains unreachable/);
+  assert.match(skill, /Never approve its own output/);
+  assert.match(skill, /`complete` requires .*explicit human approval/);
+  assert.doesNotMatch(skill, /artifact type `specification`/);
+  assert.doesNotMatch(skill, /issue #118/);
+  assert.doesNotMatch(skill, /`complete` remains unreachable/);
 });
 
 test('composition is local-first and includes the required chronicler', () => {

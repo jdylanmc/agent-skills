@@ -101,6 +101,47 @@ test('every repository coach agent the lens table names exists on disk', () => {
   );
 });
 
+test('every bundled configuration the lens table names is a section of this file', () => {
+  // The other direction of the same defect. A table row pointing at a bundled
+  // section that does not exist leaves a lens with no source at all, and the
+  // Spec Pair lens has no repository copy to fall back to.
+  const document = fs.readFileSync(path.join(UNIT_ROOT, 'roast-trusted-lenses.md'), 'utf8');
+  const rows = [...document.matchAll(/^\| ([^|]+?) \| ([^|]+?) \| `(## [^`]+)` \|$/gm)];
+  assert.ok(rows.length >= 4, 'the lens table no longer names its bundled configurations');
+
+  const missing = rows
+    .map((row) => row[3])
+    .filter((heading) => !new RegExp(`^${heading}\\s*$`, 'm').test(document));
+  assert.deepEqual(missing, [], `named but absent from this file: ${missing.join(', ')}`);
+
+  const specRow = rows.find((row) => row[1] === 'Spec Pair');
+  assert.ok(specRow, 'the specification-pair lens is no longer declared');
+  assert.equal(specRow[2], 'none; bundled only');
+  assert.match(
+    document,
+    /The Spec Pair lens has no repository coach agent and resolves at step 3/,
+    'a lens with no repository copy must say so, or a missing file reads as a failed check',
+  );
+});
+
+test('the bundled spec lens carries the nano authority and the review boundaries', () => {
+  const document = fs.readFileSync(path.join(UNIT_ROOT, 'roast-trusted-lenses.md'), 'utf8');
+  const section = document.split(/^## Spec Pair Lens\s*$/m)[1].split(/^## /m)[0];
+
+  for (const requirement of [
+    'may elaborate the nano artifact and may never\noverride it',
+    'the nano artifact is\n  right and the full artifact carries the defect',
+    'observable, unambiguous, non-duplicative',
+    'never approve a specification',
+    'never make the product decision the specification left open',
+    'never select\narchitecture, author Gherkin, create tickets, or implement',
+    'Native severity labels: Blocker, Improvement, Nit, Evidence gap.',
+    'Never the author.',
+  ]) {
+    assert.ok(section.includes(requirement), `the spec lens no longer states: ${requirement}`);
+  }
+});
+
 test('the coordinator emits every heading the resolution order requires of it', () => {
   const document = fs.readFileSync(path.join(UNIT_ROOT, 'roast-trusted-lenses.md'), 'utf8');
   const coordinator = fs.readFileSync(

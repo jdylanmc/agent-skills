@@ -1,6 +1,6 @@
 ---
 name: artifact-classify
-description: Classify one roast target as an agent, skill, prompt, or code artifact from explicit evidence, and refuse ambiguous targets instead of guessing.
+description: Classify one roast target as an agent, skill, prompt, specification pair, or code artifact from explicit evidence, and refuse ambiguous targets instead of guessing.
 level: atom
 allowed-tools: ["read","execute"]
 includes: ["_base/_atoms/artifact-classify/artifact-classify.mjs"]
@@ -31,8 +31,10 @@ ambiguous cases.
 | `locator` | no | The caller's stable identifier for supplied text. |
 
 Supply exactly one target form when possible. When a caller passes only
-`target`, the atom treats newline-containing input as supplied text, recognized
-pull-request or diff wording as a reference, and otherwise as a path.
+`target`, the atom treats newline-containing input as supplied text, gives an
+existing in-root path priority over free-text heuristics, then treats
+recognized pull-request or diff wording as a reference, and otherwise as a
+path.
 
 ## Operation
 
@@ -47,6 +49,10 @@ pull-request or diff wording as a reference, and otherwise as a path.
      `SKILL.md`, plus skill frontmatter such as `allowed-tools`.
    - `prompt`: explicit prompt-file conventions such as `.prompt.md` or a
      `prompts/` path, or supplied instructional text with no stronger marker.
+   - `spec`: the specification pair naming convention, `<spec>.nano.md` or
+     `<spec>.full.md`, with a second evidence record stating whether the
+     sibling resolves beside it as a non-symbolic-link file inside the
+     repository root.
    - `code`: pull-request, branch-diff, working-tree, or unified-diff
      references; source-code extensions; or code syntax in supplied text.
 4. Return `Classified` only when exactly one artifact type has medium or high
@@ -62,7 +68,7 @@ pull-request or diff wording as a reference, and otherwise as a path.
 | Field | Meaning |
 | --- | --- |
 | `status` | `Classified` or `Refused`. |
-| `type` | `agent`, `skill`, `prompt`, or `code` when classified. |
+| `type` | `agent`, `skill`, `prompt`, `spec`, or `code` when classified. |
 | `routeToBranch` | The `/roast` branch that owns that artifact type when classified: `artifact` or `code`. |
 | `confidence` | `high`, `medium`, or `low` when classified. |
 | `locator` | The target path, reference, or supplied-text identifier. |
@@ -82,6 +88,17 @@ Refusal categories: `Ambiguous target`, `Insufficient evidence`, and
 - Pasted code and diff references route to the `code` branch; pasted
   instructional text is classified `prompt` only when no stronger marker
   identifies it as an agent, skill, or code artifact.
+- A specification pair is classified from its sibling naming convention and
+  never from its prose, so it is never routed as code and never reviewed under
+  the prompt contract. A nano artifact whose sibling is absent or unsafe still
+  classifies as `spec`: the sibling state is what a review most needs to
+  report, and refusing to classify would hide it.
+- A content-derived code signal never overrules an exact specification suffix.
+  A full specification that quotes a diff is documenting a change, not being
+  one. A genuine conflict between two path conventions, such as a `.nano.md`
+  file inside a `prompts/` directory, still refuses.
+- A specification is recognized from a path only. A pair is two files, so
+  pasted text cannot be one, and no text signal claims otherwise.
 - Every classified result names the correct branch for defensive routing.
 - The atom is deterministic and performs no writes.
 

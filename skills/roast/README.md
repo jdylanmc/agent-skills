@@ -1,7 +1,7 @@
 # Roast
 
 One entry point for adversarial review of an agent definition, a prompt, a
-skill package, or a code change set.
+skill package, a product specification pair, or a code change set.
 
 ```text
 identify the packet  ->  select the doctrine  ->  evaluate against it  ->  coordinate the review
@@ -11,12 +11,14 @@ identify the packet  ->  select the doctrine  ->  evaluate against it  ->  coord
 
 | Term | Meaning |
 | --- | --- |
-| **Artifact branch** | The coordinate-and-synthesize shape shared by the agent, prompt, and skill types. |
+| **Artifact branch** | The coordinate-and-synthesize shape shared by the agent, prompt, skill, and spec types. |
 | **Code branch** | The council shape for a change set. It does not share the artifact coordination molecule. |
-| **Artifact profile** | The one table holding everything that varies between the three artifact types. |
+| **Artifact profile** | The one table holding everything that varies between the artifact types. |
 | **Lens** | A review document read as principles, never invoked as an agent. |
 | **Envelope** | The untrusted, schema-checked evidence report a coordinator returns before synthesis. |
 | **Roast** | The final severity-ranked list of recommendations. |
+| **Spec pair** | The exact siblings `<spec>.nano.md` and `<spec>.full.md`, reviewed as one artifact. |
+| **Nano authority** | The rule that the nano specification governs and the full specification is context. |
 
 ## What It Returns
 
@@ -42,10 +44,33 @@ a `{{field}}` placeholder that the profile resolves. A placeholder with no
 matching field, or a field one type declares and another does not, fails the
 regression suite.
 
+The `spec` type is what that discipline bought. Reviewing a specification pair
+arrived later and cost one profile row, one bundled lens, and one deterministic
+atom, rather than a second review framework beside this one.
+
 Code review is the exception, and it stays one. It takes a pull request, a
 branch diff, working-tree changes, named files, or pasted code, and it does not
 use the artifact coordination shape. It is a separate branch behind the same
-entry point rather than a fourth row of a table it does not fit.
+entry point rather than a row of a table it does not fit.
+
+## The Nano Authority
+
+A product specification is two files and one authority. `<spec>.nano.md` holds
+the durable intention and the stable acceptance criteria. `<spec>.full.md` is
+linked context that may elaborate the nano artifact and may never override it.
+
+When the two disagree, the nano artifact is right and the full artifact carries
+the defect. No finding asks for the nano artifact to be changed so that the
+full artifact is right, and full-spec prose that traces to no nano identifier
+is context rather than an additional requirement. `_atoms/spec-pair/` resolves
+that mechanically, `_atoms/spec-authority-screen/` checks the finished report
+against it, and the resolved contract's envelope checklist points at both, so
+the rule is checked rather than remembered.
+
+This review recommends. It never approves a specification, answers a product
+question the specification left open, selects architecture, writes Gherkin, or
+creates tickets. A caller may weigh what it returns and gains no approval
+authority by invoking it.
 
 ## Layout
 
@@ -53,13 +78,15 @@ entry point rather than a fourth row of a table it does not fit.
 | --- | --- |
 | `SKILL.md` | Routing, workflow, output contract, boundaries. |
 | `_molecules/roast-target-intake/` | Classify the target, resolve the profile, select doctrine. |
-| `_molecules/roast-artifact-branch/` | The shared agent, prompt, and skill roast. |
+| `_molecules/roast-artifact-branch/` | The shared agent, prompt, skill, and spec roast. |
 | `_molecules/roast-code-branch/` | The code-review council. |
 | `_atoms/artifact-profile/` | The per-artifact-type variation, in one table. |
 | `_atoms/doctrine-select/` | Which doctrine governs what, with reasoning. Local under ADR 0001. |
 | `_atoms/roast-contract/` | The roast contract, authored once. |
 | `_atoms/roast-failure-recovery/` | Statuses, recovery actions, degraded states, authored once. |
 | `_atoms/roast-trusted-lenses/` | The trust boundary and the bundled lens configurations. |
+| `_atoms/spec-pair/` | Deterministic staging of a specification pair and its stable identities. |
+| `_atoms/spec-authority-screen/` | Deterministic check that a spec roast respects the nano authority. |
 | `_atoms/code-*/` | The code branch's own scope, panel, contract, synthesis, summary, output, and safeguards. |
 | `references/bundled-roasters/` | The bundled roaster prompt packages for the code branch. |
 
@@ -92,5 +119,7 @@ node --test \
   skills/roast/_atoms/artifact-profile/artifact-profile.test.mjs \
   skills/roast/_atoms/doctrine-select/doctrine-select.test.mjs \
   skills/roast/_atoms/doctrine-select/doctrine-select.adversarial.test.mjs \
+  skills/roast/_atoms/spec-pair/spec-pair.test.mjs \
+  skills/roast/_atoms/spec-authority-screen/spec-authority-screen.test.mjs \
   skills/roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.test.mjs
 ```

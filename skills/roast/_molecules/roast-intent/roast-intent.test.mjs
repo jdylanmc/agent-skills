@@ -76,7 +76,7 @@ test('the intent source is a profile row rather than a document forked per type'
   }
 
   assert.match(render(contract, 'skill'), /`intent\.md` at the root of the reviewed skill package/);
-  for (const type of ['agent', 'prompt']) {
+  for (const type of ['agent', 'prompt', 'spec']) {
     assert.match(
       render(contract, type),
       /Intent status: Not applicable for this artifact type/,

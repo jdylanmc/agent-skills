@@ -79,6 +79,8 @@ jobs:
           skills/roast/_atoms/roast-contract/roast-contract.test.mjs
           skills/roast/_atoms/roast-contract/roast-contract.drift.test.mjs
           skills/roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.test.mjs
+          skills/roast/_atoms/spec-pair/spec-pair.test.mjs
+          skills/roast/_atoms/spec-authority-screen/spec-authority-screen.test.mjs
           skills/create-skill/create-skill.conformance.test.mjs
           skills/create-skill/_atoms/intent-elicitation/intent-elicitation.test.mjs
           skills/create-skill/_atoms/intent-elicitation/intent-elicitation.drift.test.mjs
