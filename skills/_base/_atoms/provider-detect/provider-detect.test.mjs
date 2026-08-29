@@ -820,6 +820,22 @@ test('a provider-supplied URL is reported without its credential positions', () 
   assert.ok(!signed.includes('token-value'), 'a credential-named query value is redacted');
   assert.ok(signed.includes('check_suite_focus=true'), 'a navigational query parameter is kept');
 
+  // Redaction is decided on a normalized name against an explicit set plus a
+  // narrow suffix rule, so it neither misses a credential-shaped name nor
+  // corrupts a navigational one that merely contains a credential word.
+  for (const key of [
+    'token', 'access_token', 'refresh_token', 'apiKey', 'api-key', 'secret', 'client_secret',
+    'password', 'sig', 'signature', 'bearer', 'jwt', 'pat', 'authorization', 'sessionId', 'sas_token',
+  ]) {
+    const redacted = sanitizeProviderUrl(`https://ci.example.invalid/run/1?${key}=credential-value`);
+    assert.ok(!redacted.includes('credential-value'), `${key} holds a credential and is redacted`);
+  }
+
+  for (const key of ['check_suite_focus', 'sort_key', 'keyword', 'monkey', 'state', 'redirect_uri', 'design']) {
+    const kept = sanitizeProviderUrl(`https://ci.example.invalid/run/1?${key}=navigational-value`);
+    assert.ok(kept.includes('navigational-value'), `${key} is navigational and is kept`);
+  }
+
   // A clean URL is returned byte-for-byte, and a value that is not an absolute
   // URL is returned unchanged rather than guessed at.
   const clean = 'https://github.com/example/repo/pull/42?check_suite_focus=true';

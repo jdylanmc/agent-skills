@@ -138,9 +138,12 @@ one.
   condition, and where the caller may inspect it — never a credential value. A
   provider-supplied URL is reported through `sanitizeProviderUrl`, which drops
   userinfo and redacts a credential-named query parameter while keeping the path,
-  fragment, and navigational query a deep link needs. It lives here so both
-  consuming units redact the same way rather than each carrying their own idea
-  of it.
+  fragment, and navigational query a deep link needs. A parameter is judged by
+  its normalized name against an explicit set plus a narrow suffix rule rather
+  than a substring scan, because a substring scan over-redacts as readily as it
+  under-redacts: `access_token` is redacted and `sort_key` is not. It lives here
+  so both consuming units redact the same way rather than each carrying their
+  own idea of it.
 - A rejected input is never echoed back. An unrecognized explicit provider is
   recorded as refused without reproducing what was named, and a refused command
   names the tool and the number of arguments rather than the argument vector: a

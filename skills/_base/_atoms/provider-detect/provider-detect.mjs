@@ -301,10 +301,31 @@ function inspectedLabel(host) {
 
 /**
  * Query parameter names whose value is a credential rather than a coordinate.
- * Matched case-insensitively as whole words so a deep-link parameter such as
- * `check_suite_focus` is untouched while `access_token` is not.
+ *
+ * Matched on a normalized name — lower-cased with separators removed — against
+ * an explicit set plus a small suffix rule, rather than by a substring scan. A
+ * substring scan over-redacts as readily as it under-redacts: `sort_key` and
+ * `keyword` are navigational, and redacting them corrupts a working deep link
+ * to no benefit. `code` is deliberately absent: an OAuth authorization code is
+ * credential-shaped, but the name is far too common in provider deep links to
+ * redact on sight.
  */
-const CREDENTIAL_QUERY_KEYS = /(^|[_-])(token|access[_-]?token|secret|password|passwd|pwd|apikey|api[_-]?key|key|sig|signature|credential|auth|authorization|pat|session)([_-]|$)/i;
+const CREDENTIAL_QUERY_NAMES = new Set([
+  'token', 'accesstoken', 'refreshtoken', 'idtoken', 'apitoken', 'authtoken', 'sessiontoken', 'sastoken',
+  'secret', 'clientsecret', 'apisecret',
+  'password', 'passwd', 'pwd',
+  'apikey', 'key', 'privatekey',
+  'sig', 'signature',
+  'credential', 'credentials',
+  'auth', 'authorization', 'bearer', 'jwt', 'pat',
+  'session', 'sessionid',
+]);
+
+function isCredentialQueryKey(name) {
+  const normalized = String(name).toLowerCase().replace(/[-_.]/g, '');
+  return CREDENTIAL_QUERY_NAMES.has(normalized)
+    || /(token|secret|password|signature|apikey)$/.test(normalized);
+}
 
 /**
  * A provider-supplied URL, with its credential-bearing positions removed.
@@ -316,6 +337,11 @@ const CREDENTIAL_QUERY_KEYS = /(^|[_-])(token|access[_-]?token|secret|password|p
  * outright, because nothing navigates by it, and a query parameter whose name
  * says it holds a credential is redacted while the rest of the query is kept —
  * a provider deep link genuinely needs parameters like `check_suite_focus`.
+ *
+ * The fragment is kept whole. Every URL reaching here is a provider permalink
+ * whose fragment is an anchor — `#discussion_r1`, `#L45` — and it is the part a
+ * reader most needs. A fragment-borne credential is an implicit-flow artifact,
+ * which is not a shape these reads return.
  *
  * A value that does not parse as an absolute URL is returned unchanged rather
  * than guessed at; it is not a URL, and rewriting it would corrupt whatever it
@@ -340,7 +366,7 @@ export function sanitizeProviderUrl(value) {
     changed = true;
   }
   for (const key of [...url.searchParams.keys()]) {
-    if (CREDENTIAL_QUERY_KEYS.test(key)) {
+    if (isCredentialQueryKey(key)) {
       url.searchParams.set(key, 'redacted');
       changed = true;
     }
