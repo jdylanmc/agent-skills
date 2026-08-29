@@ -140,6 +140,14 @@ jobs:
           skills/spec/_atoms/discovery-source/discovery-source.test.mjs
           skills/spec/_atoms/spec-outcome/spec-outcome.test.mjs
           skills/spec/_atoms/spec-pair/spec-pair.test.mjs
+          skills/synthesize/synthesize.conformance.test.mjs
+          skills/synthesize/_atoms/candidate-persistence/candidate-persistence.test.mjs
+          skills/synthesize/_atoms/source-binding/source-binding.test.mjs
+          skills/synthesize/_atoms/synthesis-profile/synthesis-profile.test.mjs
+          skills/synthesize/_atoms/disclosure-ledger/disclosure-ledger.test.mjs
+          skills/synthesize/_atoms/split-proposal/split-proposal.test.mjs
+          skills/synthesize/_atoms/synthesis-outcome/synthesis-outcome.test.mjs
+          skills/synthesize/_molecules/bounded-synthesis/bounded-synthesis.test.mjs
           skills/reinforce-skill/reinforce-skill.conformance.test.mjs
           skills/reinforce-skill/_atoms/reinforcement-target/reinforcement-target.test.mjs
           skills/reinforce-skill/_atoms/report-intake/report-intake.test.mjs
