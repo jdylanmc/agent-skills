@@ -145,10 +145,10 @@ between them is what each demands of `findings`.
 
 ## The Bounded Surface
 
-Two bounds cap the comparison surface, each applied to the total of the
-assertion set and, separately, to the total of the evidence set. Exceeding
-either is refused with code `surface-unbounded`, naming which side, which bound,
-and both numbers.
+Two bounds cap the assertion and evidence sides of the comparison surface, each
+applied to the total of the assertion set and, separately, to the total of the
+evidence set. Exceeding either is refused with code `surface-unbounded`, naming
+which side, which bound, and both numbers.
 
 - `MAX_SURFACE_WORDS` is `500`. A word count bounds how many distinct claims a
   surface can carry.
@@ -160,13 +160,51 @@ and both numbers.
   word. The character bound is what actually refuses a surface too large to
   compare.
 
-The finding `description` text is a third side of the same surface, bounded the
-same way. Under `--resolve` the total characters across every finding
-`description` are summed and refused when they exceed `MAX_SURFACE_CHARACTERS`,
-separately from the assertion and evidence sides. A `surface-unbounded` refusal
-on this side names the **finding descriptions**, so a caller can tell it apart
-from an over-large assertion or evidence set. Without it an unbounded
-description would slip past every other cap.
+The finding `description` text is a third side of the surface, but it is **not**
+bounded "the same way" as the assertion and evidence sides: it carries the
+character ceiling only, never the word ceiling. Under `--resolve` the total
+characters across every finding `description` are summed and refused when they
+exceed `MAX_SURFACE_CHARACTERS`, separately from the assertion and evidence
+sides; a `surface-unbounded` refusal on this side names the **finding
+descriptions**. The word ceiling is deliberately not applied, and the reason is
+that the word bound exists to cap how many distinct **claims** a surface carries
+— and a finding description is not a claim set. It is a bounded description of
+one divergence, so a word ceiling on it would be structure that carries no
+weight, a bound added only to make the phrase "the same way" literally true.
+Only its size can threaten the judgement surface, and the character ceiling is
+what refuses that; without it an unbounded description would slip past every
+other cap.
+
+The `accepted` list is bounded too, by a **derived** ceiling rather than a fresh
+magic number. An acceptance names one `(assertionId, evidenceRef)` pair, and the
+pairs that can matter are exactly those drawn from the current assertion set and
+evidence set, so the meaningful ceiling is the size of that product:
+`assertions.length * evidence.length`. An `accepted` list longer than that
+product is refused with code `surface-unbounded`, naming the **accepted list**
+side, its count, and the product ceiling. Duplicate pairs are already refused as
+`invalid-input`; this is the separate guarantee that the *number* of acceptances
+is bounded, so "bounded record" is true of the whole record and not only its
+assertion and evidence sides.
+
+Be honest about exactly what the accepted-list bound is and is not: it bounds
+how **many** acceptances may be carried, not **which** ones may be named. An
+accepted entry naming an assertion or evidence reference that no longer exists is
+still legitimate and is still tolerated, because acceptances outlive the revision
+they were made against — a divergence accepted against an earlier revision stays
+accepted even after that assertion or evidence has been rewritten away. Bounding
+the count by the product is a size ceiling, not a membership rule: this unit does
+**not** refuse an acceptance for naming an unknown identifier.
+
+### Every ceiling, its value, its derivation, and the side a refusal names
+
+| Ceiling | Value | Derivation | Side a `surface-unbounded` refusal names |
+| --- | --- | --- | --- |
+| `MAX_SURFACE_WORDS` | `500` | A fixed count of how many distinct claims a surface may carry. | the **assertion set**, or separately the **evidence set** |
+| `MAX_SURFACE_CHARACTERS` | `5000` | `MAX_SURFACE_WORDS * 10` — the size bound the word count cannot supply. | the **assertion set**, the **evidence set**, or the total of the **finding descriptions** |
+| accepted-list ceiling | `assertions.length * evidence.length` | The size of the assertion-by-evidence product: the count of pairs that could ever matter. | the **accepted list** |
+
+The finding descriptions carry only the character row of this table, never the
+word row. The `accepted` list carries only its own product row.
 
 The rationale: the assertion set comes from an artifact that is itself small — a
 nano specification of roughly a dozen short declarative claims, capped at 500
@@ -264,7 +302,7 @@ failure without parsing prose:
 | `usage` | The command line was invoked wrongly: a missing or unknown mode, wrong flags, a wrong argument count, or a non-absolute `--input` path. The mode and argument shape are validated **before** the file is read, so a usage error is never misclassified as a file failure. |
 | `unreadable-input` | The `--input` path cannot be read, or its contents are not valid JSON. The underlying condition is carried in the message, not the code, so the cause is not swallowed. |
 | `invalid-input` | The record is malformed: an unknown or inherited field (at the record or at any nested object), a missing required field, a bad type, a control-character, over-length, or duplicate identifier, a duplicate `accepted` pair, a duplicate finding pair, or a finding that grounds in no supplied assertion or evidence. |
-| `surface-unbounded` | The assertion set, the evidence set, or the total of the finding descriptions exceeds the word or character bound. The message names which of the three sides. |
+| `surface-unbounded` | A side of the record exceeds its ceiling: the assertion set or evidence set past the word or character bound, the total of the finding descriptions past the character bound only, or the `accepted` list past the assertion-by-evidence product `assertions.length * evidence.length`. The message names which side, the count, and the ceiling. |
 
 Reading and parsing the input file is a boundary of trust, so Node's `ENOENT`
 and `EISDIR` are classified into `unreadable-input` rather than leaking out as

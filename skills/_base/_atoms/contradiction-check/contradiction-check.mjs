@@ -290,6 +290,23 @@ function parseRecord(input, mode) {
   if (!Array.isArray(input.accepted)) {
     fail('accepted must be an array');
   }
+  // The accepted list is bounded by a DERIVED ceiling, not a fresh magic
+  // number. An acceptance names one (assertionId, evidenceRef) pair, and the
+  // pairs that can matter are exactly those drawn from the current assertion and
+  // evidence sets, so the meaningful ceiling is the size of that product. This
+  // bounds HOW MANY acceptances may be carried, not WHICH ones: a stale pair
+  // naming an identifier no longer present is still tolerated (no membership
+  // check follows), because acceptances outlive the revision they were made
+  // against. Duplicate pairs are refused separately as invalid-input below;
+  // without this size cap an unbounded accepted list would leave "bounded
+  // record" untrue of the whole record even though every other side is bounded.
+  const acceptanceCeiling = input.assertions.length * input.evidence.length;
+  if (input.accepted.length > acceptanceCeiling) {
+    throw new ContradictionCheckError(
+      'surface-unbounded',
+      `accepted list has ${input.accepted.length} pairs; the ceiling is the assertion-by-evidence product ${acceptanceCeiling} (assertions ${input.assertions.length} × evidence ${input.evidence.length})`,
+    );
+  }
   const acceptedPairs = new Set();
   input.accepted.forEach((pair, index) => {
     if (!object(pair)) {
@@ -397,10 +414,14 @@ function parseRecord(input, mode) {
         description: finding.description,
       };
     });
-    // The finding descriptions are a third comparison side and must be bounded
-    // like the assertion and evidence sides, or an unbounded description would
-    // slip past every other cap. The same character ceiling applies to the
-    // total of all descriptions, refused with the finding-description side named.
+    // The finding descriptions are a third comparison side, bounded by the
+    // character ceiling ONLY — never the word ceiling. The word bound exists to
+    // cap how many distinct CLAIMS a surface carries; a description is not a
+    // claim set but a bounded description of one divergence, so a word ceiling on
+    // it would be structure that carries no weight. Only its size can threaten
+    // the judgement surface, and that is what the character ceiling refuses;
+    // without it an unbounded description would slip past every other cap. The
+    // refusal names the finding-description side so a caller can tell it apart.
     if (descriptionCharacters > MAX_SURFACE_CHARACTERS) {
       throw new ContradictionCheckError(
         'surface-unbounded',

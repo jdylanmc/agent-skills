@@ -594,3 +594,67 @@ test('distinct identifier pairs with punctuation the validator accepts never sup
   assert.ok(result.escalated.some((f) => f.assertionId === 'a' && f.evidenceRef === 'b,c'));
   assert.ok(result.escalated.some((f) => f.assertionId === 'p["q"]' && f.evidenceRef === 'r\\s'));
 });
+
+// --- #123 third-pass remediation: the accepted list is bounded by a derived
+// ceiling, and finding descriptions carry the character ceiling only ---
+
+test('the accepted list is bounded by the assertion-evidence product, refused as surface-unbounded past it', () => {
+  // 3 assertions × 1 evidence ⇒ a product ceiling of 3. Exactly three accepted
+  // pairs sit at the ceiling and are accepted; a fourth is one past it. The
+  // fourth must name an identifier outside the sets because only three real
+  // pairs exist, which proves the refusal is a SIZE ceiling on the count, not a
+  // membership rule.
+  const atCeiling = boundSurface(record({
+    accepted: [
+      { assertionId: 'INT', evidenceRef: 'ev-1' },
+      { assertionId: 'AC-001', evidenceRef: 'ev-1' },
+      { assertionId: 'NG-001', evidenceRef: 'ev-1' },
+    ],
+  }));
+  assert.equal(atCeiling.accepted.length, 3, 'a list exactly at the product ceiling is accepted');
+
+  assert.throws(
+    () => boundSurface(record({
+      accepted: [
+        { assertionId: 'INT', evidenceRef: 'ev-1' },
+        { assertionId: 'AC-001', evidenceRef: 'ev-1' },
+        { assertionId: 'NG-001', evidenceRef: 'ev-1' },
+        { assertionId: 'STALE', evidenceRef: 'ev-1' },
+      ],
+    })),
+    (error) => error.code === 'surface-unbounded'
+      && /accepted/i.test(error.message)
+      && /\b4\b/.test(error.message)
+      && /\b3\b/.test(error.message),
+  );
+});
+
+test('a stale acceptance naming an identifier absent from the current sets is still tolerated', () => {
+  // Acceptances outlive the revision they were made against, so an accepted pair
+  // may name an assertion that no longer exists. With 3 assertions × 1 evidence
+  // the count ceiling is 3, and this single stale pair is within it; membership
+  // is not policed, so the run proceeds and the pair simply mutes nothing it
+  // does not exactly name.
+  const result = resolveContradictions(judged(
+    [{ assertionId: 'AC-001', evidenceRef: 'ev-1', confidence: 'high', description: 'x' }],
+    { accepted: [{ assertionId: 'GONE', evidenceRef: 'ev-1' }] },
+  ));
+  assert.equal(result.verdict, 'escalated', 'the stale acceptance is tolerated and mutes nothing it does not name');
+  assert.equal(result.escalated.length, 1);
+  assert.equal(result.suppressed.length, 0);
+});
+
+test('a finding description carries the character ceiling only, not the word ceiling', () => {
+  // 501 single-character words: past the 500-word bound yet only ~1001
+  // characters, far under the 5000-character bound. It is accepted, pinning that
+  // descriptions carry the character ceiling alone. A description is a bounded
+  // description of one divergence, not a claim set, so no word ceiling applies.
+  const manyWords = Array.from({ length: 501 }, () => 'w').join(' ');
+  assert.equal(manyWords.trim().split(/\s+/).length, 501, '501 whitespace tokens, past the word bound');
+  assert.ok(manyWords.length < MAX_SURFACE_CHARACTERS, 'yet well under the character ceiling');
+  const result = resolveContradictions(judged([
+    { assertionId: 'INT', evidenceRef: 'ev-1', confidence: 'low', description: manyWords },
+  ]));
+  assert.equal(result.clean, false);
+  assert.equal(result.recorded.length, 1, 'the 501-word description is accepted, so the word bound does not apply to it');
+});
