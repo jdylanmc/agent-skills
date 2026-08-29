@@ -304,11 +304,12 @@ Return:
 - **the set obligation**, whenever a change request was published: the change
   request, the base branch and base SHA its reported readiness was observed
   against, the condition that expires that readiness — anything else merging
-  into that base — the caller that owns the set as the actor, and the exact
-  re-invocation that owner must perform. It is reported even when the handoff
-  was declined or could not be performed, and is absent only when nothing was
-  published. Reporting it is not watching: this run holds nothing after it
-  returns;
+  into that base — the caller that owns the set as the actor, the exact
+  re-invocation that owner must perform, and any base fact that was never
+  captured, because an obligation bound to no base is not one anybody can
+  check. It is reported even when the handoff was declined or could not be
+  performed, and is absent only when nothing was published. Reporting it is not
+  watching: this run holds nothing after it returns;
 - the proposed approach, its laziness verdict, and every reduction applied;
 - the exhaustive change ledger, and the reconciliation verdict with any
   undisclosed, ambiguous, or unfulfilled entries named;

@@ -1112,6 +1112,12 @@ test('the expiry leaves the run, addressed to the caller that owns the set', () 
   }
   assert.match(entry, /the set obligation\*\*, whenever a change request was published/);
 
+  // The entry point names substance rather than field lists, so this pins the
+  // one part a caller could drop without noticing: an obligation bound to no
+  // base cannot be compared against a later one, and saying so is the point of
+  // emitting it at all.
+  assert.match(entry, /any base fact that was never\s+captured/);
+
   // Emitting a duty is not accepting it. The wording must keep ship out of the
   // daemon it refuses to be, on both surfaces.
   assert.match(handoff, /Emitting it is not watching/);
