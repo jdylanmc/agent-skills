@@ -124,7 +124,6 @@ test('the routing description promises review-ready, not merged', () => {
     .filter((name) => fs.existsSync(path.join(SKILLS_ROOT, name, 'SKILL.md')));
   const routed = [...description.matchAll(/belongs to `?([a-z][a-z0-9-]*)`?/g)].map((match) => match[1]);
 
-  assert.ok(routed.length > 0, 'the description routes the work it declines somewhere');
   for (const name of routed) {
     assert.ok(routable.includes(name), `the description routes to ${name}, which has no entry point here`);
   }

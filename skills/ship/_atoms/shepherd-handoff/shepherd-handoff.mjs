@@ -303,16 +303,23 @@ export function handoffSatisfied(evaluation) {
  * rebase that made it true, which is the same confusion of the two snapshots
  * that freshness already refuses.
  *
- * Whether the receipt may be trusted at all is **read from the decision above,
- * never re-derived here.** A second copy of "did shepherd genuinely observe
- * this" is a second answer waiting to disagree with the first, and the way it
- * disagrees is the worst one available: a narrated handoff carries a
- * well-formed result, so a copy that forgot to check the invocation would stamp
- * the obligation with a base no shepherd ever saw, on exactly the states this
- * unit exists to disbelieve. A disposition is recorded only once the intent,
- * the target, the invocation mode, the invocation status, and terminality have
- * all passed, so its presence is that verdict. Otherwise the captured base is
- * the honest binding, because nothing later was ever established.
+ * **Provenance is read from the decision above, never re-derived here.** A
+ * second copy of "did shepherd genuinely observe this" is a second answer
+ * waiting to disagree with the first, and the way it disagrees is the worst one
+ * available: a narrated handoff carries a well-formed result, so a copy that
+ * forgot to check the invocation would stamp the obligation with a base no
+ * shepherd ever saw, on exactly the states this unit exists to disbelieve. A
+ * recorded disposition is that verdict, and only that one: it proves the
+ * decision got past intent, target, invocation mode, invocation status, and
+ * terminality.
+ *
+ * It does not prove the receipt can bind anything, because
+ * `result-receipt-incomplete` deliberately keeps the terminal disposition while
+ * refusing the receipt — the one fact shepherd did establish is worth
+ * reporting, and an unusable receipt is still unusable. So usability is checked
+ * here, for the narrower question of which base to bind. Without a usable
+ * receipt the captured base is the honest binding, because no later observation
+ * was ever established.
  *
  * A change request with no owner still gets an obligation. The failure this
  * atom exists for is a change request nobody was watching; a run that hands
