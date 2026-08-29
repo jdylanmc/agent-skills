@@ -1,6 +1,6 @@
 ---
 name: ship
-description: "Take one tracker issue to review-ready: ground it into a confirmed plan, then dispatch a bounded worker in an isolated worktree, reconcile every hunk against the confirmed ledger, validate through run-ci, review through roast, gate the merge, report criterion by criterion, open a change request, and invoke shepherd on it when the operator asked for that. Use when the operator asks to ship an issue, deliver a ticket, or take one deliverable unit to done. Do not use to work a whole backlog or fleet, which belongs to ship-with-squadron, and do not use to merge, approve, accept risk, or drive an existing change request, which belongs to shepherd."
+description: "Take one tracker issue to review-ready: ground it into a confirmed plan, then dispatch a bounded worker in an isolated worktree, reconcile every hunk against the confirmed ledger, validate through run-ci, review through roast, gate the merge, report criterion by criterion, open a change request, and invoke shepherd on it when the operator asked for that. Use when the operator asks to ship an issue, deliver a ticket, or take one deliverable unit to done. Do not use to work a whole backlog or fleet, which stays with the caller that owns it, and do not use to merge, approve, accept risk, or drive an existing change request, which belongs to shepherd."
 allowed-tools: ["execute","read","search","task"]
 includes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md","_base/_atoms/provider-detect/provider-detect.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md","_base/_atoms/provider-detect/provider-detect.md"]
@@ -17,7 +17,8 @@ Take one issue to done, without doing more than it asked for.
 record -> ask about shepherd -> ground on one issue -> fix the scope -> confirm
        -> isolate -> dispatch -> reconcile -> validate -> review -> remediate
        -> verdict -> evaluate the merge gate -> open the change request
-       -> ask for the merge grant -> invoke shepherd and wait
+       -> ask for the merge grant -> evaluate handoff
+       -> invoke shepherd and wait when requested
 ```
 
 Ship is an orchestration around a **single deliverable unit**. It coordinates
@@ -121,19 +122,21 @@ judges the change is grading its own work.
    `granted` is not a merge and is not an approval. It records that somebody
    authorized one, and the change request is updated to say so.
 
-8. **Invoke `shepherd` and wait for it** when, and only when, the shepherd
-   intent recorded in step 2 said so. Follow
+8. **Evaluate the shepherd handoff after every successful publication.** Follow
    [Shepherd handoff](./_atoms/shepherd-handoff/shepherd-handoff.md), which
-   builds the target, dispatches the nested invocation, and classifies the
-   result with
+   builds the target and classifies the result with
    [shepherd-handoff.mjs](./_atoms/shepherd-handoff/shepherd-handoff.mjs).
+   This evaluation is unconditional once a change request exists, because it
+   also emits the set obligation. Condition only the nested shepherd invocation
+   on the intent recorded in step 2.
 
-   The invocation is a **nested one in a separate worker**, dispatched with
-   `task`, carrying the change request identifier, the branch, the captured head
-   and base SHAs, the base's up-to-date policy when it was observed, the
-   validation evidence, the merge disposition, and the outstanding defects.
-   Shepherd drives it toward mergeable; ship does not follow it there and does
-   not merge it.
+   When that intent is `yes`, **invoke `shepherd` and wait for it**. The
+   invocation is a **nested one in a separate worker**, dispatched with `task`,
+   carrying the change request identifier, the branch, the captured head and
+   base SHAs, the base's up-to-date policy when it was observed, the validation
+   evidence, the merge disposition, and the outstanding defects. Shepherd
+   drives it toward mergeable; ship does not follow it there and does not merge
+   it.
 
    **This run does not report its own completion until shepherd returns a
    terminal disposition.** A described handoff and a real one read identically
@@ -157,9 +160,11 @@ judges the change is grading its own work.
    status is `blocked`, naming the target and the one exact human action.
    `shipped-to-review` is never reported as though a handoff occurred.
 
-   When shepherd intent was `no`, stop and report. The absence of an instruction
-   is not permission to continue, and an explicit `no` keeps the option an
-   option.
+   When shepherd intent was `no`, do not dispatch shepherd. Evaluate the
+   declined handoff anyway and return its `setObligation`, then stop and report.
+   The absence of an instruction is not permission to continue, and an explicit
+   `no` keeps the invocation optional without making the readiness expiry
+   optional.
 
    Handover also needs something to hand over. When publication returned
    anything but `published`, report that outcome and stop, whatever the shepherd
@@ -273,10 +278,13 @@ promised here:
 **What this run cannot own is the set.** After anything merges into the base,
 every still-open change request previously reported ready is stale, and one
 single-issue run sees only its own. That set belongs to a caller that holds it —
-the strategic delivery front door in issue #65, or a squadron working a backlog
-— and the requirement is recorded in the handoff atom so it is inherited rather
-than rediscovered. It is deliberately not solved by making `shepherd` wait for
-events; that would be a daemon holding push authority the whole time.
+the strategic delivery front door in issue #65, or a squadron working a backlog.
+So the handoff atom **emits** that duty as a set obligation rather than
+recording it where only a reader of that unit would find it: the change request,
+the base its readiness was observed against, the condition that expires it, the
+caller as the actor, and the exact re-invocation. This run reports it and
+returns. It is deliberately not solved by making `shepherd` wait for events;
+that would be a daemon holding push authority the whole time.
 
 ## Output Contract
 
@@ -298,6 +306,15 @@ Return:
   handoff target with its captured head and base SHAs and up-to-date policy, the
   freshness receipt, the effective policy reported after shepherd returns, and
   shepherd's terminal disposition when one came back;
+- **the set obligation**, whenever a change request was published: the change
+  request, the base branch and base SHA its reported readiness was observed
+  against, the condition that expires that readiness — anything else merging
+  into that base — the caller that owns the set as the actor, the exact
+  re-invocation that owner must perform, and any base fact that was never
+  captured, because an obligation bound to no base is not one anybody can
+  check. It is reported even when the handoff was declined or could not be
+  performed, and is absent only when nothing was published. Reporting it is not
+  watching: this run holds nothing after it returns;
 - the proposed approach, its laziness verdict, and every reduction applied;
 - the exhaustive change ledger, and the reconciliation verdict with any
   undisclosed, ambiguous, or unfulfilled entries named;
@@ -337,11 +354,15 @@ Return:
   returned a terminal disposition bound to the current base.
 - **Never watches a change request after handing it over**, and never watches
   its siblings. Re-shepherding a set after a sibling merge belongs to the caller
-  that owns the set.
+  that owns the set, which is why the set obligation names that caller and the
+  exact re-invocation instead of leaving the duty implied.
 - **Pushes only its own isolation branch, and never with force.** Ship creates
   the change request; moving an existing branch belongs to `shepherd`.
 - **Not a fleet.** Working a whole dependency-aware backlog belongs to
-  `ship-with-squadron`. Ship is one issue, one deliverable unit.
+  `ship-with-squadron`. Ship is one issue, one deliverable unit. That package
+  has no routable entry point in this repository yet, so until it lands the set
+  is held by whichever caller invoked this run — which is why the obligation is
+  addressed to that caller rather than to a skill nobody can invoke.
 - **Does not grade its own work.** Validation is `run-ci`'s job and adversarial
   review is `roast`'s. Ship reports their results rather than substituting its
   own judgement.

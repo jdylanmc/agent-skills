@@ -36,6 +36,7 @@ import { MERGE_GRANT_TOKEN, evaluateMergeGate, mayMerge } from './_atoms/merge-g
 import { reconcile as reconcileDiff } from './_atoms/diff-reconciliation/diff-reconciliation.mjs';
 import {
   NESTED_INVOCATION,
+  SET_OWNER,
   evaluateHandoff,
   handoffSatisfied,
   publicationSucceeded,
@@ -108,9 +109,24 @@ test('the routing description promises review-ready, not merged', () => {
   assert.match(description, /reconcile every hunk against the confirmed ledger/);
   assert.match(description, /gate the merge/);
   assert.match(description, /Do not use to work a whole backlog or fleet/);
-  assert.match(description, /ship-with-squadron/);
   assert.match(description, /do not use to merge, approve, accept risk/);
   assert.match(description, /drive an existing change request, which belongs to shepherd/);
+
+  // Routing metadata is read before any in-body disclaimer, so a route it
+  // names has to resolve. Advertising a package with no entry point reads as
+  // coverage while providing none, and the reader who follows it finds
+  // nothing. This checks the `belongs to <skill>` routes specifically, which is
+  // how this description hands work to another package; work it declines
+  // without naming a package, such as work kept by the caller, names nothing to
+  // resolve. It is derived from the repository rather than pinned to a
+  // spelling, so a route that stops resolving fails here.
+  const routable = fs.readdirSync(SKILLS_ROOT)
+    .filter((name) => fs.existsSync(path.join(SKILLS_ROOT, name, 'SKILL.md')));
+  const routed = [...description.matchAll(/belongs to `?([a-z][a-z0-9-]*)`?/g)].map((match) => match[1]);
+
+  for (const name of routed) {
+    assert.ok(routable.includes(name), `the description routes to ${name}, which has no entry point here`);
+  }
 
   // Stage two delivers to review. Advertising that it lands the change would
   // route merge expectations here, and routing metadata is read before any
@@ -709,7 +725,7 @@ test('the change request opens only after reconciliation, validation, and review
   const evaluateIndex = entry.indexOf('**Evaluate the merge gate**');
   const openIndex = entry.indexOf('**Open the change request**');
   const askIndex = entry.indexOf('**Ask for the merge grant**');
-  const handoverIndex = entry.indexOf('**Invoke `shepherd` and wait for it**');
+  const handoverIndex = entry.indexOf('**Evaluate the shepherd handoff after every successful publication.**');
   assert.ok(cycleIndex > 0 && evaluateIndex > 0 && openIndex > 0 && askIndex > 0 && handoverIndex > 0);
   assert.ok(cycleIndex < openIndex, 'the cycle runs before the change request opens');
   assert.ok(evaluateIndex < openIndex, 'the disposition is evaluated before it goes in the body');
@@ -845,7 +861,8 @@ test('the provider seam is narrow, uses the official tool, and never fakes a cle
 test('handover happens only on recorded intent, and ship never merges', () => {
   const entry = flat(ENTRY);
 
-  assert.match(entry, /when, and only when, the shepherd intent recorded\s+in step 2 said so/);
+  assert.match(entry, /Condition only the nested shepherd invocation\s+on the intent recorded in step 2/);
+  assert.match(entry, /When that intent is `yes`, \*\*invoke `shepherd` and wait for it\*\*/);
   assert.match(entry, /ship does not follow it there and does not merge it/);
   assert.match(entry, /The absence of an instruction\s+is not permission to continue/);
 
@@ -864,7 +881,8 @@ test('the handoff is a nested invocation the run waits for, not a described one'
 
   // Structural: the step dispatches and blocks on a result, and the atom that
   // classifies it is composed rather than described.
-  assert.match(entry, /\*\*Invoke `shepherd` and wait for it\*\*/);
+  assert.match(entry, /\*\*Evaluate the shepherd handoff after every successful publication\.\*\*/);
+  assert.match(entry, /\*\*invoke `shepherd` and wait for it\*\*/);
   assert.match(entry, /nested one in a separate worker\*\*, dispatched with\s+`task`/);
   assert.match(
     entry,
@@ -873,6 +891,7 @@ test('the handoff is a nested invocation the run waits for, not a described one'
   assert.match(entry, /`shipped-to-review` is never reported as though a handoff occurred/);
   assert.match(handoff, /A Handoff Is An Invocation/);
   assert.match(handoff, /a handoff that did\s+not leave this context did not happen/);
+  assert.match(handoff, /A dispatched or unknown invocation status is not a completed handoff/);
 
   // Behavioral: the vocabulary a narrated handoff would report with cannot
   // reach a completed handoff.
@@ -987,12 +1006,20 @@ test('ship accepts the actual terminal result shape shepherd produces', () => {
 });
 
 test('a declined handoff stays optional and an unrecorded one does not', () => {
+  const entry = flat(ENTRY);
   const declined = evaluateHandoff({
     intent: 'no',
     publication: { outcome: 'published', identifier: '#1' },
   });
   assert.equal(declined.handoff, 'not-required');
   assert.ok(handoffSatisfied(declined));
+  assert.ok(declined.setObligation, 'declining shepherd must not drop the readiness expiry');
+
+  // The root workflow must traverse the evaluator on the declined path rather
+  // than relying on the helper being capable of a call the orchestration never
+  // makes.
+  assert.match(entry, /Evaluate the\s+declined handoff anyway and return its `setObligation`/);
+  assert.match(entry, /evaluation is unconditional once a change request exists/);
 
   // `shepherd` stays an optional dependency precisely because `no` is a real
   // answer. An unasked question is not that answer.
@@ -1083,6 +1110,64 @@ test('the set of open change requests is somebody else, and it is named', () => 
   assert.deepEqual(frontmatter(HANDOFF).allowedTools, ['task', 'read', 'execute']);
   assert.match(handoff, /\*\*Never merges, approves, rebases, or pushes\.\*\*/);
 });
+
+test('the expiry leaves the run, addressed to the caller that owns the set', () => {
+  const handoff = flat(HANDOFF);
+  const entry = flat(ENTRY);
+
+  // The failure this pins: the duty was already written down here, and being
+  // written down is not being inherited. A caller reads what the run returns,
+  // so the obligation has to be an emitted element of the output contract and
+  // not a paragraph in a unit nobody opens.
+  assert.match(handoff, /The Obligation Is Emitted, Not Recorded Here/);
+  for (const field of ['changeRequest', 'baseSha', 'expiresWhen', 'owner', 'reinvocation']) {
+    assert.match(handoff, new RegExp(`\`${field}\``), `the obligation must name ${field}`);
+  }
+  assert.match(entry, /the set obligation\*\*, whenever a change request was published/);
+
+  // The entry point names substance rather than field lists, so this pins the
+  // one part a caller could drop without noticing: an obligation bound to no
+  // base cannot be compared against a later one, and saying so is the point of
+  // emitting it at all.
+  assert.match(entry, /any base fact that was never\s+captured/);
+
+  // Emitting a duty is not accepting it. The wording must keep ship out of the
+  // daemon it refuses to be, on both surfaces.
+  assert.match(handoff, /Emitting it is not watching/);
+  assert.match(entry, /Reporting it is not watching/);
+
+  // A published change request carries the obligation whether or not anybody
+  // shepherded it, because the base moves either way.
+  const declined = evaluateHandoff({
+    intent: 'no',
+    publication: { outcome: 'published', identifier: '#1' },
+    target: {
+      changeRequest: '#1',
+      headBranch: 'issue-1',
+      headSha: 'head',
+      baseBranch: 'main',
+      baseSha: 'published-base',
+      upToDatePolicy: 'unobserved',
+      receipt: { observedAt: '2026-08-25T20:35:56Z', baseSha: 'published-base', headSha: 'head' },
+    },
+  });
+
+  assert.equal(declined.handoff, 'not-required');
+  assert.equal(declined.setObligation.owner, SET_OWNER);
+  assert.equal(declined.setObligation.changeRequest, '#1');
+  assert.equal(declined.setObligation.baseSha, 'published-base');
+  assert.match(declined.setObligation.expiresWhen, /anything else merges into main/);
+  assert.match(declined.setObligation.reinvocation, /Invoke shepherd on #1 again/);
+
+  // Nothing published means nothing to own, so no obligation is invented.
+  assert.equal(evaluateHandoff({ publication: { outcome: 'withheld-by-outcome' } }).setObligation, null);
+
+  // A route to a package that cannot be invoked reads as coverage while
+  // providing none, so the boundary says which owner actually holds the set.
+  assert.match(entry, /\*\*Not a fleet\.\*\*/);
+  assert.match(entry, /no routable entry point in this repository yet/);
+});
+
 test('an incomplete outcome is not quietly reported as success', () => {
   const cycle = flat(CYCLE);
 

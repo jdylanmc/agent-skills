@@ -15,6 +15,7 @@ import test from 'node:test';
 import { TERMINAL_DISPOSITIONS } from '../../../_base/_atoms/landability/landability.mjs';
 import {
   NESTED_INVOCATION,
+  SET_OWNER,
   buildHandoffTarget,
   evaluateHandoff,
   handoffSatisfied,
@@ -101,8 +102,18 @@ test('a described handoff is not a handoff', () => {
 });
 
 test('a dispatch nobody waited on is not a terminal disposition', () => {
+  for (const status of [undefined, null, '', 'dispatched', 'running', 'complete']) {
+    const result = evaluateHandoff(completeHandoff({
+      invocation: { mode: NESTED_INVOCATION, status },
+    }));
+
+    assert.equal(result.handoff, 'not-performed');
+    assert.equal(result.state, 'invocation-not-returned');
+    assert.equal(result.shipStatus, 'blocked');
+    assert.ok(!handoffSatisfied(result));
+  }
+
   for (const dispatched of [
-    { invocation: { mode: NESTED_INVOCATION, status: 'dispatched' }, result: undefined },
     { result: { disposition: 'in-progress' } },
     { result: { disposition: 'shepherd-required' } },
     { result: { disposition: 'watch-or-report' } },
@@ -332,6 +343,39 @@ test('publication success requires both the outcome and the provider identifier'
   }
 });
 
+test('a publication and target mismatch cannot cross-wire readiness provenance', () => {
+  const mismatched = evaluateHandoff(completeHandoff({
+    publication: { outcome: 'published', identifier: '#222' },
+  }));
+
+  assert.equal(mismatched.state, 'target-publication-mismatch');
+  assert.equal(mismatched.handoff, 'not-performed');
+  assert.equal(mismatched.shipStatus, 'blocked');
+  assert.ok(mismatched.unmet.some((entry) => entry.includes('#111') && entry.includes('#222')));
+  assert.match(mismatched.humanAction, /#222/);
+
+  assert.equal(mismatched.setObligation.changeRequest, '#222');
+  assert.equal(mismatched.setObligation.baseBranch, null);
+  assert.equal(mismatched.setObligation.baseSha, null);
+  assert.deepEqual(mismatched.setObligation.unresolved, ['baseBranch', 'baseSha']);
+});
+
+test('a missing target identity cannot donate base provenance to the published request', () => {
+  for (const intent of ['yes', 'no']) {
+    for (const changeRequest of [undefined, null, '', '   ']) {
+      const result = evaluateHandoff(completeHandoff({
+        intent,
+        target: publicationTarget({ changeRequest }),
+      }));
+
+      assert.equal(result.setObligation.changeRequest, '#111');
+      assert.equal(result.setObligation.baseBranch, null);
+      assert.equal(result.setObligation.baseSha, null);
+      assert.deepEqual(result.setObligation.unresolved, ['baseBranch', 'baseSha']);
+    }
+  }
+});
+
 test('the publication receipt falls back to the captured target commits but never to nothing', () => {
   const { target, missing } = buildHandoffTarget({
     changeRequest: '#111',
@@ -395,4 +439,172 @@ test('a non-object input is a defect rather than a silently empty handoff', () =
   const empty = evaluateHandoff();
   assert.equal(empty.state, 'no-published-target');
   assert.equal(empty.shipStatus, null);
+});
+
+test('the set obligation binds to the base the readiness was observed against', () => {
+  // The regression that would make the obligation worse than useless: dating
+  // the expiry to the publication base rather than the one shepherd rebased
+  // onto tells the set owner a claim expired against a commit the change
+  // request no longer sits on. It is the same two-snapshot confusion freshness
+  // already refuses, and it must be refused here too.
+  const result = evaluateHandoff(completeHandoff());
+
+  assert.equal(result.setObligation.changeRequest, '#111');
+  assert.equal(result.setObligation.baseBranch, 'main');
+  assert.equal(result.setObligation.baseSha, REBASED_BASE);
+  assert.notEqual(result.setObligation.baseSha, PUBLISHED_BASE);
+  assert.match(result.setObligation.expiresWhen, /anything else merges into main/);
+  assert.match(result.setObligation.reinvocation, /Invoke shepherd on #111 again/);
+});
+
+test('the obligation is addressed to the caller, and never to this run', () => {
+  // An obligation with no actor reads as a note, and one addressed to this run
+  // would be an instruction to watch — the daemon the handoff refuses to be.
+  const result = evaluateHandoff(completeHandoff());
+
+  assert.equal(result.setObligation.owner, SET_OWNER);
+  assert.match(result.setObligation.owner, /caller/);
+
+  const words = JSON.stringify(result.setObligation);
+  for (const daemon of [/\bwatch/i, /\bpoll/i, /\bwait for\b/i, /\bmonitor/i]) {
+    assert.doesNotMatch(words, daemon, `the obligation must not promise to ${String(daemon)}`);
+  }
+});
+
+test('declining shepherd declines an owner, not the expiry', () => {
+  // The operator saying no settles who drives this change request. It settles
+  // nothing about the base, which moves whether or not anyone was asked.
+  const declined = evaluateHandoff(completeHandoff({ intent: 'no' }));
+
+  assert.equal(declined.handoff, 'not-required');
+  assert.equal(declined.state, 'declined-by-operator');
+  assert.ok(handoffSatisfied(declined));
+  assert.equal(declined.setObligation.changeRequest, '#111');
+  assert.equal(declined.setObligation.baseSha, PUBLISHED_BASE, 'no shepherd receipt, so the captured base');
+});
+
+test('every published change request leaves the run with an obligation', () => {
+  // The states below are the ones that end `blocked`, which is exactly when a
+  // change request is least likely to be watched by anybody. An obligation
+  // that appeared only on the happy path would be missing from every case that
+  // needs it.
+  const blocked = [
+    ['intent-unrecorded', { intent: undefined }],
+    ['not-invoked', { invocation: { mode: 'narrated', status: 'returned' } }],
+    ['shepherd-unavailable', { invocation: { mode: NESTED_INVOCATION, status: 'unavailable' } }],
+    ['invocation-not-returned', { invocation: { mode: NESTED_INVOCATION, status: 'dispatched' } }],
+    ['no-terminal-disposition', { result: { disposition: 'in-progress' } }],
+    ['stale-disposition', { observedBase: { observedAt: '2026-08-25T22:06:00Z', baseSha: 'aaaaaaa', headSha: REBASED_HEAD } }],
+    ['freshness-unobserved', { observedBase: undefined }],
+  ];
+
+  for (const [state, overrides] of blocked) {
+    const result = evaluateHandoff(completeHandoff(overrides));
+
+    assert.equal(result.state, state);
+    assert.equal(result.shipStatus, 'blocked');
+    assert.equal(result.setObligation.changeRequest, '#111', `${state} lost the obligation`);
+    assert.equal(result.setObligation.owner, SET_OWNER);
+  }
+});
+
+test('a handoff nobody performed cannot supply the base the obligation binds to', () => {
+  // The sharpest version of the failure this unit exists for. A narrated
+  // handoff, an unavailable shepherd, and a failed dispatch all arrive with a
+  // well-formed result attached, because the thing in doubt is the invocation
+  // and not the sentence describing it. An obligation that read the base out
+  // of that result would inherit from a narration the very fact the decision
+  // just refused to believe — and would report `unresolved: []`, meaning
+  // checkable, about a base no shepherd ever saw.
+  const narrated = [
+    ['not-invoked', { invocation: { mode: 'narrated', status: 'returned' } }],
+    ['shepherd-unavailable', { invocation: { mode: NESTED_INVOCATION, status: 'unavailable' } }],
+    ['invocation-failed', { invocation: { mode: NESTED_INVOCATION, status: 'failed' } }],
+    ['intent-unrecorded', { intent: undefined }],
+  ];
+
+  for (const [state, overrides] of narrated) {
+    const result = evaluateHandoff(completeHandoff(overrides));
+
+    assert.equal(result.state, state);
+    assert.equal(result.setObligation.baseSha, PUBLISHED_BASE, `${state} trusted a refused receipt`);
+    assert.notEqual(result.setObligation.baseSha, REBASED_BASE);
+  }
+
+  // The states that did get past the invocation gates keep the base shepherd
+  // actually observed, so the rule above is a refusal rather than a blanket
+  // preference for the publication snapshot.
+  for (const [state, overrides] of [
+    ['shepherd-mergeable-and-green', {}],
+    ['stale-disposition', { observedBase: { observedAt: '2026-08-25T22:06:00Z', baseSha: 'aaaaaaa', headSha: REBASED_HEAD } }],
+    ['freshness-unobserved', { observedBase: undefined }],
+  ]) {
+    const result = evaluateHandoff(completeHandoff(overrides));
+
+    assert.equal(result.state, state);
+    assert.equal(result.setObligation.baseSha, REBASED_BASE, `${state} lost the observed base`);
+  }
+
+  // A disposition whose receipt never validated is not an observation either,
+  // however terminal the disposition reads.
+  const unusable = evaluateHandoff(completeHandoff({
+    result: { disposition: 'mergeable-and-green', receipt: { baseSha: REBASED_BASE } },
+  }));
+
+  assert.equal(unusable.state, 'result-receipt-incomplete');
+  assert.equal(unusable.setObligation.baseSha, PUBLISHED_BASE);
+});
+
+test('an obligation follows publication succeeding, not an identifier appearing', () => {
+  // The trap: a failed publication can still carry the identifier a provider
+  // echoed back. Building an obligation from a bare identifier addresses the
+  // set owner about a change request that does not exist, which is worse than
+  // saying nothing — it is a duty with no subject.
+  assert.equal(evaluateHandoff().setObligation, null);
+
+  for (const outcome of [
+    'withheld-by-outcome',
+    'publication-failed',
+    'provider-unsupported',
+    'provider-tool-missing',
+    undefined,
+  ]) {
+    const unpublished = evaluateHandoff(completeHandoff({
+      publication: { outcome, identifier: '#ghost' },
+    }));
+
+    assert.equal(unpublished.state, 'no-published-target');
+    assert.equal(unpublished.setObligation, null, `outcome ${String(outcome)} owns nothing`);
+  }
+
+  // A target that omitted the identifier is a refused handoff, but publication
+  // did succeed, and the identifier the provider returned is the change
+  // request somebody now owns.
+  const incomplete = evaluateHandoff(completeHandoff({
+    target: publicationTarget({ changeRequest: undefined }),
+  }));
+
+  assert.equal(incomplete.state, 'target-incomplete');
+  assert.equal(incomplete.setObligation.changeRequest, '#111');
+});
+
+test('an obligation with no captured base says so rather than reading as checkable', () => {
+  // An expiry nobody can compare against a later base is unverifiable. It is
+  // still emitted, because the change request is still real, but the missing
+  // facts are named instead of leaving a confident-looking obligation bound to
+  // nothing.
+  const baseless = evaluateHandoff(completeHandoff({
+    intent: undefined,
+    target: publicationTarget({ baseBranch: undefined, baseSha: undefined, receipt: {} }),
+  }));
+
+  assert.equal(baseless.setObligation.changeRequest, '#111');
+  assert.equal(baseless.setObligation.baseBranch, null);
+  assert.equal(baseless.setObligation.baseSha, null);
+  assert.deepEqual(baseless.setObligation.unresolved, ['baseBranch', 'baseSha']);
+  assert.match(baseless.setObligation.expiresWhen, /its base branch/);
+
+  // A complete one carries nothing unresolved, so the field distinguishes the
+  // two rather than always being present and always ignored.
+  assert.deepEqual(evaluateHandoff(completeHandoff()).setObligation.unresolved, []);
 });

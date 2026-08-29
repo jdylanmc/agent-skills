@@ -28,6 +28,13 @@
  * 3. **An unread base is not a fresh one.** When the base requires the branch
  *    to contain it, failing to re-read after shepherd returns leaves the one
  *    fact that decides landability unknown, and unknown is not evidence.
+ * 4. **The expiry leaves the run.** Handing over one change request settles
+ *    who owns *it*; it settles nothing about the set it belongs to. So every
+ *    evaluation that names a published change request returns the obligation
+ *    the caller inherits — the change request, the base its readiness was
+ *    observed against, the condition that expires that readiness, and the
+ *    exact re-invocation — because a duty stated only in prose is inherited by
+ *    nobody. Emitting it is not watching: this returns and holds nothing.
  */
 
 import {
@@ -48,6 +55,14 @@ export const NESTED_INVOCATION = 'nested-worker';
 
 /** Ownership fields without which nobody can tell what was handed to whom. */
 const REQUIRED_TARGET_FIELDS = ['changeRequest', 'headBranch', 'headSha', 'baseBranch', 'baseSha'];
+
+/**
+ * Who the expiry is addressed to. Naming the actor is the whole point: an
+ * obligation with no actor reads as a note, and a note addressed to this run
+ * would be an instruction to watch, which is the daemon this atom refuses to
+ * become.
+ */
+export const SET_OWNER = 'the caller that owns the set of open change requests';
 
 /** Publication-time observations that make the handoff auditable afterwards. */
 const REQUIRED_RECEIPT_FIELDS = ['observedAt', 'baseSha', 'headSha'];
@@ -118,6 +133,16 @@ export function evaluateHandoff(input = {}) {
   if (input === null || typeof input !== 'object') {
     throw new TypeError('evaluateHandoff expects an object');
   }
+  const evaluation = decideHandoff(input);
+  // The obligation is attached once, here, rather than at each return. Every
+  // branch below already decides ownership of *this* change request; the
+  // expiry it inherits is the same fact whichever branch decided it, and
+  // threading it through fourteen returns is how one of them comes to omit it.
+  return { ...evaluation, setObligation: buildSetObligation(input, evaluation) };
+}
+
+/** Decide the handoff itself. The set obligation is attached by the caller. */
+function decideHandoff(input) {
   const { intent, publication, invocation, result } = input;
   const built = buildHandoffTarget(input.target ?? {});
   const target = built.target;
@@ -129,6 +154,22 @@ export function evaluateHandoff(input = {}) {
       target: null,
       unmet: [`publication: outcome is ${describe(publication?.outcome)}`],
       humanAction: 'Report the publication outcome as given. No change request exists to shepherd.',
+    });
+  }
+
+  const publishedChangeRequest = nonEmptyString(publication.identifier);
+  if (
+    target.changeRequest !== null
+    && publishedChangeRequest !== null
+    && target.changeRequest !== publishedChangeRequest
+  ) {
+    return notPerformed('target-publication-mismatch', {
+      target,
+      unmet: [
+        `target.changeRequest is ${target.changeRequest}, but publication.identifier is ${publishedChangeRequest}`,
+      ],
+      humanAction:
+        `Rebuild the handoff target for ${publishedChangeRequest} from that publication receipt before invoking shepherd.`,
     });
   }
 
@@ -177,6 +218,14 @@ export function evaluateHandoff(input = {}) {
       target,
       unmet: [`invocation: dispatch failed (${describe(invocation.reason)})`],
       humanAction: humanActionFor(target, 'the shepherd dispatch failed'),
+    });
+  }
+
+  if (invocation.status !== 'returned') {
+    return notPerformed('invocation-not-returned', {
+      target,
+      unmet: [`invocation: status is ${describe(invocation?.status)}, not returned`],
+      humanAction: humanActionFor(target, 'the shepherd invocation did not return'),
     });
   }
 
@@ -268,6 +317,83 @@ export function handoffSatisfied(evaluation) {
   return evaluation?.handoff === 'completed' || evaluation?.handoff === 'not-required';
 }
 
+/**
+ * Build the obligation the caller inherits for the set this change request
+ * belongs to, or `null` when no change request was published.
+ *
+ * The base it binds to is the one the **readiness was observed against**, so
+ * the shepherd receipt wins over the publication snapshot exactly as freshness
+ * does. Binding to the publication base would date the claim to before the
+ * rebase that made it true, which is the same confusion of the two snapshots
+ * that freshness already refuses.
+ *
+ * **Provenance is read from the decision above, never re-derived here.** A
+ * second copy of "did shepherd genuinely observe this" is a second answer
+ * waiting to disagree with the first, and the way it disagrees is the worst one
+ * available: a narrated handoff carries a well-formed result, so a copy that
+ * forgot to check the invocation would stamp the obligation with a base no
+ * shepherd ever saw, on exactly the states this unit exists to disbelieve. A
+ * recorded disposition is that verdict, and only that one: it proves the
+ * decision got past intent, target, invocation mode, invocation status, and
+ * terminality.
+ *
+ * It does not prove the receipt can bind anything, because
+ * `result-receipt-incomplete` deliberately keeps the terminal disposition while
+ * refusing the receipt — the one fact shepherd did establish is worth
+ * reporting, and an unusable receipt is still unusable. So usability is checked
+ * here, for the narrower question of which base to bind. Without a usable
+ * receipt the captured base is the honest binding, because no later observation
+ * was ever established.
+ *
+ * A change request with no owner still gets an obligation. The failure this
+ * atom exists for is a change request nobody was watching; a run that hands
+ * back `blocked` has told somebody it needs an owner, and telling them it also
+ * expires costs nothing and is the same sentence they will need next.
+ *
+ * Nothing published is nothing to own, and that is decided by
+ * {@link publicationSucceeded} rather than by an identifier being present. A
+ * failed publication can still carry the identifier the provider echoed back,
+ * and an obligation built from it would name a change request that does not
+ * exist — a duty addressed to a caller about nothing.
+ */
+export function buildSetObligation(input = {}, evaluation = {}) {
+  if (!publicationSucceeded(input?.publication)) {
+    return null;
+  }
+
+  const changeRequest = nonEmptyString(input.publication.identifier);
+  // Target provenance belongs to the published request only when its identity
+  // was positively established as the same one. A missing identity is not a
+  // weaker match: it is no match, and may not donate another request's base.
+  const target = nonEmptyString(evaluation?.target?.changeRequest) === changeRequest
+    ? evaluation.target
+    : null;
+  const observed = nonEmptyString(evaluation?.disposition) !== null
+    && validateFreshnessReceipt(input?.result?.receipt).valid;
+  const baseBranch = nonEmptyString(target?.baseBranch);
+  const baseSha = (observed ? nonEmptyString(input.result.receipt.baseSha) : null)
+    ?? nonEmptyString(target?.baseSha);
+  const into = baseBranch === null ? 'its base branch' : baseBranch;
+
+  return {
+    changeRequest,
+    baseBranch,
+    baseSha,
+    owner: SET_OWNER,
+    expiresWhen: `anything else merges into ${into}`,
+    reinvocation: `Invoke shepherd on ${changeRequest} again, then re-read its base and head, `
+      + 'before it is presented as ready.',
+    // An obligation whose base was never captured cannot be checked against
+    // anything later. It is still emitted, because the change request is still
+    // real and still somebody's, and the missing facts are named rather than
+    // left for a reader to notice their absence.
+    unresolved: [
+      ...(baseBranch === null ? ['baseBranch'] : []),
+      ...(baseSha === null ? ['baseSha'] : []),
+    ],
+  };
+}
+
 /** The shepherd receipt states the policy it observed; the target only records what was known earlier. */
 function effectivePolicy(receipt, target) {
   const observed = normalizeUpToDatePolicy(receipt?.upToDatePolicy);
@@ -299,6 +425,7 @@ function base() {
     freshness: 'unobserved',
     policy: 'unobserved',
     requiresReinvocation: false,
+    setObligation: null,
     unmet: [],
     humanAction: null,
   };
