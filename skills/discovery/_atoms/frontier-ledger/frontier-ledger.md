@@ -30,9 +30,15 @@ Track what the discovery loop knows and what can happen next.
 
 - Keep confirmed facts separate from assumptions.
 - Mark each frontier entry's origin so a human can tell a human-supplied seed
-  from something the loop discovered: an entry folded in from a URI seed carries
-  `origin: seed` and cites its source URI, while an entry the loop found carries
-  `origin: loop`.
+  from something the loop discovered and from something carried across runs: an
+  entry folded in from a URI seed carries `origin: seed` and cites its source
+  URI, an entry the loop found carries `origin: loop`, and an entry rehydrated
+  from the persisted foundation at the start of a run carries `origin: foundation`
+  and cites the foundation locator and revision it came from.
+- Unresolved frontier entries and open questions survive across invocations
+  because they are carried in the persisted foundation and rehydrated at the
+  start of the next run, not held in conversation memory. A question already
+  settled in the foundation is not reopened unless new evidence contradicts it.
 - Keep unanswered questions visible.
 - Assign every blocker an owner, source, or next workflow when known.
 - Route to `proof-of-concept` when code can answer the question cheaply; do not

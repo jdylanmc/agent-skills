@@ -15,6 +15,32 @@ below is unreleased and no comparison links are available.
 
 ### Added
 
+- **Discovery foundation rehydration.** Discovery now grounds every run on its
+  persisted, human-aligned foundation rather than conversation memory. At the
+  start of an invocation it resolves and rereads the latest aligned foundation
+  for the subject, verifies its identity, alignment, revision, and readability,
+  and rehydrates from that artifact; a missing, ambiguous, unreadable,
+  unaligned, or stale foundation produces an explicit recovery state instead of
+  silently continuing from memory. Each aligned cycle persists the foundation
+  durably beneath `docs/agent/discovery/` without dropping any previously
+  recorded evidence, and rereads it to verify the write — a check that proves
+  the bytes were written, never that a later run grounded on them. Moving a
+  foundation to a new revision does not invalidate an approved specification.
+  Persistence is bound to the revision the cycle rehydrated, so a stale cycle
+  cannot overwrite a newer one; a durable entry is retained per field and by
+  multiset, and a resolution that discharges it is field-qualified and
+  count-aware; a continuation locator must be exactly
+  `docs/agent/discovery/<slug>.md` and is validated before use; the write's
+  `rename` is a single commit point, and a failure detected after it is reported
+  as `post-commit-verification-failed` rather than implying the original
+  survived; every filesystem failure is normalized to a documented code or
+  recovery state rather than escaping as a raw error, and when cleanup of the
+  staged temporary file itself fails the primary error keeps its code and names
+  the file left behind rather than masking the failure. Persisted strings reject
+  control characters, any legal durable entry can be resolved, and rehydration
+  distinguishes a stale continuation (absent, moved, or now a different subject)
+  from unreadable bytes (a read or parse failure, a symlinked component, or a
+  basename that disagrees with the declared slug), failing closed either way.
 - **Specification approval durability.** Approval of a specification is a merge
   to the default branch, not a field the producing agent writes. The observation
   is verified against git objects and refused when it disagrees, so a forged

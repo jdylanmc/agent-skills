@@ -1,9 +1,9 @@
 ---
 name: cycle-controller
-description: Orchestrate recursive discovery cycles by running discovery, offering interactive human alignment, persisting a handoff, reading it back, compacting continuation state, and choosing the next cycle.
+description: Orchestrate recursive discovery cycles by running discovery, offering interactive human alignment, persisting the durable human-aligned foundation beneath docs/agent/discovery/ and the ephemeral bounded handoff, rereading both to verify the writes, compacting continuation state that carries the exact foundation locator and revision, and choosing the next cycle.
 level: molecule
-includes: ["discovery/_molecules/discovery-loop/discovery-loop.md","discovery/_atoms/alignment-check/alignment-check.md","discovery/_molecules/research-thread/research-thread.md","discovery/_atoms/uri-seed/uri-seed.md","_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md"]
-composes: ["discovery/_molecules/discovery-loop/discovery-loop.md","discovery/_atoms/alignment-check/alignment-check.md","discovery/_molecules/research-thread/research-thread.md","discovery/_atoms/uri-seed/uri-seed.md","_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md"]
+includes: ["discovery/_molecules/discovery-loop/discovery-loop.md","discovery/_atoms/alignment-check/alignment-check.md","discovery/_molecules/research-thread/research-thread.md","discovery/_atoms/uri-seed/uri-seed.md","_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md","discovery/_atoms/foundation-persist/foundation-persist.md"]
+composes: ["discovery/_molecules/discovery-loop/discovery-loop.md","discovery/_atoms/alignment-check/alignment-check.md","discovery/_molecules/research-thread/research-thread.md","discovery/_atoms/uri-seed/uri-seed.md","_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md","discovery/_atoms/foundation-persist/foundation-persist.md"]
 used-by: ["discovery/SKILL.md"]
 allowed-tools: ["execute","read","search","task"]
 ---
@@ -19,6 +19,7 @@ Own the recursive discovery control loop.
 3. [Research thread](../research-thread/research-thread.md)
 4. [URI seed](../../_atoms/uri-seed/uri-seed.md)
 5. [Persist bounded handoff](../../../_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md)
+6. [Foundation persist](../../_atoms/foundation-persist/foundation-persist.md)
 
 ## Workflow
 
@@ -71,15 +72,44 @@ Own the recursive discovery control loop.
 7. Offer and run [Alignment check](../../_atoms/alignment-check/alignment-check.md).
    The goal is shared understanding with the human. A handoff cannot be written
    until the human verifies or corrects the discovery state.
-8. Convert only verified shared understanding into the payload for
+8. Convert only verified shared understanding into two artifacts. First, persist
+   the durable foundation for the subject with
+   [Foundation persist](../../_atoms/foundation-persist/foundation-persist.md).
+   It writes exactly `docs/agent/discovery/<slug>.md`, refuses to drop any
+   previously recorded durable entry, appends one history line, and rereads the
+   file to verify the write. Pass `expectedPriorRevision` — the revision this run
+   rehydrated (or `null` for a genuine first cycle) — so a stale cycle that
+   rehydrated an older revision is refused as `concurrent-modification` rather
+   than silently overwriting a newer one. A failed persist stops the cycle as
+   `handoff-incomplete`; the cycle does not proceed to compaction with an
+   unverified foundation. The `rename` is the commit point: a failure before it
+   leaves the prior authority untouched, while a failure after it is reported as
+   `post-commit-verification-failed`, meaning the destination is already replaced
+   — treat that as `handoff-incomplete` too, but do not assume the prior bytes
+   survived. Record the returned foundation locator and revision — the next
+   invocation's rehydration compares against them.
+9. Then convert the same verified understanding into the payload for
    [Persist bounded handoff](../../../_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md).
-9. Persist the handoff and read back the exact reported path. Treat a failed
-   read-back as `handoff-incomplete` and stop.
-10. Compact the reread handoff into the continuation focus: the smallest set of
+   Two artifacts exist for two jobs: the durable foundation is the repository-
+   backed grounding a later run rehydrates from, and the bounded handoff is the
+   ephemeral operating-system-temporary continuation a fresh agent reads within
+   the same delivery. Neither replaces the other.
+10. Persist the handoff and read back the exact reported path. Treat a failed
+    read-back as `handoff-incomplete` and stop.
+11. Compact the reread handoff into the continuation focus: the smallest set of
     aligned facts, decisions, open questions, frontier state, and next action
     needed to begin the next discovery pass without rereading the whole prior
-    conversation.
-11. Use that compacted handoff-derived focus, not memory, to choose and **begin**
+    conversation. The continuation focus retains the exact foundation locator
+    and revision as one canonical line in `artifacts_and_references`:
+
+    ```text
+    discovery-foundation: <locator>@<revision>
+    ```
+
+    That is exactly the line `foundation-rehydrate`'s `renderContinuation`
+    produces and `parseContinuation` recovers, and it is what the next
+    invocation's rehydration compares against. Emit exactly one such line.
+12. Use that compacted handoff-derived focus, not memory, to choose and **begin**
     the next cycle:
     - continue discovery;
     - run another interrogation;
@@ -128,7 +158,7 @@ Map aligned discovery state into the bounded handoff payload:
 | `goal` | Discovery subject and intended outcome. |
 | `current_progress` | Verified shared understanding, aligned facts, decisions, frontier, and cycle count. |
 | `decisions_and_constraints` | Decisions, boundaries, refusals, and alignment corrections. |
-| `artifacts_and_references` | Evidence sources, prior handoffs, maps, and interrogation packets. |
+| `artifacts_and_references` | Evidence sources, prior handoffs, maps, interrogation packets, and the persisted foundation as one canonical `discovery-foundation: <locator>@<revision>` line. |
 | `what_worked` | Evidence routes and questions that advanced understanding. |
 | `what_did_not_work` | Missing sources, contradictions, and dead ends. |
 | `next_steps` | The next cycle selected from the reread handoff. |
@@ -142,6 +172,16 @@ claims.
 
 ## Boundaries
 
+- The controller persists the aligned foundation before it compacts, and it does
+  so only after the alignment check verifies shared understanding.
+- The controller writes both the durable foundation and the ephemeral bounded
+  handoff; neither replaces the other, and a failed persist or reread of either
+  stops the cycle rather than compacting from an unverified artifact.
+- The post-write reread of the foundation proves the persisted bytes, never that
+  a later run grounded on them; next-run grounding is the invocation-start
+  rehydration, a different guarantee owned by the root skill.
+- The controller never chooses among candidate foundations; resolving and
+  rehydrating the foundation is the root skill's invocation-start step.
 - The controller may repeat discovery cycles, but it may not skip alignment.
 - The controller offers the alignment check interactively and never writes a
   handoff from unverified, unaligned, or disputed context.
