@@ -89,8 +89,8 @@ judges the change is grading its own work.
 4. Run [Delivery cycle](./_molecules/delivery-cycle/delivery-cycle.md) on the
    confirmed packet. It isolates the workspace, dispatches a bounded worker,
    reconciles every hunk of the diff against the ledger, validates through
-   `run-ci`, reviews through `roast`, remediates within a declared limit, and
-   returns a criterion-by-criterion verdict.
+   `run-ci`, reviews through `roast`, remediates through at most five fresh
+   bounded attempts, and returns a criterion-by-criterion verdict.
 
 5. **Evaluate the merge gate** with
    [Merge gate](./_atoms/merge-gate/merge-gate.md). The disposition starts
@@ -419,7 +419,8 @@ Return:
 - the `run-ci` evidence envelope as given, and the `roast` findings as given,
   each with its severity and how any `Must fix` was cleared — remediated,
   disputed by the operator, or descoped to its own issue;
-- remediation attempts used against the declared limit;
+- remediation attempts reported as `n/5`, excluding the initial validation and
+  Roast and counting every returned remediation dispatch;
 - the publication outcome — `published`, `withheld-by-outcome`,
   `provider-unsupported`, `provider-tool-missing`,
   `provider-tool-unauthenticated`, `publication-failed`, or a condition the

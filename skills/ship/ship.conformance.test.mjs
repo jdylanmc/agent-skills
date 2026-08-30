@@ -1359,14 +1359,37 @@ test('every run is isolated, and absent isolation is named rather than implied',
   assert.match(entry, /isolation state, with worktree path and branch, or the recorded reason it is\s+absent/);
 });
 
-test('remediation is bounded and re-reconciles, because a fix is a change', () => {
+test('remediation gets exactly five attempts and re-runs the complete proof cycle', () => {
+  const entry = flat(ENTRY);
   const cycle = flat(CYCLE);
   const dispatch = flat(DISPATCH);
 
   assert.match(cycle, /Remediate, within a limit/);
-  assert.match(cycle, /Record the\s+attempt count and its declared limit before the first attempt/);
-  assert.match(cycle, /After each remediation, return to step 3/);
+  assert.match(cycle, /limit is exactly \*\*five attempts\*\* per delivery cycle/);
+  assert.match(cycle, /Record `0\/5` before\s+the first attempt/);
+  assert.match(cycle, /initial validation and Roast establish the defects and do not consume an\s+attempt/);
+  assert.match(cycle, /each later dispatch consumes one slot even when it returns no\s+candidate change/);
+  assert.match(cycle, /return to step 3, rerun the repository's complete\s+declared validation, and submit the resulting candidate to a fresh Roast/);
+  assert.match(cycle, /steps 3 through 5 run\s+again over the result/);
+  assert.match(cycle, /Successful convergence stops the loop/);
+  assert.match(cycle, /out-of-ledger requested change → `undisclosed-change`/);
+  assert.match(cycle, /evidence that maps ambiguously to the ledger → `ambiguous-mapping`/);
+  assert.match(cycle, /unavailable safe isolation → `isolation-refused`/);
+  assert.match(cycle, /explicit operator cancellation → `handed-back`/);
+  assert.match(cycle, /required tool, permission, or authority reported unavailable by the\s+workflow that owns it → `handed-back`/);
+  assert.match(cycle, /Every other remediable validation or review defect receives the remaining\s+attempts through five/);
+  assert.match(cycle, /must not invent another early exit/);
+  assert.match(cycle, /must not (?:invent another early exit or )?choose\s+a smaller limit merely because two or three rounds were expensive/);
+  assert.match(cycle, /When attempt five returns without clearing the defects, stop and hand back\s+with every outstanding defect named/);
+  assert.match(cycle, /Never start attempt six/);
+  assert.match(cycle, /remediation accounting as `n\/5`/);
   assert.match(dispatch, /Remediation Is A Dispatch, Not A Correction/);
+  assert.match(dispatch, /new dispatch to a\s+fresh worker context/);
+  assert.match(dispatch, /bounded to five attempts/);
+  assert.match(dispatch, /Record `0\/5` before the\s+first one/);
+  assert.match(dispatch, /When attempt five fails to clear the defect, the run hands back/);
+  assert.match(entry, /remediates through at most five fresh\s+bounded attempts/);
+  assert.match(entry, /remediation attempts reported as `n\/5`/);
 });
 
 test('the worker brief carries the ledger as its authority boundary', () => {
