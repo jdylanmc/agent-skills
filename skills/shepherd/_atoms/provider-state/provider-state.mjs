@@ -28,6 +28,7 @@
 import {
   ProviderCommandError,
   assertSanctionedCommand,
+  githubApiHostFlags,
   normalizeAzureOrganization,
   normalizeChangeRequestId,
   normalizeGitHubRepository,
@@ -54,6 +55,53 @@ export { ProviderCommandError };
  */
 export { normalizeMergeabilitySignal, normalizeUpToDatePolicy, requiresUpToDateBranch };
 
+export const GITHUB_CHECK_IDENTITIES_QUERY = `query($owner: String!, $name: String!, $number: Int!, $head: GitObjectID!) {
+  repository(owner: $owner, name: $name) {
+    object(oid: $head) {
+      ... on Commit {
+        oid
+        statusCheckRollup {
+          contexts(first: 100) {
+            pageInfo { hasNextPage }
+            nodes {
+              __typename
+              ... on CheckRun {
+                databaseId
+                name
+                status
+                conclusion
+                detailsUrl
+                isRequired(pullRequestNumber: $number)
+                checkSuite {
+                  workflowRun {
+                    databaseId
+                    runAttempt
+                  }
+                }
+              }
+              ... on StatusContext {
+                id
+                context
+                state
+                targetUrl
+                isRequired(pullRequestNumber: $number)
+              }
+            }
+          }
+        }
+      }
+    }
+}
+}`;
+
+const GITHUB_CHECK_IDENTITY_FIELDS = [
+  '-F', { prefix: 'owner=' },
+  '-F', { prefix: 'name=' },
+  '-F', { prefix: 'number=' },
+  '-F', { prefix: 'head=' },
+  '-f', { graphqlQueryEquals: `query=${GITHUB_CHECK_IDENTITIES_QUERY}` },
+];
+
 /**
  * The exact command shapes this unit is allowed to construct. A read-only guard
  * that tried to enumerate every mutating subcommand would miss `gh api -f`
@@ -68,6 +116,9 @@ export const SANCTIONED_READS = Object.freeze([
   { tool: 'az', argv: ['repos', 'pr', 'show', '--id', { id: true }, '--org', { value: true }, '--output', 'json'] },
   // Azure DevOps policy evaluations, used for read-checks.
   { tool: 'az', argv: ['repos', 'pr', 'policy', 'list', '--id', { id: true }, '--org', { value: true }, '--output', 'json'] },
+  // GitHub provider-native check/run identity from a read-only GraphQL query.
+  { tool: 'gh', argv: ['api', 'graphql', ...GITHUB_CHECK_IDENTITY_FIELDS] },
+  { tool: 'gh', argv: ['api', 'graphql', '--hostname', { value: true }, ...GITHUB_CHECK_IDENTITY_FIELDS] },
 ]);
 
 /** Rejects a command that is not one of this unit's sanctioned reads. */
@@ -175,6 +226,89 @@ export function validationStatusCommand(detection, { changeRequest, repository }
     '--output', 'json',
   ]);
 }
+
+function gitObjectId(value) {
+    const normalized = String(value ?? '');
+    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(normalized)) {
+      throw new ProviderCommandError('invalid-head-revision', 'head revision must be a full lowercase Git object ID');
+    }
+    return normalized;
+  }
+
+export function githubCheckRunsCommand(detection, { repository, headSha, changeRequest } = {}) {
+    const guard = requireObservableProvider(detection);
+    if (!guard.ok) return refused(guard, 'read-check-identities');
+    if (detection.provider !== 'github') {
+      throw new ProviderCommandError('unsupported-provider-operation', 'provider-native check runs require GitHub');
+    }
+    const repositoryParts = normalizeGitHubRepository(repository, detection).split('/');
+    const [owner, name] = repositoryParts.slice(-2);
+    const id = normalizeChangeRequestId(changeRequest);
+    return command(detection, 'read-check-identities', 'gh', [
+      'api', 'graphql',
+      ...githubApiHostFlags(detection),
+      '-F', `owner=${owner}`,
+      '-F', `name=${name}`,
+      '-F', `number=${id}`,
+      '-F', `head=${gitObjectId(headSha)}`,
+      '-f', `query=${GITHUB_CHECK_IDENTITIES_QUERY}`,
+    ]);
+  }
+
+  export function interpretGitHubCheckIdentities(payload, { headSha } = {}) {
+    const expectedHead = gitObjectId(headSha);
+    const commit = payload?.data?.repository?.object;
+    const connection = commit?.statusCheckRollup?.contexts;
+    const contexts = Array.isArray(connection?.nodes)
+      ? connection.nodes
+      : [];
+    const incomplete = [];
+    const checks = contexts.map((check) => {
+      if (check?.__typename === 'StatusContext') {
+        const required = check?.isRequired === true;
+        const status = githubCheck({ context: check.context, state: check.state }).status;
+        if (required && status === 'failure') {
+          incomplete.push({ name: check?.context ?? null, reason: 'required-external-check-has-no-ship-identity' });
+        }
+        return {
+          name: check?.context ?? null,
+          nativeId: check?.id ?? null,
+          runId: null,
+          attempt: null,
+          headSha: expectedHead,
+          required,
+          status,
+          url: sanitizeProviderUrl(check?.targetUrl),
+        };
+      }
+      const nativeId = Number.isInteger(check?.databaseId) && check.databaseId > 0 ? String(check.databaseId) : null;
+      const run = check?.checkSuite?.workflowRun;
+      const runId = Number.isInteger(run?.databaseId) && run.databaseId > 0 ? String(run.databaseId) : null;
+      const attempt = Number.isInteger(run?.runAttempt) && run.runAttempt > 0 ? run.runAttempt : null;
+      const testedHead = commit?.oid === expectedHead ? expectedHead : null;
+      const required = check?.isRequired === true;
+      if (required && githubCheck(check).status === 'failure' && (!nativeId || !runId || !attempt || !testedHead)) {
+        incomplete.push({ name: check?.name ?? null, nativeId, runId, attempt, headSha: testedHead });
+      }
+      return {
+        name: check?.name ?? null,
+        nativeId,
+        runId,
+        attempt,
+        headSha: testedHead,
+        required,
+        status: githubCheck(check).status,
+        url: sanitizeProviderUrl(check?.detailsUrl),
+      };
+    });
+    return {
+      observed: Boolean(connection),
+      complete: Boolean(connection) && connection.pageInfo?.hasNextPage === false && incomplete.length === 0,
+      headSha: expectedHead,
+      checks,
+      incomplete,
+    };
+  }
 
 function unobserved(operation, reason, missing = []) {
   return { observed: false, operation, reason, missing: [...missing] };

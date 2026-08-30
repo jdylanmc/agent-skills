@@ -41,6 +41,7 @@ with that condition attached rather than returning a result.
 | `resolve-target` | Change-request identifier and repository address. | Branch, base, head commit, change-request URL, draft state when reported, head-repository identity (owner, name, and cross-repository/fork indication) as push-safety metadata, and an observation timestamp. |
 | `read-state` | Change-request identifier and repository address. | Merge state, the blocking `mergeStateStatus` signal, review decision, draft state, the up-to-date policy, base/head commits, and the provider's raw value. |
 | `read-checks` | Change-request identifier and repository address. | Normalized validation results with the raw provider fields preserved. |
+| `read-check-identities` | GitHub repository, change request, and full head SHA. | Provider-native check-run ID, workflow-run ID, requiredness, attempt, and tested head through one read-only `gh api graphql` query. |
 
 Commands are built as argument vectors for the official tool — `gh` for GitHub
 and `az` for Azure DevOps — never as a shell string. A change-request identifier
@@ -87,6 +88,16 @@ unrecognized shape is `validation-status-absent`, never an empty pass.
 A change request with no reported checks has demonstrated nothing. Treating an
 empty rollup as green, or an uncomputed merge state as mergeable, is how a
 blocking check gets skipped, so neither is available from this unit.
+
+For a failed check that may enter Ship continuation, display status is not
+identity. The GitHub path supplements `read-checks` with provider-native check
+runs and their attached workflow-run facts. A usable failed required item has a
+check-run ID, workflow-run ID, provider-reported requiredness, positive attempt,
+and full tested-head SHA; missing or mismatched fields are incomplete evidence
+and never become a Ship watermark. Optional external checks need not have a
+workflow-run identity. Azure review
+completeness is already unprovable through the official CLI, so a continuing
+watch stops before it could claim complete continuation evidence there.
 
 Validation is green only when it was observed, its status is `passing`, and at
 least one check was reported. Pending, neutral, skipped, unknown, and mixed
@@ -147,7 +158,8 @@ The vocabulary that normalizes the value is the shared one in
 `normalizeMergeabilitySignal`, which maps this unit's `read-state` output onto
 the mergeability signal the disposition consumes — so a caller keeps a single
 import and the producing and consuming skills cannot disagree about what a value
-means. This unit still exposes exactly the three operations above.
+means. The GitHub identity read supplements the three provider-neutral
+operations above only when failed-check evidence may enter Ship continuation.
 
 ## Read-Only By Allow-List
 

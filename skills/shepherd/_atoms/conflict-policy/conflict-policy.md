@@ -25,6 +25,7 @@ instructions:
 | `derivedPathPatterns` | Glob-like path patterns for files whose checked-in content is generated or derived. Catch-all patterns are rejected. |
 | `regenerationCommands` | Commands the repository declares for regenerating derived outputs. Each command names the paths or pattern set it covers. |
 | `structuredMergeRules` | Optional repository-declared mechanical merge rules for non-semantic structured artifacts. Each rule names a path pattern, allowlisted operation, and validation command. |
+| `validationRegistrationPathPatterns` | Bounded repository-declared paths whose entries register validation. Only the additive registration operation may resolve them. |
 | `authoredPathDenylist` | Path patterns that must always be treated as authored, even if another pattern also matches. |
 | `protectedPathPatterns` | Additional paths that may not be auto-resolved because they affect validation, permissions, or review safety. |
 
@@ -49,6 +50,25 @@ is authored or ambiguous and the run stops.
    of the competing changes.
 4. Continue the rebase only when every conflicted path has a configured,
    validated mechanical resolution and the index is clean.
+
+## Additive Validation Registration Rule
+
+`preserve-additive-validation-registrations` is a generic structured operation
+for a validation manifest or workflow where both branches independently add
+registrations. It is allowed only when:
+
+- the rule comes from trusted configuration and names bounded paths;
+- the path is not doctrine, a skill permission surface, or a test source;
+- every exact line from the trusted base remains in order on both sides;
+- the merged result preserves both sets of additions without narrowing,
+  replacing, or deleting a trusted-base entry;
+- both sides' addition order is preserved, while cycles and duplicate
+  registrations are refused rather than guessed; and
+- the rule declares `validationScope: full-repository`, then the complete
+  repository-declared validation runs after resolution.
+
+The operation does not name this repository's workflow path. A repository opts
+in by configuring the bounded path that contains its additive registrations.
 
 ## Derived File Rule
 

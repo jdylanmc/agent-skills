@@ -1,12 +1,17 @@
 const DEFAULT_DENY_PREFIXES = ['doctrine/'];
 const DEFAULT_PROTECTED_PATTERNS = [
-  '.github/workflows/**',
   'skills/**/SKILL.md',
   'skills/**/*.test.mjs',
   'scripts/**/*.test.mjs',
 ];
+const DEFAULT_VALIDATION_REGISTRATION_PATTERNS = ['.github/workflows/**'];
 const TRUSTED_POLICY_SOURCES = new Set(['caller-explicit', 'base-commit-snapshot']);
-const STRUCTURED_OPERATIONS = new Set(['union-set', 'sort-unique-lines', 'json-key-union']);
+const STRUCTURED_OPERATIONS = new Set([
+  'union-set',
+  'sort-unique-lines',
+  'json-key-union',
+  'preserve-additive-validation-registrations',
+]);
 const BROAD_PATTERNS = new Set(['*', '**', '**/*', '*.*']);
 
 function normalizePath(input) {
@@ -62,8 +67,103 @@ export function validateConflictPolicy(config = {}) {
     if (broadRulePatterns.length > 0) {
       return { valid: false, reason: 'overbroad-structured-pattern', patterns: broadRulePatterns };
     }
+    if (rule.operation === 'preserve-additive-validation-registrations'
+      && rule.validationScope !== 'full-repository') {
+      return { valid: false, reason: 'additive-validation-rule-requires-full-repository-validation' };
+    }
   }
   return { valid: true, reason: 'trusted-policy' };
+}
+
+function splitLines(value) {
+  return String(value ?? '').replace(/\r\n/g, '\n').split('\n');
+}
+
+function additionsByBaseSlot(baseLines, candidateLines) {
+  const slots = Array.from({ length: baseLines.length + 1 }, () => []);
+  let baseIndex = 0;
+  for (const line of candidateLines) {
+    if (baseIndex < baseLines.length && line === baseLines[baseIndex]) {
+      baseIndex += 1;
+    } else {
+      slots[baseIndex].push(line);
+    }
+  }
+  if (baseIndex !== baseLines.length) {
+    return null;
+  }
+  return slots;
+}
+
+function mergeAdditionSlot(ours, theirs) {
+  if (new Set(ours).size !== ours.length || new Set(theirs).size !== theirs.length) {
+    return { ok: false, reason: 'duplicate-registration-ambiguous' };
+  }
+  const nodes = [...new Set([...ours, ...theirs])];
+  const edges = new Map(nodes.map((node) => [node, new Set()]));
+  const indegree = new Map(nodes.map((node) => [node, 0]));
+  for (const sequence of [ours, theirs]) {
+    for (let index = 0; index < sequence.length - 1; index += 1) {
+      const from = sequence[index];
+      const to = sequence[index + 1];
+      if (!edges.get(from).has(to)) {
+        edges.get(from).add(to);
+        indegree.set(to, indegree.get(to) + 1);
+      }
+    }
+  }
+  const rank = new Map(nodes.map((node, index) => [node, index]));
+  const ready = nodes.filter((node) => indegree.get(node) === 0);
+  const merged = [];
+  while (ready.length > 0) {
+    ready.sort((a, b) => rank.get(a) - rank.get(b));
+    const node = ready.shift();
+    merged.push(node);
+    for (const next of edges.get(node)) {
+      indegree.set(next, indegree.get(next) - 1);
+      if (indegree.get(next) === 0) ready.push(next);
+    }
+  }
+  if (merged.length !== nodes.length) {
+    return { ok: false, reason: 'incompatible-addition-order' };
+  }
+  if (ours.some((line) => theirs.includes(line))) {
+    return { ok: false, reason: 'duplicate-registration-ambiguous' };
+  }
+  return { ok: true, lines: merged };
+}
+
+export function preserveAdditiveValidationRegistrations({ base, ours, theirs } = {}) {
+  const baseLines = splitLines(base);
+  const oursSlots = additionsByBaseSlot(baseLines, splitLines(ours));
+  const theirsSlots = additionsByBaseSlot(baseLines, splitLines(theirs));
+  if (oursSlots === null || theirsSlots === null) {
+    return { ok: false, reason: 'trusted-base-line-removed-or-changed' };
+  }
+
+  const merged = [];
+  for (let index = 0; index < baseLines.length + 1; index += 1) {
+    const additions = mergeAdditionSlot(oursSlots[index], theirsSlots[index]);
+    if (!additions.ok) {
+      return additions;
+    }
+    merged.push(...additions.lines);
+    if (index < baseLines.length) {
+      merged.push(baseLines[index]);
+    }
+  }
+
+  return {
+    ok: true,
+    operation: 'preserve-additive-validation-registrations',
+    content: merged.join('\n'),
+    preservedBaseLines: baseLines.length,
+    additions: {
+      ours: oursSlots.flat(),
+      theirs: theirsSlots.flat(),
+    },
+    requiredValidationScope: 'full-repository',
+  };
 }
 
 function commandsForPath(filePath, commands = []) {
@@ -86,11 +186,6 @@ export function classifyConflictPath(filePath, config = {}) {
     return { kind: 'authored', path: normalized, reason: 'authored-denylist' };
   }
 
-  const protectedPatterns = [...DEFAULT_PROTECTED_PATTERNS, ...(config.protectedPathPatterns ?? [])];
-  if (matchesAny(normalized, protectedPatterns)) {
-    return { kind: 'authored', path: normalized, reason: 'protected-validation-or-permission-path' };
-  }
-
   const structured = structuredRulesForPath(normalized, config.structuredMergeRules ?? []);
   if (structured.length > 1) {
     return { kind: 'ambiguous', path: normalized, reason: 'multiple-structured-rules', rules: structured };
@@ -100,7 +195,33 @@ export function classifyConflictPath(filePath, config = {}) {
     if (!rule.operation || !rule.validationCommand) {
       return { kind: 'ambiguous', path: normalized, reason: 'structured-rule-missing-validation', rule };
     }
+    const protectedPatterns = [...DEFAULT_PROTECTED_PATTERNS, ...(config.protectedPathPatterns ?? [])];
+    if (matchesAny(normalized, protectedPatterns)) {
+      return { kind: 'authored', path: normalized, reason: 'protected-validation-or-permission-path' };
+    }
+    const validationPatterns = [
+      ...DEFAULT_VALIDATION_REGISTRATION_PATTERNS,
+      ...(config.validationRegistrationPathPatterns ?? []),
+    ];
+    if (matchesAny(normalized, validationPatterns)
+      && (rule.operation !== 'preserve-additive-validation-registrations'
+        || rule.validationScope !== 'full-repository')) {
+      return { kind: 'authored', path: normalized, reason: 'validation-registration-rule-not-safe' };
+    }
     return { kind: 'structured', path: normalized, reason: 'configured-structured-rule', rule };
+  }
+
+  const protectedPatterns = [...DEFAULT_PROTECTED_PATTERNS, ...(config.protectedPathPatterns ?? [])];
+  if (matchesAny(normalized, protectedPatterns)) {
+    return { kind: 'authored', path: normalized, reason: 'protected-validation-or-permission-path' };
+  }
+
+  const validationPatterns = [
+    ...DEFAULT_VALIDATION_REGISTRATION_PATTERNS,
+    ...(config.validationRegistrationPathPatterns ?? []),
+  ];
+  if (matchesAny(normalized, validationPatterns)) {
+    return { kind: 'authored', path: normalized, reason: 'validation-registration-needs-additive-rule' };
   }
 
   if (matchesAny(normalized, config.derivedPathPatterns ?? [])) {
