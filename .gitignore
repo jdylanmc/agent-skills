@@ -4,6 +4,9 @@
 # Skill Run Logs are machine-local evidence and are never committed.
 .skill-log/
 
+# Run-specific fleet control state is machine-local and separate from Chronicle.
+.ship-with-squadron/
+
 # macOS finder metadata
 .DS_Store
 
