@@ -146,8 +146,8 @@ function ensureGitWorktree() {
   fs.mkdirSync(REPOSITORY, { recursive: true });
   git(REPOSITORY, 'init', '-b', 'main');
   fs.writeFileSync(path.join(REPOSITORY, 'seed.txt'), 'seed\n');
-  git(REPOSITORY, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'add', 'seed.txt');
-  git(REPOSITORY, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'seed');
+  git(REPOSITORY, '-c', 'user.name=Test', '-c', 'user.email=test-identity', 'add', 'seed.txt');
+  git(REPOSITORY, '-c', 'user.name=Test', '-c', 'user.email=test-identity', 'commit', '-m', 'seed');
   fs.mkdirSync(path.dirname(WORKTREE), { recursive: true });
   git(REPOSITORY, 'worktree', 'add', '-b', 'issue-1', WORKTREE);
 }

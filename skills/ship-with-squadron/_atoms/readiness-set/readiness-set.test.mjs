@@ -62,9 +62,9 @@ function setupGitWorktree(repositoryRoot, worktree, branch) {
   execFileSync('git', ['-C', repositoryRoot, 'init', '-b', 'main'], { stdio: 'ignore' });
   fs.writeFileSync(path.join(repositoryRoot, 'seed.txt'), 'seed\n');
   execFileSync('git', ['-C', repositoryRoot, '-c', 'user.name=Test', '-c',
-    'user.email=test@example.invalid', 'add', 'seed.txt'], { stdio: 'ignore' });
+    'user.email=test-identity', 'add', 'seed.txt'], { stdio: 'ignore' });
   execFileSync('git', ['-C', repositoryRoot, '-c', 'user.name=Test', '-c',
-    'user.email=test@example.invalid', 'commit', '-m', 'seed'], { stdio: 'ignore' });
+    'user.email=test-identity', 'commit', '-m', 'seed'], { stdio: 'ignore' });
   execFileSync('git', ['-C', repositoryRoot, 'worktree', 'add', '-b', branch, worktree], {
     stdio: 'ignore',
   });
@@ -1014,7 +1014,7 @@ test('manifest Shepherd intent no records a real not-required state and obligati
   fs.writeFileSync(path.join(worktree, 'worker-change.txt'), 'changed\n');
   execFileSync('git', ['-C', worktree, 'add', 'worker-change.txt'], { stdio: 'ignore' });
   execFileSync('git', ['-C', worktree, '-c', 'user.name=Test', '-c',
-    'user.email=test@example.invalid', 'commit', '-m', 'worker changed head'], {
+    'user.email=test-identity', 'commit', '-m', 'worker changed head'], {
     stdio: 'ignore',
   });
   assert.throws(() => recordShepherdNotRequired(current, noManifest, 'a', obligation, {
