@@ -113,7 +113,8 @@ export function deriveFleetDisposition(state, manifest) {
 }
 
 function checkingIssue(issue) {
-  return issue.checkActivity?.state === 'active';
+  return issue.checkActivity?.state === 'active'
+    && !['failed', 'timed-out', 'deferred'].includes(issue.status);
 }
 
 export function conciseFleetStatus(state, frontier, manifest) {

@@ -2,13 +2,26 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { normalizeOrchestrationPayload } from '../../../_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.mjs';
+import {
+  adaptOrchestrationPayload,
+  normalizeOrchestrationPayload,
+} from '../../../_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.mjs';
+import {
+  normalizePayload,
+  redactPayload,
+  renderHandoff,
+} from '../../../_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.mjs';
 import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
 import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
   canonicalFilesystemIdentity,
+  captureIsolatedGitWorktreeIdentity,
   mutateFleetState,
   reconcileFrontier,
+  verifyActiveAssignmentIdentities,
+  verifyGitAssignmentRevisions,
+  verifyPersistedAssignmentRevisions,
+  verifyPersistedGitWorktreeIdentity,
 } from '../fleet-state/fleet-state.mjs';
 
 const BRIEF_SECTIONS = ['GOAL', 'SCOPE', 'CONTEXT', 'ACCEPTANCE', 'VERIFY', 'TIMEBOX', 'FORBIDDEN', 'REPORT', 'STANDING'];
@@ -173,12 +186,16 @@ function validateSourceObservation(record, state, manifest, issue) {
 }
 
 function ensureFreshOwnership(state, input) {
-  const requested = canonicalFilesystemIdentity(input.worktree);
+  const requested = canonicalFilesystemIdentity(input.worktree, { requireExisting: true });
   for (const assignment of allAssignments(state)) {
     if (assignment.workerContext === input.workerContext) throw new Error('worker context must be fresh');
     if (assignment.active && assignment.branch === input.branch) throw new Error(`branch already owned: ${input.branch}`);
-    if (assignment.active
-        && canonicalFilesystemIdentity(assignment.worktree).key === requested.key) {
+    if (assignment.worktree === requested.path
+        || assignment.worktreeIdentity?.key === requested.key
+        || canonicalFilesystemIdentity(assignment.worktree, {
+          requireExisting: assignment.active,
+          requireCanonical: false,
+        }).key === requested.key) {
       throw new Error(`worktree already owned: ${input.worktree}`);
     }
   }
@@ -187,6 +204,7 @@ function ensureFreshOwnership(state, input) {
 export function assignFreshWorker(state, manifest, input) {
   if (!manifest) throw new Error('confirmed manifest is required for assignment');
   assertManifestAuthority(state, manifest);
+  verifyActiveAssignmentIdentities(state, manifest);
   const record = state.issues?.[input.issue];
   const issue = manifestIssue(manifest, input.issue);
   if (!record) throw new Error(`unknown issue: ${input.issue}`);
@@ -211,10 +229,21 @@ export function assignFreshWorker(state, manifest, input) {
       || !nonEmpty(input.baseSha) || !nonEmpty(input.headSha)) {
     throw new Error('assignment requires branch, worktree, workerContext, baseSha, and headSha');
   }
-  const worktreeIdentity = canonicalFilesystemIdentity(input.worktree);
+  const worktreeIdentity = captureIsolatedGitWorktreeIdentity(
+    manifest.repository.root,
+    input.worktree,
+    input.branch,
+  );
   if (worktreeIdentity.path !== input.worktree) {
     throw new Error('assignment worktree must be a normalized canonical filesystem path');
   }
+  verifyGitAssignmentRevisions(
+    manifest.repository.root,
+    input.worktree,
+    manifest.repository.baseBranch,
+    input.baseSha,
+    input.headSha,
+  );
   ensureFreshOwnership(state, input);
   const packet = validateBoundedPacket(input.packet, state, manifest, issue, input);
   if (!packet.valid) throw new Error(`invalid implementation packet: ${packet.defects.join('; ')}`);
@@ -226,6 +255,7 @@ export function assignFreshWorker(state, manifest, input) {
     workerContext: input.workerContext,
     branch: input.branch,
     worktree: input.worktree,
+    worktreeIdentity,
     baseSha: input.baseSha,
     headSha: input.headSha,
     packet: structuredClone(input.packet),
@@ -548,10 +578,14 @@ export function validateContinuationArtifact(handoff, payload, expected = null, 
   if (bytes.length !== handoff.bytes) defects.push('artifact byte count does not match returned metadata');
   const headings = content.split('\n').filter((line) => line.startsWith('## ')).map((line) => line.slice(3));
   if (!same(headings, handoff.headings)) defects.push('artifact headings do not match returned metadata');
-  for (const section of BRIEF_SECTIONS) {
-    if (!new RegExp(`(^|\\n)(?:#+\\s+)?${section}(?:\\s*:)?\\s*$`, 'm').test(content)) {
-      defects.push(`artifact section ${section} is absent`);
+  try {
+    const core = normalizePayload(adaptOrchestrationPayload(payload));
+    const expectedDocument = renderHandoff(redactPayload(core).payload).document;
+    if (!bytes.equals(Buffer.from(expectedDocument, 'utf8'))) {
+      defects.push('artifact content does not exactly match the normalized orchestration payload');
     }
+  } catch (error) {
+    defects.push(`artifact deterministic rendering failed: ${error.code ?? 'error'}:${error.message}`);
   }
   if (expected) {
     for (const [inputName, expectedField] of REQUIRED_HANDOFF_INPUTS) {
@@ -580,6 +614,7 @@ export function validateContinuationArtifact(handoff, payload, expected = null, 
 export function continueWithFreshWorker(state, manifest, input) {
   if (!manifest) throw new Error('confirmed manifest is required for continuation');
   assertManifestAuthority(state, manifest);
+  verifyActiveAssignmentIdentities(state, manifest);
   const record = state.issues?.[input.issue];
   const issue = manifestIssue(manifest, input.issue);
   if (!record?.assignment?.active || record.status !== 'active') {
@@ -601,7 +636,18 @@ export function continueWithFreshWorker(state, manifest, input) {
     throw new Error('worker context must be fresh');
   }
   const continuationIdentity = canonicalFilesystemIdentity(input.worktree);
-  const ownedIdentity = canonicalFilesystemIdentity(record.assignment.worktree);
+  const ownedIdentity = verifyPersistedGitWorktreeIdentity(
+    record.assignment.worktreeIdentity,
+    manifest.repository.root,
+    record.assignment.branch,
+  );
+  verifyPersistedAssignmentRevisions(
+    manifest.repository.root,
+    record.assignment.worktree,
+    manifest.repository.baseBranch,
+    record.assignment.baseSha,
+    record.assignment.headSha,
+  );
   if (continuationIdentity.key !== ownedIdentity.key
       || continuationIdentity.path !== record.assignment.worktree) {
     throw new Error('continuation worktree identity differs from the owned worktree');
@@ -668,6 +714,7 @@ export function continueWithFreshWorker(state, manifest, input) {
     workerContext: input.workerContext,
     branch: prior.branch,
     worktree: prior.worktree,
+    worktreeIdentity: structuredClone(prior.worktreeIdentity),
     baseSha: prior.baseSha,
     headSha: prior.headSha,
     packet: structuredClone(input.packet),
@@ -690,11 +737,24 @@ export function continueWithFreshWorker(state, manifest, input) {
 export function releaseAfterValidatedHandoff(state, manifest, input) {
   if (!manifest) throw new Error('confirmed manifest is required for handoff release');
   assertManifestAuthority(state, manifest);
+  verifyActiveAssignmentIdentities(state, manifest);
   const record = state.issues?.[input.issue];
   const issue = manifestIssue(manifest, input.issue);
   if (!record?.assignment?.active || record.status !== 'active') {
     throw new Error('handoff release requires an active prior assignment');
   }
+  verifyPersistedGitWorktreeIdentity(
+    record.assignment.worktreeIdentity,
+    manifest.repository.root,
+    record.assignment.branch,
+  );
+  verifyPersistedAssignmentRevisions(
+    manifest.repository.root,
+    record.assignment.worktree,
+    manifest.repository.baseBranch,
+    record.assignment.baseSha,
+    record.assignment.headSha,
+  );
   if (!['stalled', 'exhausted', 'timed-out', 'crashed'].includes(input.reason)) {
     throw new Error('handoff release reason is not a terminal worker condition');
   }
@@ -755,12 +815,33 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
   next.issues[input.issue].continuationChain.push(archived);
   next.issues[input.issue].assignment = null;
   next.issues[input.issue].handoffObligation = null;
+  const queuedRevision = next.reShepherdQueue.find((entry) =>
+    entry.issue === input.issue
+    && entry.action === 'await-safe-ownership-transition'
+    && entry.blocker === 'active-assignment-revision-transition-required'
+    && entry.revisionObservation !== null);
+  if (queuedRevision && input.reason !== 'timed-out') {
+    next.issues[input.issue].baseSha = queuedRevision.baseSha;
+    next.issues[input.issue].headSha = queuedRevision.headSha;
+    next.issues[input.issue].changeRequest = null;
+    queuedRevision.blocker = null;
+    queuedRevision.action = manifest.shepherdIntent === 'yes'
+      ? 'invoke-fresh-shepherd'
+      : 'rerun-quality-and-provider-observation';
+  } else if (queuedRevision) {
+    next.reShepherdQueue = next.reShepherdQueue.filter((entry) => entry.issue !== input.issue);
+  }
   next.issues[input.issue].status = input.reason === 'timed-out' ? 'timed-out' : 'blocked';
   next.issues[input.issue].statusReason = input.reason;
   next.issues[input.issue].terminalDisposition = input.reason === 'timed-out'
     ? 'timed-out-with-handoff'
     : 'blocked';
-  next.issues[input.issue].nextAction = input.nextAction ?? 'await-human-direction';
+  next.issues[input.issue].nextAction = input.nextAction ?? (queuedRevision && input.reason !== 'timed-out'
+    ? manifest.shepherdIntent === 'yes'
+      ? 'consume-fresh-re-shepherd-receipt'
+      : 'rerun-quality-and-provider-observation'
+    : 'await-human-direction');
+  next.issues[input.issue].checkActivity = null;
   next.events.push({
     type: 'assignment-released-after-handoff',
     issue: input.issue,

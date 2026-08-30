@@ -16,6 +16,13 @@ import {
   normalizeMergeObservation,
 } from '../provider-seam/provider-seam.mjs';
 import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.mjs';
+import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
+import {
+  reconcileFrontier,
+  verifyActiveAssignmentIdentities,
+  verifyPersistedAssignmentRevisions,
+  verifyPersistedGitWorktreeIdentity,
+} from '../fleet-state/fleet-state.mjs';
 
 const GREEN = new Set(['mergeable-and-green', 'no-op-mergeable-and-green']);
 
@@ -35,13 +42,25 @@ function same(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function archiveSuccessfulAssignment(record, completion) {
+function archiveSuccessfulAssignment(record, completion, manifest) {
   if (record.assignment === null || record.assignment === undefined) {
     if (record.status === 'active') {
       throw new Error('completed readiness cannot leave an active issue without assignment identity');
     }
     return;
   }
+  verifyPersistedGitWorktreeIdentity(
+    record.assignment.worktreeIdentity,
+    manifest.repository.root,
+    record.assignment.branch,
+  );
+  verifyPersistedAssignmentRevisions(
+    manifest.repository.root,
+    record.assignment.worktree,
+    manifest.repository.baseBranch,
+    record.assignment.baseSha,
+    record.assignment.headSha,
+  );
   const expectedKeys = ['generation', 'workerContext', 'baseSha', 'headSha', 'completedAt', 'resultDigest'];
   if (!completion
       || !same(Object.keys(completion).sort(), expectedKeys.sort())
@@ -167,6 +186,7 @@ export function recordShepherdNotRequired(
   assignmentCompletion = null,
 ) {
   assertFleetManifest(manifest);
+  verifyActiveAssignmentIdentities(state, manifest);
   if (manifest.shepherdIntent !== 'no') throw new Error('Shepherd-not-required requires manifest intent no');
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
@@ -205,7 +225,7 @@ export function recordShepherdNotRequired(
   );
   if (defects.length) throw new Error(`invalid Shepherd-not-required obligation: ${defects.join('; ')}`);
   const next = structuredClone(state);
-  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion);
+  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion, manifest);
   next.issues[issueIdentity].shepherd = null;
   next.issues[issueIdentity].shepherdDecision = {
     state: 'not-required',
@@ -219,9 +239,10 @@ export function recordShepherdNotRequired(
   next.issues[issueIdentity].dependencyState = 'unclassified';
   next.issues[issueIdentity].terminalDisposition = 'ready-for-human-merge';
   next.issues[issueIdentity].nextAction = 'await-human-merge';
+  next.issues[issueIdentity].checkActivity = null;
   next.events.push({ type: 'shepherd-not-required', issue: issueIdentity });
   next.fleetDisposition = deriveFleetDisposition(next, manifest);
-  return next;
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }
 
 function currentRevision(state, manifest, revisions, issue, mergeObservation) {
@@ -236,6 +257,47 @@ function currentRevision(state, manifest, revisions, issue, mergeObservation) {
   return revision;
 }
 
+function clearMatchingShepherdActivity(record, generation, states) {
+  if (record.checkActivity === null) return;
+  if (record.checkActivity.kind !== 'shepherd-check'
+      || record.checkActivity.generation !== generation
+      || !states.includes(record.checkActivity.state)) {
+    throw new Error('Shepherd check activity does not match the affected readiness generation');
+  }
+  record.checkActivity = null;
+}
+
+function bindRevisionToSafeRecord(record, queue, revision, manifest) {
+  if (record.status === 'active' || record.assignment?.active === true) {
+    Object.assign(queue, {
+      baseSha: revision.baseSha,
+      headSha: revision.headSha,
+      revisionObservation: structuredClone(revision),
+      blocker: 'active-assignment-revision-transition-required',
+      action: 'await-safe-ownership-transition',
+    });
+    record.nextAction = 'complete-or-handoff-active-assignment-before-readiness-rebind';
+    return false;
+  }
+  record.baseSha = revision.baseSha;
+  record.headSha = revision.headSha;
+  record.changeRequest = null;
+  clearMatchingShepherdActivity(record, queue.generation, ['blocked']);
+  record.nextAction = manifest.shepherdIntent === 'yes'
+    ? 'consume-fresh-re-shepherd-receipt'
+    : 'rerun-quality-and-provider-observation';
+  Object.assign(queue, {
+    baseSha: revision.baseSha,
+    headSha: revision.headSha,
+    revisionObservation: structuredClone(revision),
+    blocker: null,
+    action: manifest.shepherdIntent === 'yes'
+      ? 'invoke-fresh-shepherd'
+      : 'rerun-quality-and-provider-observation',
+  });
+  return true;
+}
+
 export function expireReadinessAfterSiblingMerge(
   state,
   manifest,
@@ -244,6 +306,7 @@ export function expireReadinessAfterSiblingMerge(
   now = new Date().toISOString(),
 ) {
   assertFleetManifest(manifest);
+  verifyActiveAssignmentIdentities(state, manifest);
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('readiness expiry state is not bound to the confirmed manifest');
@@ -404,6 +467,7 @@ export function expireReadinessAfterSiblingMerge(
       issue: record.identity,
       publication: siblingPublication,
       expiryIndex: next.expiredReadinessClaims.length - 1,
+      generation,
     });
   }
   for (const target of affected) {
@@ -417,25 +481,7 @@ export function expireReadinessAfterSiblingMerge(
         target.issue,
         mergeObservation,
       );
-      record.baseSha = revision.baseSha;
-      record.headSha = revision.headSha;
-      record.changeRequest = null;
-      if (record.checkActivity?.state === 'blocked'
-          && record.checkActivity.generation === target.generation) {
-        record.checkActivity = null;
-      }
-      record.nextAction = manifest.shepherdIntent === 'yes'
-        ? 'consume-fresh-re-shepherd-receipt'
-        : 'rerun-quality-and-provider-observation';
-      Object.assign(queue, {
-        baseSha: revision.baseSha,
-        headSha: revision.headSha,
-        revisionObservation: structuredClone(revision),
-        blocker: null,
-        action: manifest.shepherdIntent === 'yes'
-          ? 'invoke-fresh-shepherd'
-          : 'rerun-quality-and-provider-observation',
-      });
+      bindRevisionToSafeRecord(record, queue, revision, manifest);
       Object.assign(next.expiredReadinessClaims[target.expiryIndex], {
         currentBaseSha: revision.baseSha,
         currentHeadSha: revision.headSha,
@@ -452,7 +498,7 @@ export function expireReadinessAfterSiblingMerge(
     }
   }
   next.fleetDisposition = deriveFleetDisposition(next, manifest);
-  return next;
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }
 
 export function recordReadinessRevisionObservation(
@@ -462,6 +508,7 @@ export function recordReadinessRevisionObservation(
   observation,
 ) {
   assertFleetManifest(manifest);
+  verifyActiveAssignmentIdentities(state, manifest);
   const queue = state.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
   if (!queue || queue.action !== 'acquire-current-change-request-revision') {
     throw new Error(`no blocked revision acquisition for ${issueIdentity}`);
@@ -474,26 +521,8 @@ export function recordReadinessRevisionObservation(
   }
   const next = structuredClone(state);
   const target = next.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
-  Object.assign(target, {
-    baseSha: revision.baseSha,
-    headSha: revision.headSha,
-    revisionObservation: structuredClone(revision),
-    blocker: null,
-    action: manifest.shepherdIntent === 'yes'
-      ? 'invoke-fresh-shepherd'
-      : 'rerun-quality-and-provider-observation',
-  });
   const record = next.issues[issueIdentity];
-  record.baseSha = revision.baseSha;
-  record.headSha = revision.headSha;
-  record.changeRequest = null;
-  if (record.checkActivity?.state === 'blocked'
-      && record.checkActivity.generation === queue.generation) {
-    record.checkActivity = null;
-  }
-  record.nextAction = manifest.shepherdIntent === 'yes'
-    ? 'consume-fresh-re-shepherd-receipt'
-    : 'rerun-quality-and-provider-observation';
+  const applied = bindRevisionToSafeRecord(record, target, revision, manifest);
   const expiry = [...next.expiredReadinessClaims].reverse().find((entry) =>
     entry.issue === issueIdentity && entry.generation === target.generation);
   if (expiry) {
@@ -502,11 +531,41 @@ export function recordReadinessRevisionObservation(
     expiry.revisionObservation = structuredClone(revision);
   }
   next.events.push({
-    type: 'readiness-revision-observed',
+    type: applied ? 'readiness-revision-observed' : 'readiness-revision-queued',
     issue: issueIdentity,
     generation: target.generation,
   });
-  return next;
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
+}
+
+export function activateQueuedReadinessRevision(
+  state,
+  manifest,
+  issueIdentity,
+) {
+  assertFleetManifest(manifest);
+  verifyActiveAssignmentIdentities(state, manifest);
+  const queue = state.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
+  const record = state.issues?.[issueIdentity];
+  if (!queue
+      || queue.action !== 'await-safe-ownership-transition'
+      || queue.blocker !== 'active-assignment-revision-transition-required'
+      || queue.revisionObservation === null) {
+    throw new Error(`no queued ownership-safe revision transition for ${issueIdentity}`);
+  }
+  if (record?.status === 'active' || record?.assignment !== null) {
+    throw new Error('queued readiness revision cannot activate while mutable ownership remains');
+  }
+  const next = structuredClone(state);
+  const target = next.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
+  const targetRecord = next.issues[issueIdentity];
+  bindRevisionToSafeRecord(targetRecord, target, target.revisionObservation, manifest);
+  next.events.push({
+    type: 'readiness-revision-activated',
+    issue: issueIdentity,
+    generation: target.generation,
+  });
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }
 
 export function consumeReShepherdQueue(
@@ -518,12 +577,16 @@ export function consumeReShepherdQueue(
   assignmentCompletion = null,
 ) {
   assertFleetManifest(manifest);
+  verifyActiveAssignmentIdentities(state, manifest);
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('re-Shepherd state is not bound to the confirmed manifest');
   }
   const queue = state.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
   if (!queue) throw new Error(`no re-Shepherd obligation for ${issueIdentity}`);
+  if (['failed', 'timed-out', 'deferred'].includes(state.issues[issueIdentity]?.status)) {
+    throw new Error('terminal issue cannot consume a re-Shepherd obligation');
+  }
   if (queue.blocker !== null || queue.revisionObservation === null) {
     throw new Error('re-Shepherd remains blocked on current revision evidence');
   }
@@ -569,7 +632,7 @@ export function consumeReShepherdQueue(
     throw new Error(`fresh Shepherd prerequisite revalidation is incomplete: ${semantic.defects.join('; ')}`);
   }
   const next = structuredClone(state);
-  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion);
+  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion, manifest);
   next.issues[issueIdentity].pipeline = structuredClone(revalidation.pipeline);
   next.issues[issueIdentity].shepherd = structuredClone(accepted);
   next.issues[issueIdentity].setObligation = structuredClone(accepted.setObligation);
@@ -581,6 +644,7 @@ export function consumeReShepherdQueue(
   next.issues[issueIdentity].status = 'completed';
   next.issues[issueIdentity].dependencyState = 'unclassified';
   next.issues[issueIdentity].nextAction = 'await-human-merge';
+  clearMatchingShepherdActivity(next.issues[issueIdentity], queue.generation, ['active']);
   next.reShepherdQueue = next.reShepherdQueue.filter((entry) => entry.issue !== issueIdentity);
   next.events.push({
     type: 're-shepherd-receipt-consumed',
@@ -588,7 +652,7 @@ export function consumeReShepherdQueue(
     generation: queue.generation,
   });
   next.fleetDisposition = deriveFleetDisposition(next, manifest);
-  return next;
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }
 
 export function consumeNoShepherdRevalidation(
@@ -600,6 +664,7 @@ export function consumeNoShepherdRevalidation(
   assignmentCompletion = null,
 ) {
   assertFleetManifest(manifest);
+  verifyActiveAssignmentIdentities(state, manifest);
   if (manifest.shepherdIntent !== 'no') throw new Error('no-Shepherd revalidation requires manifest intent no');
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
@@ -608,6 +673,9 @@ export function consumeNoShepherdRevalidation(
   const queue = state.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
   if (!queue || queue.action !== 'rerun-quality-and-provider-observation') {
     throw new Error(`no no-Shepherd revalidation obligation for ${issueIdentity}`);
+  }
+  if (['failed', 'timed-out', 'deferred'].includes(state.issues[issueIdentity]?.status)) {
+    throw new Error('terminal issue cannot consume a no-Shepherd revalidation obligation');
   }
   if (revalidation?.status !== 'completed'
       || revalidation?.terminal !== true
@@ -660,7 +728,7 @@ export function consumeNoShepherdRevalidation(
   }
   const next = structuredClone(state);
   const record = next.issues[issueIdentity];
-  archiveSuccessfulAssignment(record, assignmentCompletion);
+  archiveSuccessfulAssignment(record, assignmentCompletion, manifest);
   record.baseSha = queue.baseSha;
   record.headSha = queue.headSha;
   record.pipeline = structuredClone(revalidation.pipeline);
@@ -676,6 +744,7 @@ export function consumeNoShepherdRevalidation(
   record.status = 'completed';
   record.dependencyState = 'unclassified';
   record.nextAction = 'await-human-merge';
+  record.checkActivity = null;
   next.reShepherdQueue = next.reShepherdQueue.filter((entry) => entry.issue !== issueIdentity);
   next.events.push({
     type: 'no-shepherd-revalidation-consumed',
@@ -683,5 +752,5 @@ export function consumeNoShepherdRevalidation(
     generation: queue.generation,
   });
   next.fleetDisposition = deriveFleetDisposition(next, manifest);
-  return next;
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }

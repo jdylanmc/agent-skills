@@ -189,7 +189,7 @@ test('consumes the checked-in local blast-radius report unchanged and validates 
   }), revision, identity).readiness, 'invalid');
   assert.equal(adaptBlastRadiusEvidence(blast({
     invocation: { skill: 'blast-radius', id: 'synthetic-wrapper' },
-  }), revision, identity).readiness, 'satisfied');
+  }), revision, identity).readiness, 'invalid');
   const allNotAttempted = blast();
   allNotAttempted.assertionLadders[0].rungs = allNotAttempted.assertionLadders[0].rungs.map(
     (rung) => ({
@@ -265,6 +265,9 @@ test('consumes the checked-in local blast-radius report unchanged and validates 
     'next-evidence-action': 'obtain read-only proof',
     'next-evidence-reason': 'environment absent',
   }), revision, identity).readiness, 'unavailable');
+  assert.equal(adaptBlastRadiusEvidence(blast({
+    syntheticCompletion: true,
+  }), revision, identity).readiness, 'invalid');
 });
 
 test('quality gate validates raw receipts and human descoping receipts instead of booleans', () => {

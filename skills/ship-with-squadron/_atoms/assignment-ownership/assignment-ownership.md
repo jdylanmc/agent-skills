@@ -36,8 +36,22 @@ ownership of the same issue, branch, or worktree and reuse of any worker
 context. Worktree identity is a normalized absolute canonical filesystem
 identity: existing paths use real path and device/inode identity, aliases and
 symbolic links are refused, case is normalized on case-insensitive filesystems,
-and a not-yet-created path is accepted only beneath a safely canonicalized
-existing ancestry. Record monotonically increasing assignment generations.
+and assignment dispatch requires an existing real directory registered by
+`git worktree list --porcelain` as an isolated non-primary worktree on the
+exact assigned branch. Reject the manifest root, primary checkout, regular
+files, reused assignment history, repository mismatches, and path/case/link
+aliases. Persist its canonical path, device/inode identity, Git common
+directory, worktree Git directory, primary checkout, and branch ref. Reverify
+that exact identity on every active-state write, continuation, and handoff
+release; deleting and recreating the same path does not preserve ownership.
+Before dispatch, resolve the configured base branch and isolated worktree
+`HEAD` as commits and require them to equal the packet's base/head revisions;
+caller-supplied revision labels are not evidence. Before continuation, handoff
+release, or successful completion, require the stored head to still equal the
+worktree `HEAD` and the stored base commit to remain in the configured base
+branch history. A worker commit therefore requires an explicit revision
+reconciliation before old packet or completion bindings can be consumed.
+Record monotonically increasing assignment generations.
 
 For stalled, exhausted, timed-out, or crashed workers:
 
@@ -53,7 +67,8 @@ For stalled, exhausted, timed-out, or crashed workers:
    that descriptor, compare identity and metadata before/after, snapshot and
    recheck the trusted non-symlink/reparse directory chain, reject links, swaps,
    and escapes, then validate all
-   consolidated brief sections and exact
+   complete deterministically rendered artifact against the normalized
+   submitted payload, including every consolidated brief section and exact
    run/issue/prior-generation/branch/worktree/source/target/base/head,
    manifest/source revision, and allowed-path bindings. The continuation task
    contract and packet must exactly equal the original manifest-bound

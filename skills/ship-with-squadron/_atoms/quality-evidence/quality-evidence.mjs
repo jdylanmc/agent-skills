@@ -413,7 +413,7 @@ function validateRegressionProof(report, ladderIds, defects) {
 
 export function adaptBlastRadiusEvidence(report, revision) {
   const defects = [];
-  const requiredFields = [
+  const commonFields = [
     'subjectChange', 'suppliedBaseline', 'includedScope', 'exclusions',
     'repositories', 'revisions', 'environments', 'directCallers',
     'crossBoundaryConsumers', 'assertionLadders', 'classifications',
@@ -437,7 +437,13 @@ export function adaptBlastRadiusEvidence(report, revision) {
       receipt: report ?? null,
     };
   }
-  for (const field of requiredFields) {
+  const exactTopLevelFields = report['regression-proof-status'] === 'unavailable'
+    ? [...commonFields, 'next-evidence-action', 'next-evidence-reason']
+    : commonFields;
+  if (!exactObjectKeys(report, exactTopLevelFields)) {
+    defects.push('blast-radius report top-level schema is not exact');
+  }
+  for (const field of commonFields) {
     if (!Object.hasOwn(report, field)) defects.push(`blast-radius report.${field} is absent`);
   }
   for (const field of ['subjectChange', 'suppliedBaseline']) {

@@ -80,5 +80,8 @@ all-not-attempted, or otherwise nondecisive evidence cannot clear. Empty ladders
 `unavailable`, `unproven-assertion`, invalid revision binding, or malformed
 cross-field evidence never becomes success. A `confirmed-risk` requires
 remediation or a human decision outside this fleet; the fleet cannot accept
-risk. The adapter returns the same report as its receipt; it does not rewrite
-or enrich it.
+risk. The top-level report schema is exact: the documented common fields only,
+plus `next-evidence-action` and `next-evidence-reason` only when proof status is
+`unavailable`. Synthetic wrappers, completion flags, and extra provenance are
+invalid. The adapter returns the same report as its receipt; it does not
+rewrite or enrich it.

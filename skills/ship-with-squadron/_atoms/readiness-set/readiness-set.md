@@ -62,6 +62,17 @@ Duplicate merge redelivery is idempotent. Do not
 force-push merely because the base moved; Shepherd decides whether its trigger
 and SHA-pinned lease rules require a push.
 
+An in-flight Shepherd blocker retains the affected generation. Revision
+evidence clears only the blocker for that exact generation. If mutable
+assignment ownership still binds older base/head values, keep the new evidence
+queued without changing the issue or packet revisions; activate it atomically
+when ownership is validly archived. A fresh Shepherd check then reuses the
+queued generation, is persistable, and is cleared only by successful
+generation-matched receipt consumption.
+Failed, deferred, and timed-out-with-handoff issues cannot consume queued
+readiness evidence. A terminal timed-out release removes its actionable queue
+entry rather than silently converting the issue back to completed readiness.
+
 Expiry uses one explicit persisted representation: accepted nested readiness is
 replaced by an `expired` marker bound to the new generation, while nested and
 issue-level set obligations and no-Shepherd decisions are cleared together.

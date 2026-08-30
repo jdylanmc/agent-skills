@@ -18,7 +18,7 @@ Persist control state at
 `<repository>/.ship-with-squadron/<run-id>/fleet-state.json`. This path is
 ignored, run-specific, and separate from the best-effort Chronicler log.
 
-Use the fleet state helper to create schema version 4, bind it to
+Use the fleet state helper to create schema version 5, bind it to
 the confirmed manifest and provider-configuration digests, reread it, reconcile
 the frontier, and write with an exact expected revision. Every write validates
 the complete state schema and cross-field invariants before taking an exclusive
@@ -34,9 +34,14 @@ into canonical lock presence, so a live writer never exposes an ownerless
 initialization window. Stale ownerless or malformed locks are quarantined only
 after directory identity is claimed and rechecked. Cleanup and release rename
 only the verified directory identity out of the canonical path before removal,
-so a contender's replacement lock is never moved or deleted. Writes fsync a sibling pending file,
-atomically rename it, and fsync the parent directory. Crash-stale locks are
-recovered only when their recorded process is gone.
+so a contender's replacement lock is never moved or deleted. Lock ownership
+records both PID and a portable process-start identity where available, so PID
+reuse does not permanently wedge a stale lock; platforms without that proof
+fail closed for a live PID while still recovering safely aged ownerless or
+malformed locks. Writes fsync a sibling pending file whose name contains the
+random lock token and an independent nonce, atomically rename it, and fsync the
+parent directory. Well-formed crash residue is recovered only while the current
+lock identity is held and reverified.
 
 Persist and reread after assignment, handoff, publication, Shepherd return,
 observed merge, readiness expiry, and terminal transition. Per-issue state
@@ -59,6 +64,10 @@ Neither pending nor active work can jump directly to completed; review readiness
 is entered only through a complete semantic pipeline, confirmed current
 publication, exact Shepherd or no-Shepherd obligation, and the latest merge
 watermark. Empty or stale caller-shaped readiness is invalid on load and write.
+Ready, blocked, active, and completed scheduler collections, dependency
+classifications, and their stable reasons are recomputed from the closed
+manifest and issue state on every validation; caller-supplied alternatives are
+rejected.
 Only
 declared status transitions are accepted; mutable ownership is entered only by
 assignment, and there is no general `active -> pending` transition. Budget

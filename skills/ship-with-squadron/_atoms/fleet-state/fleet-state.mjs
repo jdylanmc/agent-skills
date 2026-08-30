@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -22,8 +23,9 @@ import {
   publicationKey,
 } from '../provider-seam/provider-seam.mjs';
 import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.mjs';
+import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
 
-export const FLEET_STATE_SCHEMA_VERSION = 4;
+export const FLEET_STATE_SCHEMA_VERSION = 5;
 const ISSUE_STATUSES = new Set([
   'pending', 'active', 'completed', 'blocked', 'failed', 'timed-out', 'deferred',
 ]);
@@ -197,6 +199,8 @@ export function canonicalFilesystemIdentity(
     return {
       path: canonicalPath,
       key: `inode:${String(stat.dev)}:${String(stat.ino)}`,
+      device: String(stat.dev),
+      inode: String(stat.ino),
       exists: true,
       caseInsensitive,
     };
@@ -207,6 +211,229 @@ export function canonicalFilesystemIdentity(
     exists: false,
     caseInsensitive,
   };
+}
+
+function gitOutput(cwd, args) {
+  try {
+    return execFileSync('git', ['-C', cwd, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 10_000,
+    }).trim();
+  } catch (error) {
+    const detail = String(error.stderr ?? error.message ?? '').trim();
+    throw new Error(`git worktree metadata is unavailable${detail ? `: ${detail}` : ''}`);
+  }
+}
+
+function parseGitWorktrees(repositoryRoot) {
+  const output = execFileSync('git', ['-C', repositoryRoot, 'worktree', 'list', '--porcelain', '-z'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 10_000,
+  });
+  const entries = [];
+  let current = null;
+  for (const field of output.split('\0')) {
+    if (field.startsWith('worktree ')) {
+      if (current) entries.push(current);
+      current = { path: field.slice('worktree '.length), branch: null, bare: false };
+    } else if (current && field.startsWith('branch ')) {
+      current.branch = field.slice('branch '.length);
+    } else if (current && field === 'bare') {
+      current.bare = true;
+    }
+  }
+  if (current) entries.push(current);
+  if (entries.length === 0) throw new Error('repository has no registered Git worktrees');
+  return entries;
+}
+
+function validatedBranchRef(repositoryRoot, branch) {
+  if (!nonEmpty(branch)) throw new Error('Git branch is absent');
+  try {
+    execFileSync('git', ['-C', repositoryRoot, 'check-ref-format', '--branch', branch], {
+      stdio: 'ignore',
+      timeout: 10_000,
+    });
+  } catch {
+    throw new Error('Git branch name is invalid');
+  }
+  return `refs/heads/${branch}`;
+}
+
+function exactCommitId(value, label) {
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(value ?? '')) {
+    throw new Error(`${label} must be a full Git object ID`);
+  }
+  return value;
+}
+
+export function captureIsolatedGitWorktreeIdentity(repositoryRoot, worktree, branch) {
+  const repository = canonicalFilesystemIdentity(repositoryRoot, { requireExisting: true });
+  const candidate = canonicalFilesystemIdentity(worktree, { requireExisting: true });
+  const candidateStat = fs.lstatSync(candidate.path);
+  if (!candidateStat.isDirectory() || candidateStat.isSymbolicLink()) {
+    throw new Error('assignment worktree must be a real directory');
+  }
+
+  const expectedBranch = validatedBranchRef(repository.path, branch);
+  const repositoryTop = canonicalFilesystemIdentity(
+    gitOutput(repository.path, ['rev-parse', '--path-format=absolute', '--show-toplevel']),
+    { requireExisting: true },
+  );
+  const worktrees = parseGitWorktrees(repository.path);
+  const primary = canonicalFilesystemIdentity(worktrees[0].path, { requireExisting: true });
+  if (candidate.key === repository.key || candidate.key === repositoryTop.key) {
+    throw new Error('assignment worktree must not be the manifest repository root');
+  }
+  if (candidate.key === primary.key) {
+    throw new Error('assignment worktree must not be the primary checkout');
+  }
+  const registered = worktrees.find((entry) => {
+    try {
+      return canonicalFilesystemIdentity(entry.path, { requireExisting: true }).key === candidate.key;
+    } catch {
+      return false;
+    }
+  });
+  if (!registered || registered.bare) {
+    throw new Error('assignment worktree is not a registered isolated Git worktree');
+  }
+  if (registered.path !== candidate.path || candidate.path !== worktree) {
+    throw new Error('assignment worktree must use the exact registered canonical path');
+  }
+  if (registered.branch !== expectedBranch) {
+    throw new Error(`assignment worktree is not checked out on ${expectedBranch}`);
+  }
+  const targetTop = canonicalFilesystemIdentity(
+    gitOutput(candidate.path, ['rev-parse', '--path-format=absolute', '--show-toplevel']),
+    { requireExisting: true },
+  );
+  if (targetTop.key !== candidate.key || targetTop.path !== candidate.path) {
+    throw new Error('assignment path is not the root of its registered Git worktree');
+  }
+  const commonDirectory = canonicalFilesystemIdentity(
+    gitOutput(repository.path, ['rev-parse', '--path-format=absolute', '--git-common-dir']),
+    { requireExisting: true },
+  );
+  const targetCommonDirectory = canonicalFilesystemIdentity(
+    gitOutput(candidate.path, ['rev-parse', '--path-format=absolute', '--git-common-dir']),
+    { requireExisting: true },
+  );
+  if (commonDirectory.key !== targetCommonDirectory.key) {
+    throw new Error('assignment worktree belongs to a different Git repository');
+  }
+  const primaryGitDirectory = canonicalFilesystemIdentity(
+    gitOutput(primary.path, ['rev-parse', '--path-format=absolute', '--git-dir']),
+    { requireExisting: true },
+  );
+  const targetGitDirectory = canonicalFilesystemIdentity(
+    gitOutput(candidate.path, ['rev-parse', '--path-format=absolute', '--git-dir']),
+    { requireExisting: true },
+  );
+  if (primaryGitDirectory.key === targetGitDirectory.key) {
+    throw new Error('assignment worktree shares the primary checkout Git directory');
+  }
+  return {
+    path: candidate.path,
+    key: candidate.key,
+    device: candidate.device,
+    inode: candidate.inode,
+    repositoryRoot: repositoryTop.path,
+    primaryWorktree: primary.path,
+    gitCommonDirectory: commonDirectory.path,
+    gitDirectory: targetGitDirectory.path,
+    branchRef: expectedBranch,
+  };
+}
+
+export function verifyGitAssignmentRevisions(
+  repositoryRoot,
+  worktree,
+  baseBranch,
+  baseSha,
+  headSha,
+) {
+  if (![baseBranch, baseSha, headSha].every(nonEmpty)) {
+    throw new Error('assignment Git revisions are incomplete');
+  }
+  const baseRef = validatedBranchRef(repositoryRoot, baseBranch);
+  exactCommitId(baseSha, 'assignment base revision');
+  exactCommitId(headSha, 'assignment head revision');
+  const actualBase = gitOutput(repositoryRoot, [
+    'rev-parse', '--verify', '--end-of-options', `${baseRef}^{commit}`,
+  ]);
+  const actualHead = gitOutput(worktree, ['rev-parse', '--verify', 'HEAD^{commit}']);
+  if (actualBase !== baseSha) {
+    throw new Error('assignment base revision does not match the local base branch snapshot');
+  }
+  if (actualHead !== headSha) {
+    throw new Error('assignment head revision does not match the isolated worktree HEAD');
+  }
+  return { baseSha: actualBase, headSha: actualHead };
+}
+
+export function verifyPersistedAssignmentRevisions(
+  repositoryRoot,
+  worktree,
+  baseBranch,
+  baseSha,
+  headSha,
+) {
+  if (![baseBranch, baseSha, headSha].every(nonEmpty)) {
+    throw new Error('persisted assignment Git revisions are incomplete');
+  }
+  const baseRef = validatedBranchRef(repositoryRoot, baseBranch);
+  exactCommitId(baseSha, 'persisted assignment base revision');
+  exactCommitId(headSha, 'persisted assignment head revision');
+  const actualHead = gitOutput(worktree, ['rev-parse', '--verify', 'HEAD^{commit}']);
+  if (actualHead !== headSha) {
+    throw new Error('persisted assignment head revision no longer matches the isolated worktree HEAD');
+  }
+  const storedBase = gitOutput(repositoryRoot, [
+    'rev-parse', '--verify', '--end-of-options', `${baseSha}^{commit}`,
+  ]);
+  if (storedBase !== baseSha) {
+    throw new Error('persisted assignment base revision is not an exact commit');
+  }
+  try {
+    execFileSync('git', [
+      '-C', repositoryRoot, 'merge-base', '--is-ancestor', baseSha, baseRef,
+    ], {
+      stdio: 'ignore',
+      timeout: 10_000,
+    });
+  } catch {
+    throw new Error('persisted assignment base revision is no longer in the base branch history');
+  }
+  return { baseSha: storedBase, headSha: actualHead };
+}
+
+export function verifyPersistedGitWorktreeIdentity(identity, repositoryRoot, branch) {
+  exactKeys(identity, [
+    'path', 'key', 'device', 'inode', 'repositoryRoot', 'primaryWorktree',
+    'gitCommonDirectory', 'gitDirectory', 'branchRef',
+  ], 'persisted worktree identity');
+  const current = captureIsolatedGitWorktreeIdentity(repositoryRoot, identity.path, branch);
+  if (!same(identity, current)) {
+    throw new Error('persisted worktree filesystem or Git identity changed');
+  }
+  return current;
+}
+
+export function verifyActiveAssignmentIdentities(state, manifest) {
+  for (const record of Object.values(state.issues ?? {})) {
+    if (record.status !== 'active' && record.assignment?.active !== true) continue;
+    if (record.status !== 'active' || record.assignment?.active !== true) {
+      throw new Error(`${record.identity} active ownership state is inconsistent`);
+    }
+    verifyPersistedGitWorktreeIdentity(
+      record.assignment.worktreeIdentity,
+      manifest.repository.root,
+      record.assignment.branch,
+    );
+  }
 }
 
 function exactKeys(actual, expected, label) {
@@ -247,7 +474,7 @@ function assertAssignment(assignment, issue, manifest, state, { active }) {
   }
   if (assignment.active !== active) throw new Error(`${issue.identity} assignment active flag is inconsistent`);
   const expectedKeys = [
-    'generation', 'workerContext', 'branch', 'worktree', 'baseSha', 'headSha',
+    'generation', 'workerContext', 'branch', 'worktree', 'worktreeIdentity', 'baseSha', 'headSha',
     'packet', 'active', 'startedAt',
     ...(active ? [] : ['endReason', 'endedAt']),
     ...(!active && assignment.handoff ? ['handoff'] : []),
@@ -262,6 +489,26 @@ function assertAssignment(assignment, issue, manifest, state, { active }) {
   }
   if (worktreeIdentity.path !== assignment.worktree) {
     throw new Error(`${issue.identity} assignment worktree is not canonical`);
+  }
+  if (active) {
+    try {
+      verifyPersistedGitWorktreeIdentity(
+        assignment.worktreeIdentity,
+        manifest.repository.root,
+        assignment.branch,
+      );
+    } catch (error) {
+      throw new Error(`${issue.identity} active assignment worktree changed: ${error.message}`);
+    }
+  } else {
+    exactKeys(assignment.worktreeIdentity, [
+      'path', 'key', 'device', 'inode', 'repositoryRoot', 'primaryWorktree',
+      'gitCommonDirectory', 'gitDirectory', 'branchRef',
+    ], `${issue.identity} archived worktree identity`);
+    if (assignment.worktreeIdentity.path !== assignment.worktree
+        || assignment.worktreeIdentity.branchRef !== `refs/heads/${assignment.branch}`) {
+      throw new Error(`${issue.identity} archived assignment worktree identity is inconsistent`);
+    }
   }
   if (!nonEmpty(assignment.baseSha) || !nonEmpty(assignment.headSha)) {
     throw new Error(`${issue.identity} assignment requires exact base and head revisions`);
@@ -799,6 +1046,9 @@ function assertIssueRecord(record, issue, manifest, state) {
           : record.checkActivity.state !== 'active')) {
       throw new Error(`${issue.identity} check activity is malformed`);
     }
+    if (['failed', 'timed-out', 'deferred'].includes(record.status)) {
+      throw new Error(`${issue.identity} terminal issue cannot retain check activity`);
+    }
   }
   if (record.changeRequest !== null) {
     exactKeys(record.changeRequest, [
@@ -938,7 +1188,7 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
       ? 'await-renewed-human-confirmation'
       : null,
   }]));
-  return {
+  const state = {
     schemaVersion: FLEET_STATE_SCHEMA_VERSION,
     revision: 0,
     runId,
@@ -967,6 +1217,40 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
     fleetDisposition: exhaustedFields.length ? 'budget-exhausted' : null,
     events: [],
   };
+  return applyFrontier(state, computeFrontier(manifest, state));
+}
+
+function applyFrontier(state, frontier) {
+  const next = structuredClone(state);
+  next.readyFrontier = structuredClone(frontier.ready);
+  next.blockedSet = structuredClone(frontier.blocked);
+  next.activeCapacity = frontier.capacity.active;
+  next.completedWork = structuredClone(frontier.completed);
+  for (const record of Object.values(next.issues)) record.dependencyState = 'unclassified';
+  for (const entry of frontier.ready) next.issues[entry.issue].dependencyState = 'ready';
+  for (const entry of frontier.blocked) next.issues[entry.issue].dependencyState = 'blocked';
+  for (const entry of frontier.active) next.issues[entry.issue].dependencyState = 'active';
+  return next;
+}
+
+function assertSchedulerCollections(state, manifest) {
+  const expected = computeFrontier(manifest, state);
+  if (!same(state.readyFrontier, expected.ready)
+      || !same(state.blockedSet, expected.blocked)
+      || state.activeCapacity !== expected.capacity.active
+      || !same(state.completedWork, expected.completed)) {
+    throw new Error('persisted scheduler collections contradict the recomputed frontier');
+  }
+  const classifications = new Map();
+  for (const entry of expected.ready) classifications.set(entry.issue, 'ready');
+  for (const entry of expected.blocked) classifications.set(entry.issue, 'blocked');
+  for (const entry of expected.active) classifications.set(entry.issue, 'active');
+  for (const issue of manifest.issues) {
+    const expectedState = classifications.get(issue.identity) ?? 'unclassified';
+    if (state.issues[issue.identity].dependencyState !== expectedState) {
+      throw new Error(`${issue.identity} persisted dependency classification is stale`);
+    }
+  }
 }
 
 export function assertFleetState(state, manifest) {
@@ -1044,6 +1328,7 @@ export function assertFleetState(state, manifest) {
     throw new Error('fleet state contains duplicate publication invocation identities');
   }
   for (const issue of manifest.issues) assertIssueRecord(state.issues[issue.identity], issue, manifest, state);
+  assertSchedulerCollections(state, manifest);
   for (const issue of manifest.issues) {
     const record = state.issues[issue.identity];
     if (record.terminalDisposition === 'already-complete'
@@ -1063,7 +1348,7 @@ export function assertFleetState(state, manifest) {
   if (new Set(branches).size !== branches.length) {
     throw new Error('multiple active owners share branch');
   }
-  const worktreeKeys = active.map((assignment) => canonicalFilesystemIdentity(assignment.worktree).key);
+  const worktreeKeys = active.map((assignment) => assignment.worktreeIdentity.key);
   if (new Set(worktreeKeys).size !== worktreeKeys.length) {
     throw new Error('multiple active owners share canonical worktree identity');
   }
@@ -1141,8 +1426,7 @@ export function assertFleetState(state, manifest) {
             || queued.baseSha !== null
             || queued.headSha !== null
             || queued.action !== 'acquire-current-change-request-revision')
-          : (queued.blocker !== null
-            || queued.revisionObservation.status !== 'observed'
+          : (queued.revisionObservation.status !== 'observed'
             || queued.revisionObservation.observed !== true
             || queued.revisionObservation.terminal !== true
             || queued.revisionObservation.complete !== true
@@ -1157,9 +1441,16 @@ export function assertFleetState(state, manifest) {
             || queued.revisionObservation.headSha !== queued.headSha
             || !validTimestamp(queued.revisionObservation.observedAt)
             || Date.parse(queued.revisionObservation.observedAt) <= Date.parse(queued.mergeObservedAt)
-            || queued.action !== (manifest.shepherdIntent === 'yes'
-              ? 'invoke-fresh-shepherd'
-              : 'rerun-quality-and-provider-observation')))) {
+            || (queued.action === 'await-safe-ownership-transition'
+              ? (queued.blocker !== 'active-assignment-revision-transition-required'
+                || issue.status !== 'active'
+                || issue.assignment?.active !== true
+                || (issue.baseSha === queued.baseSha
+                  && issue.headSha === queued.headSha))
+              : (queued.blocker !== null
+                || queued.action !== (manifest.shepherdIntent === 'yes'
+                  ? 'invoke-fresh-shepherd'
+                  : 'rerun-quality-and-provider-observation')))))) {
       throw new Error('re-Shepherd queue entry is incomplete or forged');
     }
     if (queued.revisionObservation !== null) {
@@ -1297,6 +1588,57 @@ function processAlive(pid) {
   }
 }
 
+function processInstanceIdentity(pid) {
+  if (!Number.isInteger(pid) || pid < 1) return null;
+  try {
+    if (process.platform === 'linux') {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+      const close = stat.lastIndexOf(')');
+      if (close < 0) return null;
+      const fields = stat.slice(close + 2).trim().split(/\s+/u);
+      const startTicks = fields[19];
+      const bootId = fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+      return nonEmpty(startTicks) && nonEmpty(bootId)
+        ? `linux:${bootId}:${startTicks}`
+        : null;
+    }
+    if (process.platform === 'darwin') {
+      const environment = { ...process.env, LC_ALL: 'C', TZ: 'UTC' };
+      const started = execFileSync('/bin/ps', ['-o', 'lstart=', '-p', String(pid)], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 2_000,
+        env: environment,
+      }).trim().replace(/\s+/gu, ' ');
+      const command = execFileSync('/bin/ps', ['-ww', '-o', 'command=', '-p', String(pid)], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 2_000,
+        env: environment,
+      }).trim();
+      const boot = execFileSync('/usr/sbin/sysctl', ['-n', 'kern.boottime'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 2_000,
+        env: environment,
+      }).match(/sec\s*=\s*(\d+).*usec\s*=\s*(\d+)/u);
+      return nonEmpty(started) && nonEmpty(command) && boot
+        ? `darwin:${boot[1]}:${boot[2]}:${started}:${digest(command)}`
+        : null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function lockOwnerIsCurrent(metadata) {
+  if (!processAlive(metadata.pid)) return false;
+  const currentIdentity = processInstanceIdentity(metadata.pid);
+  if (metadata.processIdentity === null || currentIdentity === null) return true;
+  return metadata.processIdentity === currentIdentity;
+}
+
 function lockOwnerPath(lockDirectory, token) {
   return path.join(lockDirectory, `owner-${token}.json`);
 }
@@ -1317,11 +1659,14 @@ function readLockOwner(lockDirectory) {
     const metadata = JSON.parse(fs.readFileSync(handle, 'utf8'));
     const token = owners[0].slice('owner-'.length, -'.json'.length);
     if (!metadata
-        || !same(Object.keys(metadata).sort(), ['createdAt', 'expectedRevision', 'pid', 'token'])
+        || !same(Object.keys(metadata).sort(), [
+          'createdAt', 'expectedRevision', 'pid', 'processIdentity', 'token',
+        ])
         || metadata.token !== token
         || !nonEmpty(token)
         || !Number.isInteger(metadata.pid)
         || metadata.pid < 1
+        || (metadata.processIdentity !== null && !nonEmpty(metadata.processIdentity))
         || !Number.isInteger(metadata.expectedRevision)
         || metadata.expectedRevision < 0
         || !validTimestamp(metadata.createdAt)) {
@@ -1356,6 +1701,7 @@ function initializeLockClaim(lockDirectory, token, expectedRevision) {
     try {
       fs.writeFileSync(handle, `${JSON.stringify({
         pid: process.pid,
+        processIdentity: processInstanceIdentity(process.pid),
         token,
         expectedRevision,
         createdAt: new Date().toISOString(),
@@ -1400,7 +1746,7 @@ function acquireLock(lockDirectory, expectedRevision, options) {
         const observed = readLockOwner(lockDirectory);
         const ownerStat = fs.lstatSync(lockOwnerPath(lockDirectory, observed.token));
         const stale = Date.now() - ownerStat.mtimeMs >= staleLockMs;
-        if (stale && !processAlive(observed.metadata.pid)) {
+        if (stale && !lockOwnerIsCurrent(observed.metadata)) {
           options.beforeStaleLockClaim?.();
           if (removeOwnedLockDirectory(lockDirectory, observed, 'stale')) continue;
         }
@@ -1573,12 +1919,48 @@ function writeLockedState(file, state, expectedRevision, manifest, options, pend
   return loadFleetState(file, manifest);
 }
 
+function ownsLock(lockDirectory, ownership) {
+  try {
+    const current = readLockOwner(lockDirectory);
+    return current.token === ownership.token
+      && current.directory.dev === ownership.directory.dev
+      && current.directory.ino === ownership.directory.ino
+      && current.owner.dev === ownership.owner.dev
+      && current.owner.ino === ownership.owner.ino;
+  } catch {
+    return false;
+  }
+}
+
+function recoverPendingResidue(file, lockDirectory, ownership) {
+  if (!ownsLock(lockDirectory, ownership)) {
+    throw new Error('cannot recover pending fleet state files without current lock ownership');
+  }
+  const directory = path.dirname(file);
+  const prefix = `${path.basename(file)}.next-`;
+  const pattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[a-f0-9]{48}-[a-f0-9]{32}$`);
+  for (const entry of fs.readdirSync(directory)) {
+    if (!pattern.test(entry)) continue;
+    const residue = path.join(directory, entry);
+    const stat = fs.lstatSync(residue);
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error('pending fleet state residue is not a real regular file');
+    }
+    fs.unlinkSync(residue);
+  }
+  fsyncDirectory(directory);
+  if (!ownsLock(lockDirectory, ownership)) {
+    throw new Error('fleet state lock changed during pending residue recovery');
+  }
+}
+
 function withFleetStateLock(file, manifest, runId, expectedRevision, options, operation) {
   const directoryChain = prepareFleetStatePath(file, manifest, runId);
   const lockFile = `${file}.lock`;
   const lock = acquireLock(lockFile, expectedRevision, options);
-  const pending = `${file}.next-${process.pid}-${expectedRevision}`;
+  const pending = `${file}.next-${lock.token}-${crypto.randomBytes(16).toString('hex')}`;
   try {
+    recoverPendingResidue(file, lockFile, lock);
     if (!sameFleetDirectoryChain(directoryChain)) {
       throw new Error('fleet state directory ancestry changed before mutation');
     }
@@ -1659,7 +2041,7 @@ export function recordSourceRevisionObservation(state, manifest, issue, receipt,
     reobservedAt: now,
   };
   next.events.push({ type: 'source-reobserved', issue, revision: normalized.revision });
-  return next;
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }
 
 export function recordIssueSetObservation(
@@ -1697,24 +2079,22 @@ export function recordIssueSetObservation(
     queryRevision: normalized.queryRevision,
     membershipDigest: normalized.membershipDigest,
   });
-  return next;
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }
 
 export function reconcileFrontier(state, manifest, frontier) {
   assertStateManifestAuthority(state, manifest, 'frontier reconciliation state');
-  const next = structuredClone(state);
-  next.readyFrontier = frontier.ready;
-  next.blockedSet = frontier.blocked;
-  next.activeCapacity = frontier.capacity.active;
-  next.completedWork = frontier.completed;
-  for (const entry of frontier.ready) next.issues[entry.issue].dependencyState = 'ready';
-  for (const entry of frontier.blocked) next.issues[entry.issue].dependencyState = 'blocked';
-  for (const entry of frontier.active) next.issues[entry.issue].dependencyState = 'active';
-  return next;
+  verifyActiveAssignmentIdentities(state, manifest);
+  const expected = computeFrontier(manifest, state);
+  if (frontier !== undefined && !same(frontier, expected)) {
+    throw new Error('caller-supplied scheduler frontier differs from semantic recomputation');
+  }
+  return applyFrontier(state, expected);
 }
 
 export function transitionIssue(state, manifest, issue, status, detail = {}) {
   assertStateManifestAuthority(state, manifest, 'issue transition state');
+  verifyActiveAssignmentIdentities(state, manifest);
   const record = state.issues?.[issue];
   if (!record) throw new Error(`unknown issue: ${issue}`);
   if (status === 'active') throw new Error('active status can only be entered through validated assignment');
@@ -1726,6 +2106,7 @@ export function transitionIssue(state, manifest, issue, status, detail = {}) {
     throw new Error(`invalid issue transition: ${record.status} -> ${status}`);
   }
   const next = structuredClone(state);
+  let activatedQueuedRevision = false;
   if (record.status === 'active') {
     const end = detail.assignmentEnd;
     if (!end
@@ -1752,7 +2133,7 @@ export function transitionIssue(state, manifest, issue, status, detail = {}) {
         generation: record.assignment.generation,
         condition: end.reason,
       });
-      return next;
+      return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
     }
     const archived = {
       ...record.assignment,
@@ -1767,6 +2148,32 @@ export function transitionIssue(state, manifest, issue, status, detail = {}) {
     next.issues[issue].continuationChain.push(archived);
     next.issues[issue].assignment = null;
     next.issues[issue].handoffObligation = null;
+    const queued = next.reShepherdQueue.find((entry) =>
+      entry.issue === issue
+      && entry.action === 'await-safe-ownership-transition'
+      && entry.blocker === 'active-assignment-revision-transition-required'
+      && entry.revisionObservation !== null);
+    if (queued && status === 'blocked') {
+      const target = next.issues[issue];
+      target.baseSha = queued.baseSha;
+      target.headSha = queued.headSha;
+      target.changeRequest = null;
+      if (target.checkActivity !== null) {
+        if (target.checkActivity.kind !== 'shepherd-check'
+            || target.checkActivity.state !== 'blocked'
+            || target.checkActivity.generation !== queued.generation) {
+          throw new Error('queued readiness revision has a mismatched Shepherd blocker');
+        }
+        target.checkActivity = null;
+      }
+      queued.blocker = null;
+      queued.action = manifest.shepherdIntent === 'yes'
+        ? 'invoke-fresh-shepherd'
+        : 'rerun-quality-and-provider-observation';
+      activatedQueuedRevision = true;
+    } else if (queued && ['failed', 'timed-out', 'deferred'].includes(status)) {
+      next.reShepherdQueue = next.reShepherdQueue.filter((entry) => entry.issue !== issue);
+    }
   }
   if (!ISSUE_DISPOSITIONS.has(detail.terminalDisposition)) {
     throw new Error('terminal transition requires a valid issue disposition');
@@ -1777,7 +2184,12 @@ export function transitionIssue(state, manifest, issue, status, detail = {}) {
   next.issues[issue].status = status;
   next.issues[issue].statusReason = detail.reason ?? null;
   next.issues[issue].terminalDisposition = detail.terminalDisposition;
-  next.issues[issue].nextAction = detail.nextAction ?? null;
+  next.issues[issue].nextAction = detail.nextAction ?? (activatedQueuedRevision
+    ? manifest.shepherdIntent === 'yes'
+      ? 'consume-fresh-re-shepherd-receipt'
+      : 'rerun-quality-and-provider-observation'
+    : null);
+  next.issues[issue].checkActivity = null;
   next.events.push({
     type: 'issue-transition',
     issue,
@@ -1785,7 +2197,7 @@ export function transitionIssue(state, manifest, issue, status, detail = {}) {
     to: status,
     reason: detail.reason ?? null,
   });
-  return next;
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }
 
 export function startCheckActivity(
@@ -1796,6 +2208,7 @@ export function startCheckActivity(
   startedAt = new Date().toISOString(),
 ) {
   assertStateManifestAuthority(state, manifest, 'check activity state');
+  verifyActiveAssignmentIdentities(state, manifest);
   const record = state.issues?.[issue];
   if (!record) throw new Error(`unknown issue: ${issue}`);
   if (!['quality-check', 'publication-observation', 'shepherd-check'].includes(kind)) {
@@ -1808,13 +2221,21 @@ export function startCheckActivity(
     throw new Error('terminal or awaiting-human issue cannot start a check obligation');
   }
   const next = structuredClone(state);
-  if (kind === 'shepherd-check') next.issues[issue].readinessGeneration += 1;
+  const queuedGeneration = kind === 'shepherd-check'
+    ? state.reShepherdQueue.find((entry) =>
+      entry.issue === issue
+      && entry.action === 'invoke-fresh-shepherd'
+      && entry.blocker === null)?.generation
+    : null;
+  if (kind === 'shepherd-check' && queuedGeneration === undefined) {
+    next.issues[issue].readinessGeneration += 1;
+  }
   next.issues[issue].checkActivity = {
     kind,
     state: 'active',
     startedAt,
     ...(kind === 'shepherd-check'
-      ? { generation: next.issues[issue].readinessGeneration }
+      ? { generation: queuedGeneration ?? next.issues[issue].readinessGeneration }
       : {}),
   };
   next.events.push({ type: 'check-activity-started', issue, kind });
@@ -1823,6 +2244,7 @@ export function startCheckActivity(
 
 export function finishCheckActivity(state, manifest, issue) {
   assertStateManifestAuthority(state, manifest, 'check activity state');
+  verifyActiveAssignmentIdentities(state, manifest);
   const record = state.issues?.[issue];
   if (!record?.checkActivity) throw new Error(`no explicit check activity for ${issue}`);
   const next = structuredClone(state);
@@ -1854,6 +2276,7 @@ function markStoppedWork(next, nextAction) {
 
 export function consumeBudget(state, manifest, usage) {
   assertStateManifestAuthority(state, manifest, 'budget state');
+  verifyActiveAssignmentIdentities(state, manifest);
   if (state.control.cancelled) throw new Error('cannot consume fleet budget after cancellation');
   const next = structuredClone(state);
   for (const field of ['cost', 'timeMinutes', 'retries']) {
@@ -1870,11 +2293,15 @@ export function consumeBudget(state, manifest, usage) {
     markStoppedWork(next, 'await-renewed-human-confirmation');
     next.events.push({ type: 'budget-exhausted', fields: exhausted, semantics: 'at-ceiling' });
   }
-  return { state: next, exhausted };
+  return {
+    state: reconcileFrontier(next, manifest, computeFrontier(manifest, next)),
+    exhausted,
+  };
 }
 
 export function cancelFleet(state, manifest, reason) {
   assertStateManifestAuthority(state, manifest, 'cancellation state');
+  verifyActiveAssignmentIdentities(state, manifest);
   if (!nonEmpty(reason)) throw new Error('cancellation reason is required');
   const next = structuredClone(state);
   next.control.cancelled = true;
@@ -1882,5 +2309,5 @@ export function cancelFleet(state, manifest, reason) {
   next.fleetDisposition = 'cancelled';
   markStoppedWork(next, 'await-new-human-invocation');
   next.events.push({ type: 'fleet-cancelled', reason: reason.trim() });
-  return next;
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }

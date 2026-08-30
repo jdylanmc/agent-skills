@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,8 +30,10 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SANDBOX = path.join(ROOT, '.test-sandbox', 'ship-with-squadron-handoff');
+const REPOSITORY = path.join(SANDBOX, 'repository');
 const WORKTREE_A = path.join(SANDBOX, 'worktrees', 'a');
 const WORKTREE_B = path.join(SANDBOX, 'worktrees', 'b');
+let revisionSha = null;
 
 function source(issue, observedAt = '2026-08-30T00:00:00Z') {
   return {
@@ -57,7 +60,7 @@ const manifest = normalizeFleetManifest({
   dependencies: [],
   concurrency: 2,
   budget: { cost: 10, timeMinutes: 60, retries: 2 },
-  repository: { id: 'owner/repo', root: SANDBOX, baseBranch: 'main' },
+  repository: { id: 'owner/repo', root: REPOSITORY, baseBranch: 'main' },
   provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],
@@ -76,7 +79,36 @@ function state() {
       '2026-08-30T00:01:01Z',
     );
   }
+
   return current;
+}
+
+function git(cwd, ...args) {
+  return execFileSync('git', ['-C', cwd, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function ensureGitWorktrees() {
+  if (fs.existsSync(path.join(REPOSITORY, '.git'))) {
+    revisionSha ??= git(REPOSITORY, 'rev-parse', 'main');
+    return;
+  }
+  fs.mkdirSync(REPOSITORY, { recursive: true });
+  git(REPOSITORY, 'init', '-b', 'main');
+  fs.writeFileSync(path.join(REPOSITORY, 'seed.txt'), 'seed\n');
+  git(REPOSITORY, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'add', 'seed.txt');
+  git(REPOSITORY, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'seed');
+  fs.mkdirSync(path.dirname(WORKTREE_A), { recursive: true });
+  git(REPOSITORY, 'worktree', 'add', '-b', 'issue-a', WORKTREE_A);
+  git(REPOSITORY, 'worktree', 'add', '-b', 'issue-b', WORKTREE_B);
+  revisionSha = git(REPOSITORY, 'rev-parse', 'main');
+}
+
+function currentRevision() {
+  ensureGitWorktrees();
+  return revisionSha;
 }
 
 function packet(issue, branch, worktree) {
@@ -120,20 +152,21 @@ function packet(issue, branch, worktree) {
     },
     branch,
     worktree,
-    baseSha: 'base',
-    headSha: 'head',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
   };
 }
 
 function assigned() {
+  ensureGitWorktrees();
   const current = state();
   return assignFreshWorker(current, manifest, {
     issue: 'a',
     branch: 'issue-a',
     worktree: WORKTREE_A,
     workerContext: 'worker-1',
-    baseSha: 'base',
-    headSha: 'head',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
     packet: packet('a', 'issue-a', WORKTREE_A),
     schedulerLease: createSchedulerLease(current, manifest, 'a'),
     startedAt: '2026-08-30T00:02:00Z',
@@ -147,8 +180,8 @@ function handoffPayload(target = 'worker-2') {
     ['prior_generation', '1'],
     ['branch', 'issue-a'],
     ['worktree', WORKTREE_A],
-    ['base_sha', 'base'],
-    ['head_sha', 'head'],
+    ['base_sha', currentRevision()],
+    ['head_sha', currentRevision()],
     ['manifest_digest', manifest.digest],
     ['source_revision', 'r-a'],
     ['allowed_paths', JSON.stringify(['src/a/**'])],
@@ -247,24 +280,35 @@ function setRuntimeTemp(t) {
 }
 
 test('assigns only pending unowned issues with a complete manifest-bound packet', () => {
+  ensureGitWorktrees();
   const current = assigned();
   assert.equal(current.issues.a.status, 'active');
   assert.equal(current.issues.a.assignment.generation, 1);
   assert.throws(() => assignFreshWorker(current, manifest, {
-    issue: 'b', branch: 'issue-a', worktree: WORKTREE_B, workerContext: 'worker-2',
-    baseSha: 'base', headSha: 'head', packet: packet('b', 'issue-a', WORKTREE_B),
+    issue: 'b', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-2',
+    baseSha: currentRevision(), headSha: currentRevision(), packet: packet('b', 'issue-a', WORKTREE_A),
     schedulerLease: createSchedulerLease(current, manifest, 'b'),
   }), /branch already owned/);
   const fresh = state();
+  const forgedRevisionPacket = {
+    ...packet('a', 'issue-a', WORKTREE_A),
+    headSha: 'f'.repeat(40),
+  };
+  assert.throws(() => assignFreshWorker(fresh, manifest, {
+    issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-sha',
+    baseSha: currentRevision(), headSha: 'f'.repeat(40),
+    packet: forgedRevisionPacket,
+    schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
+  }), /head revision does not match/);
   assert.throws(() => assignFreshWorker(fresh, manifest, {
     issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-1',
-    baseSha: 'base', headSha: 'head',
+    baseSha: currentRevision(), headSha: currentRevision(),
     packet: { ...packet('a', 'issue-a', WORKTREE_A), forbiddenAuthorities: ['merge'] },
     schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
   }), /forbidden authorities/);
   assert.throws(() => assignFreshWorker(fresh, manifest, {
     issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-1',
-    baseSha: 'base', headSha: 'head',
+    baseSha: currentRevision(), headSha: currentRevision(),
     packet: {
       ...packet('a', 'issue-a', WORKTREE_A),
       verification: ['run-ci'],
@@ -273,7 +317,7 @@ test('assigns only pending unowned issues with a complete manifest-bound packet'
   }), /exactly match confirmed validation policy/);
   assert.throws(() => assignFreshWorker(fresh, manifest, {
     issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-1',
-    baseSha: 'base', headSha: 'head',
+    baseSha: currentRevision(), headSha: currentRevision(),
     packet: { ...packet('a', 'issue-a', WORKTREE_A), extraAuthority: 'publish-anywhere' },
     schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
   }), /schema is not exact/);
@@ -282,14 +326,14 @@ test('assigns only pending unowned issues with a complete manifest-bound packet'
   stale.revision += 1;
   assert.throws(() => assignFreshWorker(stale, manifest, {
     issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-1',
-    baseSha: 'base', headSha: 'head', packet: packet('a', 'issue-a', WORKTREE_A),
+    baseSha: currentRevision(), headSha: currentRevision(), packet: packet('a', 'issue-a', WORKTREE_A),
     schedulerLease: staleLease,
   }), /scheduler lease/);
   const mutatedManifest = structuredClone(manifest);
   mutatedManifest.goal = 'retained digest with mutated authority';
   assert.throws(() => assignFreshWorker(fresh, mutatedManifest, {
     issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-1',
-    baseSha: 'base', headSha: 'head', packet: packet('a', 'issue-a', WORKTREE_A),
+    baseSha: currentRevision(), headSha: currentRevision(), packet: packet('a', 'issue-a', WORKTREE_A),
     schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
   }), /manifest digest does not match authority fields/);
 });
@@ -297,7 +341,7 @@ test('assigns only pending unowned issues with a complete manifest-bound packet'
 test('uses canonical filesystem identity for worktrees and rejects aliases', (t) => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
-  fs.mkdirSync(WORKTREE_A, { recursive: true });
+  ensureGitWorktrees();
   const current = state();
   const dotAlias = `${path.dirname(WORKTREE_A)}${path.sep}.${path.sep}${path.basename(WORKTREE_A)}`;
   assert.throws(() => assignFreshWorker(current, manifest, {
@@ -305,8 +349,8 @@ test('uses canonical filesystem identity for worktrees and rejects aliases', (t)
     branch: 'issue-a',
     worktree: dotAlias,
     workerContext: 'worker-dot',
-    baseSha: 'base',
-    headSha: 'head',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
     packet: packet('a', 'issue-a', dotAlias),
     schedulerLease: createSchedulerLease(current, manifest, 'a'),
   }), /dot segments/);
@@ -327,8 +371,8 @@ test('uses canonical filesystem identity for worktrees and rejects aliases', (t)
       branch: 'issue-a',
       worktree: linked,
       workerContext: 'worker-link',
-      baseSha: 'base',
-      headSha: 'head',
+      baseSha: currentRevision(),
+      headSha: currentRevision(),
       packet: packet('a', 'issue-a', linked),
       schedulerLease: createSchedulerLease(current, manifest, 'a'),
     }), /symbolic link/);
@@ -344,8 +388,8 @@ test('uses canonical filesystem identity for worktrees and rejects aliases', (t)
         branch: 'issue-a',
         worktree: caseAlias,
         workerContext: 'worker-case',
-        baseSha: 'base',
-        headSha: 'head',
+        baseSha: currentRevision(),
+        headSha: currentRevision(),
         packet: packet('a', 'issue-a', caseAlias),
         schedulerLease: createSchedulerLease(current, manifest, 'a'),
       }), /canonical path spelling/);
@@ -354,17 +398,82 @@ test('uses canonical filesystem identity for worktrees and rejects aliases', (t)
     if (error.code !== 'ENOENT') throw error;
   }
 
+  assert.throws(() => assignFreshWorker(current, manifest, {
+    issue: 'a',
+    branch: 'issue-a',
+    worktree: REPOSITORY,
+    workerContext: 'worker-new',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
+    packet: packet('a', 'issue-a', REPOSITORY),
+    schedulerLease: createSchedulerLease(current, manifest, 'a'),
+  }), /manifest repository root|primary checkout/);
   const notYetCreated = path.join(SANDBOX, 'worktrees', 'not-yet-created');
-  assert.doesNotThrow(() => assignFreshWorker(current, manifest, {
+  assert.throws(() => assignFreshWorker(current, manifest, {
     issue: 'a',
     branch: 'issue-a',
     worktree: notYetCreated,
-    workerContext: 'worker-new',
-    baseSha: 'base',
-    headSha: 'head',
+    workerContext: 'worker-reserved',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
     packet: packet('a', 'issue-a', notYetCreated),
     schedulerLease: createSchedulerLease(current, manifest, 'a'),
-  }));
+  }), /does not exist/);
+  const regularFile = path.join(SANDBOX, 'regular-file');
+  fs.writeFileSync(regularFile, 'not a worktree');
+  assert.throws(() => assignFreshWorker(current, manifest, {
+    issue: 'a',
+    branch: 'issue-a',
+    worktree: regularFile,
+    workerContext: 'worker-file',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
+    packet: packet('a', 'issue-a', regularFile),
+    schedulerLease: createSchedulerLease(current, manifest, 'a'),
+  }), /real directory/);
+});
+
+test('rejects delete-and-recreate of an assigned worktree at the same path', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const current = assigned();
+  git(REPOSITORY, 'worktree', 'remove', '--force', WORKTREE_A);
+  git(REPOSITORY, 'worktree', 'add', WORKTREE_A, 'issue-a');
+  assert.throws(
+    () => assertFleetState(current, manifest),
+    /persisted worktree filesystem or Git identity changed/,
+  );
+});
+
+test('rejects continuation and release after the assigned Git HEAD moves', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const current = assigned();
+  fs.writeFileSync(path.join(WORKTREE_A, 'worker-change.txt'), 'changed\n');
+  git(WORKTREE_A, 'add', 'worker-change.txt');
+  git(WORKTREE_A, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+    'commit', '-m', 'worker changed head');
+  const continuation = {
+    issue: 'a',
+    reason: 'stalled',
+    branch: 'issue-a',
+    worktree: WORKTREE_A,
+    workerContext: 'worker-2',
+    packet: packet('a', 'issue-a', WORKTREE_A),
+    handoff: null,
+    handoffPayload: null,
+  };
+  assert.throws(
+    () => continueWithFreshWorker(current, manifest, continuation),
+    /head revision no longer matches/,
+  );
+  assert.throws(() => releaseAfterValidatedHandoff(current, manifest, {
+    issue: 'a',
+    reason: 'stalled',
+    targetAgent: 'fleet-owner',
+    handoff: null,
+    handoffPayload: null,
+  }), /head revision no longer matches/);
 });
 
 test('continues only after rereading actual orchestration-handoff persistence output', (t) => {
@@ -412,7 +521,8 @@ test('continues only after rereading actual orchestration-handoff persistence ou
   );
   assert.equal(validateContinuationArtifact(persisted, payload, {
     runId: 'run', issue: 'a', priorGeneration: 1, branch: 'issue-a', worktree: WORKTREE_A,
-    sourceAgent: 'worker-1', targetAgent: 'worker-2', baseSha: 'base', headSha: 'head',
+    sourceAgent: 'worker-1', targetAgent: 'worker-2',
+    baseSha: currentRevision(), headSha: currentRevision(),
     manifestDigest: manifest.digest, sourceRevision: 'r-a',
     allowedPaths: JSON.stringify(['src/a/**']),
     stateRevision: 0, acceptanceCriteria: ['done'],
@@ -420,7 +530,8 @@ test('continues only after rereading actual orchestration-handoff persistence ou
   }).valid, true);
   const expectedContinuation = {
     runId: 'run', issue: 'a', priorGeneration: 1, branch: 'issue-a', worktree: WORKTREE_A,
-    sourceAgent: 'worker-1', targetAgent: 'worker-2', baseSha: 'base', headSha: 'head',
+    sourceAgent: 'worker-1', targetAgent: 'worker-2',
+    baseSha: currentRevision(), headSha: currentRevision(),
     manifestDigest: manifest.digest, sourceRevision: 'r-a',
     allowedPaths: JSON.stringify(['src/a/**']),
     stateRevision: 0, acceptanceCriteria: ['done'],
@@ -434,6 +545,14 @@ test('continues only after rereading actual orchestration-handoff persistence ou
       { forcePortableFallback: true },
     ).valid,
     true,
+  );
+  const originalContent = fs.readFileSync(persisted.path, 'utf8');
+  const tamperedContent = originalContent.replace('deliver', 'altered');
+  assert.equal(Buffer.byteLength(tamperedContent), Buffer.byteLength(originalContent));
+  fs.writeFileSync(persisted.path, tamperedContent);
+  assert.equal(
+    validateContinuationArtifact(persisted, payload, expectedContinuation).valid,
+    false,
   );
   const expandedScope = structuredClone(payload);
   expandedScope.task_contract.scope = JSON.stringify(['issue a', 'adjacent issue']);
@@ -478,6 +597,26 @@ test('releases ownership only through a reread validated orchestration handoff',
     'fleet-owner',
   );
   assert.doesNotThrow(() => assertFleetState(released, manifest));
+
+  const timedOutState = assigned();
+  timedOutState.reShepherdQueue.push({
+    issue: 'a',
+    action: 'await-safe-ownership-transition',
+    blocker: 'active-assignment-revision-transition-required',
+    revisionObservation: { baseSha: 'new-base', headSha: 'new-head' },
+  });
+  const timedOut = releaseAfterValidatedHandoff(timedOutState, manifest, {
+    issue: 'a',
+    reason: 'timed-out',
+    targetAgent: 'fleet-owner',
+    handoff: persisted,
+    handoffPayload: payload,
+    endedAt: '2026-08-30T00:03:00Z',
+  });
+  assert.equal(timedOut.issues.a.status, 'timed-out');
+  assert.equal(timedOut.issues.a.terminalDisposition, 'timed-out-with-handoff');
+  assert.equal(timedOut.issues.a.checkActivity, null);
+  assert.equal(timedOut.reShepherdQueue.some((entry) => entry.issue === 'a'), false);
 
   const forged = structuredClone(persisted);
   forged.bytes += 1;
@@ -550,7 +689,8 @@ test('fleet stop preserves handoff obligation but dispatches no continuation', (
 test('persisted assignment consumes a serialized revision-bound scheduler lease', (t) => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
-  const file = fleetStatePath(SANDBOX, 'run');
+  ensureGitWorktrees();
+  const file = fleetStatePath(REPOSITORY, 'run');
   persistFleetState(file, state(), 0, manifest, { now: '2026-08-30T00:02:00Z' });
   const persistedState = loadFleetState(file, manifest);
   const schedulerLease = createSchedulerLease(persistedState, manifest, 'a');
@@ -559,8 +699,8 @@ test('persisted assignment consumes a serialized revision-bound scheduler lease'
     branch: 'issue-a',
     worktree: WORKTREE_A,
     workerContext: 'worker-persisted',
-    baseSha: 'base',
-    headSha: 'head',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
     packet: packet('a', 'issue-a', WORKTREE_A),
     schedulerLease,
     startedAt: '2026-08-30T00:03:00Z',
@@ -572,8 +712,8 @@ test('persisted assignment consumes a serialized revision-bound scheduler lease'
     branch: 'issue-b',
     worktree: WORKTREE_B,
     workerContext: 'worker-without-lease',
-    baseSha: 'base',
-    headSha: 'head',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
     packet: packet('b', 'issue-b', WORKTREE_B),
   }), /requires a state-revision-bound scheduler lease/);
   assert.throws(() => assignFreshWorkerPersisted(file, manifest, {
@@ -581,8 +721,8 @@ test('persisted assignment consumes a serialized revision-bound scheduler lease'
     branch: 'issue-a',
     worktree: WORKTREE_A,
     workerContext: 'worker-race-loser',
-    baseSha: 'base',
-    headSha: 'head',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
     packet: packet('a', 'issue-a', WORKTREE_A),
     schedulerLease,
   }), /state revision conflict|not in current capacity.dispatch|not pending/);

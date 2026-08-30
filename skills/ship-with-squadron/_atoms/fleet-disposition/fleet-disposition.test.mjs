@@ -285,4 +285,18 @@ test('renders distinct active, blocked, checking, expired, and review-ready stat
     blocked: [],
     capacity: { nextReplenishment: 'worker-terminal-transition' },
   }, manifest).checking, []);
+  current.issues.a.status = 'timed-out';
+  current.issues.a.terminalDisposition = 'timed-out-with-handoff';
+  current.issues.a.checkActivity = {
+    kind: 'quality-check',
+    state: 'active',
+    startedAt: '2026-08-30T00:00:00Z',
+  };
+  const timedOut = conciseFleetStatus(current, {
+    active: [],
+    blocked: [],
+    capacity: { nextReplenishment: 'none' },
+  }, manifest);
+  assert.deepEqual(timedOut.checking, []);
+  assert.deepEqual(timedOut.deferred, ['a']);
 });
