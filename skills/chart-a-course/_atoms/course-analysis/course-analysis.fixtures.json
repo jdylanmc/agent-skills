@@ -1,0 +1,127 @@
+{
+  "mixedRequirementsTickets": {
+    "goal": "REQ-1",
+    "revision": "rev-7",
+    "observationTime": "2026-08-30T00:00:00Z",
+    "records": [
+      {"id": "REQ-1", "kind": "requirement", "status": "open"},
+      {"id": "T-1", "kind": "ticket", "status": "done"},
+      {"id": "T-2", "kind": "ticket", "status": "open"},
+      {"id": "NOTE-1", "kind": "note", "status": "open"}
+    ],
+    "edges": [
+      {"prerequisite": "T-1", "dependent": "T-2"},
+      {"prerequisite": "T-2", "dependent": "REQ-1"}
+    ]
+  },
+  "cycle": {
+    "goal": "G",
+    "revision": "cycle-1",
+    "observationTime": "2026-08-30T00:00:00Z",
+    "records": [
+      {"id": "A", "status": "open"},
+      {"id": "B", "status": "open"},
+      {"id": "G", "status": "open"}
+    ],
+    "edges": [
+      {"prerequisite": "A", "dependent": "B"},
+      {"prerequisite": "B", "dependent": "A"},
+      {"prerequisite": "B", "dependent": "G"}
+    ]
+  },
+  "missingEdgesAndAmbiguousDirection": {
+    "goal": "G",
+    "revision": "missing-1",
+    "observationTime": "2026-08-30T00:00:00Z",
+    "records": [
+      {"id": "A", "status": "done"},
+      {"id": "G", "status": "open"}
+    ],
+    "edges": [
+      {"prerequisite": "MISSING", "dependent": "G"},
+      {"source": "A", "target": "G"}
+    ]
+  },
+  "tiedWeightedPaths": {
+    "goal": "G",
+    "revision": "ties-1",
+    "observationTime": "2026-08-30T00:00:00Z",
+    "records": [
+      {"id": "A", "status": "open", "estimate": {"value": 2, "unit": "days", "reliable": true}},
+      {"id": "B", "status": "open", "estimate": {"value": 2, "unit": "days", "reliable": true}},
+      {"id": "G", "status": "open", "estimate": {"value": 1, "unit": "days", "reliable": true}}
+    ],
+    "edges": [
+      {"prerequisite": "A", "dependent": "G"},
+      {"prerequisite": "B", "dependent": "G"}
+    ]
+  },
+  "absentEstimates": {
+    "goal": "G",
+    "revision": "structural-1",
+    "observationTime": "2026-08-30T00:00:00Z",
+    "records": [
+      {"id": "A", "status": "open"},
+      {"id": "B", "status": "open"},
+      {"id": "G", "status": "open"}
+    ],
+    "edges": [
+      {"prerequisite": "A", "dependent": "B"},
+      {"prerequisite": "B", "dependent": "G"}
+    ]
+  },
+  "completedPrerequisites": {
+    "goal": "G",
+    "revision": "completed-1",
+    "observationTime": "2026-08-30T00:00:00Z",
+    "records": [
+      {"id": "A", "status": "done"},
+      {"id": "G", "status": "open"}
+    ],
+    "edges": [
+      {"prerequisite": "A", "dependent": "G"}
+    ]
+  },
+  "blockedWork": {
+    "goal": "G",
+    "revision": "blocked-1",
+    "observationTime": "2026-08-30T00:00:00Z",
+    "records": [
+      {"id": "A", "status": "open"},
+      {"id": "B", "status": "blocked"},
+      {"id": "G", "status": "open"}
+    ],
+    "edges": [
+      {"prerequisite": "A", "dependent": "B"},
+      {"prerequisite": "B", "dependent": "G"}
+    ]
+  },
+  "irrelevantWork": {
+    "goal": "G",
+    "revision": "outside-1",
+    "observationTime": "2026-08-30T00:00:00Z",
+    "records": [
+      {"id": "A", "status": "open"},
+      {"id": "G", "status": "open"},
+      {"id": "X", "status": "blocked"},
+      {"id": "Y", "status": "open"}
+    ],
+    "edges": [
+      {"prerequisite": "A", "dependent": "G"},
+      {"prerequisite": "X", "dependent": "Y"}
+    ]
+  },
+  "staleStatus": {
+    "goal": "G",
+    "revision": "stale-1",
+    "observationTime": "2026-08-30T00:00:00Z",
+    "freshness": {"maxStatusAgeSeconds": 3600},
+    "records": [
+      {"id": "A", "status": "done", "statusObservedAt": "2026-08-29T20:00:00Z"},
+      {"id": "G", "status": "open", "statusObservedAt": "2026-08-30T00:00:00Z"}
+    ],
+    "edges": [
+      {"prerequisite": "A", "dependent": "G"}
+    ]
+  }
+}
