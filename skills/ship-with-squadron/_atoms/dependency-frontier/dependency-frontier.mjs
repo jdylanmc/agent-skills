@@ -1,17 +1,21 @@
 import { validateIssueSetReceipt } from '../fleet-manifest/fleet-manifest.mjs';
 import { normalizeMergeObservation } from '../provider-seam/provider-seam.mjs';
+import { effectiveIssueReadiness } from '../fleet-disposition/fleet-disposition.mjs';
 
 const TERMINAL = new Set(['completed', 'blocked', 'failed', 'timed-out', 'deferred']);
 
-function dependencySatisfied(edge, record, observedMerges) {
+function dependencySatisfied(edge, record, observedMerges, fleetState, manifest) {
+  const alreadyComplete = record.status === 'completed'
+    && record.terminalDisposition === 'already-complete'
+    && manifest.issues.find((entry) => entry.identity === record.identity)?.status === 'completed'
+    && record.sourceReceipt?.issueStatus === 'completed';
   if (edge.satisfiedBy === 'completed') {
-    return record.status === 'completed'
-      && ['ready-for-human-merge', 'already-complete'].includes(record.terminalDisposition);
+    return alreadyComplete || effectiveIssueReadiness(record, fleetState, manifest);
   }
   return (observedMerges.has(edge.dependency)
       && record.status === 'completed'
-      && ['ready-for-human-merge', 'already-complete'].includes(record.terminalDisposition))
-    || record.terminalDisposition === 'already-complete';
+      && record.terminalDisposition === 'ready-for-human-merge')
+    || alreadyComplete;
 }
 
 function queryMembershipIsCurrent(manifest, fleetState) {
@@ -138,7 +142,13 @@ export function computeFrontier(manifest, fleetState) {
     }
 
     const blockers = incoming.get(issue.identity)
-      .filter((edge) => !dependencySatisfied(edge, records[edge.dependency], observedMerges))
+      .filter((edge) => !dependencySatisfied(
+        edge,
+        records[edge.dependency],
+        observedMerges,
+        fleetState,
+        manifest,
+      ))
       .map((edge) => ({
         dependency: edge.dependency,
         reason: edge.satisfiedBy === 'human-merge'

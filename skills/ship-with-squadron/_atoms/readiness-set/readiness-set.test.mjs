@@ -6,6 +6,7 @@ import {
   consumeNoShepherdRevalidation,
   consumeReShepherdQueue,
   expireReadinessAfterSiblingMerge,
+  recordReadinessRevisionObservation,
   recordShepherdNotRequired,
 } from './readiness-set.mjs';
 
@@ -22,7 +23,7 @@ function manifest(shepherdIntent = 'yes') {
       sourceReceipt: {
         invocation: { id: `read-${identity}`, operation: 'read-issue' },
         provider: 'github', repository: 'owner/repo', issue: identity, revision: `r-${identity}`,
-        status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
+        issueStatus: 'pending', status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
       },
       acceptanceCriteria: ['done'], scope: [], allowedPaths: [`${identity}/**`],
     })),
@@ -30,7 +31,7 @@ function manifest(shepherdIntent = 'yes') {
     concurrency: 2,
     budget: { cost: 10, timeMinutes: 60, retries: 2 },
     repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
-    provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge'] },
+    provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
     validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
     stopConditions: ['cancelled'],
     humanBoundaries: ['human merge'],
@@ -45,6 +46,7 @@ function expected(issue = 'b', generation = 1, baseSha = 'base-1') {
     provider: 'github',
     repository: 'owner/repo',
     changeRequest: `PR-${issue.toUpperCase()}`,
+    publicationKey: `pub-${issue}`,
     baseBranch: 'main',
     baseSha,
     headSha: `head-${issue}`,
@@ -98,14 +100,17 @@ function shepherd(expectation = expected(), overrides = {}) {
     },
     setObligation: {
       owner: expectation.issue,
+      provider: expectation.provider,
+      repository: expectation.repository,
       changeRequest: expectation.changeRequest,
+      publicationKey: expectation.publicationKey,
       baseBranch: expectation.baseBranch,
       baseSha: expectation.baseSha,
       headSha: expectation.headSha,
       expiresWhen: 'sibling-merge-into-base',
       reinvocation: 'invoke-fresh-shepherd',
       generation: expectation.obligationGeneration,
-      createdAt: '2026-08-30T00:01:01Z',
+      createdAt: observationTime,
     },
     ...overrides,
   };
@@ -136,6 +141,8 @@ function state() {
         shepherd: shepherdA,
         shepherdDecision: null,
         setObligation: shepherdA.setObligation,
+        readinessGeneration: 1,
+        readinessWatermark: null,
         terminalDisposition: 'ready-for-human-merge',
       },
       b: {
@@ -149,6 +156,8 @@ function state() {
         shepherd: shepherdB,
         shepherdDecision: null,
         setObligation: shepherdB.setObligation,
+        readinessGeneration: 1,
+        readinessWatermark: null,
         terminalDisposition: 'ready-for-human-merge',
       },
       c: {
@@ -162,6 +171,14 @@ function state() {
         shepherd: null,
         shepherdDecision: null,
         setObligation: null,
+        readinessGeneration: 1,
+        readinessWatermark: null,
+        checkActivity: {
+          kind: 'shepherd-check',
+          state: 'active',
+          generation: 1,
+          startedAt: '2026-08-30T00:01:30Z',
+        },
         terminalDisposition: 'blocked',
       },
     },
@@ -263,7 +280,11 @@ function validNoShepherdPipeline(baseSha, headSha) {
     ...common,
     evidenceComplete: true,
     invocation: { skill: 'blast-radius', id: 'blast-b', runId: 'run', issue: 'b' },
-    contractPullRequest: 157, status: 'completed',
+    contractRepository: 'jdylanmc/agent-skills',
+    contractPullRequest: 157,
+    contractBranch: 'origin/issue-70-blast-radius-proof',
+    contractBaseRevision: '02ae9f84c782b9e57dfec20cda344fb494e57049',
+    contractRevision: '4a946e4500479e028112b77bdf268c5b7a8aae1f', status: 'completed',
     assertionLadders: [{
       id: 'A1', assertion: 'safe', affectedBoundary: 'adapter', badCase: 'breakage',
       safetyCriticalReason: 'unsafe delivery',
@@ -279,9 +300,11 @@ function validNoShepherdPipeline(baseSha, headSha) {
     }],
     classifications: {
       'confirmed-risk': [],
-      'cleared-risk': [{ assertionId: 'A1', evidence: 'proof', scope: 'current revision' }],
+      'cleared-risk': [{ assertionId: 'A1', assertion: 'safe', evidence: 'ruled-out-bad-case proof', scope: 'current revision' }],
       'unproven-assertion': [],
     },
+    analysisBoundaries: ['current revision and traced consumers'],
+    crossBoundaryGaps: [],
     'regression-proof-status': 'selected',
     'regression-proof': {
       id: 'P1', assertionId: 'A1', badCase: 'breakage', verificationLevel: 'integration',
@@ -340,18 +363,39 @@ test('accepts only exact provider/CR/revision/owner-bound real nested Shepherd r
 test('expires readiness immediately and queues generation/revision-specific re-Shepherd work', () => {
   const incompleteRevision = revision('b', 'base-2', '2026-08-30T00:02:01Z');
   delete incompleteRevision.publicationKey;
-  assert.throws(() => expireReadinessAfterSiblingMerge(
+  const malformed = expireReadinessAfterSiblingMerge(
     state(),
     manifest(),
     mergeA,
     { b: incompleteRevision },
-  ), /current revision observation is incomplete/);
-  assert.throws(() => expireReadinessAfterSiblingMerge(
+  );
+  assert.equal(malformed.observedHumanMerges.length, 1);
+  assert.equal(malformed.issues.b.terminalDisposition, 'blocked');
+  assert.match(
+    malformed.reShepherdQueue.find((entry) => entry.issue === 'b').blocker,
+    /schema-is-not-exact/,
+  );
+  const recovered = recordReadinessRevisionObservation(
+    malformed,
+    manifest(),
+    'b',
+    revision('b', 'base-2', '2026-08-30T00:02:01Z'),
+  );
+  assert.equal(recovered.reShepherdQueue.find((entry) => entry.issue === 'b').blocker, null);
+  assert.equal(
+    recovered.reShepherdQueue.find((entry) => entry.issue === 'b').action,
+    'invoke-fresh-shepherd',
+  );
+  const stale = expireReadinessAfterSiblingMerge(
     state(),
     manifest(),
     mergeA,
     { b: revision('b', 'base-2', '2026-08-30T00:01:59Z') },
-  ), /current revision observation is incomplete/);
+  );
+  assert.match(
+    stale.reShepherdQueue.find((entry) => entry.issue === 'b').blocker,
+    /predates/,
+  );
   const current = expireReadinessAfterSiblingMerge(
     state(),
     manifest(),
@@ -362,10 +406,15 @@ test('expires readiness immediately and queues generation/revision-specific re-S
   assert.equal(current.issues.b.shepherd.ready, false);
   assert.equal(current.issues.b.terminalDisposition, 'blocked');
   assert.equal(current.fleetDisposition, 'blocked');
-  assert.equal(current.reShepherdQueue[0].generation, 2);
-  assert.equal(current.reShepherdQueue[0].baseSha, 'base-2');
+  const queuedB = current.reShepherdQueue.find((entry) => entry.issue === 'b');
+  const queuedC = current.reShepherdQueue.find((entry) => entry.issue === 'c');
+  assert.equal(queuedB.generation, 2);
+  assert.equal(queuedB.baseSha, 'base-2');
+  assert.equal(queuedC.generation, 2);
+  assert.equal(queuedC.action, 'acquire-current-change-request-revision');
   assert.equal(current.issues.b.pipeline.length, 0);
   assert.equal(current.issues.b.changeRequest, null);
+  assert.equal(current.issues.c.checkActivity, null);
   const duplicate = expireReadinessAfterSiblingMerge(
     current,
     manifest(),
@@ -373,7 +422,7 @@ test('expires readiness immediately and queues generation/revision-specific re-S
     {},
     '2026-08-30T00:02:03Z',
   );
-  assert.equal(duplicate.reShepherdQueue[0].generation, 2);
+  assert.equal(duplicate.reShepherdQueue.find((entry) => entry.issue === 'b').generation, 2);
   assert.equal(duplicate.expiredReadinessClaims.length, current.expiredReadinessClaims.length);
 
   const repeat = expireReadinessAfterSiblingMerge(
@@ -384,6 +433,7 @@ test('expires readiness immediately and queues generation/revision-specific re-S
     '2026-08-30T00:03:02Z',
   );
   assert.equal(repeat.reShepherdQueue.length, 1);
+  assert.equal(repeat.reShepherdQueue[0].issue, 'b');
   assert.equal(repeat.reShepherdQueue[0].generation, 3);
   assert.equal(repeat.reShepherdQueue[0].baseSha, 'base-3');
 });
@@ -416,7 +466,8 @@ test('consumes queued work only with a fresh accepted receipt bound to the queue
     completedAt: '2026-08-30T00:05:45Z',
     pipeline: validNoShepherdPipeline('base-2', 'head-b'),
   });
-  assert.equal(consumed.reShepherdQueue.length, 0);
+  assert.equal(consumed.reShepherdQueue.length, 1);
+  assert.equal(consumed.reShepherdQueue[0].issue, 'c');
   assert.equal(consumed.issues.b.terminalDisposition, 'ready-for-human-merge');
   assert.equal(consumed.issues.b.pipeline.at(-1).stage, 'shepherd');
 });
@@ -455,6 +506,8 @@ test('manifest Shepherd intent no records a real not-required state and obligati
         shepherd: null,
         shepherdDecision: null,
         setObligation: null,
+        readinessGeneration: 0,
+        readinessWatermark: null,
       },
     },
     publications: [{
@@ -468,17 +521,22 @@ test('manifest Shepherd intent no records a real not-required state and obligati
   };
   const next = recordShepherdNotRequired(current, noManifest, 'a', {
     owner: 'a',
+    provider: 'github',
+    repository: 'owner/repo',
     changeRequest: 'PR-A',
+    publicationKey: 'pub-a',
     baseBranch: 'main',
     baseSha: 'base-1',
     headSha: 'head-a',
     expiresWhen: 'sibling-merge-into-base',
     reinvocation: 'rerun-quality-and-provider-observation',
     generation: 1,
-    createdAt: '2026-08-30T00:01:01Z',
+    createdAt: '2026-08-30T00:05:30Z',
   });
   assert.equal(next.issues.a.shepherd, null);
   assert.equal(next.issues.a.shepherdDecision.state, 'not-required');
+  assert.equal(next.issues.a.terminalDisposition, 'ready-for-human-merge');
+  assert.equal(next.issues.a.nextAction, 'await-human-merge');
   assert.equal(next.events[0].type, 'shepherd-not-required');
 });
 
@@ -492,16 +550,28 @@ test('no-Shepherd expiry is consumed by fresh quality/provider revalidation, nev
       b: {
         identity: 'b', baseSha: 'base-1', headSha: 'head-b',
         acceptanceCriteria: noManifest.issues.find((issue) => issue.identity === 'b').acceptanceCriteria,
-        changeRequest: { identifier: 'PR-B' },
+        changeRequest: {
+          identifier: 'PR-B', publicationKey: 'pub-b', baseSha: 'base-2', headSha: 'head-b',
+        },
         shepherd: null,
         shepherdDecision: { state: 'not-required', manifestDigest: noManifest.digest },
         setObligation: null,
+        readinessGeneration: 2,
+        readinessWatermark: {
+          generation: 2,
+          observedAt: '2026-08-30T00:03:00Z',
+          triggeringPublicationKey: 'pub-a',
+          triggeringMergeCommit: 'merge-a',
+        },
         terminalDisposition: 'blocked',
       },
     },
     reShepherdQueue: [{
       issue: 'b', changeRequest: 'PR-B', generation: 2,
+      publicationKey: 'pub-b',
       baseSha: 'base-2', headSha: 'head-b',
+      blocker: null,
+      mergeObservedAt: '2026-08-30T00:03:00Z',
       action: 'rerun-quality-and-provider-observation',
       revisionObservation: revision('b', 'base-2', '2026-08-30T00:03:01Z'),
     }],
@@ -516,12 +586,13 @@ test('no-Shepherd expiry is consumed by fresh quality/provider revalidation, nev
   };
   const pipeline = validNoShepherdPipeline('base-2', 'head-b');
   const obligation = {
-    owner: 'b', changeRequest: 'PR-B', baseBranch: 'main',
+    owner: 'b', provider: 'github', repository: 'owner/repo',
+    changeRequest: 'PR-B', publicationKey: 'pub-b', baseBranch: 'main',
     baseSha: 'base-2', headSha: 'head-b',
     expiresWhen: 'sibling-merge-into-base',
     reinvocation: 'rerun-quality-and-provider-observation',
     generation: 2,
-    createdAt: '2026-08-30T00:04:00Z',
+    createdAt: '2026-08-30T00:06:00Z',
   };
   assert.throws(() => consumeNoShepherdRevalidation(current, noManifest, 'b', {
     status: 'completed', terminal: true, complete: true,

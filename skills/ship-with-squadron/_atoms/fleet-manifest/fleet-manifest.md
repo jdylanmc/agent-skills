@@ -16,12 +16,15 @@ used-by: ["ship-with-squadron/_molecules/fleet-control/fleet-control.md"]
 
 Build one numbered manifest before dispatch. It contains the goal, explicit
 accepted scope, complete issue set, complete terminal provider receipts for
-each source revision, acceptance criteria with stable IDs, issue scope and
+each source revision and current issue status, acceptance criteria with stable IDs, issue scope and
 allowed paths, explicit `dependency -> dependent` edges, current states,
 ordering, exclusions, repository and provider adapter configuration, validation
 policy, concurrency, budgets, stop conditions, Shepherd intent, and human-only
 decisions. Accepted scope, exclusions, and human decisions are required even
 when their confirmed value is an empty array.
+
+An issue may enter the run as `already-complete` only when both the confirmed
+manifest status and its exact provider receipt record `completed`.
 
 The issue set is either explicitly enumerated or bound to a tracker-query
 receipt. Query-backed sets persist query identity and revision, the exact

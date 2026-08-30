@@ -25,7 +25,7 @@ function receipt(observedAt = '2026-08-30T00:00:00Z') {
   return {
     invocation: { id: `read-${observedAt}`, operation: 'read-issue' },
     provider: 'github', repository: 'owner/repo', issue: '1', revision: 'r1',
-    status: 'observed', terminal: true, complete: true, observedAt,
+    issueStatus: 'pending', status: 'observed', terminal: true, complete: true, observedAt,
   };
 }
 
@@ -47,7 +47,7 @@ const manifest = normalizeFleetManifest({
   concurrency: 1,
   budget: { cost: 1, timeMinutes: 10, retries: 2 },
   repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
-  provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge'] },
+  provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],
   humanBoundaries: ['human merge'],
@@ -113,18 +113,102 @@ test('serializes a multiprocess revision race so only one writer wins', async (t
   assert.equal(loadFleetState(file, manifest).revision, 2);
 });
 
-test('recovers a crash-stale incomplete lock before the exclusive revision recheck', (t) => {
+test('recovers a crash-stale ownership-bound lock before the exclusive revision recheck', (t) => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
   const file = fleetStatePath(SANDBOX, 'stale-lock');
   const initial = createFleetState(manifest, 'stale-lock');
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(`${file}.lock`, '');
+  fs.writeFileSync(`${file}.lock`, JSON.stringify({
+    pid: 99999999,
+    token: 'stale-owner-token',
+    expectedRevision: 0,
+    createdAt: '2020-01-01T00:00:00Z',
+  }));
   const old = new Date('2020-01-01T00:00:00Z');
   fs.utimesSync(`${file}.lock`, old, old);
   const written = persistFleetState(file, initial, 0, manifest, { staleLockMs: 0 });
   assert.equal(written.revision, 1);
   assert.equal(fs.existsSync(`${file}.lock`), false);
+});
+
+test('never deletes a replacement lock during stale cleanup or release races', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const staleFile = fleetStatePath(SANDBOX, 'stale-race');
+  fs.mkdirSync(path.dirname(staleFile), { recursive: true });
+  fs.writeFileSync(`${staleFile}.lock`, JSON.stringify({
+    pid: 99999999,
+    token: 'old-stale-token',
+    expectedRevision: 0,
+    createdAt: '2020-01-01T00:00:00Z',
+  }));
+  const old = new Date('2020-01-01T00:00:00Z');
+  fs.utimesSync(`${staleFile}.lock`, old, old);
+  const replacement = JSON.stringify({
+    pid: process.pid,
+    token: 'new-live-token',
+    expectedRevision: 0,
+    createdAt: new Date().toISOString(),
+  });
+  assert.throws(() => persistFleetState(
+    staleFile,
+    createFleetState(manifest, 'stale-race'),
+    0,
+    manifest,
+    {
+      staleLockMs: 0,
+      lockAttempts: 1,
+      beforeStaleLockClaim() {
+        fs.unlinkSync(`${staleFile}.lock`);
+        fs.writeFileSync(`${staleFile}.lock`, replacement);
+      },
+    },
+  ), /write lock is busy/);
+  assert.equal(fs.readFileSync(`${staleFile}.lock`, 'utf8'), replacement);
+
+  const releaseFile = fleetStatePath(SANDBOX, 'release-race');
+  const releaseReplacement = JSON.stringify({
+    pid: process.pid,
+    token: 'release-live-token',
+    expectedRevision: 1,
+    createdAt: new Date().toISOString(),
+  });
+  persistFleetState(
+    releaseFile,
+    createFleetState(manifest, 'release-race'),
+    0,
+    manifest,
+    {
+      beforeReleaseLockClaim() {
+        fs.unlinkSync(`${releaseFile}.lock`);
+        fs.writeFileSync(`${releaseFile}.lock`, releaseReplacement);
+      },
+    },
+  );
+  assert.equal(fs.readFileSync(`${releaseFile}.lock`, 'utf8'), releaseReplacement);
+});
+
+test('rejects symlinks anywhere in the fleet-state directory ancestry', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const real = path.join(SANDBOX, 'real');
+  const linked = path.join(SANDBOX, 'linked');
+  fs.mkdirSync(real, { recursive: true });
+  try {
+    fs.symlinkSync(real, linked, 'dir');
+  } catch (error) {
+    if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(error.code)) {
+      t.skip('runner cannot create directory symlinks');
+      return;
+    }
+    throw error;
+  }
+  const file = fleetStatePath(linked, 'symlink-run');
+  assert.throws(
+    () => persistFleetState(file, createFleetState(manifest, 'symlink-run'), 0, manifest),
+    /directory ancestry is unsafe/,
+  );
 });
 
 test('reobserves the exact source revision and rejects closed-set or ownership forgery', () => {
@@ -186,7 +270,7 @@ test('uses at-ceiling budget semantics, stops dispatch, and preserves cancellati
     () => transitionIssue(initial, '1', 'completed', {
       terminalDisposition: 'blocked',
     }),
-    /contradicts status completed/,
+    /semantic publication\/readiness pipeline/,
   );
 });
 

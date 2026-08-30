@@ -14,6 +14,7 @@ function sourceReceipt(issue, revision, overrides = {}) {
     repository: 'owner/repo',
     issue,
     revision,
+    issueStatus: 'pending',
     status: 'observed',
     terminal: true,
     complete: true,
@@ -46,7 +47,7 @@ function manifest(overrides = {}) {
     repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
     provider: {
       name: 'GitHub',
-      allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge'],
+      allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'],
     },
     validationPolicy: [...BASELINE_POLICY],
     stopConditions: ['budget exhausted', 'cancelled'],
@@ -72,6 +73,18 @@ test('normalizes a confirmed closed manifest and provider-bound source receipts'
     result,
     '1',
   ).revision, 'r1');
+});
+
+test('seals already-complete eligibility in both manifest status and provider receipt', () => {
+  const completed = issue('1', 'r1');
+  completed.status = 'completed';
+  completed.sourceReceipt = sourceReceipt('1', 'r1', { issueStatus: 'completed' });
+  const normalized = normalizeFleetManifest(manifest({ issues: [completed] }));
+  assert.equal(normalized.issues[0].status, 'completed');
+  assert.equal(normalized.issues[0].sourceReceipt.issueStatus, 'completed');
+  assert.throws(() => normalizeFleetManifest(manifest({
+    issues: [{ ...completed, sourceReceipt: sourceReceipt('1', 'r1') }],
+  })), /issueStatus does not match/);
 });
 
 test('requires explicit scope, exclusions, human decisions, and mandatory baseline policy', () => {

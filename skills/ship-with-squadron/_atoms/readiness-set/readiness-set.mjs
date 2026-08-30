@@ -8,8 +8,12 @@ import {
   persistedPipelinePasses,
   persistedPublicationPipelinePasses,
   persistedShepherdPasses,
+  validateReadinessObligation,
 } from '../quality-evidence/quality-evidence.mjs';
-import { normalizeMergeObservation } from '../provider-seam/provider-seam.mjs';
+import {
+  normalizeChangeRequestRevisionObservation,
+  normalizeMergeObservation,
+} from '../provider-seam/provider-seam.mjs';
 import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.mjs';
 
 const GREEN = new Set(['mergeable-and-green', 'no-op-mergeable-and-green']);
@@ -26,13 +30,6 @@ function normalizeProvider(value) {
   return nonEmpty(value) ? value.trim().toLowerCase() : null;
 }
 
-function exactKeys(value, expected) {
-  return value
-    && typeof value === 'object'
-    && !Array.isArray(value)
-    && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
-}
-
 function expectedFields(expected) {
   return [
     ['provider', normalizeProvider(expected?.provider)],
@@ -40,21 +37,6 @@ function expectedFields(expected) {
     ['baseSha', expected?.baseSha],
     ['headSha', expected?.headSha],
   ];
-}
-
-function validateSetObligation(obligation, expected, generation, reinvocation = 'invoke-fresh-shepherd') {
-  const defects = [];
-  if (!obligation || typeof obligation !== 'object') return ['set obligation is absent'];
-  if (obligation.owner !== expected.issue) defects.push('set obligation owner does not match issue');
-  if (obligation.changeRequest !== expected.changeRequest) defects.push('set obligation change request does not match');
-  if (obligation.baseBranch !== expected.baseBranch) defects.push('set obligation base branch does not match');
-  if (obligation.baseSha !== expected.baseSha) defects.push('set obligation base revision does not match');
-  if (obligation.headSha !== expected.headSha) defects.push('set obligation head revision does not match');
-  if (obligation.expiresWhen !== 'sibling-merge-into-base') defects.push('set obligation expiry is invalid');
-  if (obligation.reinvocation !== reinvocation) defects.push('set obligation reinvocation is invalid');
-  if (obligation.generation !== generation) defects.push('set obligation generation does not match');
-  if (!validTimestamp(obligation.createdAt)) defects.push('set obligation creation time is invalid');
-  return defects;
 }
 
 export function acceptShepherdReturn(input, expected = {}) {
@@ -94,7 +76,9 @@ export function acceptShepherdReturn(input, expected = {}) {
   if (normalizeProvider(input?.observation?.provider) !== normalizeProvider(expected.provider)
       || input?.observation?.repository !== expected.repository
       || input?.observation?.changeRequest !== expected.changeRequest
-      || input?.observation?.baseBranch !== expected.baseBranch) {
+      || input?.observation?.baseBranch !== expected.baseBranch
+      || input?.observation?.baseSha !== expected.baseSha
+      || input?.observation?.headSha !== expected.headSha) {
     defects.push('post-Shepherd observation identity does not match');
   }
   const policy = normalizeUpToDatePolicy(input?.result?.receipt?.upToDatePolicy);
@@ -107,7 +91,18 @@ export function acceptShepherdReturn(input, expected = {}) {
     defects.push('provider state is degraded or unobserved');
   }
   const generation = expected.obligationGeneration ?? 1;
-  defects.push(...validateSetObligation(input?.setObligation, expected, generation));
+  defects.push(...validateReadinessObligation(
+    input?.setObligation,
+    expected,
+    generation,
+    'invoke-fresh-shepherd',
+    input?.observation?.observedAt,
+  ));
+  if (validTimestamp(expected.minimumObservedAt)
+      && (Date.parse(input?.result?.receipt?.observedAt ?? '') <= Date.parse(expected.minimumObservedAt)
+        || Date.parse(input?.observation?.observedAt ?? '') <= Date.parse(expected.minimumObservedAt))) {
+    defects.push('Shepherd result predates the latest relevant merge watermark');
+  }
   const ready = defects.length === 0 && GREEN.has(input.result.disposition);
   return {
     accepted: defects.length === 0,
@@ -139,20 +134,29 @@ export function recordShepherdNotRequired(state, manifest, issueIdentity, obliga
   }
   const expected = {
     issue: issueIdentity,
+    provider: manifest.provider.name,
+    repository: manifest.repository.id,
     changeRequest: record.changeRequest.identifier,
+    publicationKey: record.changeRequest.publicationKey,
     baseBranch: manifest.repository.baseBranch,
     baseSha: record.baseSha,
     headSha: record.headSha,
   };
-  const defects = validateSetObligation(
+  const publication = state.publications.find((entry) =>
+    entry.key === record.changeRequest.publicationKey
+    && entry.identifier === record.changeRequest.identifier);
+  const publicationObservation = publication?.observations?.find((entry) =>
+    entry.state === 'confirmed'
+    && entry.baseSha === record.baseSha
+    && entry.headSha === record.headSha);
+  const generation = record.readinessGeneration + 1;
+  const defects = validateReadinessObligation(
     obligation,
     expected,
-    obligation?.generation,
+    generation,
     'rerun-quality-and-provider-observation',
+    publicationObservation?.confirmedAt ?? null,
   );
-  if (!Number.isInteger(obligation?.generation) || obligation.generation < 1) {
-    defects.push('set obligation generation is invalid');
-  }
   if (defects.length) throw new Error(`invalid Shepherd-not-required obligation: ${defects.join('; ')}`);
   const next = structuredClone(state);
   next.issues[issueIdentity].shepherd = null;
@@ -163,37 +167,24 @@ export function recordShepherdNotRequired(state, manifest, issueIdentity, obliga
     recordedAt: obligation.createdAt,
   };
   next.issues[issueIdentity].setObligation = structuredClone(obligation);
+  next.issues[issueIdentity].readinessGeneration = generation;
+  next.issues[issueIdentity].status = 'completed';
+  next.issues[issueIdentity].dependencyState = 'unclassified';
+  next.issues[issueIdentity].terminalDisposition = 'ready-for-human-merge';
+  next.issues[issueIdentity].nextAction = 'await-human-merge';
   next.events.push({ type: 'shepherd-not-required', issue: issueIdentity });
+  next.fleetDisposition = deriveFleetDisposition(next, manifest);
   return next;
 }
 
-function currentRevision(revisions, issue, record, publication, mergeObservation) {
-  const revision = revisions?.[issue];
-  if (!exactKeys(revision, [
-    'invocation', 'observed', 'status', 'terminal', 'complete',
-    'provider', 'repository', 'issue', 'changeRequest', 'publicationKey',
-    'baseBranch', 'baseSha', 'headBranch', 'headSha', 'observedAt',
-  ])
-      || !exactKeys(revision?.invocation, ['id', 'operation', 'providerKey'])
-      || revision.invocation.operation !== 'observe-change-request-revision'
-      || !nonEmpty(revision?.invocation?.id)
-      || revision.invocation.providerKey !== publication.key
-      || revision.observed !== true
-      || revision.status !== 'observed'
-      || revision.terminal !== true
-      || revision.complete !== true
-      || normalizeProvider(revision.provider) !== normalizeProvider(publication.provider)
-      || revision.repository !== publication.repository
-      || revision.issue !== record.identity
-      || revision.changeRequest !== publication.identifier
-      || revision.publicationKey !== publication.key
-      || revision.baseBranch !== publication.baseBranch
-      || revision.headBranch !== publication.headBranch
-      || !nonEmpty(revision.baseSha)
-      || !nonEmpty(revision.headSha)
-      || !validTimestamp(revision.observedAt)
-      || Date.parse(revision.observedAt) <= Date.parse(mergeObservation.observedAt)) {
-    throw new Error(`current revision observation is incomplete for ${issue}`);
+function currentRevision(state, manifest, revisions, issue, mergeObservation) {
+  const revision = normalizeChangeRequestRevisionObservation(
+    state,
+    manifest,
+    revisions?.[issue],
+  );
+  if (Date.parse(revision.observedAt) <= Date.parse(mergeObservation.observedAt)) {
+    throw new Error(`current revision observation predates the triggering merge for ${issue}`);
   }
   return revision;
 }
@@ -209,6 +200,7 @@ export function expireReadinessAfterSiblingMerge(
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('readiness expiry state is not bound to the confirmed manifest');
   }
+  if (!validTimestamp(now)) throw new Error('readiness expiry time is invalid');
   mergeObservation = normalizeMergeObservation(state, manifest, mergeObservation);
   if (mergeObservation?.observed !== true
       || mergeObservation.provider !== manifest.provider.name
@@ -216,7 +208,8 @@ export function expireReadinessAfterSiblingMerge(
       || mergeObservation.baseBranch !== manifest.repository.baseBranch
       || !nonEmpty(mergeObservation.publicationKey)
       || !nonEmpty(mergeObservation.mergeCommit)
-      || !validTimestamp(mergeObservation.observedAt)) {
+      || !validTimestamp(mergeObservation.observedAt)
+      || Date.parse(now) < Date.parse(mergeObservation.observedAt)) {
     throw new Error('readiness expiry requires an exact reconciled human merge observation');
   }
   const publication = state.publications?.find((entry) =>
@@ -240,10 +233,28 @@ export function expireReadinessAfterSiblingMerge(
   if (duplicate) return structuredClone(state);
   const next = structuredClone(state);
   next.observedHumanMerges.push(structuredClone(mergeObservation));
+  next.reShepherdQueue = next.reShepherdQueue.filter(
+    (entry) => entry.issue !== mergeObservation.issue,
+  );
+  const mergedRecord = next.issues[mergeObservation.issue];
+  if (mergedRecord) {
+    mergedRecord.status = 'completed';
+    mergedRecord.dependencyState = 'unclassified';
+    mergedRecord.terminalDisposition = 'ready-for-human-merge';
+    mergedRecord.nextAction = null;
+    mergedRecord.checkActivity = null;
+  }
+  const affected = [];
   for (const record of Object.values(next.issues)) {
     const existingQueue = next.reShepherdQueue.find((entry) => entry.issue === record.identity);
-    const recordChangeRequest = record.changeRequest?.identifier ?? existingQueue?.changeRequest;
-    const recordPublicationKey = record.changeRequest?.publicationKey ?? existingQueue?.publicationKey;
+    const recordedPublication = next.publications.find((entry) =>
+      entry.issue === record.identity && entry.identifier !== null);
+    const recordChangeRequest = record.changeRequest?.identifier
+      ?? existingQueue?.changeRequest
+      ?? recordedPublication?.identifier;
+    const recordPublicationKey = record.changeRequest?.publicationKey
+      ?? existingQueue?.publicationKey
+      ?? recordedPublication?.key;
     if (!recordChangeRequest || recordChangeRequest === mergeObservation.changeRequest) continue;
     const recordPublication = next.publications.find((entry) =>
       entry.key === recordPublicationKey && entry.identifier === recordChangeRequest);
@@ -251,27 +262,15 @@ export function expireReadinessAfterSiblingMerge(
     if (next.observedHumanMerges.some((entry) =>
       entry.issue === record.identity
       && entry.changeRequest === recordChangeRequest)) continue;
-    const wasReady = record.shepherd?.ready === true
-      || record.shepherdDecision?.state === 'not-required'
-      || Boolean(existingQueue);
-    if (!wasReady) continue;
     const siblingPublication = next.publications.find((entry) =>
       entry.key === recordPublicationKey
       && entry.identifier === recordChangeRequest);
     if (!siblingPublication) throw new Error(`published sibling ${record.identity} has no stable publication`);
-    const revision = currentRevision(
-      revisions,
-      record.identity,
-      record,
-      siblingPublication,
-      mergeObservation,
-    );
-    if (record.baseSha === revision.baseSha
-        && record.headSha === revision.headSha
-        && record.shepherd?.receipt?.baseSha === revision.baseSha) continue;
     const priorGeneration = existingQueue?.generation
       ?? record.shepherd?.setObligation?.generation
       ?? record.setObligation?.generation
+      ?? record.checkActivity?.generation
+      ?? record.readinessGeneration
       ?? 0;
     const generation = priorGeneration + 1;
     const changeRequest = recordChangeRequest;
@@ -283,32 +282,33 @@ export function expireReadinessAfterSiblingMerge(
     }
     record.status = 'blocked';
     record.dependencyState = 'blocked';
-    record.baseSha = revision.baseSha;
-    record.headSha = revision.headSha;
     record.pipeline = [];
-    record.changeRequest = null;
-    if (manifest.shepherdIntent === 'no') {
-      record.shepherdDecision = null;
-      record.setObligation = null;
-    }
+    record.shepherdDecision = null;
+    record.setObligation = null;
+    record.checkActivity = null;
+    record.readinessGeneration = generation;
+    record.readinessWatermark = {
+      generation,
+      observedAt: mergeObservation.observedAt,
+      triggeringPublicationKey: mergeObservation.publicationKey,
+      triggeringMergeCommit: mergeObservation.mergeCommit,
+    };
     record.terminalDisposition = 'blocked';
-    record.nextAction = manifest.shepherdIntent === 'yes'
-      ? 'consume-fresh-re-shepherd-receipt'
-      : 'rerun-quality-and-provider-observation';
+    record.nextAction = 'acquire-current-change-request-revision';
     const expiry = {
       issue: record.identity,
       changeRequest,
       publicationKey,
       reason: `sibling-merge:${mergeObservation.changeRequest}`,
       oldBaseSha: record.shepherd?.receipt?.baseSha ?? record.setObligation?.baseSha ?? null,
-      currentBaseSha: revision.baseSha,
-      currentHeadSha: revision.headSha,
+      currentBaseSha: null,
+      currentHeadSha: null,
       generation,
       expiredAt: now,
       sourceStateRevision: state.revision,
       triggeringPublicationKey: mergeObservation.publicationKey,
       triggeringMergeCommit: mergeObservation.mergeCommit,
-      revisionObservation: structuredClone(revision),
+      revisionObservation: null,
     };
     next.expiredReadinessClaims.push(expiry);
     next.reShepherdQueue = next.reShepherdQueue.filter((entry) => entry.issue !== record.identity);
@@ -318,19 +318,114 @@ export function expireReadinessAfterSiblingMerge(
       publicationKey,
       reason: expiry.reason,
       generation,
-      baseSha: revision.baseSha,
-      headSha: revision.headSha,
+      baseSha: null,
+      headSha: null,
       sourceStateRevision: state.revision,
       triggeringPublicationKey: mergeObservation.publicationKey,
       triggeringMergeCommit: mergeObservation.mergeCommit,
-      revisionObservation: structuredClone(revision),
+      mergeObservedAt: mergeObservation.observedAt,
+      revisionObservation: null,
+      blocker: 'change-request-revision-evidence-unavailable',
       queuedAt: now,
-      action: manifest.shepherdIntent === 'yes'
-        ? 'invoke-fresh-shepherd'
-        : 'rerun-quality-and-provider-observation',
+      action: 'acquire-current-change-request-revision',
+    });
+    affected.push({
+      issue: record.identity,
+      publication: siblingPublication,
+      expiryIndex: next.expiredReadinessClaims.length - 1,
     });
   }
+  for (const target of affected) {
+    const record = next.issues[target.issue];
+    const queue = next.reShepherdQueue.find((entry) => entry.issue === target.issue);
+    try {
+      const revision = currentRevision(
+        next,
+        manifest,
+        revisions,
+        target.issue,
+        mergeObservation,
+      );
+      record.baseSha = revision.baseSha;
+      record.headSha = revision.headSha;
+      record.changeRequest = null;
+      record.nextAction = manifest.shepherdIntent === 'yes'
+        ? 'consume-fresh-re-shepherd-receipt'
+        : 'rerun-quality-and-provider-observation';
+      Object.assign(queue, {
+        baseSha: revision.baseSha,
+        headSha: revision.headSha,
+        revisionObservation: structuredClone(revision),
+        blocker: null,
+        action: manifest.shepherdIntent === 'yes'
+          ? 'invoke-fresh-shepherd'
+          : 'rerun-quality-and-provider-observation',
+      });
+      Object.assign(next.expiredReadinessClaims[target.expiryIndex], {
+        currentBaseSha: revision.baseSha,
+        currentHeadSha: revision.headSha,
+        revisionObservation: structuredClone(revision),
+      });
+    } catch (error) {
+      queue.blocker = `change-request-revision-evidence-unavailable:${error.message}`;
+      next.events.push({
+        type: 'readiness-revision-blocked',
+        issue: target.issue,
+        generation: queue.generation,
+        reason: error.message,
+      });
+    }
+  }
   next.fleetDisposition = deriveFleetDisposition(next, manifest);
+  return next;
+}
+
+export function recordReadinessRevisionObservation(
+  state,
+  manifest,
+  issueIdentity,
+  observation,
+) {
+  const queue = state.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
+  if (!queue || queue.action !== 'acquire-current-change-request-revision') {
+    throw new Error(`no blocked revision acquisition for ${issueIdentity}`);
+  }
+  const revision = normalizeChangeRequestRevisionObservation(state, manifest, observation);
+  if (revision.changeRequest !== queue.changeRequest
+      || revision.publicationKey !== queue.publicationKey
+      || Date.parse(revision.observedAt) <= Date.parse(queue.mergeObservedAt)) {
+    throw new Error('revision observation does not satisfy the queued merge watermark');
+  }
+  const next = structuredClone(state);
+  const target = next.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
+  Object.assign(target, {
+    baseSha: revision.baseSha,
+    headSha: revision.headSha,
+    revisionObservation: structuredClone(revision),
+    blocker: null,
+    action: manifest.shepherdIntent === 'yes'
+      ? 'invoke-fresh-shepherd'
+      : 'rerun-quality-and-provider-observation',
+  });
+  const record = next.issues[issueIdentity];
+  record.baseSha = revision.baseSha;
+  record.headSha = revision.headSha;
+  record.changeRequest = null;
+  record.nextAction = manifest.shepherdIntent === 'yes'
+    ? 'consume-fresh-re-shepherd-receipt'
+    : 'rerun-quality-and-provider-observation';
+  const expiry = [...next.expiredReadinessClaims].reverse().find((entry) =>
+    entry.issue === issueIdentity && entry.generation === target.generation);
+  if (expiry) {
+    expiry.currentBaseSha = revision.baseSha;
+    expiry.currentHeadSha = revision.headSha;
+    expiry.revisionObservation = structuredClone(revision);
+  }
+  next.events.push({
+    type: 'readiness-revision-observed',
+    issue: issueIdentity,
+    generation: target.generation,
+  });
   return next;
 }
 
@@ -341,13 +436,18 @@ export function consumeReShepherdQueue(state, manifest, issueIdentity, accepted,
   }
   const queue = state.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
   if (!queue) throw new Error(`no re-Shepherd obligation for ${issueIdentity}`);
+  if (queue.blocker !== null || queue.revisionObservation === null) {
+    throw new Error('re-Shepherd remains blocked on current revision evidence');
+  }
   if (!accepted?.accepted || !accepted.ready
       || accepted.receipt?.baseSha !== queue.baseSha
       || accepted.receipt?.headSha !== queue.headSha
       || accepted.receipt?.changeRequest !== queue.changeRequest
       || accepted.setObligation?.generation !== queue.generation
       || !validTimestamp(accepted.receipt?.observedAt)
-      || Date.parse(accepted.receipt.observedAt) <= Date.parse(queue.revisionObservation.observedAt)) {
+      || Date.parse(accepted.receipt.observedAt) <= Date.parse(queue.revisionObservation.observedAt)
+      || Date.parse(accepted.observation?.observedAt ?? '')
+        <= Date.parse(state.issues[issueIdentity].readinessWatermark?.observedAt ?? '')) {
     throw new Error('fresh accepted Shepherd receipt does not satisfy queued generation and revisions');
   }
   const publication = state.publications.find((entry) =>
@@ -431,16 +531,20 @@ export function consumeNoShepherdRevalidation(state, manifest, issueIdentity, re
   }
   const expected = {
     issue: issueIdentity,
+    provider: manifest.provider.name,
+    repository: manifest.repository.id,
     changeRequest: queue.changeRequest,
+    publicationKey: queue.publicationKey,
     baseBranch: manifest.repository.baseBranch,
     baseSha: queue.baseSha,
     headSha: queue.headSha,
   };
-  const defects = validateSetObligation(
+  const defects = validateReadinessObligation(
     obligation,
     expected,
     queue.generation,
     'rerun-quality-and-provider-observation',
+    revalidation.completedAt,
   );
   if (defects.length) throw new Error(`invalid no-Shepherd set obligation: ${defects.join('; ')}`);
   const candidateRecord = {

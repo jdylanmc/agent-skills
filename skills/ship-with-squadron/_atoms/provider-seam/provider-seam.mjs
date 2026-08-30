@@ -6,6 +6,7 @@ export const PROVIDER_OPERATIONS = Object.freeze([
   'read-issue-set',
   'publish-change-request',
   'observe-merge',
+  'observe-change-request-revision',
 ]);
 export const FORBIDDEN_PROVIDER_OPERATIONS = Object.freeze([
   'merge',
@@ -362,6 +363,7 @@ export function normalizeMergeObservation(state, manifest, observation) {
   ])) {
     throw new Error('merge-observation-schema-is-not-exact');
   }
+
   const authorization = authorizeProviderOperation(state, manifest, 'observe-merge');
   if (!authorization.authorized) throw new Error(authorization.reason);
   const publication = state.publications.find((entry) =>
@@ -422,6 +424,75 @@ export function normalizeMergeObservation(state, manifest, observation) {
     headBranch: publication.headBranch,
     headSha: revision.headSha,
     mergeCommit: observation.mergeCommit,
+    observedAt: observation.observedAt,
+  };
+}
+
+export function normalizeChangeRequestRevisionObservation(state, manifest, observation) {
+  if (!exactKeys(observation, [
+    'invocation', 'observed', 'status', 'terminal', 'complete',
+    'provider', 'repository', 'issue', 'changeRequest', 'publicationKey',
+    'baseBranch', 'baseSha', 'headBranch', 'headSha', 'observedAt',
+  ])) {
+    throw new Error('change-request-revision-schema-is-not-exact');
+  }
+  const authorization = authorizeProviderOperation(
+    state,
+    manifest,
+    'observe-change-request-revision',
+  );
+  if (!authorization.authorized) throw new Error(authorization.reason);
+  const publication = state.publications.find((entry) =>
+    entry.key === observation?.publicationKey
+    && entry.issue === observation?.issue
+    && entry.identifier === observation?.changeRequest);
+  if (!publication) {
+    throw new Error('change-request-revision-has-no-recorded-publication');
+  }
+  const invocation = observation?.invocation;
+  if (!exactKeys(invocation, ['id', 'operation', 'providerKey'])
+      || !nonEmpty(invocation.id)
+      || invocation.operation !== 'observe-change-request-revision'
+      || invocation.providerKey !== publication.key) {
+    throw new Error('change-request-revision-invocation-identity-invalid');
+  }
+  if (observation.observed !== true
+      || observation.status !== 'observed'
+      || observation.terminal !== true
+      || observation.complete !== true) {
+    throw new Error('change-request-revision-not-proven');
+  }
+  if (observation.provider !== publication.provider
+      || observation.repository !== publication.repository
+      || observation.issue !== publication.issue
+      || observation.changeRequest !== publication.identifier
+      || observation.publicationKey !== publication.key
+      || observation.baseBranch !== publication.baseBranch
+      || observation.headBranch !== publication.headBranch
+      || !nonEmpty(observation.baseSha)
+      || !nonEmpty(observation.headSha)
+      || !validTimestamp(observation.observedAt)) {
+    throw new Error('change-request-revision-identity-or-time-mismatch');
+  }
+  return {
+    invocation: {
+      id: invocation.id,
+      operation: 'observe-change-request-revision',
+      providerKey: publication.key,
+    },
+    observed: true,
+    status: 'observed',
+    terminal: true,
+    complete: true,
+    provider: publication.provider,
+    repository: publication.repository,
+    issue: publication.issue,
+    changeRequest: publication.identifier,
+    publicationKey: publication.key,
+    baseBranch: publication.baseBranch,
+    baseSha: observation.baseSha,
+    headBranch: publication.headBranch,
+    headSha: observation.headSha,
     observedAt: observation.observedAt,
   };
 }

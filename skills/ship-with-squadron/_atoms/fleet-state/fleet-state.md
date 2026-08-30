@@ -18,12 +18,16 @@ Persist control state at
 `<repository>/.ship-with-squadron/<run-id>/fleet-state.json`. This path is
 ignored, run-specific, and separate from the best-effort Chronicler log.
 
-Use the fleet state helper to create schema version 2, bind it to
+Use the fleet state helper to create schema version 3, bind it to
 the confirmed manifest and provider-configuration digests, reread it, reconcile
 the frontier, and write with an exact expected revision. Every write validates
 the complete state schema and cross-field invariants before taking an exclusive
 lock, then rereads and compares the disk revision while holding that lock. A
-stale writer stops on a revision conflict. Writes fsync a sibling pending file,
+stale writer stops on a revision conflict. The complete directory ancestry is
+checked component-by-component and rejects symbolic links; state reads use
+`O_NOFOLLOW` where available. Lock acquisition, stale cleanup, and release are
+bound to both an ownership token and inode so a contender's replacement lock is
+never deleted. Writes fsync a sibling pending file,
 atomically rename it, and fsync the parent directory. Crash-stale locks are
 recovered only when their recorded process is gone.
 
@@ -41,6 +45,9 @@ activity.
 State issue keys exactly equal the closed manifest set. Assignment packets,
 publication records, readiness receipts, criteria decisions, and merge
 observations are cross-checked rather than trusted as caller-shaped state. Only
+manifest/provider-sealed completed issues may start as `already-complete`.
+Neither pending nor active work can jump directly to completed; review readiness
+is entered only through the semantic publication/readiness pipeline. Only
 declared status transitions are accepted; mutable ownership is entered only by
 assignment, and there is no general `active -> pending` transition. Budget
 consumption is monotonic; reaching cost, time, or retry limits records

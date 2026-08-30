@@ -7,7 +7,7 @@ function source(issue) {
   return {
     invocation: { id: `read-${issue}`, operation: 'read-issue' },
     provider: 'github', repository: 'owner/repo', issue, revision: `r-${issue}`,
-    status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
+    issueStatus: 'pending', status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
   };
 }
 
@@ -32,7 +32,7 @@ const manifest = normalizeFleetManifest({
   concurrency: 2,
   budget: { cost: 10, timeMinutes: 60, retries: 2 },
   repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
-  provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge'] },
+  provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],
   humanBoundaries: ['human merge'],
@@ -111,7 +111,10 @@ test('failed, blocked, timed-out, and deferred predecessors never satisfy comple
   }
   const satisfied = state({ b: 'completed' });
   satisfied.issues.b.terminalDisposition = 'ready-for-human-merge';
-  assert.ok(computeFrontier(manifest, satisfied).ready.some((entry) => entry.issue === 'c'));
+  assert.equal(
+    computeFrontier(manifest, satisfied).blocked.find((entry) => entry.issue === 'c').reason,
+    'awaiting-completion:b',
+  );
 });
 
 test('rejects active capacity above the confirmed concurrency ceiling', () => {

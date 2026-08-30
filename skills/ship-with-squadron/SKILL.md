@@ -64,10 +64,10 @@ record -> confirm one closed fleet manifest -> persist state
    are exactly unresolved `Priority: Must fix` findings. Any head mutation
    invalidates downstream evidence and restarts at reconciliation.
 7. Invoke the external `blast-radius` seam and adapt its Pull Request 157
-   contract without copying or composing its local units. Until that pull
-   request is merged and this branch is rebased, report baseline integration as
-   pending and refuse review readiness when the capability or proof is
-   unavailable.
+   contract without copying or composing its local units. Require the exact
+   review-stable head `4a946e4500479e028112b77bdf268c5b7a8aae1f` and fail
+   closed when its sequential ladder evidence cannot semantically support the
+   reported classification.
 8. Persist one stable logical publication identity and a revision-specific
    base/head observation before calling the allow-listed provider adapter.
    Reconcile by its stable provider key after degraded responses, revision
@@ -84,7 +84,11 @@ record -> confirm one closed fleet manifest -> persist state
     time, and stable publication key reconcile exactly. Recompute dependencies.
     Expire affected still-open sibling readiness claims and fleet disposition
     immediately. Require provider-bound
-    revision observations after the triggering merge, clear stale quality and
+    Record the merge and invalidate all open siblings, including in-flight
+    first Shepherd work, before processing per-sibling revision evidence.
+    Missing or malformed evidence remains a durable blocker without rolling
+    back other invalidations. Require provider-bound revision observations
+    after the triggering merge, clear stale quality and
     publication evidence, and queue merge/revision-generation-specific
     revalidation plus re-Shepherd work when Shepherd is required or fresh
     quality/provider revalidation when it is not,
@@ -102,13 +106,13 @@ record -> confirm one closed fleet manifest -> persist state
   reconciliation, not the missing grant, bounds those writes.
 - No worker or fleet owner may merge, approve, enable auto-merge, accept risk,
   force-push, close tracker work, expand the set, or mutate another assignment.
-- Provider adapters may read issues, publish change requests, and observe
-  merges only when allow-listed.
+- Provider adapters may read issues, publish change requests, observe merges,
+  and read one recorded change request's exact revision only when allow-listed.
 - Local scheduling never depends on issue 25 and never composes
   `chart-a-course`.
 - This package never composes blast-radius skill-local units from Pull Request
-  157. The required external seam is intentionally honest about the unmerged
-  baseline.
+  157. The required external seam is pinned to its human-provided review-stable
+  public contract.
 - No wildcard permissions. No sticky mode, watcher, daemon, or background
   authority.
 

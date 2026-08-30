@@ -5,6 +5,7 @@ import {
   FORBIDDEN_PROVIDER_OPERATIONS,
   authorizeProviderOperation,
   beginPublication,
+  normalizeChangeRequestRevisionObservation,
   observeHumanMerge,
   publicationRecoveryAction,
   reconcilePublication,
@@ -21,7 +22,7 @@ const manifest = normalizeFleetManifest({
     sourceReceipt: {
       invocation: { id: 'read-1', operation: 'read-issue' },
       provider: 'github', repository: 'owner/repo', issue: '1', revision: 'r1',
-      status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
+      issueStatus: 'pending', status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
     },
     acceptanceCriteria: ['done'], scope: [], allowedPaths: ['src/**'],
   }],
@@ -29,7 +30,7 @@ const manifest = normalizeFleetManifest({
   concurrency: 1,
   budget: { cost: 10, timeMinutes: 60, retries: 2 },
   repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
-  provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge'] },
+  provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],
   humanBoundaries: ['human merge'],
@@ -48,7 +49,11 @@ function state() {
     ...common,
     evidenceComplete: true,
     invocation: { skill: 'blast-radius', id: 'blast-1', runId: 'run', issue: '1' },
+    contractRepository: 'jdylanmc/agent-skills',
     contractPullRequest: 157,
+    contractBranch: 'origin/issue-70-blast-radius-proof',
+    contractBaseRevision: '02ae9f84c782b9e57dfec20cda344fb494e57049',
+    contractRevision: '4a946e4500479e028112b77bdf268c5b7a8aae1f',
     status: 'completed',
     assertionLadders: [{
       id: 'A1', assertion: 'safe', affectedBoundary: 'adapter', badCase: 'breakage',
@@ -65,9 +70,11 @@ function state() {
     }],
     classifications: {
       'confirmed-risk': [],
-      'cleared-risk': [{ assertionId: 'A1', evidence: 'proof', scope: 'current revision' }],
+      'cleared-risk': [{ assertionId: 'A1', assertion: 'safe', evidence: 'ruled-out-bad-case proof', scope: 'current revision' }],
       'unproven-assertion': [],
     },
+    analysisBoundaries: ['current revision and traced consumers'],
+    crossBoundaryGaps: [],
     'regression-proof-status': 'selected',
     'regression-proof': {
       id: 'P1', assertionId: 'A1', badCase: 'breakage', verificationLevel: 'integration',
@@ -267,6 +274,56 @@ test('observes a human merge only when every field reconciles to confirmed publi
     ...observation,
     callerClaim: true,
   }).reason, 'merge-observation-schema-is-not-exact');
+});
+
+test('normalizes only the allow-listed exact read-only change-request revision receipt', () => {
+  const begun = beginPublication(state(), manifest, request, '2026-08-30T00:05:00Z');
+  const published = reconcilePublication(begun.state, manifest, begun.key, result(begun.key));
+  const observation = {
+    invocation: {
+      id: 'revision-1',
+      operation: 'observe-change-request-revision',
+      providerKey: begun.key,
+    },
+    observed: true,
+    status: 'observed',
+    terminal: true,
+    complete: true,
+    provider: 'github',
+    repository: 'owner/repo',
+    issue: '1',
+    changeRequest: 'PR-1',
+    publicationKey: begun.key,
+    baseBranch: 'main',
+    baseSha: 'base-2',
+    headBranch: 'issue-1',
+    headSha: 'head',
+    observedAt: '2026-08-30T00:12:00Z',
+  };
+  assert.deepEqual(
+    normalizeChangeRequestRevisionObservation(published, manifest, observation),
+    observation,
+  );
+  assert.throws(
+    () => normalizeChangeRequestRevisionObservation(published, manifest, {
+      ...observation,
+      apiPath: '/repos/owner/repo/pulls/1',
+    }),
+    /schema-is-not-exact/,
+  );
+  const deniedManifest = {
+    ...manifest,
+    provider: {
+      ...manifest.provider,
+      allowedOperations: manifest.provider.allowedOperations.filter(
+        (operation) => operation !== 'observe-change-request-revision',
+      ),
+    },
+  };
+  assert.throws(
+    () => normalizeChangeRequestRevisionObservation(published, deniedManifest, observation),
+    /persisted-manifest-authority-mismatch|not-allow-listed/,
+  );
 });
 
 test('reuses one logical publication while requiring revision-specific confirmation', () => {
