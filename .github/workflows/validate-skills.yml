@@ -90,6 +90,9 @@ jobs:
           skills/create-skill/_atoms/roast-round-ledger/roast-round-ledger.test.mjs
           skills/create-skill/_atoms/roast-round-ledger/roast-round-ledger.drift.test.mjs
           skills/create-skill/_atoms/rubber-duck-brief/rubber-duck-brief.test.mjs
+          skills/draft-doctrine/draft-doctrine.conformance.test.mjs
+          skills/draft-doctrine/_atoms/doctrine-transaction/doctrine-transaction.test.mjs
+          skills/draft-doctrine/_atoms/doctrine-transaction/doctrine-transaction.adversarial.test.mjs
           skills/skill-coach/skill-coach.conformance.test.mjs
           skills/prompt-coach/prompt-coach.conformance.test.mjs
           skills/optimize-prompt/optimize-prompt.conformance.test.mjs

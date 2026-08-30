@@ -89,6 +89,112 @@ function answers(overrides = {}) {
   };
 }
 
+test('an overwrite that gains a hard link after preview is refused before truncation', (t) => {
+  const root = workspace(t);
+  const target = path.join(root, 'target.md');
+  fs.writeFileSync(target, 'prior');
+  const preview = buildPreview({
+    repositoryRoot: root,
+    artifacts: [{ path: 'target.md', content: 'next' }],
+  });
+  fs.linkSync(target, path.join(root, 'alias.md'));
+  const result = applyPreview({ repositoryRoot: root, preview, confirmation: grant(preview) });
+  assert.equal(result.status, 'unsafe-target');
+  assert.equal(fs.readFileSync(target, 'utf8'), 'prior');
+  assert.equal(fs.readFileSync(path.join(root, 'alias.md'), 'utf8'), 'prior');
+});
+
+test('same-byte inode replacement between stale check and open is refused without truncation', (t) => {
+  const root = workspace(t);
+  const target = path.join(root, 'target.md');
+  fs.writeFileSync(target, 'prior');
+  const preview = buildPreview({
+    repositoryRoot: root,
+    artifacts: [{ path: 'target.md', content: 'next' }],
+  });
+  let replacementIdentity;
+  const result = applyPreview(
+    { repositoryRoot: root, preview, confirmation: grant(preview) },
+    {
+      fault: ({ phase, relativePath }) => {
+        if (phase !== 'before-mutation' || relativePath !== 'target.md') return;
+        const replacement = path.join(root, 'replacement.md');
+        fs.writeFileSync(replacement, 'prior');
+        replacementIdentity = fs.lstatSync(replacement).ino;
+        fs.renameSync(replacement, target);
+      },
+    },
+  );
+  assert.equal(result.status, 'stale-preview');
+  assert.equal(result.written, false);
+  assert.equal(fs.readFileSync(target, 'utf8'), 'prior');
+  assert.equal(fs.lstatSync(target).ino, replacementIdentity);
+});
+
+test('overwrite rollback refuses a concurrent replacement inode', (t) => {
+  const root = workspace(t);
+  const target = path.join(root, 'target.md');
+  fs.writeFileSync(target, 'prior');
+  const preview = buildPreview({
+    repositoryRoot: root,
+    artifacts: [{ path: 'target.md', content: 'next' }],
+  });
+  let replacementIdentity;
+  const result = applyPreview(
+    { repositoryRoot: root, preview, confirmation: grant(preview) },
+    {
+      fault: ({ phase, relativePath }) => {
+        if (relativePath !== 'target.md') return;
+        if (phase === 'after-mutation') throw new Error('force rollback');
+        if (phase === 'during-rollback') {
+          const replacement = path.join(root, 'replacement.md');
+          fs.writeFileSync(replacement, 'concurrent');
+          replacementIdentity = fs.lstatSync(replacement).ino;
+          fs.renameSync(replacement, target);
+        }
+      },
+    },
+  );
+  assert.equal(result.status, 'blocked');
+  assert.equal(fs.readFileSync(target, 'utf8'), 'concurrent');
+  assert.equal(fs.lstatSync(target).ino, replacementIdentity);
+  assert.ok(
+    result.rollbackRemaining.some(
+      (entry) => entry.relativePath === 'target.md' && entry.reason === 'EIDENTITY',
+    ),
+    JSON.stringify(result.rollbackRemaining),
+  );
+});
+
+test('create rollback reports residue when a concurrent hard-link alias preserves the inode', (t) => {
+  const root = workspace(t);
+  const target = path.join(root, 'target.md');
+  const alias = path.join(root, 'alias.md');
+  const preview = buildPreview({
+    repositoryRoot: root,
+    artifacts: [{ path: 'target.md', content: 'created' }],
+  });
+  const result = applyPreview(
+    { repositoryRoot: root, preview, confirmation: grant(preview) },
+    {
+      fault: ({ phase, relativePath }) => {
+        if (phase !== 'after-mutation' || relativePath !== 'target.md') return;
+        fs.linkSync(target, alias);
+        throw new Error('force rollback after alias creation');
+      },
+    },
+  );
+  assert.equal(result.status, 'blocked');
+  assert.equal(fs.readFileSync(target, 'utf8'), 'created');
+  assert.equal(fs.readFileSync(alias, 'utf8'), 'created');
+  assert.ok(
+    result.rollbackRemaining.some(
+      (entry) => entry.relativePath === 'target.md' && entry.reason === 'hard-link-residue',
+    ),
+    JSON.stringify(result.rollbackRemaining),
+  );
+});
+
 const PROVIDER_INPUTS = {
   github: { ...classifyRemote('https://github.com/acme/widgets.git'), ...answers() },
   gitlab: { ...classifyRemote('https://gitlab.com/group/sub/widgets.git'), ...answers() },
@@ -1358,4 +1464,40 @@ test('WIN-1: check-open-verify rollback residue names a target whose restore fai
     result.rollbackRemaining.some((entry) => entry.relativePath === artifacts[0].path),
     `residue must name ${artifacts[0].path}: ${JSON.stringify(result.rollbackRemaining)}`,
   );
+});
+
+test('deterministic before-mutation hook is caught and rolls back prior ordered writes', (t) => {
+  const root = workspace(t);
+  const artifacts = [
+    { path: 'first.md', content: 'first\n' },
+    { path: 'second.md', content: 'second\n' },
+  ];
+  const preview = buildPreview({ repositoryRoot: root, artifacts });
+  const result = applyPreview(
+    { repositoryRoot: root, preview, confirmation: grant(preview) },
+    {
+      fault: ({ phase, relativePath }) => {
+        if (phase === 'before-mutation' && relativePath === 'second.md') throw new Error('boundary');
+      },
+    },
+  );
+  assert.equal(result.status, 'blocked');
+  assert.equal(fs.existsSync(path.join(root, 'first.md')), false);
+  assert.equal(fs.existsSync(path.join(root, 'second.md')), false);
+});
+
+test('deterministic after-readback hook cannot report success and rolls back', (t) => {
+  const root = workspace(t);
+  const artifacts = [{ path: 'verified.md', content: 'verified\n' }];
+  const preview = buildPreview({ repositoryRoot: root, artifacts });
+  const result = applyPreview(
+    { repositoryRoot: root, preview, confirmation: grant(preview) },
+    {
+      fault: ({ phase }) => {
+        if (phase === 'after-readback-complete') throw new Error('boundary');
+      },
+    },
+  );
+  assert.equal(result.status, 'blocked');
+  assert.equal(fs.existsSync(path.join(root, 'verified.md')), false);
 });

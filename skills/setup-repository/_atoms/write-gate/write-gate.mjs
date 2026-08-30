@@ -161,6 +161,29 @@ function refusal(status, detail, extra = {}) {
   return { status, written: false, detail, ...extra };
 }
 
+function fileIdentity(stat) {
+  return { dev: stat.dev, ino: stat.ino };
+}
+
+function sameIdentity(stat, expectedIdentity) {
+  return Boolean(
+    expectedIdentity
+    && stat.dev === expectedIdentity.dev
+    && stat.ino === expectedIdentity.ino,
+  );
+}
+
+function readDescriptorBytes(fd, size) {
+  const bytes = Buffer.alloc(size);
+  let offset = 0;
+  while (offset < size) {
+    const count = fs.readSync(fd, bytes, offset, size - offset, offset);
+    if (count === 0) break;
+    offset += count;
+  }
+  return offset === size ? bytes : bytes.subarray(0, offset);
+}
+
 /**
  * Read a file's bytes without following a symbolic link at the final
  * component. On POSIX the read is atomic (O_NOFOLLOW); on Windows the read
@@ -180,11 +203,13 @@ function readSnapshotNoFollow(absolutePath) {
     }
     try {
       const stat = fs.fstatSync(fd);
+      if (!stat.isFile()) return { ok: false, reason: 'not-regular-file' };
+      if (stat.nlink !== 1) return { ok: false, reason: 'hard-link-collision' };
       if (stat.size > MAX_SNAPSHOT_BYTES) {
         return { ok: false, reason: 'prior-too-large' };
       }
       const bytes = fs.readFileSync(fd);
-      return { ok: true, bytes };
+      return { ok: true, bytes, identity: fileIdentity(stat) };
     } catch (error) {
       return { ok: false, reason: `read:${error.code ?? 'unknown'}` };
     } finally {
@@ -230,11 +255,14 @@ function readSnapshotNoFollow(absolutePath) {
     if (!postStat.isFile()) {
       return { ok: false, reason: 'not-regular-file' };
     }
+    if (postStat.nlink !== 1) {
+      return { ok: false, reason: 'hard-link-collision' };
+    }
     if (postStat.size > MAX_SNAPSHOT_BYTES) {
       return { ok: false, reason: 'prior-too-large' };
     }
     const bytes = fs.readFileSync(fd);
-    return { ok: true, bytes };
+    return { ok: true, bytes, identity: fileIdentity(postStat) };
   } catch (error) {
     return { ok: false, reason: `read:${error.code ?? 'unknown'}` };
   } finally {
@@ -537,6 +565,9 @@ function readbackNoFollow(absolutePath) {
     }
     try {
       const bytes = fs.readFileSync(fd);
+      const stat = fs.fstatSync(fd);
+      if (!stat.isFile()) return { ok: false, reason: 'not-regular-file' };
+      if (stat.nlink !== 1) return { ok: false, reason: 'hard-link-collision' };
       return { ok: true, bytes, sha256: sha256(bytes), byteLength: bytes.length };
     } catch (error) {
       return { ok: false, reason: `read:${error.code ?? 'unknown'}` };
@@ -578,6 +609,9 @@ function readbackNoFollow(absolutePath) {
     if (!postStat.isFile()) {
       return { ok: false, reason: 'not-regular-file' };
     }
+    if (postStat.nlink !== 1) {
+      return { ok: false, reason: 'hard-link-collision' };
+    }
     const bytes = fs.readFileSync(fd);
     return { ok: true, bytes, sha256: sha256(bytes), byteLength: bytes.length };
   } catch (error) {
@@ -592,25 +626,47 @@ function readbackNoFollow(absolutePath) {
  * component. Two branches, one per capability:
  *
  * - `atomicNoFollow` (POSIX): single atomic openSync with O_NOFOLLOW plus
- *   O_CREAT|O_EXCL (for `create`) or O_TRUNC (for `overwrite`).
+ *   O_CREAT|O_EXCL (for `create`), or O_RDWR without O_TRUNC (for
+ *   `overwrite`), followed by descriptor identity/content verification and
+ *   ftruncate.
  * - `checkOpenVerify` (Windows): lstat the target, refuse a symlink or
- *   reparse point, open (with O_CREAT|O_EXCL or O_TRUNC), then fstat and
- *   verify (dev, ino) match. `ENOTREG` on the post-verify is mapped to
- *   `symlink-component` by the caller — the target changed shape unsafely.
+ *   reparse point, open (with O_CREAT|O_EXCL for create), then fstat and
+ *   verify (dev, ino) match before any overwrite truncation. `ENOTREG` on
+ *   the post-verify is mapped to `symlink-component` by the caller — the
+ *   target changed shape unsafely.
  *
  * Returns `{ ok: true, fd }` on success or `{ ok: false, code, message }`
  * on failure. The caller interprets the code — EEXIST -> stale-preview,
  * ELOOP/EMLINK/ENOTREG -> unsafe-target (symlink-component), anything else
  * -> blocked.
  */
-function openTargetForWrite(absolutePath, action) {
+function openTargetForWrite(absolutePath, action, expected = {}) {
   if (platformCapability.atomicNoFollow) {
     const flags = action === 'create'
       ? (fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | platformCapability.oNoFollow)
-      : (fs.constants.O_TRUNC | fs.constants.O_WRONLY | platformCapability.oNoFollow);
+      : (fs.constants.O_RDWR | platformCapability.oNoFollow);
     try {
       const fd = fs.openSync(absolutePath, flags, 0o644);
-      return { ok: true, fd };
+      const stat = fs.fstatSync(fd);
+      if (!stat.isFile() || stat.nlink !== 1) {
+        try { fs.closeSync(fd); } catch { /* noop */ }
+        return { ok: false, code: stat.nlink !== 1 ? 'EMLINK' : 'ENOTREG', message: 'opened target is unsafe' };
+      }
+      if (action === 'overwrite') {
+        if (!sameIdentity(stat, expected.identity)) {
+          try { fs.closeSync(fd); } catch { /* noop */ }
+          return { ok: false, code: 'EIDENTITY', message: 'opened target identity changed' };
+        }
+        if (expected.sha256 !== undefined) {
+          const priorBytes = readDescriptorBytes(fd, stat.size);
+          if (sha256(priorBytes) !== expected.sha256) {
+            try { fs.closeSync(fd); } catch { /* noop */ }
+            return { ok: false, code: 'ESTALECONTENT', message: 'opened target content changed' };
+          }
+        }
+        fs.ftruncateSync(fd, 0);
+      }
+      return { ok: true, fd, identity: fileIdentity(stat) };
     } catch (error) {
       return { ok: false, code: error.code ?? 'unknown', message: error.message };
     }
@@ -670,11 +726,26 @@ function openTargetForWrite(absolutePath, action) {
       try { fs.closeSync(fd); } catch { /* noop */ }
       return { ok: false, code: 'ENOTREG', message: 'opened descriptor is not a regular file' };
     }
+    if (postStat.nlink !== 1) {
+      try { fs.closeSync(fd); } catch { /* noop */ }
+      return { ok: false, code: 'EMLINK', message: 'opened target has multiple hard links' };
+    }
     if (preStat && (postStat.dev !== preStat.dev || postStat.ino !== preStat.ino)) {
       try { fs.closeSync(fd); } catch { /* noop */ }
       return { ok: false, code: 'ELOOP', message: 'target identity changed between lstat and open' };
     }
     if (action === 'overwrite') {
+      if (!sameIdentity(postStat, expected.identity)) {
+        try { fs.closeSync(fd); } catch { /* noop */ }
+        return { ok: false, code: 'EIDENTITY', message: 'opened target identity changed' };
+      }
+      if (expected.sha256 !== undefined) {
+        const priorBytes = readDescriptorBytes(fd, postStat.size);
+        if (sha256(priorBytes) !== expected.sha256) {
+          try { fs.closeSync(fd); } catch { /* noop */ }
+          return { ok: false, code: 'ESTALECONTENT', message: 'opened target content changed' };
+        }
+      }
       // Truncate through the identity-verified descriptor, so the write
       // sees an empty file exactly as a POSIX `O_TRUNC` open would deliver
       // one.
@@ -685,7 +756,7 @@ function openTargetForWrite(absolutePath, action) {
         return { ok: false, code: error.code ?? 'unknown', message: error.message };
       }
     }
-    return { ok: true, fd };
+    return { ok: true, fd, identity: fileIdentity(postStat) };
   } catch (error) {
     try { fs.closeSync(fd); } catch { /* noop */ }
     return { ok: false, code: error.code ?? 'unknown', message: error.message };
@@ -699,23 +770,67 @@ function openTargetForWrite(absolutePath, action) {
  * prior permission bits. Anything that could not be un-done is named in the
  * returned residue so the operator sees exactly what remains on disk.
  */
-function rollback(records) {
+function rollback(records, options = {}) {
   const remaining = [];
   for (let i = records.length - 1; i >= 0; i -= 1) {
     const record = records[i];
     if (!record.mutated) {
       continue;
     }
+    try {
+      options.fault?.({ phase: 'during-rollback', relativePath: record.relativePath, index: i });
+    } catch (error) {
+      if (record.evidenceFd !== null) {
+        try { fs.closeSync(record.evidenceFd); } catch { /* noop */ }
+        record.evidenceFd = null;
+      }
+      remaining.push({ relativePath: record.relativePath, state: 'not-restored', reason: `fault:${error.message}` });
+      continue;
+    }
     if (record.priorSnapshot === null) {
+      let descriptorStat;
+      let namedStat;
       try {
-        fs.rmSync(record.absolutePath, { force: true });
+        descriptorStat = fs.fstatSync(record.evidenceFd);
+        namedStat = fs.lstatSync(record.absolutePath);
       } catch (error) {
-        remaining.push({ relativePath: record.relativePath, state: 'still-present', reason: error.code ?? error.message });
+        if (record.evidenceFd !== null) {
+          try { fs.closeSync(record.evidenceFd); } catch { /* noop */ }
+          record.evidenceFd = null;
+        }
+        remaining.push({ relativePath: record.relativePath, state: 'not-verified', reason: error.code ?? error.message });
         continue;
       }
-      if (fs.existsSync(record.absolutePath)) {
-        remaining.push({ relativePath: record.relativePath, state: 'still-present', reason: 'exists-after-rm' });
+      if (
+        !descriptorStat.isFile()
+        || !sameIdentity(descriptorStat, record.mutatedIdentity)
+        || !sameIdentity(namedStat, record.mutatedIdentity)
+      ) {
+        try { fs.closeSync(record.evidenceFd); } catch { /* noop */ }
+        record.evidenceFd = null;
+        remaining.push({ relativePath: record.relativePath, state: 'not-removed', reason: 'identity-mismatch' });
+        continue;
       }
+      if (descriptorStat.nlink !== 1 || namedStat.nlink !== 1) {
+        try { fs.closeSync(record.evidenceFd); } catch { /* noop */ }
+        record.evidenceFd = null;
+        remaining.push({ relativePath: record.relativePath, state: 'still-present', reason: 'hard-link-residue' });
+        continue;
+      }
+      try {
+        fs.rmSync(record.absolutePath, { force: true });
+        descriptorStat = fs.fstatSync(record.evidenceFd);
+      } catch (error) {
+        remaining.push({ relativePath: record.relativePath, state: 'not-verified', reason: error.code ?? error.message });
+        try { fs.closeSync(record.evidenceFd); } catch { /* noop */ }
+        record.evidenceFd = null;
+        continue;
+      }
+      if (descriptorStat.nlink !== 0) {
+        remaining.push({ relativePath: record.relativePath, state: 'alias-residue', reason: 'links-remain-after-rm' });
+      }
+      try { fs.closeSync(record.evidenceFd); } catch { /* noop */ }
+      record.evidenceFd = null;
     } else {
       // Overwrite rollback: restore the bytes AND the prior permission mode
       // in one open. `fs.writeFileSync` opens with a default `0o666 & ~umask`,
@@ -726,7 +841,9 @@ function rollback(records) {
       // the commit itself, so a rollback on Windows takes the same
       // check-open-verify branch a commit takes and a rollback on POSIX takes
       // the same atomic O_NOFOLLOW branch.
-      const opened = openTargetForWrite(record.absolutePath, 'overwrite');
+      const opened = openTargetForWrite(record.absolutePath, 'overwrite', {
+        identity: record.mutatedIdentity,
+      });
       if (!opened.ok) {
         remaining.push({ relativePath: record.relativePath, state: 'not-restored', reason: opened.code ?? opened.message });
         continue;
@@ -784,7 +901,7 @@ function rollback(records) {
  * boundary; the only WriteGateError thrown is a caller-usage error such as
  * a missing repositoryRoot argument.
  */
-export function applyPreview({ repositoryRoot, preview, confirmation }) {
+export function applyPreview({ repositoryRoot, preview, confirmation }, options = {}) {
   const shape = validatePreviewShape(preview);
   if (!shape.ok) {
     return shape.refusal;
@@ -864,6 +981,9 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
       intendedSha: entry.sha256,
       change: null,
       mutated: false,
+      expectedIdentity: null,
+      mutatedIdentity: null,
+      evidenceFd: null,
     };
   });
 
@@ -878,6 +998,7 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
         });
       }
       record.priorSnapshot = snapshot.bytes;
+      record.expectedIdentity = snapshot.identity;
     }
   }
 
@@ -996,6 +1117,16 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
           rollbackRemaining: remaining,
         };
       }
+      if (!sameIdentity(currentSnapshot.identity, record.expectedIdentity)) {
+        const remaining = rollback(records);
+        return {
+          status: 'stale-preview',
+          written: false,
+          detail: `target identity changed just before write: ${record.relativePath}`,
+          target: record.relativePath,
+          rollbackRemaining: remaining,
+        };
+      }
     } else {
       if (targetState !== null) {
         const remaining = rollback(records);
@@ -1014,6 +1145,20 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
       continue;
     }
 
+    try {
+      options.fault?.({
+        phase: 'before-mutation',
+        relativePath: record.relativePath,
+        index: records.indexOf(record),
+      });
+    } catch (error) {
+      const remaining = rollback(records, options);
+      return refusal('blocked', `fault before mutation of ${record.relativePath}: ${error.message}`, {
+        target: record.relativePath,
+        rollbackRemaining: remaining,
+      });
+    }
+
     // Register rollback responsibility BEFORE the truncating/creating open,
     // so a write or close failure after the truncation still has this entry
     // on the rollback list.
@@ -1024,7 +1169,10 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
     // set of error codes so the mapping below is platform-neutral: EEXIST
     // -> stale-preview, ELOOP/EMLINK/ENOTREG -> unsafe-target
     // (symlink-component), and anything else -> blocked.
-    const opened = openTargetForWrite(record.absolutePath, record.inspection.action);
+    const opened = openTargetForWrite(record.absolutePath, record.inspection.action, {
+      identity: record.expectedIdentity,
+      sha256: record.inspection.action === 'overwrite' ? record.priorSha256 : undefined,
+    });
     if (!opened.ok) {
       // The open failed before the file was mutated. Roll back the earlier
       // committed entries and mark this one as never-mutated.
@@ -1048,6 +1196,16 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
           rollbackRemaining: remaining,
         };
       }
+      if (code === 'EIDENTITY' || code === 'ESTALECONTENT') {
+        const remaining = rollback(records);
+        return {
+          status: 'stale-preview',
+          written: false,
+          detail: `target changed between verification and write: ${record.relativePath}`,
+          target: record.relativePath,
+          rollbackRemaining: remaining,
+        };
+      }
       const remaining = rollback(records);
       return refusal('blocked', `open failed for ${record.relativePath}: ${code ?? opened.message}`, {
         target: record.relativePath,
@@ -1055,22 +1213,43 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
       });
     }
     const fd = opened.fd;
+    record.mutatedIdentity = opened.identity;
+    if (record.inspection.action === 'create') {
+      record.evidenceFd = fd;
+    }
 
     try {
       fs.writeFileSync(fd, record.entry.content);
     } catch (error) {
-      try { fs.closeSync(fd); } catch { /* noop */ }
+      if (record.inspection.action !== 'create') {
+        try { fs.closeSync(fd); } catch { /* noop */ }
+      }
       const remaining = rollback(records);
       return refusal('blocked', `write failed for ${record.relativePath}: ${error.code ?? error.message}`, {
         target: record.relativePath,
         rollbackRemaining: remaining,
       });
     }
+    if (record.inspection.action !== 'create') {
+      try {
+        fs.closeSync(fd);
+      } catch (error) {
+        const remaining = rollback(records);
+        return refusal('blocked', `close failed for ${record.relativePath}: ${error.code ?? error.message}`, {
+          target: record.relativePath,
+          rollbackRemaining: remaining,
+        });
+      }
+    }
     try {
-      fs.closeSync(fd);
+      options.fault?.({
+        phase: 'after-mutation',
+        relativePath: record.relativePath,
+        index: records.indexOf(record),
+      });
     } catch (error) {
-      const remaining = rollback(records);
-      return refusal('blocked', `close failed for ${record.relativePath}: ${error.code ?? error.message}`, {
+      const remaining = rollback(records, options);
+      return refusal('blocked', `fault after mutation of ${record.relativePath}: ${error.message}`, {
         target: record.relativePath,
         rollbackRemaining: remaining,
       });
@@ -1115,6 +1294,29 @@ export function applyPreview({ repositoryRoot, preview, confirmation }) {
       sha256: result.sha256,
       change: record.change ?? 'unchanged',
     });
+  }
+
+  try {
+    options.fault?.({ phase: 'after-readback-complete', index: records.length });
+  } catch (error) {
+    const remaining = rollback(records, options);
+    return refusal('blocked', `fault after complete readback: ${error.message}`, {
+      rollbackRemaining: remaining,
+    });
+  }
+
+  for (const record of records) {
+    if (record.evidenceFd === null) continue;
+    try {
+      fs.closeSync(record.evidenceFd);
+      record.evidenceFd = null;
+    } catch (error) {
+      const remaining = rollback(records);
+      return refusal('blocked', `close failed for ${record.relativePath}: ${error.code ?? error.message}`, {
+        target: record.relativePath,
+        rollbackRemaining: remaining,
+      });
+    }
   }
 
   return {
