@@ -695,6 +695,7 @@ export function continueWithFreshWorker(state, manifest, input) {
     input.handoff,
     input.handoffPayload,
     expected,
+    { identifiers: input.identifiers ?? [] },
   );
   if (!artifact.valid) throw new Error(`invalid orchestration handoff artifact: ${artifact.defects.join('; ')}`);
   const packet = validateBoundedPacket(input.packet, state, manifest, issue, {
@@ -804,6 +805,7 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
     input.handoff,
     input.handoffPayload,
     expected,
+    { identifiers: input.identifiers ?? [] },
   );
   if (!artifact.valid) {
     throw new Error(`invalid orchestration handoff artifact: ${artifact.defects.join('; ')}`);
