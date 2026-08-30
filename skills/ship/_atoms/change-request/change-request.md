@@ -77,10 +77,10 @@ decision somebody else made. It is not an approval, it does not merge, and it
 never changes a criterion verdict, a validation status, or a review finding to
 match the newer, happier disposition.
 
-## The Provider Seam
+## The Publication Provider Seam
 
-Publication is the only part of a delivery run that is provider-specific, and it
-is kept to a seam rather than spread through the workflow.
+Publication is kept to this provider-specific seam rather than spread through
+the workflow. Continuation review reading is a separate, read-only Ship atom.
 
 Use the provider's **official command-line tool** — `gh` for GitHub, `az` for
 Azure DevOps — never a hand-rolled call against a REST endpoint. Those tools
@@ -166,7 +166,8 @@ and belongs to `ship`'s own later review work rather than to `shepherd`.
 - **Never merges, approves, enables auto-merge, or requests a review decision.**
   It opens the change request, records a grant somebody else gave, and stops.
 - **Never pushes anything but the run's own isolation branch**, and never with
-  force. It creates; driving an existing branch belongs to `shepherd`.
+  force. This atom creates; Ship's separate continuation atom governs a
+  snapshot-bound update of an existing branch.
 - **Never publishes past a stopped run**, however complete the change looks.
 - **Never softens the criterion table, the merge disposition, or the outstanding
   defects** to make the change request read better. The body reports the run; it
