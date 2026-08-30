@@ -5,7 +5,12 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
-import { classifyConflictPath, conflictResolutionAction, validateConflictPolicy } from './_atoms/conflict-policy/conflict-policy.mjs';
+import {
+  classifyConflictPath,
+  conflictResolutionAction,
+  preserveAdditiveValidationRegistrations,
+  validateConflictPolicy,
+} from './_atoms/conflict-policy/conflict-policy.mjs';
 import {
   classifyShepherdPlan,
   classifyTerminalDisposition,
@@ -24,7 +29,7 @@ import {
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
 const ENTRY = 'shepherd/SKILL.md';
-const PINNED_TOOLS = ['execute', 'read', 'search', 'edit'];
+const PINNED_TOOLS = ['execute', 'read', 'search', 'edit', 'task'];
 
 function read(relativePath) {
   return fs.readFileSync(path.join(SKILLS_ROOT, ...relativePath.split('/')), 'utf8');
@@ -53,15 +58,18 @@ function greenSignals(overrides = {}) {
   };
 }
 
-test('shepherd is routable with narrow mutation authority and run-ci dependency', () => {
+test('shepherd is routable with deliberate Ship delegation and run-ci dependency', () => {
   const parsed = frontmatter(ENTRY);
 
   assert.equal(parsed.name, 'shepherd');
-  assert.equal(parsed.disableModelInvocation, false);
+  assert.equal(parsed.disableModelInvocation, true);
   assert.equal(parsed.userInvocable, true);
   assert.deepEqual(parsed.allowedTools, PINNED_TOOLS);
-  assert.deepEqual(parsed.requiresSkills, [{ id: 'run-ci', source: 'local', required: true }]);
-  assert.ok(!parsed.allowedTools.includes('task'));
+  assert.deepEqual(parsed.requiresSkills, [
+    { id: 'run-ci', source: 'local', required: true },
+    { id: 'ship', source: 'local', required: true },
+  ]);
+  assert.ok(parsed.allowedTools.includes('task'));
   assert.ok(!parsed.allowedTools.includes('*'));
 });
 
@@ -69,12 +77,13 @@ test('routing description includes positive and negative triggers', () => {
   const { description } = frontmatter(ENTRY);
 
   assert.match(description, /git-hosted change request/);
-  assert.match(description, /green or clearly handed back/);
+  assert.match(description, /long-running watch/);
+  assert.match(description, /meaningfully changes/);
   assert.match(description, /shepherd/);
   assert.match(description, /rebase/);
   assert.match(description, /Do not use/);
   assert.match(description, /merge/);
-  assert.match(description, /assume one provider/);
+  assert.match(description, /unobservable provider/);
 });
 
 test('the skill composes chronicler and the local shepherd molecule', () => {
@@ -90,6 +99,8 @@ test('the skill composes chronicler and the local shepherd molecule', () => {
     'shepherd/_molecules/pr-shepherding/pr-shepherding.md',
     '_base/_atoms/provider-detect/provider-detect.md',
     'shepherd/_atoms/provider-state/provider-state.md',
+    'shepherd/_atoms/watch-state/watch-state.md',
+    'shepherd/_atoms/ship-continuation/ship-continuation.md',
     'shepherd/_atoms/git-shepherd-core/git-shepherd-core.md',
     'shepherd/_atoms/pr-intake/pr-intake.md',
     'shepherd/_atoms/conflict-policy/conflict-policy.md',
@@ -99,21 +110,20 @@ test('the skill composes chronicler and the local shepherd molecule', () => {
   }
 });
 
-test('shepherd cannot reach review threads through any composition path', () => {
-  // Shepherd holds no comment-handling authority. That is enforced by the
-  // composition graph rather than promised in prose, so the guard is that the
-  // review-reading unit is absent from the whole closure, not that a document
-  // says shepherd will not use it.
+test('review reading remains outside composition and the target-local probe exposes only a digest', () => {
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
 
   assert.ok(
     !closure.includes('ship/_atoms/provider-review/provider-review.md'),
-    `${ENTRY} must not reach the review-reading unit; closure was ${closure.join(', ')}`,
+    `${ENTRY} must not compose the review-reading unit; closure was ${closure.join(', ')}`,
   );
   assert.ok(
     !closure.some((unit) => /provider-review|review-thread/.test(unit)),
-    'no unit granting review-thread access may appear in the shepherd closure',
+    'the target-local code adapter must not silently become cross-skill composition',
   );
+  const watch = flat('shepherd/_atoms/watch-state/watch-state.md');
+  assert.match(watch, /code dependency/);
+  assert.match(watch, /Comment bodies are not returned to Shepherd/);
 });
 
 test('boundaries prohibit merge, unsafe force push, semantic conflict silence, and test weakening', () => {
@@ -130,6 +140,12 @@ test('boundaries prohibit merge, unsafe force push, semantic conflict silence, a
   assert.match(entry, /Do not rebase merely because the base branch advanced/);
   assert.match(entry, /a pull request rebased on\s+every base movement never lands/);
   assert.match(entry, /one blocking adapter wait/);
+  assert.match(entry, /Green is a current observation, not completion/);
+  assert.match(entry, /every 2 minutes during the first hour/);
+  assert.match(entry, /once per hour afterward/);
+  assert.match(entry, /task` is deliberately granted/);
+  assert.match(entry, /handoff-bootstrap/);
+  assert.match(entry, /invocation failure without a terminal Shepherd\s+disposition/);
 });
 
 test('the provider-independent core carries no provider-specific vocabulary', () => {
@@ -275,7 +291,7 @@ test('untrusted, catch-all, protected, and unknown policy rules fail closed', ()
     regenerationCommands: [{ name: 'generate', command: 'npm run generate', paths: ['.github/workflows/**'] }],
   });
   assert.equal(workflow.kind, 'authored');
-  assert.equal(workflow.reason, 'protected-validation-or-permission-path');
+  assert.equal(workflow.reason, 'validation-registration-needs-additive-rule');
 
   const unknown = validateConflictPolicy({
     source: { kind: 'base-commit-snapshot' },
@@ -283,6 +299,85 @@ test('untrusted, catch-all, protected, and unknown policy rules fail closed', ()
   });
   assert.equal(unknown.valid, false);
   assert.equal(unknown.reason, 'unknown-structured-operation');
+});
+
+test('the additive validation rule is the only structured exception for protected workflow paths', () => {
+  const configured = classifyConflictPath('.github/workflows/validate-skills.yml', {
+    source: { kind: 'caller-explicit' },
+    validationRegistrationPathPatterns: ['.github/workflows/validate-skills.yml'],
+    structuredMergeRules: [{
+      operation: 'preserve-additive-validation-registrations',
+      paths: ['.github/workflows/validate-skills.yml'],
+      validationCommand: 'node scripts/run-registered-tests.mjs',
+      validationScope: 'full-repository',
+    }],
+  });
+  assert.equal(configured.kind, 'structured');
+
+  const unsafe = classifyConflictPath('.github/workflows/validate-skills.yml', {
+    source: { kind: 'caller-explicit' },
+    validationRegistrationPathPatterns: ['.github/workflows/validate-skills.yml'],
+    structuredMergeRules: [{
+      operation: 'sort-unique-lines',
+      paths: ['.github/workflows/validate-skills.yml'],
+      validationCommand: 'node --test one.test.mjs',
+    }],
+  });
+  assert.equal(unsafe.kind, 'authored');
+});
+
+test('independently additive validation registrations preserve both sides and trusted base', () => {
+  const base = ['tests:', '  alpha.test.mjs', '  omega.test.mjs'].join('\n');
+  const ours = ['tests:', '  alpha.test.mjs', '  ours.test.mjs', '  omega.test.mjs'].join('\n');
+  const theirs = ['tests:', '  alpha.test.mjs', '  theirs.test.mjs', '  omega.test.mjs'].join('\n');
+  const merged = preserveAdditiveValidationRegistrations({ base, ours, theirs });
+  assert.equal(merged.ok, true);
+  assert.match(merged.content, /ours\.test\.mjs/);
+  assert.match(merged.content, /theirs\.test\.mjs/);
+  assert.match(merged.content, /alpha\.test\.mjs/);
+  assert.match(merged.content, /omega\.test\.mjs/);
+  assert.equal(merged.requiredValidationScope, 'full-repository');
+
+  const narrowed = preserveAdditiveValidationRegistrations({
+    base,
+    ours: ['tests:', '  ours.test.mjs', '  omega.test.mjs'].join('\n'),
+    theirs,
+  });
+  assert.equal(narrowed.ok, false);
+  assert.equal(narrowed.reason, 'trusted-base-line-removed-or-changed');
+
+  const reversed = preserveAdditiveValidationRegistrations({
+    base,
+    ours: ['tests:', '  alpha.test.mjs', '  a.test.mjs', '  b.test.mjs', '  omega.test.mjs'].join('\n'),
+    theirs: ['tests:', '  alpha.test.mjs', '  b.test.mjs', '  a.test.mjs', '  omega.test.mjs'].join('\n'),
+  });
+  assert.equal(reversed.ok, false);
+  assert.equal(reversed.reason, 'incompatible-addition-order');
+
+  const duplicate = preserveAdditiveValidationRegistrations({
+    base,
+    ours: ['tests:', '  alpha.test.mjs', '  a.test.mjs', '  a.test.mjs', '  omega.test.mjs'].join('\n'),
+    theirs,
+  });
+  assert.equal(duplicate.ok, false);
+  assert.equal(duplicate.reason, 'duplicate-registration-ambiguous');
+
+  const sameAddition = preserveAdditiveValidationRegistrations({
+    base,
+    ours: ['tests:', '  alpha.test.mjs', '  same.test.mjs', '  omega.test.mjs'].join('\n'),
+    theirs: ['tests:', '  alpha.test.mjs', '  same.test.mjs', '  omega.test.mjs'].join('\n'),
+  });
+  assert.equal(sameAddition.ok, false);
+  assert.equal(sameAddition.reason, 'duplicate-registration-ambiguous');
+
+  assert.equal(validateConflictPolicy({
+    source: { kind: 'caller-explicit' },
+    structuredMergeRules: [{
+      operation: 'preserve-additive-validation-registrations',
+      paths: ['validation/*.yml'],
+      validationCommand: 'npm test',
+    }],
+  }).reason, 'additive-validation-rule-requires-full-repository-validation');
 });
 
 test('a red or intermittent suite never becomes mergeable-and-green', () => {
@@ -558,15 +653,16 @@ test('every non-green terminal result names the next human action', () => {
   }
 });
 
-test('shepherd states plainly that it does not watch', () => {
+test('shepherd owns a durable watch and records crash gaps without claiming observation', () => {
   const entry = flat(ENTRY);
   const molecule = flat('shepherd/_molecules/pr-shepherding/pr-shepherding.md');
 
-  assert.match(entry, /\*\*Never watches\.\*\*/);
-  assert.match(entry, /belongs to the caller\s+that owns the set of open change requests/);
+  assert.match(entry, /takes ownership of one observable existing/);
+  assert.match(entry, /durable watch state/);
+  assert.match(entry, /never reports that monitoring continued/);
   assert.match(entry, /freshness receipt/);
-  assert.match(molecule, /One Snapshot, Not A Watch/);
-  assert.match(molecule, /it does not track siblings/);
+  assert.match(molecule, /Durable Watch/);
+  assert.match(molecule, /records the unobserved gap/);
 });
 
 test('the required up-to-date policy is adapter evidence, not core vocabulary', () => {
@@ -575,7 +671,7 @@ test('the required up-to-date policy is adapter evidence, not core vocabulary', 
 
   assert.match(state, /The Required Up-To-Date Policy/);
   assert.match(state, /`unobserved` is never reported as `not-required`/);
-  assert.match(state, /This unit still exposes exactly the three operations above/);
+  assert.match(state, /GitHub identity read supplements the three provider-neutral\s+operations/);
   // GitHub surfaces the requirement through `mergeStateStatus: BEHIND`; Azure
   // DevOps does not surface it at all, so its policy is always `unobserved`
   // rather than inferred from a policy display name.
@@ -671,7 +767,8 @@ test('the package carries a plain human-readable intent', () => {
   assert.match(intent, /^# Intent: shepherd\s*$/m);
   assert.ok(!intent.startsWith('---'));
   const normalized = intent.replace(/\s+/g, ' ');
-  assert.match(normalized, /existing git-hosted change request/);
-  assert.match(normalized, /generated or derived file/);
-  assert.match(normalized, /Repository-specific conflict behavior belongs in configuration/);
+  assert.match(normalized, /ownership of one existing change request/);
+  assert.match(normalized, /take ownership of one existing change request/);
+  assert.match(normalized, /every two minutes during the first hour/);
+  assert.match(normalized, /invokes Ship's existing-change-request continuation/);
 });

@@ -1,11 +1,11 @@
 ---
 name: pr-shepherding
-description: Coordinate pull request intake, rebase conflict policy, validation, leased push, remote check watch, and final disposition.
+description: Own one change request through durable decaying observation, trigger-based maintenance, bounded Ship continuation, leased push, and honest stop conditions.
 level: molecule
-includes: ["_base/_atoms/provider-detect/provider-detect.md","shepherd/_atoms/provider-state/provider-state.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
-composes: ["_base/_atoms/provider-detect/provider-detect.md","shepherd/_atoms/provider-state/provider-state.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
+includes: ["_base/_atoms/provider-detect/provider-detect.md","shepherd/_atoms/provider-state/provider-state.md","shepherd/_atoms/watch-state/watch-state.md","shepherd/_atoms/ship-continuation/ship-continuation.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
+composes: ["_base/_atoms/provider-detect/provider-detect.md","shepherd/_atoms/provider-state/provider-state.md","shepherd/_atoms/watch-state/watch-state.md","shepherd/_atoms/ship-continuation/ship-continuation.md","shepherd/_atoms/git-shepherd-core/git-shepherd-core.md","shepherd/_atoms/pr-intake/pr-intake.md","shepherd/_atoms/conflict-policy/conflict-policy.md","shepherd/_atoms/shepherd-disposition/shepherd-disposition.md","_base/_atoms/landability/landability.md"]
 used-by: ["shepherd/SKILL.md"]
-allowed-tools: ["edit","execute","read","search"]
+allowed-tools: ["edit","execute","read","search","task"]
 ---
 
 # PR Shepherding
@@ -14,11 +14,13 @@ allowed-tools: ["edit","execute","read","search"]
 
 1. [Provider detect](../../../_base/_atoms/provider-detect/provider-detect.md)
 2. [Provider state](../../_atoms/provider-state/provider-state.md)
-3. [Git shepherd core](../../_atoms/git-shepherd-core/git-shepherd-core.md)
-4. [PR intake](../../_atoms/pr-intake/pr-intake.md)
-5. [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md)
-6. [Shepherd disposition](../../_atoms/shepherd-disposition/shepherd-disposition.md)
-7. [Landability vocabulary](../../../_base/_atoms/landability/landability.md)
+3. [Watch state](../../_atoms/watch-state/watch-state.md)
+4. [Ship continuation](../../_atoms/ship-continuation/ship-continuation.md)
+5. [Git shepherd core](../../_atoms/git-shepherd-core/git-shepherd-core.md)
+6. [PR intake](../../_atoms/pr-intake/pr-intake.md)
+7. [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md)
+8. [Shepherd disposition](../../_atoms/shepherd-disposition/shepherd-disposition.md)
+9. [Landability vocabulary](../../../_base/_atoms/landability/landability.md)
 
 ## Layers
 
@@ -32,13 +34,15 @@ allowed-tools: ["edit","execute","read","search"]
    plus [Provider state](../../_atoms/provider-state/provider-state.md).
    Provider state is a shepherd-local atom, not a shared one, because only
    shepherd reads change-request state today; a unit earns `_base` when a second
-   skill composes it. Review threads are deliberately absent from this
-   composition. The review-reading unit lives local to `ship`, and cross-skill
-   local **composition** is forbidden by the graph validator, so shepherd
-   cannot *compose* it: shepherd acquires no comment-handling authority by
-   composition. The validator governs composition, not code imports, so the
-   property enforced is that composing what shepherd needs grants it no
-   review-thread authority — not that imports are blocked.
+   skill composes it.
+
+   Review threads remain absent from this composition. The local watch-state
+   helper reuses Ship's validated read-only provider-review command builders,
+   pagination interpreter, and completeness checks as a code dependency only to
+   reduce a complete observation to a digest and counts. It exposes no bodies
+   and performs no classification. This is a deliberate, target-local authority
+   change; Ship still owns review reading for remediation and every semantic
+   classification.
 
 ## Wiring The Adapter Reads Into The Disposition
 
@@ -62,6 +66,24 @@ consumes, and the translation shapes live in the shared
   carries it — so `basePolicy.upToDate` is `unobserved` for Azure, and an
   `unobserved` policy is never treated as a requirement.
 
+## Durable Watch
+
+The watch state is run-owned, persisted outside the repository, atomically
+replaced, and reread after every write. A fresh invocation resumes from that
+state, records the unobserved gap, and observes immediately. It never fills the
+gap with invented observations.
+
+While observations are unchanged, delay 2 minutes in hour one, 5 minutes in
+hour two, 10 minutes in hour three, 15 minutes in hour four, 30 minutes in hour
+five, and 60 minutes afterward. The schedule is measured from the original
+watch start, not reset by a resume or a meaningful change.
+
+Each cheap observation includes only identity, open/merged/closed state, base
+and head SHAs, merge state, review decision, a completeness-bound review digest,
+and required check fingerprints and states. Canonical comparison decides whether
+anything meaningful changed. An unchanged cycle performs no rebase, validation,
+push, or Ship invocation.
+
 ## Workflow
 
 1. Detect the provider with [Provider detect](../../../_base/_atoms/provider-detect/provider-detect.md).
@@ -77,11 +99,21 @@ consumes, and the translation shapes live in the shared
    records the normalized target and worktree safety facts.
 3. Always run [Git shepherd core](../../_atoms/git-shepherd-core/git-shepherd-core.md)
    when enough git refs are known, even when provider state was not observed.
-4. Fetch the current base and head, then classify whether there is a rebase
-   trigger. Triggers are operator request, genuine conflict or unmergeable
-   state, expired required validation, or an advanced base whose own policy
-   requires the branch to contain it. Base drift alone is not a trigger.
-5. When the base moved but the change remains mergeable and green, return
+4. Create or resume [Watch state](../../_atoms/watch-state/watch-state.md), then
+   repeat the cheap observation until a stop condition occurs. Green persists
+   and waits; it is not terminal for the watch.
+   When the caller is Ship's publication handoff, bootstrap the durable watch
+   in a separate long-running worker, wait for its acceptance receipt and
+   initial action-cycle disposition, return that bounded snapshot to Ship, and
+   leave the worker running. A dispatch without an acceptance receipt is
+   invocation failure with no terminal Shepherd disposition, not `blocked` and
+   not a completed handoff.
+5. On a meaningful mechanical change, fetch the current base and head, then
+   classify the required action. Rebase only for operator request, genuine
+   conflict or unmergeable state, or an advanced base whose own policy requires
+   the branch to contain it. Expired required validation triggers validation,
+   not a rebase. Base drift alone is not a trigger.
+6. When the base moved but the change remains mergeable and green, record
    `no-op-mergeable-and-green` without rebasing or force-pushing — unless the
    adapter reported that the base requires the branch to contain it and git
    ancestry says it does not. That branch is already unlandable, so it is a
@@ -95,52 +127,58 @@ consumes, and the translation shapes live in the shared
    explicitly blocked, its merge-block state is unobserved, or a review decision
    blocks it, do not return a green no-op; fall through to observe state so the
    terminal classifier renders `blocked`/`needs-human`.
-6. When a trigger exists, rebase the branch onto the fetched base SHA and report
+7. When a trigger exists, rebase the branch onto the fetched base SHA and report
    the commits that moved.
-7. If the rebase stops, use [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md).
+8. If the rebase stops, use [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md).
    Regenerate configured derived conflicts, apply only configured and validated
    structured rules, and stop on authored or ambiguous conflicts.
-8. After a completed rebase, regenerate repository-declared derived metadata
+9. After a completed rebase, regenerate repository-declared derived metadata
    using configured commands. Do not invent or weaken those commands.
-9. Invoke the required `run-ci` skill for local validation. Shepherd relies on
+10. Invoke the required `run-ci` skill for local validation. Shepherd relies on
    that skill's provider discovery and evidence envelope instead of duplicating
    validation discovery.
-10. If local validation is complete and green after a triggered rebase, re-check
+11. If local validation is complete and green after a triggered rebase, re-check
    that the remote head ref still equals the captured remote head SHA. Push the
    branch with an explicit lease pinned to that SHA:
    `git push --force-with-lease=refs/heads/<head>:<captured-sha> <head-remote> HEAD:refs/heads/<head>`.
    No other force-push form is allowed.
-11. Ask [Provider state](../../_atoms/provider-state/provider-state.md)
+12. Ask [Provider state](../../_atoms/provider-state/provider-state.md)
    for hosted merge state and validation status when detection reports
    `supported-provider`. Prefer one blocking wait when the tool supports it; do
    not schedule prompts or loop through repeated status rediscovery. When state
    was not observed, report the detection condition beside the git-level result
    and never substitute an empty or clean provider result for it.
-12. Classify the terminal disposition with
+13. When a changed review digest, blocking review decision, or failed required
+   check may require functional code or test work, invoke
+   [Ship continuation](../../_atoms/ship-continuation/ship-continuation.md).
+   Wait for its bounded result, verify the returned identity and head, persist
+   that head and the handled evidence watermarks, and resume observation. Ship
+   re-reads complete provider-native evidence; Shepherd's fingerprint is only a
+   change signal. Pure rebase, regeneration, and configured
+   mechanical conflict repair remain local.
+14. Classify the action-cycle disposition with
    [Shepherd disposition](../../_atoms/shepherd-disposition/shepherd-disposition.md).
    Every disposition carries the freshness receipt it was observed against:
    observation time, base SHA, head SHA, up-to-date policy, and provider status.
 
-## One Snapshot, Not A Watch
+## Stop Conditions
 
-An invocation observes one snapshot and ends. Its disposition describes the
-change request against one base commit at one moment, and it stops describing
-anything the moment the base moves.
-
-Re-observing after something merges into the base belongs to whoever asked for
-the shepherding, because that caller knows which change requests it still has
-open. This molecule does not wait for events, and it does not track siblings.
+Stop on merge or close, explicit operator stop, semantic conflict, a Ship
+human-owned or blocked result, unavailable provider or ownership evidence, or
+incomplete evidence required for safe action. Process or session loss simply
+ends observation; the durable state remains resumable and records the gap later.
 
 ## Concurrency
 
-Each invocation owns exactly one pull request branch and one worktree. All file
+Each watch owns exactly one pull request branch and one worktree. All file
 writes, rebases, validation runs, and pushes occur from that worktree. Do not use
 shared scratch directories, global mutable state, or another `as-wt-*` worktree.
 
 ## Output
 
-Return the pull request URL, branch, base SHA, rebased head SHA, moved commit
-summary, conflict policy decisions, regeneration commands run, local validation
-envelope from `run-ci`, push receipt confirming `--force-with-lease`, remote
-check table, terminal disposition, the freshness receipt that disposition is
-bound to, and any Chronicler log path or recording defect.
+Return the pull request URL, branch, durable state path, watch start, latest
+observation, next poll, observation gaps, meaningful-change ledger, base SHA,
+rebased head SHA, moved commit summary, conflict policy decisions, regeneration
+commands run, Ship continuation result when invoked, local validation envelope
+from `run-ci`, push receipt confirming `--force-with-lease`, remote check table,
+stop reason when stopped, and any Chronicler log path or recording defect.
