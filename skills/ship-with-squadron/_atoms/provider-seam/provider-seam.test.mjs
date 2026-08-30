@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
 import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
@@ -29,7 +30,7 @@ const manifest = normalizeFleetManifest({
   dependencies: [],
   concurrency: 1,
   budget: { cost: 10, timeMinutes: 60, retries: 2 },
-  repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
+  repository: { id: 'owner/repo', root: path.resolve('test-fixtures', 'provider-seam-repository'), baseBranch: 'main' },
   provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],
@@ -46,15 +47,15 @@ function state() {
     completedAt: '2026-08-30T00:04:00Z',
   };
   const blast = {
-    ...common,
-    evidenceComplete: true,
-    invocation: { skill: 'blast-radius', id: 'blast-1', runId: 'run', issue: '1' },
-    contractRepository: 'jdylanmc/agent-skills',
-    contractPullRequest: 157,
-    contractBranch: 'origin/issue-70-blast-radius-proof',
-    contractBaseRevision: '02ae9f84c782b9e57dfec20cda344fb494e57049',
-    contractRevision: '4a946e4500479e028112b77bdf268c5b7a8aae1f',
-    status: 'completed',
+    subjectChange: 'current candidate diff',
+    suppliedBaseline: 'confirmed fleet base',
+    includedScope: ['current issue'],
+    exclusions: [],
+    repositories: ['owner/repo'],
+    revisions: { baseSha: 'base', headSha: 'head' },
+    environments: ['isolated test runner'],
+    directCallers: ['adapter consumer'],
+    crossBoundaryConsumers: ['provider publication boundary'],
     assertionLadders: [{
       id: 'A1', assertion: 'safe', affectedBoundary: 'adapter', badCase: 'breakage',
       safetyCriticalReason: 'unsafe delivery',
@@ -82,8 +83,6 @@ function state() {
       prerequisites: [], authorization: 'read-only', cheaperProofInsufficientReason: 'boundary',
       outsideCoverage: 'provider',
     },
-    'next-evidence-action': null,
-    'next-evidence-reason': null,
   };
   return {
     runId: 'run',
@@ -96,7 +95,7 @@ function state() {
         baseSha: 'base',
         headSha: 'head',
         branch: 'issue-1',
-        worktree: '/work/1',
+        worktree: path.resolve('test-fixtures', 'provider-seam-worktree-1'),
         assignment: { branch: 'issue-1' },
         acceptanceCriteria: manifest.issues[0].acceptanceCriteria,
         pipeline: [
@@ -342,8 +341,9 @@ test('reuses one logical publication while requiring revision-specific confirmat
     ...entry,
     evidence: {
       ...entry.evidence,
-      baseSha: 'base-2',
-      headSha: 'head-2',
+      ...(entry.stage === 'blast-radius-proof'
+        ? { revisions: { baseSha: 'base-2', headSha: 'head-2' } }
+        : { baseSha: 'base-2', headSha: 'head-2' }),
       ...(entry.stage === 'criterion-verdict'
         ? { verdicts: [{
           id: 'C1', verdict: 'satisfied',

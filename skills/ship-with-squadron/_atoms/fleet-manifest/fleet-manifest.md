@@ -41,6 +41,9 @@ Use the fleet manifest helper to reject duplicate identities,
 duplicate or ambiguous edges, missing endpoints, self-edges, cycles, invalid
 budgets, absent or mismatched source receipts, missing criteria, implicit scope,
 and a validation policy missing `run-ci`, `roast`, or `blast-radius-proof`.
+Every source receipt also requires `read-issue` in the confirmed provider
+allow-list, and a query-backed set requires `read-issue-set`; observations made
+without that persisted authority are not accepted.
 The first version supports exactly that baseline policy and rejects additions
 rather than accepting checks that its packet, pipeline, persistence, and
 readiness gates cannot enforce.

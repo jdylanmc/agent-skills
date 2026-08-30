@@ -20,13 +20,6 @@ export const BLAST_RADIUS_VOCABULARY = Object.freeze({
   outcomes: ['supports-assertion', 'supports-bad-case', 'inconclusive', 'conflicting'],
   regressionProofStatus: ['selected', 'unavailable'],
 });
-export const BLAST_RADIUS_CONTRACT = Object.freeze({
-  repository: 'jdylanmc/agent-skills',
-  pullRequest: 157,
-  branch: 'origin/issue-70-blast-radius-proof',
-  baseRevision: '02ae9f84c782b9e57dfec20cda344fb494e57049',
-  revision: '4a946e4500479e028112b77bdf268c5b7a8aae1f',
-});
 export const READINESS_OBLIGATION_FIELDS = Object.freeze([
   'owner', 'provider', 'repository', 'changeRequest', 'publicationKey',
   'baseBranch', 'baseSha', 'headSha', 'expiresWhen', 'reinvocation',
@@ -133,15 +126,15 @@ export function persistedShepherdPasses(issueRecord, state, manifest) {
     defects.push('Shepherd persisted invocation identity is invalid');
   }
   if (!receipt
-      || normalizedProvider(receipt.provider) !== normalizedProvider(manifest?.provider?.name)
-      || receipt.repository !== manifest?.repository?.id
-      || receipt.changeRequest !== issueRecord?.changeRequest?.identifier
-      || receipt.baseBranch !== manifest?.repository?.baseBranch
+      || !exactObjectKeys(receipt, [
+        'observedAt', 'baseSha', 'headSha', 'upToDatePolicy', 'provider', 'complete',
+      ])
       || receipt.baseSha !== issueRecord?.baseSha
       || receipt.headSha !== issueRecord?.headSha
       || !validTimestamp(receipt.observedAt)
       || receipt.complete !== true
-      || !['required', 'not-required'].includes(receipt.upToDatePolicy)) {
+      || !['required', 'not-required'].includes(receipt.upToDatePolicy)
+      || normalizedProvider(receipt.provider) !== 'supported-provider') {
     defects.push('Shepherd persisted freshness receipt is invalid');
   }
   if (!observation
@@ -418,31 +411,54 @@ function validateRegressionProof(report, ladderIds, defects) {
   }
 }
 
-export function adaptBlastRadiusEvidence(report, revision, identity = {}) {
-  const defects = invocationDefects(report, 'blast-radius', identity);
-  if (!exactObjectKeys(report, [
-    'invocation', 'contractRepository', 'contractPullRequest', 'contractBranch',
-    'contractBaseRevision', 'contractRevision', 'status', 'terminal', 'complete',
-    'evidenceComplete', 'completedAt', 'baseSha', 'headSha', 'assertionLadders',
-    'classifications', 'analysisBoundaries', 'crossBoundaryGaps',
-    'regression-proof-status', 'regression-proof',
-    'next-evidence-action', 'next-evidence-reason',
-  ])) defects.push('blast-radius report schema is not exact');
-  if (report?.contractRepository !== BLAST_RADIUS_CONTRACT.repository
-      || report?.contractPullRequest !== BLAST_RADIUS_CONTRACT.pullRequest
-      || report?.contractBranch !== BLAST_RADIUS_CONTRACT.branch
-      || report?.contractBaseRevision !== BLAST_RADIUS_CONTRACT.baseRevision
-      || report?.contractRevision !== BLAST_RADIUS_CONTRACT.revision) {
-    defects.push('blast-radius contract revision is not the review-stable Pull Request 157 contract');
+export function adaptBlastRadiusEvidence(report, revision) {
+  const defects = [];
+  const requiredFields = [
+    'subjectChange', 'suppliedBaseline', 'includedScope', 'exclusions',
+    'repositories', 'revisions', 'environments', 'directCallers',
+    'crossBoundaryConsumers', 'assertionLadders', 'classifications',
+    'analysisBoundaries', 'crossBoundaryGaps', 'regression-proof-status',
+    'regression-proof',
+  ];
+  if (!report || typeof report !== 'object' || Array.isArray(report)) {
+    return {
+      kind: 'blast-radius',
+      valid: false,
+      defects: ['blast-radius report is absent'],
+      readiness: 'invalid',
+      classifications: {},
+      assertionLadders: [],
+      'regression-proof-status': null,
+      'regression-proof': null,
+      'next-evidence-action': null,
+      'next-evidence-reason': null,
+      baseSha: null,
+      headSha: null,
+      receipt: report ?? null,
+    };
   }
-  if (report?.status !== 'completed'
-      || report?.terminal !== true
-      || report?.complete !== true
-      || report?.evidenceComplete !== true) {
-    defects.push('blast-radius evidence must be complete and terminal');
+  for (const field of requiredFields) {
+    if (!Object.hasOwn(report, field)) defects.push(`blast-radius report.${field} is absent`);
   }
-  if (!validTimestamp(report?.completedAt)) defects.push('blast-radius completion time is absent or invalid');
-  if (!revisionMatches(report, revision)) defects.push('blast-radius evidence is not bound to current base and head');
+  for (const field of ['subjectChange', 'suppliedBaseline']) {
+    if (!nonEmpty(report?.[field])) defects.push(`blast-radius report.${field} is absent`);
+  }
+  for (const field of [
+    'includedScope', 'exclusions', 'repositories', 'environments',
+    'directCallers', 'crossBoundaryConsumers',
+  ]) {
+    if (!Array.isArray(report?.[field])
+        || report[field].some((entry) => !nonEmpty(entry))) {
+      defects.push(`blast-radius report.${field} must be a string array`);
+    }
+  }
+  if (!exactObjectKeys(report?.revisions, ['baseSha', 'headSha'])
+      || !nonEmpty(report?.revisions?.baseSha)
+      || !nonEmpty(report?.revisions?.headSha)
+      || report.revisions.baseSha !== revision?.baseSha
+      || report.revisions.headSha !== revision?.headSha) {
+    defects.push('blast-radius report revisions are not bound to current base and head');
+  }
   if (!Array.isArray(report?.assertionLadders) || report.assertionLadders.length === 0) {
     defects.push('assertionLadders must be a non-empty array');
   }
@@ -533,6 +549,15 @@ export function adaptBlastRadiusEvidence(report, revision, identity = {}) {
     defects.push('every assertion must be classified exactly once');
   }
   validateRegressionProof(report, ladderIds, defects);
+  if (report['regression-proof-status'] === 'selected') {
+    if (Object.hasOwn(report, 'next-evidence-action')
+        || Object.hasOwn(report, 'next-evidence-reason')) {
+      defects.push('selected blast-radius report must not manufacture unavailable fields');
+    }
+  } else if (!Object.hasOwn(report, 'next-evidence-action')
+      || !Object.hasOwn(report, 'next-evidence-reason')) {
+    defects.push('unavailable blast-radius report must include its documented next-evidence fields');
+  }
 
   const confirmed = classifications['confirmed-risk']?.length ?? 0;
   const unproven = classifications['unproven-assertion']?.length ?? 0;
@@ -552,8 +577,8 @@ export function adaptBlastRadiusEvidence(report, revision, identity = {}) {
     'regression-proof': report?.['regression-proof'] ?? null,
     'next-evidence-action': report?.['next-evidence-action'] ?? null,
     'next-evidence-reason': report?.['next-evidence-reason'] ?? null,
-    baseSha: report?.baseSha ?? null,
-    headSha: report?.headSha ?? null,
+    baseSha: report?.revisions?.baseSha ?? null,
+    headSha: report?.revisions?.headSha ?? null,
     receipt: report ?? null,
   };
 }
@@ -569,7 +594,9 @@ export function recordStage(issueRecord, stage, evidence, revision, manifest) {
   const stages = deliveryStagesForManifest(manifest);
   const index = stages.indexOf(stage);
   if (index < 0) throw new Error(`delivery stage is not required by manifest: ${stage}`);
-  if (!revisionMatches(evidence, revision)) throw new Error(`${stage} evidence is stale for current revision`);
+  if (stage !== 'blast-radius-proof' && !revisionMatches(evidence, revision)) {
+    throw new Error(`${stage} evidence is stale for current revision`);
+  }
   if (stage === 'run-ci' && !adaptCiEvidence(evidence, revision).passed) {
     throw new Error('run-ci evidence does not pass');
   }
@@ -680,7 +707,8 @@ function evaluateCriteria(criteria, issue, manifest, revision, defects) {
 
 function evaluatePersistedStage(stage, entry, issueRecord, state, manifest, defects) {
   const revision = stage === 'shepherd' ? issueRecord.shepherd?.receipt : issueRecord;
-  if (!entry?.evidence || !revisionMatches(entry.evidence, revision)) {
+  if (!entry?.evidence
+      || (stage !== 'blast-radius-proof' && !revisionMatches(entry.evidence, revision))) {
     defects.push(`${stage}:stale-or-missing`);
     return;
   }

@@ -6,7 +6,7 @@ includes: ["_base/_molecules/chronicler/chronicler.md","ship-with-squadron/_mole
 composes: ["_base/_molecules/chronicler/chronicler.md","ship-with-squadron/_molecules/fleet-control/fleet-control.md","ship-with-squadron/_molecules/candidate-delivery/candidate-delivery.md"]
 disable-model-invocation: true
 user-invocable: true
-requires-skills: [{"id":"run-ci","source":"local","required":true},{"id":"roast","source":"local","required":true},{"id":"blast-radius","source":"external","required":true},{"id":"orchestration-handoff","source":"local","required":true},{"id":"shepherd","source":"local","required":false}]
+requires-skills: [{"id":"run-ci","source":"local","required":true},{"id":"roast","source":"local","required":true},{"id":"blast-radius","source":"local","required":true},{"id":"orchestration-handoff","source":"local","required":true},{"id":"shepherd","source":"local","required":false}]
 ---
 
 # Ship With Squadron
@@ -61,15 +61,16 @@ record -> confirm one closed fleet manifest -> persist state
    run/issue/worker/generation/branch/worktree/revision binding, and producing a
    fresh consolidated brief. Never revive hidden context.
 6. Drive every candidate through the quality sequence exactly as shown above.
-   Accept only complete terminal invocation receipts from `run-ci`, Roast, and
-   blast-radius, bound to the current run, issue, base, and head. Roast blockers
-   are exactly unresolved `Priority: Must fix` findings. Any head mutation
+   Accept only complete terminal invocation receipts from `run-ci` and Roast,
+   plus the unchanged local blast-radius report, all bound to the current base
+   and head and, where the producer supplies it, the current run and issue.
+   Roast blockers are exactly unresolved `Priority: Must fix` findings. Any head mutation
    invalidates downstream evidence and restarts at reconciliation.
-7. Invoke the external `blast-radius` seam and adapt its Pull Request 157
-   contract without copying or composing its local units. Require the exact
-   review-stable head `4a946e4500479e028112b77bdf268c5b7a8aae1f` and fail
-   closed when its sequential ladder evidence cannot semantically support the
-   reported classification.
+7. Invoke the checked-in local `blast-radius` skill. Consume its report
+   unchanged: do not add invocation wrappers, completion booleans, or historical
+   branch/revision provenance. Bind the report through its supplied baseline
+   and revision fields, and fail closed when its sequential ladder evidence
+   cannot semantically support the reported classification.
 8. Persist one stable logical publication identity and a revision-specific
    base/head observation before calling the allow-listed provider adapter.
    Reconcile by its stable provider key after degraded responses, revision
@@ -78,15 +79,16 @@ record -> confirm one closed fleet manifest -> persist state
    worker report, merge grant, or degraded provider response.
 9. When manifest Shepherd intent is `yes`, invoke `shepherd` in a real fresh
    nested worker for every published change request and wait for a terminal
-   disposition. Record the exact receipt and set obligation. When intent is
+   disposition. Preserve the canonical landability receipt unchanged. Bind
+   repository, change request, base branch, run, issue, and generation through
+   the surrounding invocation, provider observation, and set obligation. When intent is
    `no`, persist an explicit `not-required` decision and revision-bound set
    obligation; do not fabricate or dispatch Shepherd.
 10. Observe human merges through the provider seam only when provider,
     repository, issue, change request, base/head, merge commit, observation
     time, and stable publication key reconcile exactly. Recompute dependencies.
     Expire affected still-open sibling readiness claims and fleet disposition
-    immediately. Require provider-bound
-    Record the merge and invalidate all open siblings, including in-flight
+    immediately. Record the merge and invalidate all open siblings, including in-flight
     first Shepherd work, before processing per-sibling revision evidence.
     Missing or malformed evidence remains a durable blocker without rolling
     back other invalidations. Require provider-bound revision observations
@@ -112,9 +114,8 @@ record -> confirm one closed fleet manifest -> persist state
   and read one recorded change request's exact revision only when allow-listed.
 - Local scheduling never depends on issue 25 and never composes
   `chart-a-course`.
-- This package never composes blast-radius skill-local units from Pull Request
-  157. The required external seam is pinned to its human-provided review-stable
-  public contract.
+- This package invokes the local blast-radius skill without composing its
+  skill-local units or manufacturing fields around its returned report.
 - No wildcard permissions. No sticky mode, watcher, daemon, or background
   authority.
 

@@ -48,18 +48,29 @@ test('directly composes Chronicler and local fleet molecules only', () => {
   assert.ok(!closure.some((file) => file.startsWith('blast-radius/')));
 });
 
-test('pins required local workflow skills and review-stable external blast-radius seam', () => {
+test('pins required local workflow skills and the checked-in blast-radius seam', () => {
   assert.deepEqual(frontmatter(ENTRY).requiresSkills, [
     { id: 'run-ci', source: 'local', required: true },
     { id: 'roast', source: 'local', required: true },
-    { id: 'blast-radius', source: 'external', required: true },
+    { id: 'blast-radius', source: 'local', required: true },
     { id: 'orchestration-handoff', source: 'local', required: true },
     { id: 'shepherd', source: 'local', required: false },
   ]);
   const quality = read('ship-with-squadron/_atoms/quality-evidence/quality-evidence.md').replace(/\s+/g, ' ');
-  assert.match(quality, /Pull Request 157 is merged/);
-  assert.match(quality, /4a946e4500479e028112b77bdf268c5b7a8aae1f/);
-  assert.match(quality, /fails closed unless the exact contract revision is present/);
+  assert.match(quality, /Consume its actual report unchanged/);
+  assert.doesNotMatch(quality, /Pull Request 157|4a946e4500479e028112b77bdf268c5b7a8aae1f/);
+  const adapter = read('ship-with-squadron/_atoms/quality-evidence/quality-evidence.mjs');
+  assert.doesNotMatch(adapter, /contractPullRequest|contractBranch|contractRevision/);
+});
+
+test('consumes canonical Shepherd freshness without caller-manufactured identity fields', () => {
+  const readiness = read('ship-with-squadron/_atoms/readiness-set/readiness-set.mjs');
+  assert.match(readiness, /validateFreshnessReceipt/);
+  assert.doesNotMatch(readiness, /receipt\?\.repository|receipt\?\.changeRequest|receipt\?\.baseBranch/);
+  const contract = read('_base/_atoms/landability/landability.mjs');
+  for (const field of ['observedAt', 'baseSha', 'headSha', 'upToDatePolicy', 'provider', 'complete']) {
+    assert.match(contract, new RegExp(field));
+  }
 });
 
 test('pins full delivery order and forbidden authority', () => {
@@ -121,5 +132,24 @@ test('all package tests are registered in the validation workflow', () => {
   ];
   for (const relative of tests) {
     assert.match(workflow, new RegExp(`skills/ship-with-squadron/${relative}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+});
+
+test('registered squadron tests use platform-native fixture paths', () => {
+  const tests = [
+    'ship-with-squadron.conformance.test.mjs',
+    '_atoms/fleet-manifest/fleet-manifest.test.mjs',
+    '_atoms/dependency-frontier/dependency-frontier.test.mjs',
+    '_atoms/fleet-state/fleet-state.test.mjs',
+    '_atoms/assignment-ownership/assignment-ownership.test.mjs',
+    '_atoms/quality-evidence/quality-evidence.test.mjs',
+    '_atoms/provider-seam/provider-seam.test.mjs',
+    '_atoms/readiness-set/readiness-set.test.mjs',
+    '_atoms/fleet-disposition/fleet-disposition.test.mjs',
+  ];
+  for (const relative of tests) {
+    const source = read(`ship-with-squadron/${relative}`);
+    assert.doesNotMatch(source, /root:\s*['"]\/repo['"]/);
+    assert.doesNotMatch(source, /worktree:\s*['"]\/work\//);
   }
 });

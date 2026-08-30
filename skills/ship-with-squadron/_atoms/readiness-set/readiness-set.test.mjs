@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
   assertFleetState,
   createFleetState,
+  fleetStatePath,
+  persistFleetState,
 } from '../fleet-state/fleet-state.mjs';
 import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.mjs';
 import { publicationKey } from '../provider-seam/provider-seam.mjs';
@@ -37,7 +41,7 @@ function manifest(shepherdIntent = 'yes', dependencies = []) {
     dependencies,
     concurrency: 2,
     budget: { cost: 10, timeMinutes: 60, retries: 2 },
-    repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
+    repository: { id: 'owner/repo', root: path.resolve('test-fixtures', 'readiness-set-repository'), baseBranch: 'main' },
     provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
     validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
     stopConditions: ['cancelled'],
@@ -81,14 +85,11 @@ function shepherd(expectation = expected(), overrides = {}) {
     },
     result: {
       disposition: 'mergeable-and-green',
-      terminal: true,
-      complete: true,
+      reason: 'complete-green-evidence',
+      defects: [],
       receipt: {
         observedAt: receiptTime,
-        provider: expectation.provider,
-        repository: expectation.repository,
-        changeRequest: expectation.changeRequest,
-        baseBranch: expectation.baseBranch,
+        provider: 'supported-provider',
         baseSha: expectation.baseSha,
         headSha: expectation.headSha,
         upToDatePolicy: 'required',
@@ -284,14 +285,15 @@ function validNoShepherdPipeline(baseSha, headSha) {
     completedAt: '2026-08-30T00:05:00Z',
   };
   const blast = {
-    ...common,
-    evidenceComplete: true,
-    invocation: { skill: 'blast-radius', id: 'blast-b', runId: 'run', issue: 'b' },
-    contractRepository: 'jdylanmc/agent-skills',
-    contractPullRequest: 157,
-    contractBranch: 'origin/issue-70-blast-radius-proof',
-    contractBaseRevision: '02ae9f84c782b9e57dfec20cda344fb494e57049',
-    contractRevision: '4a946e4500479e028112b77bdf268c5b7a8aae1f', status: 'completed',
+    subjectChange: 'current candidate diff',
+    suppliedBaseline: 'confirmed fleet base',
+    includedScope: ['current issue'],
+    exclusions: [],
+    repositories: ['owner/repo'],
+    revisions: { baseSha, headSha },
+    environments: ['isolated test runner'],
+    directCallers: ['adapter consumer'],
+    crossBoundaryConsumers: ['provider publication boundary'],
     assertionLadders: [{
       id: 'A1', assertion: 'safe', affectedBoundary: 'adapter', badCase: 'breakage',
       safetyCriticalReason: 'unsafe delivery',
@@ -319,7 +321,6 @@ function validNoShepherdPipeline(baseSha, headSha) {
       prerequisites: [], authorization: 'read-only', cheaperProofInsufficientReason: 'boundary',
       outsideCoverage: 'provider',
     },
-    'next-evidence-action': null, 'next-evidence-reason': null,
   };
   return [
     ['implementation', { ...common, status: 'completed' }],
@@ -352,9 +353,59 @@ function validNoShepherdPipeline(baseSha, headSha) {
   ].map(([stage, evidence]) => ({ stage, evidence }));
 }
 
+function assignmentPacket(currentManifest, issueIdentity, branch, worktree, baseSha, headSha) {
+  const issue = currentManifest.issues.find((entry) => entry.identity === issueIdentity);
+  const verification = [...currentManifest.validationPolicy];
+  const reportContract = {
+    summary: 'return confirmed validation evidence',
+    requiredEvidence: verification,
+  };
+  const forbiddenAuthorities = [
+    'merge', 'approve', 'enable-auto-merge', 'accept-risk', 'force-push',
+    'close-tracker-work', 'select-adjacent-work',
+  ];
+  return {
+    schemaVersion: 1,
+    manifestDigest: currentManifest.digest,
+    issue: issueIdentity,
+    sourceRevision: issue.sourceRevision,
+    acceptanceCriteria: issue.acceptanceCriteria,
+    scope: issue.scope,
+    exclusions: currentManifest.exclusions,
+    allowedPaths: issue.allowedPaths,
+    verification,
+    reportContract,
+    forbiddenAuthorities,
+    taskContract: {
+      goal: currentManifest.goal,
+      scope: JSON.stringify(issue.scope),
+      context: JSON.stringify({
+        acceptedScope: currentManifest.acceptedScope,
+        humanBoundaries: currentManifest.humanBoundaries,
+        issue: issueIdentity,
+        repository: currentManifest.repository.id,
+        sourceRevision: issue.sourceRevision,
+      }),
+      acceptance: issue.acceptanceCriteria.map((entry) => entry.description),
+      verify: verification.join('\n'),
+      timebox: JSON.stringify({ cost: 10, retries: 2, timeMinutes: 60 }),
+      forbidden: forbiddenAuthorities.join('\n'),
+      report: JSON.stringify({
+        requiredEvidence: verification,
+        summary: reportContract.summary,
+      }),
+      standing: 'one-issue-one-branch-one-worktree-no-adjacent-work',
+    },
+    branch,
+    worktree,
+    baseSha,
+    headSha,
+  };
+}
+
 function fullReadyState(currentManifest = manifest()) {
   const current = createFleetState(currentManifest, 'run', '2026-08-30T00:00:00Z');
-  current.revision = 5;
+  current.revision = 0;
   current.updatedAt = '2026-08-30T00:01:02Z';
   current.issues.c.sourceObservation = {
     ...current.issues.c.sourceReceipt,
@@ -408,7 +459,7 @@ function fullReadyState(currentManifest = manifest()) {
     Object.assign(record, {
       dependencyState: 'unclassified',
       branch: `issue-${issueIdentity}`,
-      worktree: `/work/${issueIdentity}`,
+      worktree: path.resolve('test-fixtures', `readiness-worktree-${issueIdentity}`),
       baseSha: 'base-1',
       headSha,
       status: 'completed',
@@ -630,6 +681,99 @@ test('expired accepted readiness remains fully persistent while landed review re
   assert.doesNotThrow(() => assertFleetState(expired, currentManifest));
 });
 
+test('an in-flight first Shepherd expiry preserves assignment ownership and persists its blocker', (t) => {
+  const repositoryRoot = path.resolve('test-fixtures', 'in-flight-shepherd-repository');
+  fs.rmSync(repositoryRoot, { recursive: true, force: true });
+  fs.mkdirSync(repositoryRoot, { recursive: true });
+  t.after(() => fs.rmSync(repositoryRoot, { recursive: true, force: true }));
+  const baseManifest = manifest();
+  const currentManifest = normalizeFleetManifest({
+    confirmation: 'confirmed',
+    goal: baseManifest.goal,
+    acceptedScope: baseManifest.acceptedScope,
+    exclusions: baseManifest.exclusions,
+    humanDecisions: [],
+    issues: baseManifest.issues.map((issue) => ({
+      identity: issue.identity,
+      sourceRevision: issue.sourceRevision,
+      sourceReceipt: issue.sourceReceipt,
+      acceptanceCriteria: issue.acceptanceCriteria,
+      scope: issue.scope,
+      allowedPaths: issue.allowedPaths,
+      status: issue.status,
+    })),
+    dependencies: baseManifest.dependencies,
+    concurrency: baseManifest.concurrency,
+    budget: baseManifest.budget,
+    repository: { ...baseManifest.repository, root: repositoryRoot },
+    provider: baseManifest.provider,
+    validationPolicy: baseManifest.validationPolicy,
+    stopConditions: baseManifest.stopConditions,
+    humanBoundaries: baseManifest.humanBoundaries,
+    shepherdIntent: 'yes',
+  });
+  const { current } = fullReadyState(currentManifest);
+  const record = current.issues.b;
+  const worktree = path.join(repositoryRoot, 'worktrees', 'b');
+  record.pipeline = record.pipeline.filter((entry) => entry.stage !== 'shepherd');
+  record.shepherd = null;
+  record.setObligation = null;
+  record.status = 'active';
+  record.dependencyState = 'active';
+  record.terminalDisposition = null;
+  record.nextAction = null;
+  record.worktree = worktree;
+  record.assignment = {
+    generation: 1,
+    workerContext: 'implementation-b',
+    branch: 'issue-b',
+    worktree,
+    baseSha: 'base-1',
+    headSha: 'head-b',
+    packet: assignmentPacket(
+      currentManifest,
+      'b',
+      'issue-b',
+      worktree,
+      'base-1',
+      'head-b',
+    ),
+    active: true,
+    startedAt: '2026-08-30T00:01:00Z',
+  };
+  record.checkActivity = {
+    kind: 'shepherd-check',
+    state: 'active',
+    generation: 1,
+    startedAt: '2026-08-30T00:01:30Z',
+  };
+  current.activeCapacity = 1;
+  current.fleetDisposition = deriveFleetDisposition(current, currentManifest);
+  assert.doesNotThrow(() => assertFleetState(current, currentManifest));
+
+  const publicationA = current.publications.find((entry) => entry.issue === 'a');
+  const expired = expireReadinessAfterSiblingMerge(current, currentManifest, {
+    ...mergeA,
+    invocation: { ...mergeA.invocation, providerKey: publicationA.key },
+    publicationKey: publicationA.key,
+  }, {}, '2026-08-30T00:02:02Z');
+  assert.equal(expired.issues.b.status, 'active');
+  assert.equal(expired.issues.b.assignment.workerContext, 'implementation-b');
+  assert.equal(expired.issues.b.checkActivity.state, 'blocked');
+  assert.equal(expired.issues.b.checkActivity.blocker, 'sibling-merge-watermark');
+  assert.equal(expired.issues.b.terminalDisposition, null);
+  assert.doesNotThrow(() => assertFleetState(expired, currentManifest));
+  const persisted = persistFleetState(
+    fleetStatePath(repositoryRoot, 'run'),
+    expired,
+    0,
+    currentManifest,
+  );
+  assert.equal(persisted.issues.b.status, 'active');
+  assert.equal(persisted.issues.b.assignment.workerContext, 'implementation-b');
+  assert.equal(persisted.issues.b.checkActivity.state, 'blocked');
+});
+
 test('consumes queued work only with a fresh accepted receipt bound to the queued generation', () => {
   const expired = expireReadinessAfterSiblingMerge(
     state(),
@@ -680,7 +824,7 @@ test('manifest Shepherd intent no records a real not-required state and obligati
           generation: 1,
           workerContext: 'worker-a',
           branch: 'issue-a',
-          worktree: '/work/a',
+          worktree: path.resolve('test-fixtures', 'readiness-worktree-a'),
           baseSha: 'base-1',
           headSha: 'head-a',
           packet: {},

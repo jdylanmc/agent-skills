@@ -23,7 +23,7 @@ import {
 } from '../provider-seam/provider-seam.mjs';
 import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.mjs';
 
-export const FLEET_STATE_SCHEMA_VERSION = 3;
+export const FLEET_STATE_SCHEMA_VERSION = 4;
 const ISSUE_STATUSES = new Set([
   'pending', 'active', 'completed', 'blocked', 'failed', 'timed-out', 'deferred',
 ]);
@@ -105,6 +105,110 @@ function digest(value) {
   return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 }
 
+function containsDotSegment(value) {
+  return String(value).split(/[\\/]+/u).some((segment) => segment === '.' || segment === '..');
+}
+
+function alternateCasePath(value) {
+  const parsed = path.parse(value);
+  const parts = value.slice(parsed.root.length).split(path.sep).filter(Boolean);
+  for (let index = 0; index < parts.length; index += 1) {
+    const character = parts[index].match(/[A-Za-z]/u)?.[0];
+    if (!character) continue;
+    const offset = parts[index].indexOf(character);
+    const replacement = character === character.toLowerCase()
+      ? character.toUpperCase()
+      : character.toLowerCase();
+    const alternate = [...parts];
+    alternate[index] = `${parts[index].slice(0, offset)}${replacement}${parts[index].slice(offset + 1)}`;
+    return path.join(parsed.root, ...alternate);
+  }
+  return null;
+}
+
+function filesystemIsCaseInsensitive(existingPath) {
+  if (process.platform === 'win32') return true;
+  let cursor = existingPath;
+  while (cursor !== path.parse(cursor).root) {
+    const alternate = alternateCasePath(cursor);
+    if (alternate && alternate !== cursor) {
+      try {
+        const original = fs.statSync(cursor);
+        const candidate = fs.statSync(alternate);
+        return original.dev === candidate.dev && original.ino === candidate.ino;
+      } catch {
+        // Try a higher existing ancestor.
+      }
+    }
+    cursor = path.dirname(cursor);
+  }
+  return false;
+}
+
+export function canonicalFilesystemIdentity(
+  value,
+  { requireExisting = false, requireCanonical = true } = {},
+) {
+  if (!nonEmpty(value) || !path.isAbsolute(value) || value.includes('\0')) {
+    throw new Error('filesystem identity requires a non-empty absolute path');
+  }
+  if (containsDotSegment(value)) {
+    throw new Error('filesystem identity must not contain dot segments');
+  }
+  const resolved = path.normalize(path.resolve(value));
+  const parsed = path.parse(resolved);
+  const components = resolved.slice(parsed.root.length).split(path.sep).filter(Boolean);
+  let cursor = parsed.root;
+  let firstMissing = components.length;
+  for (const [index, component] of components.entries()) {
+    const candidate = path.join(cursor, component);
+    try {
+      const stat = fs.lstatSync(candidate);
+      if (stat.isSymbolicLink()) {
+        throw new Error(`filesystem identity traverses a symbolic link: ${candidate}`);
+      }
+      cursor = candidate;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      firstMissing = index;
+      break;
+    }
+  }
+  if (requireExisting && firstMissing !== components.length) {
+    throw new Error('filesystem identity path does not exist');
+  }
+  const existingReal = fs.realpathSync.native
+    ? fs.realpathSync.native(cursor)
+    : fs.realpathSync(cursor);
+  const suffix = components.slice(firstMissing);
+  const canonicalPath = path.join(existingReal, ...suffix);
+  const caseInsensitive = filesystemIsCaseInsensitive(existingReal);
+  if (suffix.length > 0
+      && process.platform === 'darwin'
+      && existingReal === parsed.root
+      && !caseInsensitive) {
+    throw new Error('not-yet-created filesystem identity has ambiguous case semantics');
+  }
+  if (requireCanonical && resolved !== canonicalPath) {
+    throw new Error('filesystem identity must use canonical path spelling');
+  }
+  if (firstMissing === components.length) {
+    const stat = fs.statSync(canonicalPath);
+    return {
+      path: canonicalPath,
+      key: `inode:${String(stat.dev)}:${String(stat.ino)}`,
+      exists: true,
+      caseInsensitive,
+    };
+  }
+  return {
+    path: canonicalPath,
+    key: `path:${caseInsensitive ? canonicalPath.toLowerCase() : canonicalPath}`,
+    exists: false,
+    caseInsensitive,
+  };
+}
+
 function exactKeys(actual, expected, label) {
   const left = Object.keys(actual ?? {}).sort();
   const right = [...expected].sort();
@@ -150,6 +254,15 @@ function assertAssignment(assignment, issue, manifest, state, { active }) {
   ];
   exactKeys(assignment, expectedKeys, `${issue.identity} assignment`);
   if (!validTimestamp(assignment.startedAt)) throw new Error(`${issue.identity} assignment startedAt is invalid`);
+  let worktreeIdentity;
+  try {
+    worktreeIdentity = canonicalFilesystemIdentity(assignment.worktree);
+  } catch (error) {
+    throw new Error(`${issue.identity} assignment worktree identity is invalid: ${error.message}`);
+  }
+  if (worktreeIdentity.path !== assignment.worktree) {
+    throw new Error(`${issue.identity} assignment worktree is not canonical`);
+  }
   if (!nonEmpty(assignment.baseSha) || !nonEmpty(assignment.headSha)) {
     throw new Error(`${issue.identity} assignment requires exact base and head revisions`);
   }
@@ -199,6 +312,9 @@ function assertAssignment(assignment, issue, manifest, state, { active }) {
       throw new Error(`${issue.identity} inactive assignment requires a valid end reason`);
     }
     if (!validTimestamp(assignment.endedAt)) throw new Error(`${issue.identity} inactive assignment endedAt is invalid`);
+    if (HANDOFF_REASONS.has(assignment.endReason) && assignment.handoff === undefined) {
+      throw new Error(`${issue.identity} inactive ${assignment.endReason} assignment requires a validated handoff`);
+    }
     if (assignment.handoff !== undefined) {
       const handoff = assignment.handoff;
       exactKeys(handoff, [
@@ -390,8 +506,11 @@ function assertShepherd(issue, manifest, state) {
   if (!issue.changeRequest) throw new Error(`${issue.identity} shepherd state lacks a change request`);
   const receipt = shepherd.receipt;
   const obligation = shepherd.setObligation;
-  if (!receipt || receipt.provider !== manifest.provider.name
-      || receipt.changeRequest !== issue.changeRequest.identifier
+  if (!receipt
+      || !same(Object.keys(receipt).sort(), [
+        'baseSha', 'complete', 'headSha', 'observedAt', 'provider', 'upToDatePolicy',
+      ])
+      || receipt.baseSha !== issue.baseSha
       || receipt.headSha !== issue.headSha
       || receipt.complete !== true
       || !validTimestamp(receipt.observedAt)) {
@@ -424,11 +543,21 @@ function assertPipeline(record, manifest, state) {
     }
     const evidenceBase = entry.stage === 'shepherd'
       ? record.shepherd?.receipt?.baseSha
+      : entry.stage === 'blast-radius-proof'
+        ? entry.evidence?.revisions?.baseSha
       : record.baseSha;
     const evidenceHead = entry.stage === 'shepherd'
       ? record.shepherd?.receipt?.headSha
+      : entry.stage === 'blast-radius-proof'
+        ? entry.evidence?.revisions?.headSha
       : record.headSha;
-    if (entry.evidence.baseSha !== evidenceBase || entry.evidence.headSha !== evidenceHead) {
+    const actualBase = entry.stage === 'blast-radius-proof'
+      ? entry.evidence?.revisions?.baseSha
+      : entry.evidence.baseSha;
+    const actualHead = entry.stage === 'blast-radius-proof'
+      ? entry.evidence?.revisions?.headSha
+      : entry.evidence.headSha;
+    if (actualBase !== evidenceBase || actualHead !== evidenceHead) {
       throw new Error(`${record.identity} pipeline evidence is stale`);
     }
     const identity = { runId: state.runId, issue: record.identity };
@@ -540,7 +669,7 @@ function assertIssueRecord(record, issue, manifest, state) {
     'branch', 'worktree', 'baseSha', 'headSha', 'status', 'statusReason', 'implementationStatus',
     'qualityEvidence', 'pipeline', 'changeRequest', 'shepherd',
     'shepherdDecision', 'setObligation', 'terminalDisposition', 'nextAction',
-    'checkActivity', 'readinessGeneration', 'readinessWatermark',
+    'checkActivity', 'handoffObligation', 'readinessGeneration', 'readinessWatermark',
   ], `fleet state issue ${issue.identity}`);
   if (record.identity !== issue.identity) throw new Error(`identity mismatch for ${issue.identity}`);
   if (record.sourceRevision !== issue.sourceRevision) {
@@ -596,8 +725,30 @@ function assertIssueRecord(record, issue, manifest, state) {
   } else if (record.assignment !== null) {
     throw new Error(`${issue.identity} has mutable ownership while status is ${record.status}`);
   }
+  if (record.handoffObligation !== null) {
+    exactKeys(record.handoffObligation, [
+      'state', 'reason', 'condition', 'generation', 'workerContext', 'requiredAt',
+    ], `${issue.identity} handoff obligation`);
+    if (record.status !== 'active'
+        || record.assignment?.active !== true
+        || record.handoffObligation.state !== 'blocked'
+        || record.handoffObligation.reason !== 'handoff-required'
+        || !HANDOFF_REASONS.has(record.handoffObligation.condition)
+        || record.handoffObligation.generation !== record.assignment.generation
+        || record.handoffObligation.workerContext !== record.assignment.workerContext
+        || !validTimestamp(record.handoffObligation.requiredAt)
+        || record.nextAction !== 'capture-validated-orchestration-handoff') {
+      throw new Error(`${issue.identity} handoff-required obligation is malformed`);
+    }
+  }
   if ((record.branch === null) !== (record.worktree === null)) {
     throw new Error(`${issue.identity} branch/worktree persistence is inconsistent`);
+  }
+  if (record.worktree !== null) {
+    const persistedWorktree = canonicalFilesystemIdentity(record.worktree);
+    if (persistedWorktree.path !== record.worktree) {
+      throw new Error(`${issue.identity} persisted worktree is not canonical`);
+    }
   }
   for (const prior of record.continuationChain) {
     assertAssignment(prior, issue, manifest, state, { active: false });
@@ -639,10 +790,13 @@ function assertIssueRecord(record, issue, manifest, state) {
   if (record.checkActivity !== null) {
     if (!record.checkActivity
         || !['quality-check', 'publication-observation', 'shepherd-check'].includes(record.checkActivity.kind)
-        || record.checkActivity.state !== 'active'
         || !validTimestamp(record.checkActivity.startedAt)
         || (record.checkActivity.kind === 'shepherd-check'
-          && record.checkActivity.generation !== record.readinessGeneration)) {
+          && record.checkActivity.generation !== record.readinessGeneration)
+        || (record.checkActivity.state === 'blocked'
+          ? (record.checkActivity.kind !== 'shepherd-check'
+            || record.checkActivity.blocker !== 'sibling-merge-watermark')
+          : record.checkActivity.state !== 'active')) {
       throw new Error(`${issue.identity} check activity is malformed`);
     }
   }
@@ -766,6 +920,7 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
     shepherdDecision: null,
     setObligation: null,
     checkActivity: null,
+    handoffObligation: null,
     readinessGeneration: 0,
     readinessWatermark: null,
     terminalDisposition: issue.status === 'completed'
@@ -904,9 +1059,13 @@ export function assertFleetState(state, manifest) {
   if (new Set(workerContexts).size !== workerContexts.length) {
     throw new Error('worker context was reused across assignment history');
   }
-  for (const field of ['branch', 'worktree']) {
-    const values = active.map((assignment) => assignment[field]);
-    if (new Set(values).size !== values.length) throw new Error(`multiple active owners share ${field}`);
+  const branches = active.map((assignment) => assignment.branch);
+  if (new Set(branches).size !== branches.length) {
+    throw new Error('multiple active owners share branch');
+  }
+  const worktreeKeys = active.map((assignment) => canonicalFilesystemIdentity(assignment.worktree).key);
+  if (new Set(worktreeKeys).size !== worktreeKeys.length) {
+    throw new Error('multiple active owners share canonical worktree identity');
   }
   if (active.length !== Object.values(state.issues).filter((issue) => issue.status === 'active').length) {
     throw new Error('active owner count is inconsistent with issue status');
@@ -1053,11 +1212,16 @@ function normalizedAbsolute(value) {
 }
 
 function sameResolvedPath(left, right) {
-  const normalizedLeft = normalizedAbsolute(left);
-  const normalizedRight = normalizedAbsolute(right);
-  return process.platform === 'win32'
-    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
-    : normalizedLeft === normalizedRight;
+  try {
+    return canonicalFilesystemIdentity(left, { requireCanonical: false }).key
+      === canonicalFilesystemIdentity(right, { requireCanonical: false }).key;
+  } catch {
+    const normalizedLeft = normalizedAbsolute(left);
+    const normalizedRight = normalizedAbsolute(right);
+    return process.platform === 'win32'
+      ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+      : normalizedLeft === normalizedRight;
+  }
 }
 
 function assertFleetStatePath(file, manifest, runId) {
@@ -1066,7 +1230,7 @@ function assertFleetStatePath(file, manifest, runId) {
   if (!validRunId(runId)) throw new Error('fleet state path run id is invalid');
   const normalized = normalizedAbsolute(file);
   const expected = normalizedAbsolute(fleetStatePath(manifest.repository.root, runId));
-  if (normalized !== expected || file !== normalized) {
+  if (!sameResolvedPath(normalized, expected) || file !== normalized) {
     throw new Error('fleet state path is not bound to the manifest repository and run');
   }
   return expected;
@@ -1152,8 +1316,16 @@ function readLockOwner(lockDirectory) {
     const ownerStat = fs.fstatSync(handle);
     const metadata = JSON.parse(fs.readFileSync(handle, 'utf8'));
     const token = owners[0].slice('owner-'.length, -'.json'.length);
-    if (metadata?.token !== token || !nonEmpty(token)) {
-      throw new Error('fleet state lock metadata has no ownership token');
+    if (!metadata
+        || !same(Object.keys(metadata).sort(), ['createdAt', 'expectedRevision', 'pid', 'token'])
+        || metadata.token !== token
+        || !nonEmpty(token)
+        || !Number.isInteger(metadata.pid)
+        || metadata.pid < 1
+        || !Number.isInteger(metadata.expectedRevision)
+        || metadata.expectedRevision < 0
+        || !validTimestamp(metadata.createdAt)) {
+      throw new Error('fleet state lock metadata is malformed');
     }
     const directoryAfter = fs.lstatSync(lockDirectory);
     if (directoryBefore.dev !== directoryAfter.dev || directoryBefore.ino !== directoryAfter.ino) {
@@ -1170,6 +1342,50 @@ function readLockOwner(lockDirectory) {
   }
 }
 
+function removePrivateDirectory(directory) {
+  if (!fs.existsSync(directory)) return;
+  fs.rmSync(directory, { recursive: true, force: true });
+}
+
+function initializeLockClaim(lockDirectory, token, expectedRevision) {
+  const claim = `${lockDirectory}.claim-${process.pid}-${token}`;
+  fs.mkdirSync(claim, { mode: 0o700 });
+  try {
+    const ownerPath = lockOwnerPath(claim, token);
+    const handle = fs.openSync(ownerPath, 'wx', 0o600);
+    try {
+      fs.writeFileSync(handle, `${JSON.stringify({
+        pid: process.pid,
+        token,
+        expectedRevision,
+        createdAt: new Date().toISOString(),
+      })}\n`);
+      fs.fsyncSync(handle);
+    } finally {
+      fs.closeSync(handle);
+    }
+    fsyncDirectory(claim);
+    fs.renameSync(claim, lockDirectory);
+    fsyncDirectory(path.dirname(lockDirectory));
+    return readLockOwner(lockDirectory);
+  } catch (error) {
+    removePrivateDirectory(claim);
+    throw error;
+  }
+}
+
+function inspectLockDirectory(lockDirectory) {
+  const stat = fs.lstatSync(lockDirectory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()
+      || !sameResolvedPath(fs.realpathSync(lockDirectory), lockDirectory)) {
+    throw new Error('fleet state lock path is unsafe');
+  }
+  return {
+    directory: { dev: stat.dev, ino: stat.ino },
+    mtimeMs: stat.mtimeMs,
+  };
+}
+
 function acquireLock(lockDirectory, expectedRevision, options) {
   const attempts = options.lockAttempts ?? 200;
   const delayMs = options.lockDelayMs ?? 5;
@@ -1177,30 +1393,9 @@ function acquireLock(lockDirectory, expectedRevision, options) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const token = crypto.randomBytes(24).toString('hex');
     try {
-      fs.mkdirSync(lockDirectory, { mode: 0o700 });
-      const ownerPath = lockOwnerPath(lockDirectory, token);
-      const handle = fs.openSync(ownerPath, 'wx', 0o600);
-      const body = `${JSON.stringify({
-        pid: process.pid,
-        token,
-        expectedRevision,
-        createdAt: new Date().toISOString(),
-      })}\n`;
-      try {
-        fs.writeFileSync(handle, body);
-        fs.fsyncSync(handle);
-      } finally {
-        fs.closeSync(handle);
-      }
-      const directory = fs.lstatSync(lockDirectory);
-      const owner = fs.lstatSync(ownerPath);
-      return {
-        token,
-        directory: { dev: directory.dev, ino: directory.ino },
-        owner: { dev: owner.dev, ino: owner.ino },
-      };
+      return initializeLockClaim(lockDirectory, token, expectedRevision);
     } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
+      if (!['EEXIST', 'ENOTEMPTY', 'EPERM'].includes(error.code)) throw error;
       try {
         const observed = readLockOwner(lockDirectory);
         const ownerStat = fs.lstatSync(lockOwnerPath(lockDirectory, observed.token));
@@ -1212,6 +1407,11 @@ function acquireLock(lockDirectory, expectedRevision, options) {
       } catch (inspectionError) {
         if (inspectionError.code === 'ENOENT') continue;
         if (inspectionError.message === 'fleet state lock path is unsafe') throw inspectionError;
+        const malformed = inspectLockDirectory(lockDirectory);
+        if (Date.now() - malformed.mtimeMs >= staleLockMs) {
+          options.beforeMalformedLockClaim?.();
+          if (quarantineLockDirectory(lockDirectory, malformed, 'malformed')) continue;
+        }
       }
       wait(delayMs);
     }
@@ -1219,7 +1419,7 @@ function acquireLock(lockDirectory, expectedRevision, options) {
   throw new Error('fleet state write lock is busy');
 }
 
-function removeOwnedLockDirectory(lockDirectory, ownership, purpose) {
+function quarantineLockDirectory(lockDirectory, ownership, purpose) {
   const marker = path.join(
     lockDirectory,
     `${purpose}-${process.pid}-${crypto.randomBytes(16).toString('hex')}`,
@@ -1231,16 +1431,30 @@ function removeOwnedLockDirectory(lockDirectory, ownership, purpose) {
     if (error.code === 'ENOENT') return false;
     throw error;
   }
+  const quarantine = `${lockDirectory}.${purpose}-${process.pid}-${crypto.randomBytes(16).toString('hex')}`;
   try {
-    const current = readLockOwner(lockDirectory);
-    if (current.token !== ownership.token
-        || current.directory.dev !== ownership.directory.dev
-        || current.directory.ino !== ownership.directory.ino
-        || current.owner.dev !== ownership.owner.dev
-        || current.owner.ino !== ownership.owner.ino) return false;
-    fs.unlinkSync(lockOwnerPath(lockDirectory, ownership.token));
-    fs.unlinkSync(marker);
-    fs.rmdirSync(lockDirectory);
+    const directory = fs.lstatSync(lockDirectory);
+    if (directory.dev !== ownership.directory.dev || directory.ino !== ownership.directory.ino) {
+      return false;
+    }
+    if (ownership.token) {
+      const current = readLockOwner(lockDirectory);
+      if (current.token !== ownership.token
+          || current.directory.dev !== ownership.directory.dev
+          || current.directory.ino !== ownership.directory.ino
+          || current.owner.dev !== ownership.owner.dev
+          || current.owner.ino !== ownership.owner.ino) return false;
+    }
+    fs.renameSync(lockDirectory, quarantine);
+    const moved = fs.lstatSync(quarantine);
+    if (moved.dev !== ownership.directory.dev
+        || moved.ino !== ownership.directory.ino
+        || !fs.existsSync(path.join(quarantine, path.basename(marker)))) {
+      if (!fs.existsSync(lockDirectory)) fs.renameSync(quarantine, lockDirectory);
+      throw new Error('fleet state lock changed during atomic quarantine');
+    }
+    removePrivateDirectory(quarantine);
+    fsyncDirectory(path.dirname(lockDirectory));
     return true;
   } finally {
     try {
@@ -1249,6 +1463,10 @@ function removeOwnedLockDirectory(lockDirectory, ownership, purpose) {
       // The canonical lock may already belong to a replacement owner.
     }
   }
+}
+
+function removeOwnedLockDirectory(lockDirectory, ownership, purpose) {
+  return quarantineLockDirectory(lockDirectory, ownership, purpose);
 }
 
 function fsyncDirectory(directory) {
@@ -1416,6 +1634,9 @@ export function mutateFleetState(file, manifest, expectedRevision, mutate, optio
 
 export function recordSourceRevisionObservation(state, manifest, issue, receipt, now = new Date().toISOString()) {
   assertFleetManifest(manifest);
+  if (!manifest.provider.allowedOperations.includes('read-issue')) {
+    throw new Error('source reobservation is blocked because read-issue is not allow-listed');
+  }
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('source reobservation state is not bound to the confirmed manifest');
@@ -1450,6 +1671,9 @@ export function recordIssueSetObservation(
   assertFleetManifest(manifest);
   if (manifest.issueSet.kind !== 'tracker-query') {
     throw new Error('issue-set reobservation is only required for tracker-query manifests');
+  }
+  if (!manifest.provider.allowedOperations.includes('read-issue-set')) {
+    throw new Error('issue-set reobservation is blocked because read-issue-set is not allow-listed');
   }
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
@@ -1501,34 +1725,54 @@ export function transitionIssue(state, manifest, issue, status, detail = {}) {
   if (!TERMINAL_TRANSITIONS.get(record.status)?.has(status)) {
     throw new Error(`invalid issue transition: ${record.status} -> ${status}`);
   }
-  if (!ISSUE_DISPOSITIONS.has(detail.terminalDisposition)) {
-    throw new Error('terminal transition requires a valid issue disposition');
-  }
-  if (!DISPOSITIONS_BY_STATUS[status].has(detail.terminalDisposition)) {
-    throw new Error(`terminal transition contradicts status ${status}`);
-  }
   const next = structuredClone(state);
   if (record.status === 'active') {
     const end = detail.assignmentEnd;
     if (!end
         || end.generation !== record.assignment.generation
         || end.workerContext !== record.assignment.workerContext
-        || !['completed', 'blocked', 'failed', 'timed-out', 'deferred'].includes(end.reason)) {
+        || !['completed', 'blocked', 'failed', 'deferred', ...HANDOFF_REASONS].includes(end.reason)) {
       throw new Error('active terminal transition requires exact assignment end identity');
     }
-    if (status === 'timed-out'
-        && detail.terminalDisposition === 'timed-out-with-handoff'
-        && !detail.handoff) {
-      throw new Error('timed-out-with-handoff requires a validated handoff record');
+    if (HANDOFF_REASONS.has(end.reason)) {
+      next.issues[issue].statusReason = detail.reason ?? end.reason;
+      next.issues[issue].terminalDisposition = null;
+      next.issues[issue].nextAction = 'capture-validated-orchestration-handoff';
+      next.issues[issue].handoffObligation = {
+        state: 'blocked',
+        reason: 'handoff-required',
+        condition: end.reason,
+        generation: record.assignment.generation,
+        workerContext: record.assignment.workerContext,
+        requiredAt: end.endedAt ?? new Date().toISOString(),
+      };
+      next.events.push({
+        type: 'handoff-required',
+        issue,
+        generation: record.assignment.generation,
+        condition: end.reason,
+      });
+      return next;
     }
-    next.issues[issue].continuationChain.push({
+    const archived = {
       ...record.assignment,
       active: false,
       endReason: end.reason,
       endedAt: end.endedAt ?? new Date().toISOString(),
       ...(detail.handoff ? { handoff: structuredClone(detail.handoff) } : {}),
+    };
+    assertAssignment(archived, manifest.issues.find((entry) => entry.identity === issue), manifest, state, {
+      active: false,
     });
+    next.issues[issue].continuationChain.push(archived);
     next.issues[issue].assignment = null;
+    next.issues[issue].handoffObligation = null;
+  }
+  if (!ISSUE_DISPOSITIONS.has(detail.terminalDisposition)) {
+    throw new Error('terminal transition requires a valid issue disposition');
+  }
+  if (!DISPOSITIONS_BY_STATUS[status].has(detail.terminalDisposition)) {
+    throw new Error(`terminal transition contradicts status ${status}`);
   }
   next.issues[issue].status = status;
   next.issues[issue].statusReason = detail.reason ?? null;
@@ -1594,6 +1838,16 @@ function markStoppedWork(next, nextAction) {
       record.nextAction = nextAction;
     } else if (record.status === 'active') {
       record.nextAction = 'capture-validated-orchestration-handoff';
+      if (next.control.budgetExhausted) {
+        record.handoffObligation = {
+          state: 'blocked',
+          reason: 'handoff-required',
+          condition: 'exhausted',
+          generation: record.assignment.generation,
+          workerContext: record.assignment.workerContext,
+          requiredAt: next.updatedAt,
+        };
+      }
     }
   }
 }

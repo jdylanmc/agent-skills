@@ -20,6 +20,7 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SANDBOX = path.join(ROOT, '.test-sandbox', 'ship-with-squadron-state');
 const MODULE = pathToFileURL(fileURLToPath(new URL('./fleet-state.mjs', import.meta.url))).href;
+const WORKTREE = path.join(SANDBOX, 'worktrees', 'issue-1');
 
 function receipt(observedAt = '2026-08-30T00:00:00Z') {
   return {
@@ -53,6 +54,80 @@ const manifest = normalizeFleetManifest({
   humanBoundaries: ['human merge'],
   shepherdIntent: 'yes',
 });
+
+function activeState(runId) {
+  const current = createFleetState(manifest, runId, '2026-08-30T00:00:00Z');
+  const issue = manifest.issues[0];
+  const verification = [...manifest.validationPolicy];
+  const reportContract = {
+    summary: 'return confirmed validation evidence',
+    requiredEvidence: verification,
+  };
+  const packet = {
+    schemaVersion: 1,
+    manifestDigest: manifest.digest,
+    issue: issue.identity,
+    sourceRevision: issue.sourceRevision,
+    acceptanceCriteria: issue.acceptanceCriteria,
+    scope: issue.scope,
+    exclusions: manifest.exclusions,
+    allowedPaths: issue.allowedPaths,
+    verification,
+    reportContract,
+    forbiddenAuthorities: [
+      'merge', 'approve', 'enable-auto-merge', 'accept-risk', 'force-push',
+      'close-tracker-work', 'select-adjacent-work',
+    ],
+    taskContract: {
+      goal: manifest.goal,
+      scope: JSON.stringify(issue.scope),
+      context: JSON.stringify({
+        acceptedScope: manifest.acceptedScope,
+        humanBoundaries: manifest.humanBoundaries,
+        issue: issue.identity,
+        repository: manifest.repository.id,
+        sourceRevision: issue.sourceRevision,
+      }),
+      acceptance: issue.acceptanceCriteria.map((entry) => entry.description),
+      verify: verification.join('\n'),
+      timebox: JSON.stringify({ cost: 1, retries: 2, timeMinutes: 10 }),
+      forbidden: [
+        'merge', 'approve', 'enable-auto-merge', 'accept-risk', 'force-push',
+        'close-tracker-work', 'select-adjacent-work',
+      ].join('\n'),
+      report: JSON.stringify({
+        requiredEvidence: verification,
+        summary: reportContract.summary,
+      }),
+      standing: 'one-issue-one-branch-one-worktree-no-adjacent-work',
+    },
+    branch: 'issue-1',
+    worktree: WORKTREE,
+    baseSha: 'base',
+    headSha: 'head',
+  };
+  Object.assign(current.issues['1'], {
+    dependencyState: 'active',
+    assignment: {
+      generation: 1,
+      workerContext: 'worker-1',
+      branch: 'issue-1',
+      worktree: WORKTREE,
+      baseSha: 'base',
+      headSha: 'head',
+      packet,
+      active: true,
+      startedAt: '2026-08-30T00:01:00Z',
+    },
+    branch: 'issue-1',
+    worktree: WORKTREE,
+    baseSha: 'base',
+    headSha: 'head',
+    status: 'active',
+  });
+  current.activeCapacity = 1;
+  return current;
+}
 
 function writeLock(lockDirectory, metadata, modifiedAt = null) {
   fs.mkdirSync(lockDirectory, { recursive: true, mode: 0o700 });
@@ -142,6 +217,57 @@ test('recovers a crash-stale ownership-bound lock before the exclusive revision 
   const written = persistFleetState(file, initial, 0, manifest, { staleLockMs: 0 });
   assert.equal(written.revision, 1);
   assert.equal(fs.existsSync(`${file}.lock`), false);
+});
+
+test('recovers stale ownerless and malformed locks without deleting a live replacement', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const old = new Date('2020-01-01T00:00:00Z');
+  for (const kind of ['ownerless', 'malformed']) {
+    const file = fleetStatePath(SANDBOX, `${kind}-lock`);
+    const lock = `${file}.lock`;
+    fs.mkdirSync(lock, { recursive: true, mode: 0o700 });
+    if (kind === 'malformed') {
+      fs.writeFileSync(path.join(lock, `owner-${'9'.repeat(48)}.json`), '{broken-json', {
+        mode: 0o600,
+      });
+    }
+    fs.utimesSync(lock, old, old);
+    const written = persistFleetState(file, createFleetState(manifest, `${kind}-lock`), 0, manifest, {
+      staleLockMs: 0,
+    });
+    assert.equal(written.revision, 1);
+    assert.equal(fs.existsSync(lock), false);
+  }
+
+  const raceFile = fleetStatePath(SANDBOX, 'malformed-race');
+  const raceLock = `${raceFile}.lock`;
+  fs.mkdirSync(raceLock, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(raceLock, `owner-${'7'.repeat(48)}.json`), '{broken-json', {
+    mode: 0o600,
+  });
+  fs.utimesSync(raceLock, old, old);
+  const replacement = {
+    pid: process.pid,
+    token: '8'.repeat(48),
+    expectedRevision: 0,
+    createdAt: new Date().toISOString(),
+  };
+  assert.throws(() => persistFleetState(
+    raceFile,
+    createFleetState(manifest, 'malformed-race'),
+    0,
+    manifest,
+    {
+      staleLockMs: 0,
+      lockAttempts: 1,
+      beforeMalformedLockClaim() {
+        fs.rmSync(raceLock, { recursive: true });
+        writeLock(raceLock, replacement);
+      },
+    },
+  ), /write lock is busy/);
+  assert.deepEqual(readLock(raceLock), replacement);
 });
 
 test('never deletes a replacement lock during stale cleanup or release races', (t) => {
@@ -465,6 +591,7 @@ test('does not claim timed-out-with-handoff without archived validated handoff e
     humanBoundaries: manifest.humanBoundaries,
     shepherdIntent: manifest.shepherdIntent,
   });
+
   const state = createFleetState(timedOutManifest, 'timed-out');
   assert.equal(state.issues['1'].terminalDisposition, 'failed');
   state.issues['1'].terminalDisposition = 'timed-out-with-handoff';
@@ -472,4 +599,37 @@ test('does not claim timed-out-with-handoff without archived validated handoff e
     () => assertFleetState(state, timedOutManifest),
     /lacks a validated archived handoff/,
   );
+});
+
+test('timeout crash stall and exhaustion retain ownership until a validated handoff exists', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  for (const condition of ['timed-out', 'crashed', 'stalled', 'exhausted']) {
+    const runId = `handoff-${condition}`;
+    const initial = activeState(runId);
+    const requestedStatus = condition === 'timed-out' ? 'timed-out' : 'blocked';
+    const blocked = transitionIssue(initial, manifest, '1', requestedStatus, {
+      ...(condition === 'crashed' ? { handoff: { fabricated: true } } : {}),
+      assignmentEnd: {
+        generation: 1,
+        workerContext: 'worker-1',
+        reason: condition,
+        endedAt: '2026-08-30T00:02:00Z',
+      },
+    });
+    assert.equal(blocked.issues['1'].status, 'active');
+    assert.equal(blocked.issues['1'].assignment.active, true);
+    assert.equal(blocked.issues['1'].terminalDisposition, null);
+    assert.equal(blocked.issues['1'].handoffObligation.reason, 'handoff-required');
+    assert.equal(blocked.issues['1'].handoffObligation.condition, condition);
+    assert.doesNotThrow(() => assertFleetState(blocked, manifest));
+    const persisted = persistFleetState(
+      fleetStatePath(SANDBOX, runId),
+      blocked,
+      0,
+      manifest,
+    );
+    assert.equal(persisted.issues['1'].assignment.workerContext, 'worker-1');
+    assert.equal(persisted.issues['1'].handoffObligation.condition, condition);
+  }
 });

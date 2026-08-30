@@ -28,8 +28,8 @@ implementation
   -> real nested Shepherd
 ```
 
-Use the quality evidence helper to enforce order and bind
-every receipt to exact base and head revisions. Any head mutation invalidates
+Use the quality evidence helper to enforce order and bind every receipt or
+report to exact base and head revisions. Any head mutation invalidates
 diff, Continuous Integration, Roast, blast-radius, criterion, publication, and
 Shepherd evidence; restart from reconciliation. Remediation is a fresh bounded
 worker dispatch, never an unbounded loop or validation weakening.
@@ -54,8 +54,10 @@ persistence, and readiness.
 
 ## Blast-radius adapter
 
-Invoke the independently routable `blast-radius` capability through the
-required-skill seam. Do not compose or copy its skill-local units. Preserve its
+Invoke the checked-in independently routable `blast-radius` skill through the
+local required-skill seam. Do not compose or copy its skill-local units, wrap
+its output, or add caller-manufactured status, invocation, branch, pull-request,
+or contract-revision fields. Consume its actual report unchanged. Preserve its
 exact vocabulary:
 
 - classifications: `confirmed-risk`, `cleared-risk`,
@@ -66,21 +68,17 @@ exact vocabulary:
   `inconclusive`, `conflicting`;
 - `regression-proof-status`: `selected` or `unavailable`.
 
-The adapter requires a complete terminal invocation identifying Pull Request
-157, public branch `origin/issue-70-blast-radius-proof`, base
-`02ae9f84c782b9e57dfec20cda344fb494e57049`, and review-stable contract head
-`4a946e4500479e028112b77bdf268c5b7a8aae1f`. It requires at least one five-rung
-ladder, exact ordered rung progression/outcomes, the first stopping rung and
-evidence, exclusive classification of every ladder, and one nonempty identified
-regression-proof slot. Classification is derived from acquired sequential
+The adapter requires the documented subject, supplied baseline, included
+scope, exclusions, repositories, exact base/head revisions, environments,
+direct and cross-boundary consumers, analysis boundaries and gaps, at least one
+five-rung ladder, exact ordered rung progression/outcomes, the first stopping
+rung and evidence, exclusive classification of every ladder, and one nonempty
+identified regression-proof slot. Classification is derived from acquired sequential
 evidence: source-or-stronger `supports-bad-case` may confirm, ruled-out-bad-case-
 or-stronger `supports-assertion` may clear, and unavailable, conflicting,
 all-not-attempted, or otherwise nondecisive evidence cannot clear. Empty ladders or proof,
 `unavailable`, `unproven-assertion`, invalid revision binding, or malformed
 cross-field evidence never becomes success. A `confirmed-risk` requires
 remediation or a human decision outside this fleet; the fleet cannot accept
-risk.
-
-Until Pull Request 157 is merged into the baseline, the skill declares the
-review-stable capability as a required external integration and fails closed
-unless the exact contract revision is present.
+risk. The adapter returns the same report as its receipt; it does not rewrite
+or enrich it.

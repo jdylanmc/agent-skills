@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
 import { manifestDigest, normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import { computeFrontier } from './dependency-frontier.mjs';
@@ -31,7 +32,7 @@ const manifest = normalizeFleetManifest({
   ],
   concurrency: 2,
   budget: { cost: 10, timeMinutes: 60, retries: 2 },
-  repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
+  repository: { id: 'owner/repo', root: path.resolve('test-fixtures', 'dependency-frontier-repository'), baseBranch: 'main' },
   provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],

@@ -350,6 +350,9 @@ export function normalizeFleetManifest(input = {}) {
     name: providerName,
     allowedOperations: [...new Set(provider.allowedOperations)].sort(),
   };
+  if (!normalizedProvider.allowedOperations.includes('read-issue')) {
+    throw new Error('provider.read-issue must be allow-listed before source revision observations are accepted');
+  }
 
   const identities = new Set();
   const issues = input.issues.map((issue, index) => {
@@ -409,6 +412,9 @@ export function normalizeFleetManifest(input = {}) {
       members,
     };
   } else if (input.issueSet?.kind === 'tracker-query') {
+    if (!normalizedProvider.allowedOperations.includes('read-issue-set')) {
+      throw new Error('provider.read-issue-set must be allow-listed before issue-set observations are accepted');
+    }
     assertOnlyKeys(input.issueSet, new Set([
       'kind', 'queryIdentity', 'queryRevision', 'membershipDigest', 'receipt',
     ]), 'issueSet');
