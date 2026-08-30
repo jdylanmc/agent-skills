@@ -108,7 +108,7 @@ function adaptedProvenance(overrides = {}) {
       author: 'Example Author',
       licenseIdentifier: 'MIT',
       licenseTextBasis: 'MIT license text in the pinned source revision',
-      verifierIdentity: 'human@example.test',
+      verifierIdentity: 'reviewer-record-1',
       verifierRole: 'human license reviewer',
       verifiedAt: new Date().toISOString(),
       compatibilityDecision: 'compatible',

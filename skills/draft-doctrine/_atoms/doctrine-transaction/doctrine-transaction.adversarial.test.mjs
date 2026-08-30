@@ -82,7 +82,7 @@ function adaptedProvenance() {
       author: 'Author',
       licenseIdentifier: 'MIT',
       licenseTextBasis: 'MIT text in pinned revision',
-      verifierIdentity: 'human@example.test',
+      verifierIdentity: 'reviewer-record-1',
       verifierRole: 'human license reviewer',
       verifiedAt: new Date().toISOString(),
       compatibilityDecision: 'compatible',
