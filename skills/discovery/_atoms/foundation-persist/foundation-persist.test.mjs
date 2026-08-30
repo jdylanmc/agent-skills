@@ -774,6 +774,38 @@ test('MF-4: a backslash in an entry or resolution round-trips through the escape
   assert.deepEqual(parsed.resolved[0], { field: 'openQuestions', entry, resolution: 'done with a \\ trailing backslash\\' });
 });
 
+test('MF-4: noncanonical Resolved escapes are refused instead of laundered', () => {
+  const root = freshRepo();
+  persistFoundation(intake({
+    repositoryRoot: root,
+    openQuestions: [],
+    resolved: [{ field: 'openQuestions', entry: 'Q.', resolution: 'answered.' }],
+  }), { io: realIo() });
+  const bytes = fs.readFileSync(destIn(root), 'utf8');
+  const canonical = '- openQuestions: Q. — answered.';
+
+  for (const hostile of [
+    '- openQuestions: \\q. — answered.',
+    '- openQuestions: \\|. — answered.',
+    '- openQuestions: Q. — answered.\\',
+  ]) {
+    assert.equal(code(() => parseFoundation(bytes.replace(canonical, hostile))), 'invalid-input', hostile);
+  }
+});
+
+test('an empty Resolved section is refused instead of laundering all prior resolutions', () => {
+  const root = freshRepo();
+  persistFoundation(intake({
+    repositoryRoot: root,
+    openQuestions: [],
+    resolved: [{ field: 'openQuestions', entry: 'Q.', resolution: 'answered.' }],
+  }), { io: realIo() });
+  const bytes = fs.readFileSync(destIn(root), 'utf8');
+  const emptyResolved = bytes.replace('- openQuestions: Q. — answered.\n', '');
+
+  assert.equal(code(() => parseFoundation(emptyResolved)), 'invalid-input');
+});
+
 // --- MF-6: control characters are refused everywhere ------------------------
 
 test('MF-6: a control character in any persisted string is refused as invalid-input', () => {

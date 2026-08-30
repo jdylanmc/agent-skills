@@ -421,7 +421,24 @@ function escapeResolvedField(value) {
 }
 
 function unescapeResolvedField(value) {
-  return value.replace(/\\(.)/g, '$1');
+  let decoded = '';
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (character !== '\\') {
+      decoded += character;
+      continue;
+    }
+    if (index + 1 >= value.length) {
+      throw new FoundationPersistError('invalid-input', 'Resolved field contains a trailing escape');
+    }
+    const escaped = value[index + 1];
+    if (escaped !== '\\' && escaped !== '\u2014') {
+      throw new FoundationPersistError('invalid-input', `Resolved field contains an unknown escape: \\${escaped}`);
+    }
+    decoded += escaped;
+    index += 1;
+  }
+  return decoded;
 }
 
 /**
@@ -686,6 +703,9 @@ export function parseFoundation(bytes) {
   foundation.nextAction = nextAction;
 
   const resolvedTrimmed = sections.get('Resolved').filter((line) => line !== '');
+  if (resolvedTrimmed.length === 0) {
+    throw new FoundationPersistError('invalid-input', 'foundation Resolved section is empty');
+  }
   if (!(resolvedTrimmed.length === 1 && resolvedTrimmed[0] === NONE_MARKER)) {
     for (const line of resolvedTrimmed) {
       const match = /^- ([a-zA-Z]+): (.*)$/.exec(line);

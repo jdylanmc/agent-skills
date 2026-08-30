@@ -156,10 +156,15 @@ bytes that exist but cannot be recovered.
 
 ## Success Payload
 
-A rehydrated state returns the eleven distinct fields — `confirmedFacts`,
+A rehydrated state returns the eleven distinct foundation fields — `confirmedFacts`,
 `evidenceReferences`, `decisions`, `constraints`, `assumptions`,
 `contradictions`, `openQuestions`, `scope`, `exclusions`, `frontier`, and
-`nextAction` — as separate fields, never merged into prose. Plus:
+`nextAction` — as separate fields, never merged into prose. It also returns
+`resolved` as the exact parsed ordered list of `{ field, entry, resolution }`
+records. Duplicate records remain duplicate, field qualification is preserved,
+and the empty `Resolved` marker returns `resolved: []`; neither cold-start nor
+compacted-session rehydration drops, rewrites, reorders, or invents a
+resolution. Plus:
 
 - `foundation`: `{ locator, revision, subjectId, alignment: 'confirmed' }`;
 - `continuation`: `{ locator, revision }` — exactly what the next compaction must

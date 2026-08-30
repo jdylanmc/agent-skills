@@ -656,7 +656,7 @@ test('F11: the skill documents the exact permitted write and its mechanical guar
   assert.match(entry, /Discovery's only durable write is\s+the aligned foundation beneath `docs\/agent\/discovery\/`/);
 });
 
-test('AC5: cold-start rehydration reads real bytes and returns the eleven distinct fields', async () => {
+test('AC5: cold-start rehydration reads real bytes and returns the complete persisted state', async () => {
   const { rehydrateFoundation, REHYDRATED, MODES } = await rehydrateMod();
   const { FOUNDATION_FIELDS } = await persistMod();
   const root = freshFoundationRepo();
@@ -671,6 +671,13 @@ test('AC5: cold-start rehydration reads real bytes and returns the eleven distin
   }
   assert.deepEqual(result.confirmedFacts, ['A confirmed fact.']);
   assert.deepEqual(result.openQuestions, ['An open question.']);
+  assert.deepEqual(result.resolved, []);
+
+  const entry = flat(ENTRY);
+  const atom = flat(REHYDRATE_ATOM);
+  assert.match(entry, /exact ordered `resolved` list of `\{ field, entry, resolution \}` records/);
+  assert.match(atom, /exact parsed ordered list of `\{ field, entry, resolution \}` records/);
+  assert.match(atom, /Duplicate records remain duplicate, field qualification is preserved/);
 });
 
 test('AC10: compacted-session rehydration grounds on the carried continuation', async () => {
@@ -1122,31 +1129,32 @@ test('the workflow registers both new atom test suites', () => {
   assert.match(workflow, /skills\/discovery\/_atoms\/foundation-rehydrate\/foundation-rehydrate\.test\.mjs/);
 });
 
-test('the whole intended lifecycle runs, and no new rule makes a legitimate cycle impossible', async () => {
+test('the lifecycle builds every cycle after the first only from prior rehydration output', async () => {
   const { persistFoundation, alignedPayloadDigestOf } = await persistMod();
   const { rehydrateFoundation, renderContinuation, parseContinuation, REHYDRATED, MODES } = await rehydrateMod();
   const root = freshFoundationRepo();
   const slug = 'lifecycle-subject';
   const locator = `docs/agent/discovery/${slug}.md`;
 
-  const base = (overrides) => {
+  const base = (state, overrides) => {
     const payload = {
       version: 1,
       repositoryRoot: root,
       subject: { id: 'issue-119', slug },
       alignment: 'verified',
-      confirmedFacts: ['Fact A.'],
-      evidenceReferences: [],
-      decisions: [],
-      constraints: [],
-      assumptions: [],
-      contradictions: [],
-      openQuestions: [],
-      scope: ['In scope.'],
-      exclusions: ['Excluded.'],
-      frontier: ['needs-more-evidence: read discovery-source'],
-      nextAction: 'Read the discovery-source contract.',
-      resolved: [],
+      confirmedFacts: state?.confirmedFacts ?? ['Fact A.'],
+      evidenceReferences: state?.evidenceReferences ?? [],
+      decisions: state?.decisions ?? [],
+      constraints: state?.constraints ?? [],
+      assumptions: state?.assumptions ?? [],
+      contradictions: state?.contradictions ?? [],
+      openQuestions: state?.openQuestions ?? [],
+      scope: state?.scope ?? ['In scope.'],
+      exclusions: state?.exclusions ?? ['Excluded.'],
+      frontier: state?.frontier ?? ['needs-more-evidence: read discovery-source'],
+      nextAction: state?.nextAction ?? 'Read the discovery-source contract.',
+      resolved: state?.resolved ?? [],
+      expectedPriorRevision: state?.continuation?.revision ?? null,
       ...overrides,
     };
     return { ...payload, alignedPayloadDigest: alignedPayloadDigestOf(payload) };
@@ -1158,10 +1166,9 @@ test('the whole intended lifecycle runs, and no new rule makes a legitimate cycl
   const openStart = ['Q-simple?', '- Q leading dash?', trickyQ];
 
   // Cycle 1: create the foundation.
-  const c1 = persistFoundation(base({
+  const c1 = persistFoundation(base(null, {
     cycle: 'c-0001', timestamp: '2026-08-29T01:00:00Z',
     openQuestions: openStart,
-    expectedPriorRevision: null,
   }));
   assert.equal(c1.status, 'persisted');
 
@@ -1176,12 +1183,11 @@ test('the whole intended lifecycle runs, and no new rule makes a legitimate cycl
     { field: 'openQuestions', entry: 'Q-simple?', resolution: 'answered in cycle 2.' },
     { field: 'frontier', entry: 'needs-more-evidence: read discovery-source', resolution: 'evidence read.' },
   ];
-  const c2 = persistFoundation(base({
+  const c2 = persistFoundation(base(cold, {
     cycle: 'c-0002', timestamp: '2026-08-29T02:00:00Z',
     openQuestions: ['- Q leading dash?', trickyQ],
     frontier: ['ready'],
     resolved: c2Resolved,
-    expectedPriorRevision: cold.continuation.revision,
   }));
   assert.equal(c2.status, 'persisted');
 
@@ -1198,29 +1204,26 @@ test('the whole intended lifecycle runs, and no new rule makes a legitimate cycl
   assert.equal(warm.mode, MODES.compactedSession);
 
   // Cycle 3: add evidence without resolving anything.
-  const c3 = persistFoundation(base({
+  const c3 = persistFoundation(base(warm, {
     cycle: 'c-0003', timestamp: '2026-08-29T03:00:00Z',
     confirmedFacts: ['Fact A.', 'Fact B. (new evidence)'],
-    openQuestions: ['- Q leading dash?', trickyQ],
-    frontier: ['ready'],
-    resolved: c2Resolved,
-    expectedPriorRevision: warm.continuation.revision,
   }));
   assert.equal(c3.status, 'persisted');
 
+  const afterC3 = rehydrateFoundation(rehydrateIn({ locator, revision: c3.revision }));
+  assert.equal(afterC3.status, REHYDRATED);
+  assert.deepEqual(afterC3.resolved, c2Resolved);
+
   // Cycle 4: resolve two questions at once, including the tricky one.
   const c4Resolved = [
-    ...c2Resolved,
+    ...afterC3.resolved,
     { field: 'openQuestions', entry: '- Q leading dash?', resolution: 'answered.' },
     { field: 'openQuestions', entry: trickyQ, resolution: 'resolved | with: every \u2014 char and _None recorded._' },
   ];
-  const c4 = persistFoundation(base({
+  const c4 = persistFoundation(base(afterC3, {
     cycle: 'c-0004', timestamp: '2026-08-29T04:00:00Z',
-    confirmedFacts: ['Fact A.', 'Fact B. (new evidence)'],
     openQuestions: [],
-    frontier: ['ready'],
     resolved: c4Resolved,
-    expectedPriorRevision: c3.revision,
   }));
   assert.equal(c4.status, 'persisted');
 
@@ -1228,6 +1231,7 @@ test('the whole intended lifecycle runs, and no new rule makes a legitimate cycl
   const final = rehydrateFoundation(rehydrateIn());
   assert.equal(final.status, REHYDRATED);
   assert.deepEqual(final.openQuestions, []);
+  assert.deepEqual(final.resolved, c4Resolved);
   const { parseFoundation } = await persistMod();
   const finalDoc = parseFoundation(fs.readFileSync(path.join(root, 'docs', 'agent', 'discovery', `${slug}.md`), 'utf8'));
   assert.deepEqual(finalDoc.resolved, c4Resolved);

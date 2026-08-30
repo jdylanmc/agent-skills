@@ -47,7 +47,9 @@ and one boundary.
    previous invocation as the freshness check. On any failure, enter the named
    recovery state from the [Recovery table](#rehydration-recovery) rather than continuing
    from memory. Record the foundation locator, revision, rehydration mode, and
-   recovery state through Chronicler.
+   recovery state through Chronicler. Treat the returned `resolved` list as
+   durable continuation state: every later cycle carries that exact ordered,
+   field-qualified multiset forward and only appends newly aligned resolutions.
 3. Run [Cycle controller](./_molecules/cycle-controller/cycle-controller.md).
    It runs the read-only discovery cycle, routes to `interrogate` or
    `domain-mapping` when those jobs own the next question, dispatches a research
@@ -90,6 +92,8 @@ Return:
   state when rehydration could not resolve an aligned foundation;
 - the compacted continuation locator and revision carried for the next
   invocation's rehydration;
+- the exact ordered `resolved` list of `{ field, entry, resolution }` records,
+  including duplicates, or an empty list when none exist;
 - evidence inspected and evidence still missing;
 - confirmed facts with source references;
 - assumptions, contradictions, ambiguities, and risks;
