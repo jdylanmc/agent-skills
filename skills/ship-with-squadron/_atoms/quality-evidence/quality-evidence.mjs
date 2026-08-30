@@ -280,13 +280,10 @@ export function reconcileFleetDiff(input) {
 
 function validateLadder(ladder, index, defects) {
   const prefix = `assertionLadders[${index}]`;
-  if (!exactObjectKeys(ladder, [
+  const coreFields = [
     'id', 'assertion', 'affectedBoundary', 'badCase', 'safetyCriticalReason',
-    'rungs', 'stoppingRung', 'stoppingReason', 'strongestSupportedClaim',
-    'nextEvidenceNeeded',
-  ])) {
-    defects.push(`${prefix} schema is not exact`);
-  }
+    'rungs', 'strongestSupportedClaim',
+  ];
   for (const field of ['id', 'assertion', 'affectedBoundary', 'badCase', 'safetyCriticalReason']) {
     if (!nonEmpty(ladder?.[field])) defects.push(`${prefix}.${field} is absent`);
   }
@@ -353,15 +350,27 @@ function validateLadder(ladder, index, defects) {
   if (ladder.rungs[0]?.progression !== 'completed') {
     defects.push(`${prefix}.rungs[0] assertion must be completed`);
   }
-  const expectedStoppingRung = firstStoppingRung ?? BLAST_RADIUS_VOCABULARY.rungs.at(-1);
-  const names = ladder.rungs.map((rung) => rung.name);
-  if (!BLAST_RADIUS_VOCABULARY.rungs.includes(ladder?.stoppingRung)
-      || !names.includes(ladder.stoppingRung)
-      || ladder.stoppingRung !== expectedStoppingRung
-      || !nonEmpty(ladder?.stoppingReason)
-      || !nonEmpty(ladder?.strongestSupportedClaim)
-      || !nonEmpty(ladder?.nextEvidenceNeeded)) {
-    defects.push(`${prefix} stopping evidence is incomplete`);
+  if (!nonEmpty(ladder?.strongestSupportedClaim)) {
+    defects.push(`${prefix}.strongestSupportedClaim is absent`);
+  }
+  if (firstStoppingRung === null) {
+    if (!exactObjectKeys(ladder, coreFields)) {
+      defects.push(`${prefix} completed-ladder schema is not exact`);
+    }
+  } else {
+    if (!exactObjectKeys(ladder, [
+      ...coreFields, 'stoppingRung', 'stoppingReason', 'nextEvidenceNeeded',
+    ])) {
+      defects.push(`${prefix} stopped-ladder schema is not exact`);
+    }
+    const names = ladder.rungs.map((rung) => rung.name);
+    if (!BLAST_RADIUS_VOCABULARY.rungs.includes(ladder?.stoppingRung)
+        || !names.includes(ladder.stoppingRung)
+        || ladder.stoppingRung !== firstStoppingRung
+        || !nonEmpty(ladder?.stoppingReason)
+        || !nonEmpty(ladder?.nextEvidenceNeeded)) {
+      defects.push(`${prefix} stopping evidence is incomplete`);
+    }
   }
   const permittedClassification = conflicting || (decisiveBadCase && decisiveClear)
     ? 'unproven-assertion'

@@ -107,10 +107,7 @@ function blast(overrides = {}) {
         evidence: `${name} evidence`,
         scope: 'current revision',
       })),
-      stoppingRung: 'live-reproduction',
-      stoppingReason: 'all available rungs completed',
       strongestSupportedClaim: 'bad case ruled out in recorded scope',
-      nextEvidenceNeeded: 'none before merge',
     }],
     classifications: {
       'confirmed-risk': [],
@@ -181,6 +178,16 @@ test('consumes the checked-in local blast-radius report unchanged and validates 
   const adapted = adaptBlastRadiusEvidence(report, revision, identity);
   assert.equal(adapted.readiness, 'satisfied');
   assert.equal(adapted.receipt, report);
+  const syntheticCompleteStop = blast();
+  Object.assign(syntheticCompleteStop.assertionLadders[0], {
+    stoppingRung: 'live-reproduction',
+    stoppingReason: 'synthetic completion',
+    nextEvidenceNeeded: 'none',
+  });
+  assert.equal(
+    adaptBlastRadiusEvidence(syntheticCompleteStop, revision, identity).readiness,
+    'invalid',
+  );
   assert.equal(adaptBlastRadiusEvidence(blast({ assertionLadders: [] }), revision, identity).readiness, 'invalid');
   assert.equal(adaptBlastRadiusEvidence(blast({ revisions: { baseSha: 'base', headSha: 'stale' } }), revision, identity).readiness, 'invalid');
   assert.equal(adaptBlastRadiusEvidence(blast({

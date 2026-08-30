@@ -12,12 +12,14 @@ import {
   validateReadinessObligation,
 } from '../quality-evidence/quality-evidence.mjs';
 import {
+  isFullGitObjectId,
   normalizeChangeRequestRevisionObservation,
   normalizeMergeObservation,
 } from '../provider-seam/provider-seam.mjs';
 import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.mjs';
 import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
 import {
+  mutateFleetState,
   reconcileFrontier,
   verifyActiveAssignmentIdentities,
   verifyPersistedAssignmentRevisions,
@@ -42,12 +44,16 @@ function same(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function archiveSuccessfulAssignment(record, completion, manifest) {
+function archiveSuccessfulAssignment(record, completion, manifest, state) {
   if (record.assignment === null || record.assignment === undefined) {
     if (record.status === 'active') {
       throw new Error('completed readiness cannot leave an active issue without assignment identity');
     }
     return;
+  }
+  if (state?.control?.cancelled || state?.control?.budgetExhausted
+      || record.handoffObligation != null) {
+    throw new Error('active ownership with a stop or handoff obligation requires validated orchestration-handoff release');
   }
   verifyPersistedGitWorktreeIdentity(
     record.assignment.worktreeIdentity,
@@ -178,6 +184,164 @@ export function acceptShepherdReturn(input, expected = {}) {
   };
 }
 
+function latestMergeObservedAt(state) {
+  return (state.observedHumanMerges ?? []).reduce((latest, merge) => {
+    if (!validTimestamp(merge?.observedAt)) return latest;
+    return latest === null || Date.parse(merge.observedAt) > Date.parse(latest)
+      ? merge.observedAt
+      : latest;
+  }, null);
+}
+
+export function consumeInitialShepherdResult(
+  state,
+  manifest,
+  issueIdentity,
+  input,
+  assignmentCompletion = null,
+) {
+  assertFleetManifest(manifest);
+  verifyActiveAssignmentIdentities(state, manifest);
+  if (manifest.shepherdIntent !== 'yes') {
+    throw new Error('initial Shepherd result requires manifest intent yes');
+  }
+  if (state.manifestDigest !== manifest.digest
+      || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
+    throw new Error('initial Shepherd state is not bound to the confirmed manifest');
+  }
+  if (state.control?.cancelled || state.control?.budgetExhausted) {
+    throw new Error('stopped fleet cannot consume terminal readiness');
+  }
+  const record = state.issues?.[issueIdentity];
+  if (!record?.changeRequest) throw new Error('initial Shepherd result requires confirmed publication');
+  if (record.shepherd !== null || record.setObligation !== null
+      || record.terminalDisposition === 'ready-for-human-merge') {
+    throw new Error('initial Shepherd result was already consumed');
+  }
+  if (state.reShepherdQueue.some((entry) => entry.issue === issueIdentity)) {
+    throw new Error('initial Shepherd result cannot bypass a re-Shepherd obligation');
+  }
+  if (record.readinessWatermark !== null) {
+    throw new Error('initial Shepherd result cannot bypass the latest merge watermark');
+  }
+  const activity = record.checkActivity;
+  if (!activity
+      || activity.kind !== 'shepherd-check'
+      || activity.state !== 'active'
+      || activity.generation !== record.readinessGeneration) {
+    throw new Error('initial Shepherd result requires the active matching Shepherd check generation');
+  }
+  const publication = state.publications.find((entry) =>
+    entry.key === record.changeRequest.publicationKey
+    && entry.identifier === record.changeRequest.identifier);
+  const publicationObservation = publication?.observations?.find((entry) =>
+    entry.state === 'confirmed'
+    && entry.baseSha === record.baseSha
+    && entry.headSha === record.headSha
+    && validTimestamp(entry.confirmedAt));
+  if (!publicationObservation
+      || record.changeRequest.baseSha !== record.baseSha
+      || record.changeRequest.headSha !== record.headSha) {
+    throw new Error('initial Shepherd result requires current confirmed publication revisions');
+  }
+  const semantic = persistedPublicationPipelinePasses(record, state, manifest);
+  if (!semantic.passed) {
+    throw new Error(`initial Shepherd prerequisites are incomplete: ${semantic.defects.join('; ')}`);
+  }
+  const latestMerge = latestMergeObservedAt(state);
+  if (latestMerge !== null && Date.parse(latestMerge) > Date.parse(activity.startedAt)) {
+    throw new Error('intervening merge invalidated the active Shepherd check');
+  }
+  const minimumObservedAt = [
+    publicationObservation.confirmedAt,
+    activity.startedAt,
+    record.readinessWatermark?.observedAt,
+    latestMerge,
+  ].filter(validTimestamp).sort((left, right) => Date.parse(right) - Date.parse(left))[0];
+  const expected = {
+    runId: state.runId,
+    issue: issueIdentity,
+    provider: manifest.provider.name,
+    repository: manifest.repository.id,
+    changeRequest: record.changeRequest.identifier,
+    publicationKey: record.changeRequest.publicationKey,
+    baseBranch: manifest.repository.baseBranch,
+    baseSha: record.baseSha,
+    headSha: record.headSha,
+    obligationGeneration: activity.generation,
+    minimumObservedAt,
+  };
+  for (const [field, value] of [
+    ['current base revision', expected.baseSha],
+    ['current head revision', expected.headSha],
+    ['Shepherd receipt base revision', input?.result?.receipt?.baseSha],
+    ['Shepherd receipt head revision', input?.result?.receipt?.headSha],
+    ['post-Shepherd base revision', input?.observation?.baseSha],
+    ['post-Shepherd head revision', input?.observation?.headSha],
+  ]) {
+    if (!isFullGitObjectId(value)) throw new Error(`${field} must be a full Git object ID`);
+  }
+  const accepted = acceptShepherdReturn(input, expected);
+  if (!accepted.accepted || !accepted.ready) {
+    throw new Error(`initial Shepherd result is not accepted: ${accepted.defects.join('; ')}`);
+  }
+  if (Date.parse(accepted.observation.observedAt) <= Date.parse(publicationObservation.confirmedAt)) {
+    throw new Error('initial Shepherd observation predates current publication confirmation');
+  }
+  if (Object.values(state.issues).some((issue) =>
+    issue.identity !== issueIdentity
+    && issue.shepherd?.invocationId === accepted.invocationId)) {
+    throw new Error('Shepherd invocation identity was already consumed');
+  }
+
+  const next = structuredClone(state);
+  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion, manifest, state);
+  const target = next.issues[issueIdentity];
+  target.shepherd = structuredClone(accepted);
+  target.shepherdDecision = null;
+  target.setObligation = structuredClone(accepted.setObligation);
+  target.pipeline.push({ stage: 'shepherd', evidence: structuredClone(accepted.receipt) });
+  target.status = 'completed';
+  target.statusReason = null;
+  target.dependencyState = 'unclassified';
+  target.terminalDisposition = 'ready-for-human-merge';
+  target.nextAction = 'await-human-merge';
+  target.checkActivity = null;
+  target.handoffObligation = null;
+  next.events.push({
+    type: 'initial-shepherd-receipt-consumed',
+    issue: issueIdentity,
+    generation: activity.generation,
+    invocationId: accepted.invocationId,
+  });
+  next.fleetDisposition = deriveFleetDisposition(next, manifest);
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
+}
+
+export function consumeInitialShepherdResultPersisted(
+  file,
+  manifest,
+  issueIdentity,
+  input,
+  assignmentCompletion,
+  expectedRevision,
+  options = {},
+) {
+  return mutateFleetState(
+    file,
+    manifest,
+    expectedRevision,
+    (state) => consumeInitialShepherdResult(
+      state,
+      manifest,
+      issueIdentity,
+      input,
+      assignmentCompletion,
+    ),
+    options,
+  );
+}
+
 export function recordShepherdNotRequired(
   state,
   manifest,
@@ -225,7 +389,7 @@ export function recordShepherdNotRequired(
   );
   if (defects.length) throw new Error(`invalid Shepherd-not-required obligation: ${defects.join('; ')}`);
   const next = structuredClone(state);
-  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion, manifest);
+  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion, manifest, state);
   next.issues[issueIdentity].shepherd = null;
   next.issues[issueIdentity].shepherdDecision = {
     state: 'not-required',
@@ -590,6 +754,16 @@ export function consumeReShepherdQueue(
   if (queue.blocker !== null || queue.revisionObservation === null) {
     throw new Error('re-Shepherd remains blocked on current revision evidence');
   }
+  for (const [field, value] of [
+    ['queued base revision', queue.baseSha],
+    ['queued head revision', queue.headSha],
+    ['Shepherd receipt base revision', accepted?.receipt?.baseSha],
+    ['Shepherd receipt head revision', accepted?.receipt?.headSha],
+    ['post-Shepherd base revision', accepted?.observation?.baseSha],
+    ['post-Shepherd head revision', accepted?.observation?.headSha],
+  ]) {
+    if (!isFullGitObjectId(value)) throw new Error(`${field} must be a full Git object ID`);
+  }
   if (!accepted?.accepted || !accepted.ready
       || accepted.receipt?.baseSha !== queue.baseSha
       || accepted.receipt?.headSha !== queue.headSha
@@ -632,7 +806,7 @@ export function consumeReShepherdQueue(
     throw new Error(`fresh Shepherd prerequisite revalidation is incomplete: ${semantic.defects.join('; ')}`);
   }
   const next = structuredClone(state);
-  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion, manifest);
+  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion, manifest, state);
   next.issues[issueIdentity].pipeline = structuredClone(revalidation.pipeline);
   next.issues[issueIdentity].shepherd = structuredClone(accepted);
   next.issues[issueIdentity].setObligation = structuredClone(accepted.setObligation);
@@ -728,7 +902,7 @@ export function consumeNoShepherdRevalidation(
   }
   const next = structuredClone(state);
   const record = next.issues[issueIdentity];
-  archiveSuccessfulAssignment(record, assignmentCompletion, manifest);
+  archiveSuccessfulAssignment(record, assignmentCompletion, manifest, state);
   record.baseSha = queue.baseSha;
   record.headSha = queue.headSha;
   record.pipeline = structuredClone(revalidation.pipeline);

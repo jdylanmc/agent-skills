@@ -580,6 +580,7 @@ test('releases ownership only through a reread validated orchestration handoff',
   const persisted = persistOrchestrationHandoff(payload, {
     now: new Date('2026-08-30T00:02:30Z'),
   });
+
   const released = releaseAfterValidatedHandoff(assigned(), manifest, {
     issue: 'a',
     reason: 'stalled',
@@ -629,6 +630,47 @@ test('releases ownership only through a reread validated orchestration handoff',
   }), /invalid orchestration handoff artifact/);
 });
 
+test('configured redaction and returned metadata are re-derived during artifact validation', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  setRuntimeTemp(t);
+  const payload = handoffPayload('fleet-owner');
+  payload.task_contract.context = 'contact private-alias@example.invalid for continuation';
+  const identifiers = [{
+    value: 'private-alias@example.invalid',
+    evidenceType: 'configured-identifier',
+    normalized: 'privatealiasexampleinvalid',
+  }];
+  const persisted = persistOrchestrationHandoff(payload, {
+    now: new Date('2026-08-30T00:02:30Z'),
+    identifiers,
+  });
+  assert.equal(validateContinuationArtifact(
+    persisted,
+    payload,
+    null,
+    { identifiers },
+  ).valid, true);
+
+  const forgedRedactions = structuredClone(persisted);
+  forgedRedactions.redactions = [];
+  assert.equal(validateContinuationArtifact(
+    forgedRedactions,
+    payload,
+    null,
+    { identifiers },
+  ).valid, false);
+
+  const forgedSuggestion = structuredClone(persisted);
+  forgedSuggestion.suggested_skills_included = !persisted.suggested_skills_included;
+  assert.equal(validateContinuationArtifact(
+    forgedSuggestion,
+    payload,
+    null,
+    { identifiers },
+  ).valid, false);
+});
+
 test('rejects symlink/path escape, stale bindings, and fabricated paths', (t) => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
@@ -671,19 +713,30 @@ test('rejects symlink/path escape, stale bindings, and fabricated paths', (t) =>
 test('fleet stop preserves handoff obligation but dispatches no continuation', (t) => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
-  const root = setRuntimeTemp(t);
-  const file = path.join(root, 'handoff.md');
-  const payload = handoffPayload();
-  const content = handoffContent(payload);
-  fs.writeFileSync(file, content);
+  setRuntimeTemp(t);
+  const payload = handoffPayload('fleet-owner');
+  const persisted = persistOrchestrationHandoff(payload, {
+    now: new Date('2026-08-30T00:02:30Z'),
+  });
   const stopped = assigned();
   stopped.control.cancelled = true;
   assert.throws(() => continueWithFreshWorker(stopped, manifest, {
-    issue: 'a', reason: 'stalled', handoff: handoff(file, content),
+    issue: 'a', reason: 'stalled', handoff: persisted,
     handoffPayload: payload,
     branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-2',
     packet: packet('a', 'issue-a', WORKTREE_A),
   }), /continuation dispatch is forbidden/);
+  const released = releaseAfterValidatedHandoff(stopped, manifest, {
+    issue: 'a',
+    reason: 'stalled',
+    targetAgent: 'fleet-owner',
+    handoff: persisted,
+    handoffPayload: payload,
+    endedAt: '2026-08-30T00:03:00Z',
+  });
+  assert.equal(released.issues.a.assignment, null);
+  assert.equal(released.issues.a.continuationChain.at(-1).endReason, 'cancelled');
+  assert.equal(released.issues.a.terminalDisposition, 'blocked');
 });
 
 test('persisted assignment consumes a serialized revision-bound scheduler lease', (t) => {

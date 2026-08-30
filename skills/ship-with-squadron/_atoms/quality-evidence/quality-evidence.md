@@ -71,9 +71,12 @@ exact vocabulary:
 The adapter requires the documented subject, supplied baseline, included
 scope, exclusions, repositories, exact base/head revisions, environments,
 direct and cross-boundary consumers, analysis boundaries and gaps, at least one
-five-rung ladder, exact ordered rung progression/outcomes, the first stopping
-rung and evidence, exclusive classification of every ladder, and one nonempty
-identified regression-proof slot. Classification is derived from acquired sequential
+five-rung ladder, exact ordered rung progression/outcomes, and exclusive
+classification of every ladder. Stopping rung, reason, and next-evidence
+metadata are required only when acquisition actually stops on unavailable,
+inconclusive, conflicting, or permitted not-applicable evidence; a fully
+completed ladder must not manufacture stopping metadata. The report also
+contains one nonempty identified regression-proof slot. Classification is derived from acquired sequential
 evidence: source-or-stronger `supports-bad-case` may confirm, ruled-out-bad-case-
 or-stronger `supports-assertion` may clear, and unavailable, conflicting,
 all-not-attempted, or otherwise nondecisive evidence cannot clear. Empty ladders or proof,

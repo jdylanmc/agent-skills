@@ -34,6 +34,14 @@ Use the readiness set helper to require:
   expiry condition, re-invocation, generation, and creation time;
 - no degraded or unobserved provider state for a ready claim.
 
+Initial Shepherd readiness is consumed through one compare-and-swap state
+transition, not caller-shaped mutation. It requires the current confirmed
+publication, active matching Shepherd check generation, complete current
+quality pipeline, full provider object IDs, latest merge watermark, canonical
+receipt and surrounding identities, exact assignment-success archival, and
+atomic clearing of the check before terminal readiness. Duplicate, stale, or
+intervening-merge returns are rejected.
+
 When manifest Shepherd intent is `no`, record `not-required` plus a real
 revision-bound set obligation and dispatch no Shepherd. Before entering
 completed readiness, archive any active assignment through an exact
@@ -58,9 +66,10 @@ Shepherd intent `no`, queue fresh complete quality/provider revalidation
 instead. A later sibling merge updates an already queued obligation. Consume it
 only after the stable change request is confirmed for current base/head and
 fresh semantic quality evidence matches that exact generation and revision.
-Duplicate merge redelivery is idempotent. Do not
-force-push merely because the base moved; Shepherd decides whether its trigger
-and SHA-pinned lease rules require a push.
+Duplicate merge redelivery is idempotent. The fleet owner and implementation
+or remediation workers never force-push merely because the base moved. Only
+the real nested Shepherd may use its exact verified
+`--force-with-lease=refs/heads/<head>:<captured-sha>` contract.
 
 An in-flight Shepherd blocker retains the affected generation. Revision
 evidence clears only the blocker for that exact generation. If mutable

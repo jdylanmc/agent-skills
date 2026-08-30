@@ -66,6 +66,8 @@ test('pins required local workflow skills and the checked-in blast-radius seam',
 test('consumes canonical Shepherd freshness without caller-manufactured identity fields', () => {
   const readiness = read('ship-with-squadron/_atoms/readiness-set/readiness-set.mjs');
   assert.match(readiness, /validateFreshnessReceipt/);
+  assert.match(readiness, /export function consumeInitialShepherdResultPersisted/);
+  assert.match(readiness, /mutateFleetState/);
   assert.doesNotMatch(readiness, /receipt\?\.repository|receipt\?\.changeRequest|receipt\?\.baseBranch/);
   const contract = read('_base/_atoms/landability/landability.mjs');
   for (const field of ['observedAt', 'baseSha', 'headSha', 'upToDatePolicy', 'provider', 'complete']) {
@@ -97,6 +99,12 @@ test('pins full delivery order and forbidden authority', () => {
   for (const operation of ['merge', 'approve', 'enable auto-merge', 'accept risk', 'force-push', 'close tracker work']) {
     assert.match(body, new RegExp(operation.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.match(body, /fleet owner and every implementation, remediation, or continuation worker may never force-push/i);
+  assert.match(
+    body,
+    /Only the real nested Shepherd worker may use Shepherd's exact verified SHA-pinned `--force-with-lease=refs\/heads\/<head>:<captured-sha>` contract/,
+  );
+  assert.doesNotMatch(body, /workers? may force-push(?! merely)/i);
 });
 
 test('permission closure stays inside the deliberate wrapper grant', () => {

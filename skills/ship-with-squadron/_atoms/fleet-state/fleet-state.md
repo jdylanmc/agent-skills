@@ -22,7 +22,9 @@ Use the fleet state helper to create schema version 5, bind it to
 the confirmed manifest and provider-configuration digests, reread it, reconcile
 the frontier, and write with an exact expected revision. Every write validates
 the complete state schema and cross-field invariants before taking an exclusive
-lock, then rereads and compares the disk revision while holding that lock. A
+lock, then rereads and compares the disk revision while holding that lock. All
+filesystem object identities use bigint stats and exact decimal device/inode
+serialization. A
 stale writer stops on a revision conflict. The complete directory ancestry is
 checked component-by-component and rejects symbolic links or reparse
 containment changes. Before any path creation or open, the exact normalized
@@ -35,13 +37,17 @@ initialization window. Stale ownerless or malformed locks are quarantined only
 after directory identity is claimed and rechecked. Cleanup and release rename
 only the verified directory identity out of the canonical path before removal,
 so a contender's replacement lock is never moved or deleted. Lock ownership
-records both PID and a portable process-start identity where available, so PID
-reuse does not permanently wedge a stale lock; platforms without that proof
-fail closed for a live PID while still recovering safely aged ownerless or
-malformed locks. Writes fsync a sibling pending file whose name contains the
-random lock token and an independent nonce, atomically rename it, and fsync the
-parent directory. Well-formed crash residue is recovered only while the current
-lock identity is held and reverified.
+records both PID and immutable process-start identity where available: Linux
+boot/start ticks, Darwin boot/start time without mutable command/title data,
+and Windows process creation time. PID reuse therefore does not permanently
+wedge a stale lock; platforms without that proof fail closed for a live PID
+while still recovering safely aged ownerless or malformed locks. Writes fsync a sibling pending file whose name contains the random lock token
+and an independent nonce. The pinned run-directory chain and lock owner are
+reverified before the pending open, immediately before commit, and after the
+atomic rename, so a substituted run-directory pathname cannot receive the
+replacement state. The parent directory is then fsynced. Well-formed crash
+residue is recovered only while the current lock identity is held and
+reverified.
 
 Persist and reread after assignment, handoff, publication, Shepherd return,
 observed merge, readiness expiry, and terminal transition. Per-issue state
@@ -72,8 +78,11 @@ Only
 declared status transitions are accepted; mutable ownership is entered only by
 assignment, and there is no general `active -> pending` transition. Budget
 consumption is monotonic; reaching cost, time, or retry limits records
-`budget-exhausted`. Cancellation marks pending issues `not-reached` and active
-issues as requiring validated handoffs before their processes are released.
+`budget-exhausted`. Cancellation marks pending issues `not-reached` and active issues with the same
+durable validated-handoff obligation used for budget exhaustion. Once the fleet
+is cancelled or exhausted, or an issue already carries a handoff obligation,
+no caller-selected completion or `blocked` reason may release active ownership;
+only the validated orchestration-handoff release transition may do so.
 The active assignment count must equal persisted capacity and never exceed the
 confirmed ceiling. Completed, failed, deferred, blocked, timed-out, and
 per-issue dispositions follow an explicit compatibility matrix; blocked,

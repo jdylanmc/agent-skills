@@ -9,6 +9,7 @@ import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
   assertFleetState,
   cancelFleet,
+  canonicalFilesystemIdentity,
   captureIsolatedGitWorktreeIdentity,
   consumeBudget,
   createFleetState,
@@ -16,6 +17,7 @@ import {
   loadFleetState,
   persistFleetState,
   recordSourceRevisionObservation,
+  serializeFilesystemIdentity,
   transitionIssue,
 } from './fleet-state.mjs';
 
@@ -244,7 +246,7 @@ test('recovers a crash-stale ownership-bound lock before the exclusive revision 
 });
 
 test('recovers PID-reuse locks only from mismatched process-instance identity', (t) => {
-  if (!['darwin', 'linux'].includes(process.platform)) {
+  if (!['darwin', 'linux', 'win32'].includes(process.platform)) {
     t.skip('portable process-instance proof is unavailable on this platform');
     return;
   }
@@ -268,6 +270,17 @@ test('recovers PID-reuse locks only from mismatched process-instance identity', 
     { staleLockMs: 0 },
   );
   assert.equal(written.revision, 1);
+});
+
+test('serializes filesystem identities without losing bigint precision', () => {
+  const identity = serializeFilesystemIdentity({
+    dev: BigInt(Number.MAX_SAFE_INTEGER) + 12345n,
+    ino: BigInt(Number.MAX_SAFE_INTEGER) + 67890n,
+  });
+  assert.deepEqual(identity, {
+    device: '9007199254753336',
+    inode: '9007199254808881',
+  });
 });
 
 test('Darwin live lock identity is stable across contender timezones', (t) => {
@@ -296,6 +309,63 @@ test('Darwin live lock identity is stable across contender timezones', (t) => {
   ), /leave-live-lock-for-timezone-check/);
   const live = loadFleetState(file, manifest);
   process.env.TZ = previousTimezone === 'UTC' ? 'America/Los_Angeles' : 'UTC';
+  assert.throws(() => persistFleetState(file, live, live.revision, manifest, {
+    staleLockMs: 0,
+    lockAttempts: 1,
+  }), /write lock is busy/);
+});
+
+test('Darwin live lock identity is stable across process title changes', (t) => {
+  if (process.platform !== 'darwin') {
+    t.skip('Darwin-specific immutable process identity check');
+    return;
+  }
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  const priorTitle = process.title;
+  t.after(() => {
+    process.title = priorTitle;
+    fs.rmSync(SANDBOX, { recursive: true, force: true });
+  });
+  const file = fleetStatePath(REPOSITORY, 'title-lock');
+  assert.throws(() => persistFleetState(
+    file,
+    createFleetState(manifest, 'title-lock'),
+    0,
+    manifest,
+    {
+      beforeReleaseLockClaim() {
+        throw new Error('leave-live-lock-for-title-check');
+      },
+    },
+  ), /leave-live-lock-for-title-check/);
+  const live = loadFleetState(file, manifest);
+  process.title = `${priorTitle}-changed`;
+  assert.throws(() => persistFleetState(file, live, live.revision, manifest, {
+    staleLockMs: 0,
+    lockAttempts: 1,
+  }), /write lock is busy/);
+});
+
+test('Windows live process creation identity prevents stale PID reclamation', (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('Windows-specific process creation identity check');
+    return;
+  }
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const file = fleetStatePath(REPOSITORY, 'windows-live-lock');
+  assert.throws(() => persistFleetState(
+    file,
+    createFleetState(manifest, 'windows-live-lock'),
+    0,
+    manifest,
+    {
+      beforeReleaseLockClaim() {
+        throw new Error('leave-live-windows-lock');
+      },
+    },
+  ), /leave-live-windows-lock/);
+  const live = loadFleetState(file, manifest);
   assert.throws(() => persistFleetState(file, live, live.revision, manifest, {
     staleLockMs: 0,
     lockAttempts: 1,
@@ -562,6 +632,56 @@ test('wrong repository or run path is rejected before creating directories', () 
   assert.equal(fs.existsSync(path.join(REPOSITORY, '.ship-with-squadron', 'wrong-run')), false);
 });
 
+test('directory replacement before commit cannot overwrite replacement state', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const file = fleetStatePath(REPOSITORY, 'directory-swap');
+  const written = persistFleetState(
+    file,
+    createFleetState(manifest, 'directory-swap'),
+    0,
+    manifest,
+  );
+  const runDirectory = path.dirname(file);
+  const displaced = `${runDirectory}-displaced`;
+  const replacement = '{"replacement":"must-remain-unchanged"}\n';
+  assert.throws(() => persistFleetState(file, written, written.revision, manifest, {
+    beforeStateCommit() {
+      fs.renameSync(runDirectory, displaced);
+      fs.mkdirSync(runDirectory, { recursive: true });
+      fs.writeFileSync(file, replacement);
+    },
+  }), /directory.*changed|lock changed/i);
+  assert.equal(fs.readFileSync(file, 'utf8'), replacement);
+});
+
+test('Windows case-sensitive directories require exact canonical spelling', (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('Windows-specific per-directory case sensitivity check');
+    return;
+  }
+  const root = path.join(SANDBOX, 'case-sensitive-root');
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.mkdirSync(root, { recursive: true });
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  try {
+    execFileSync('fsutil.exe', ['file', 'setCaseSensitiveInfo', root, 'enable'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+  } catch {
+    t.skip('runner does not support per-directory case sensitivity');
+    return;
+  }
+  const exact = path.join(root, 'ExactName');
+  fs.mkdirSync(exact);
+  assert.equal(canonicalFilesystemIdentity(exact, { requireExisting: true }).path, exact);
+  assert.throws(
+    () => canonicalFilesystemIdentity(path.join(root, 'exactName'), { requireExisting: true }),
+    /does not exist|canonical path spelling/,
+  );
+});
+
 test('reobserves the exact source revision and rejects closed-set or ownership forgery', () => {
   const initial = createFleetState(manifest, 'run-2');
   const observed = recordSourceRevisionObservation(
@@ -598,11 +718,40 @@ test('uses at-ceiling budget semantics, stops dispatch, and preserves cancellati
   assert.equal(budget.state.control.budgetExhausted, true);
   assert.equal(budget.state.issues['1'].terminalDisposition, 'not-reached');
   assert.equal(budget.state.issues['1'].nextAction, 'await-renewed-human-confirmation');
+  const exhaustedActive = consumeBudget(activeState('exhausted-active'), manifest, { cost: 1 }).state;
+  assert.equal(exhaustedActive.issues['1'].handoffObligation.condition, 'exhausted');
+  const exhaustedBypass = transitionIssue(exhaustedActive, manifest, '1', 'blocked', {
+    assignmentEnd: {
+      generation: 1,
+      workerContext: 'worker-1',
+      reason: 'blocked',
+      endedAt: '2026-08-30T00:02:00Z',
+    },
+    terminalDisposition: 'blocked',
+  });
+  assert.equal(exhaustedBypass.issues['1'].status, 'active');
+  assert.equal(exhaustedBypass.issues['1'].handoffObligation.condition, 'exhausted');
 
   const cancelled = cancelFleet(initial, manifest, 'operator requested stop');
   assert.equal(cancelled.control.cancelled, true);
   assert.equal(cancelled.fleetDisposition, 'cancelled');
   assert.equal(cancelled.issues['1'].nextAction, 'await-new-human-invocation');
+  const active = activeState('cancelled-active');
+  const cancelledActive = cancelFleet(active, manifest, 'operator requested stop');
+  assert.equal(cancelledActive.issues['1'].handoffObligation.condition, 'cancelled');
+  assert.doesNotThrow(() => assertFleetState(cancelledActive, manifest));
+  const blockedBypass = transitionIssue(cancelledActive, manifest, '1', 'blocked', {
+    assignmentEnd: {
+      generation: 1,
+      workerContext: 'worker-1',
+      reason: 'blocked',
+      endedAt: '2026-08-30T00:02:00Z',
+    },
+    terminalDisposition: 'blocked',
+  });
+  assert.equal(blockedBypass.issues['1'].status, 'active');
+  assert.equal(blockedBypass.issues['1'].assignment.active, true);
+  assert.equal(blockedBypass.issues['1'].handoffObligation.condition, 'cancelled');
   assert.throws(
     () => transitionIssue(initial, manifest, '1', 'active'),
     /only be entered through validated assignment/,

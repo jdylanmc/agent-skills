@@ -108,8 +108,12 @@ record -> confirm one closed fleet manifest -> persist state
 
 - Fleet owner has no `edit` grant. Workers author inside their owned isolation;
   reconciliation, not the missing grant, bounds those writes.
+- The fleet owner and every implementation, remediation, or continuation worker
+  may never force-push. Only the real nested Shepherd worker may use Shepherd's
+  exact verified SHA-pinned
+  `--force-with-lease=refs/heads/<head>:<captured-sha>` contract.
 - No worker or fleet owner may merge, approve, enable auto-merge, accept risk,
-  force-push, close tracker work, expand the set, or mutate another assignment.
+  close tracker work, expand the set, or mutate another assignment.
 - Provider adapters may read issues, publish change requests, observe merges,
   and read one recorded change request's exact revision only when allow-listed.
 - Local scheduling never depends on issue 25 and never composes

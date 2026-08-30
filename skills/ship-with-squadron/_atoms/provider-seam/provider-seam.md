@@ -29,6 +29,9 @@ publication. Its exact schema binds invocation, stable provider key, provider,
 repository, issue, change request, base branch/SHA, head branch/SHA, and
 observation time. Unknown fields, wildcard paths, and generic API escape hatches
 are rejected.
+Every provider base SHA, head SHA, and merge commit is a complete lowercase
+40- or 64-character Git object ID before normalization or persistence;
+abbreviated revisions are rejected.
 
 Every adapter condition is preserved. Unsupported, missing, unauthenticated,
 degraded, and unobserved provider state is not empty, clean, published, or

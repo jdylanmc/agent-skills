@@ -12,6 +12,12 @@ import {
   reconcilePublication,
 } from './provider-seam.mjs';
 
+const BASE = '1'.repeat(40);
+const HEAD = '2'.repeat(40);
+const BASE_2 = '3'.repeat(40);
+const HEAD_2 = '4'.repeat(40);
+const MERGE = '5'.repeat(40);
+
 const manifest = normalizeFleetManifest({
   confirmation: 'confirmed',
   goal: 'deliver',
@@ -40,8 +46,8 @@ const manifest = normalizeFleetManifest({
 
 function state() {
   const common = {
-    baseSha: 'base',
-    headSha: 'head',
+    baseSha: BASE,
+    headSha: HEAD,
     complete: true,
     terminal: true,
     completedAt: '2026-08-30T00:04:00Z',
@@ -52,7 +58,7 @@ function state() {
     includedScope: ['current issue'],
     exclusions: [],
     repositories: ['owner/repo'],
-    revisions: { baseSha: 'base', headSha: 'head' },
+    revisions: { baseSha: BASE, headSha: HEAD },
     environments: ['isolated test runner'],
     directCallers: ['adapter consumer'],
     crossBoundaryConsumers: ['provider publication boundary'],
@@ -66,8 +72,7 @@ function state() {
         name, progression: 'completed', 'evidence-outcome': 'supports-assertion',
         evidence: `${name} proof`, scope: 'current revision',
       })),
-      stoppingRung: 'live-reproduction', stoppingReason: 'complete',
-      strongestSupportedClaim: 'safe in scope', nextEvidenceNeeded: 'none',
+      strongestSupportedClaim: 'safe in scope',
     }],
     classifications: {
       'confirmed-risk': [],
@@ -92,8 +97,8 @@ function state() {
       1: {
         identity: '1',
         sourceRevision: 'r1',
-        baseSha: 'base',
-        headSha: 'head',
+        baseSha: BASE,
+        headSha: HEAD,
         branch: 'issue-1',
         worktree: path.resolve('test-fixtures', 'provider-seam-worktree-1'),
         assignment: { branch: 'issue-1' },
@@ -119,7 +124,7 @@ function state() {
             ...common,
             verdicts: [{
               id: 'C1', verdict: 'satisfied',
-              evidence: { complete: true, summary: 'proven', baseSha: 'base', headSha: 'head' },
+              evidence: { complete: true, summary: 'proven', baseSha: BASE, headSha: HEAD },
             }],
           }],
         ].map(([stage, evidence]) => ({ stage, evidence })),
@@ -137,7 +142,7 @@ const request = {
   issue: '1',
   headBranch: 'issue-1',
   baseBranch: 'main',
-  headSha: 'head',
+  headSha: HEAD,
 };
 
 function result(key, overrides = {}) {
@@ -152,8 +157,8 @@ function result(key, overrides = {}) {
     issue: '1',
     baseBranch: 'main',
     headBranch: 'issue-1',
-    baseSha: 'base',
-    headSha: 'head',
+    baseSha: BASE,
+    headSha: HEAD,
     identifier: 'PR-1',
     ...overrides,
   };
@@ -211,13 +216,19 @@ test('records publication intent before call and reconciles crash recovery idemp
     issue: '1',
     baseBranch: 'main',
     headBranch: 'issue-1',
-    baseSha: 'base',
-    headSha: 'head',
+    baseSha: BASE,
+    headSha: HEAD,
     identifier: 'PR-1',
   });
   assert.equal(published.issues['1'].changeRequest.identifier, 'PR-1');
   assert.equal(beginPublication(published, manifest, request).action, 'already-confirmed-current-revision');
   assert.equal(reconcilePublication(published, manifest, begun.key, result(begun.key)).publications.length, 1);
+  const abbreviated = state();
+  abbreviated.issues['1'].baseSha = BASE.slice(0, 12);
+  assert.throws(
+    () => beginPublication(abbreviated, manifest, request),
+    /full Git object IDs/,
+  );
 });
 
 test('preserves retryable degradation and refuses malformed caller-shaped publication success', () => {
@@ -242,6 +253,12 @@ test('preserves retryable degradation and refuses malformed caller-shaped public
     status: 'published',
     identifier: 'PR-1',
   }), /invocation identity/);
+  assert.throws(
+    () => reconcilePublication(begun.state, manifest, begun.key, result(begun.key, {
+      headSha: HEAD.slice(0, 12),
+    })),
+    /full Git object IDs/,
+  );
 });
 
 test('observes a human merge only when every field reconciles to confirmed publication', () => {
@@ -260,16 +277,16 @@ test('observes a human merge only when every field reconciles to confirmed publi
     changeRequest: 'PR-1',
     publicationKey: begun.key,
     baseBranch: 'main',
-    baseSha: 'base',
+    baseSha: BASE,
     headBranch: 'issue-1',
-    headSha: 'head',
-    mergeCommit: 'merge-1',
+    headSha: HEAD,
+    mergeCommit: MERGE,
     observedAt: '2026-08-30T00:11:00Z',
   };
   assert.equal(observeHumanMerge(published, manifest, observation).observed, true);
   assert.equal(observeHumanMerge(published, manifest, {
     ...observation,
-    headSha: 'stale',
+    headSha: '6'.repeat(40),
   }).observed, false);
   assert.equal(observeHumanMerge(published, manifest, {
     ...observation,
@@ -279,6 +296,10 @@ test('observes a human merge only when every field reconciles to confirmed publi
     ...observation,
     callerClaim: true,
   }).reason, 'merge-observation-schema-is-not-exact');
+  assert.equal(observeHumanMerge(published, manifest, {
+    ...observation,
+    mergeCommit: MERGE.slice(0, 12),
+  }).observed, false);
 });
 
 test('normalizes only the allow-listed exact read-only change-request revision receipt', () => {
@@ -300,9 +321,9 @@ test('normalizes only the allow-listed exact read-only change-request revision r
     changeRequest: 'PR-1',
     publicationKey: begun.key,
     baseBranch: 'main',
-    baseSha: 'base-2',
+    baseSha: BASE_2,
     headBranch: 'issue-1',
-    headSha: 'head',
+    headSha: HEAD,
     observedAt: '2026-08-30T00:12:00Z',
   };
   assert.deepEqual(
@@ -315,6 +336,13 @@ test('normalizes only the allow-listed exact read-only change-request revision r
       apiPath: '/repos/owner/repo/pulls/1',
     }),
     /schema-is-not-exact/,
+  );
+  assert.throws(
+    () => normalizeChangeRequestRevisionObservation(published, manifest, {
+      ...observation,
+      baseSha: BASE_2.slice(0, 12),
+    }),
+    /identity-or-time-mismatch/,
   );
   const deniedManifest = {
     ...manifest,
@@ -335,25 +363,25 @@ test('reuses one logical publication while requiring revision-specific confirmat
   const begun = beginPublication(state(), manifest, request, '2026-08-30T00:05:00Z');
   const published = reconcilePublication(begun.state, manifest, begun.key, result(begun.key));
   const revised = structuredClone(published);
-  revised.issues['1'].baseSha = 'base-2';
-  revised.issues['1'].headSha = 'head-2';
+  revised.issues['1'].baseSha = BASE_2;
+  revised.issues['1'].headSha = HEAD_2;
   revised.issues['1'].pipeline = revised.issues['1'].pipeline.map((entry) => ({
     ...entry,
     evidence: {
       ...entry.evidence,
       ...(entry.stage === 'blast-radius-proof'
-        ? { revisions: { baseSha: 'base-2', headSha: 'head-2' } }
-        : { baseSha: 'base-2', headSha: 'head-2' }),
+        ? { revisions: { baseSha: BASE_2, headSha: HEAD_2 } }
+        : { baseSha: BASE_2, headSha: HEAD_2 }),
       ...(entry.stage === 'criterion-verdict'
         ? { verdicts: [{
           id: 'C1', verdict: 'satisfied',
-          evidence: { complete: true, summary: 'reproven', baseSha: 'base-2', headSha: 'head-2' },
+          evidence: { complete: true, summary: 'reproven', baseSha: BASE_2, headSha: HEAD_2 },
         }] }
         : {}),
     },
   }));
   revised.issues['1'].changeRequest = null;
-  const nextRequest = { ...request, baseSha: 'base-2', headSha: 'head-2' };
+  const nextRequest = { ...request, baseSha: BASE_2, headSha: HEAD_2 };
   const next = beginPublication(revised, manifest, nextRequest, '2026-08-30T00:20:00Z');
   assert.equal(next.state.publications.length, 1);
   assert.equal(next.action, 'reobserve-existing-publication');
@@ -361,15 +389,15 @@ test('reuses one logical publication while requiring revision-specific confirmat
   const confirmed = reconcilePublication(next.state, manifest, next.key, result(next.key, {
     invocation: { id: 'publish-2', operation: 'publish-change-request', providerKey: next.key },
     status: 'found-existing',
-    baseSha: 'base-2',
-    headSha: 'head-2',
+    baseSha: BASE_2,
+    headSha: HEAD_2,
     observedAt: '2026-08-30T00:21:00Z',
   }));
   assert.equal(confirmed.publications[0].identifier, 'PR-1');
   assert.equal(confirmed.publications[0].observations.length, 2);
-  assert.equal(confirmed.issues['1'].changeRequest.headSha, 'head-2');
+  assert.equal(confirmed.issues['1'].changeRequest.headSha, HEAD_2);
   assert.throws(() => reconcilePublication(confirmed, manifest, next.key, result(next.key, {
-    baseSha: 'base',
-    headSha: 'head',
+    baseSha: BASE,
+    headSha: HEAD,
   })), /identity does not match/);
 });

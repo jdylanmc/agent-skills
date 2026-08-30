@@ -89,8 +89,7 @@ function readyIssue(identity) {
         name, progression: 'completed', 'evidence-outcome': 'supports-assertion',
         evidence: `${name} proof`, scope: 'current revision',
       })),
-      stoppingRung: 'live-reproduction', stoppingReason: 'complete',
-      strongestSupportedClaim: 'safe in scope', nextEvidenceNeeded: 'none',
+      strongestSupportedClaim: 'safe in scope',
     }],
     classifications: {
       'confirmed-risk': [],

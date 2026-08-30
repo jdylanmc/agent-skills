@@ -54,7 +54,7 @@ const PUBLICATION_ATTEMPT_STATES = new Set([
   'provider-tool-unsupported', 'provider-unsupported', 'transient-failure',
 ]);
 const DEPENDENCY_STATES = new Set(['unclassified', 'ready', 'blocked', 'active']);
-const HANDOFF_REASONS = new Set(['stalled', 'exhausted', 'timed-out', 'crashed']);
+const HANDOFF_REASONS = new Set(['stalled', 'exhausted', 'timed-out', 'crashed', 'cancelled']);
 const DISPOSITIONS_BY_STATUS = Object.freeze({
   pending: new Set([null, 'not-reached']),
   active: new Set([null]),
@@ -128,21 +128,81 @@ function alternateCasePath(value) {
   return null;
 }
 
+function alternateCaseName(value) {
+  const character = value.match(/[A-Za-z]/u)?.[0];
+  if (!character) return null;
+  const offset = value.indexOf(character);
+  const replacement = character === character.toLowerCase()
+    ? character.toUpperCase()
+    : character.toLowerCase();
+  return `${value.slice(0, offset)}${replacement}${value.slice(offset + 1)}`;
+}
+
+export function serializeFilesystemIdentity(stat) {
+  if (typeof stat?.dev !== 'bigint' || typeof stat?.ino !== 'bigint') {
+    throw new Error('filesystem identity requires bigint stat values');
+  }
+  return { device: stat.dev.toString(), inode: stat.ino.toString() };
+}
+
+function sameStatIdentity(left, right) {
+  if (!left || !right) return false;
+  const leftIdentity = serializeFilesystemIdentity(left);
+  const rightIdentity = serializeFilesystemIdentity(right);
+  return leftIdentity.device === rightIdentity.device
+    && leftIdentity.inode === rightIdentity.inode;
+}
+
+function windowsDirectoryIsCaseSensitive(directory) {
+  try {
+    const output = execFileSync('fsutil.exe', [
+      'file', 'queryCaseSensitiveInfo', directory,
+    ], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2_000,
+      windowsHide: true,
+    });
+    if (/\bis enabled\b/iu.test(output)) return true;
+    if (/\bis disabled\b/iu.test(output)) return false;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function filesystemIsCaseInsensitive(existingPath) {
-  if (process.platform === 'win32') return true;
-  let cursor = existingPath;
-  while (cursor !== path.parse(cursor).root) {
-    const alternate = alternateCasePath(cursor);
-    if (alternate && alternate !== cursor) {
+  const existingStat = fs.statSync(existingPath, { bigint: true });
+  const directory = existingStat.isDirectory() ? existingPath : path.dirname(existingPath);
+  if (process.platform === 'win32') {
+    const caseSensitive = windowsDirectoryIsCaseSensitive(directory);
+    if (caseSensitive !== null) return !caseSensitive;
+  }
+  try {
+    for (const entry of fs.readdirSync(directory)) {
+      const alternateEntry = alternateCaseName(entry);
+      if (!alternateEntry || alternateEntry === entry) continue;
       try {
-        const original = fs.statSync(cursor);
-        const candidate = fs.statSync(alternate);
-        return original.dev === candidate.dev && original.ino === candidate.ino;
+        const original = fs.statSync(path.join(directory, entry), { bigint: true });
+        const candidate = fs.statSync(path.join(directory, alternateEntry), { bigint: true });
+        return sameStatIdentity(original, candidate);
       } catch {
-        // Try a higher existing ancestor.
+        return false;
       }
     }
-    cursor = path.dirname(cursor);
+  } catch {
+    // Fall through to the non-mutating spelling probe.
+  }
+  const alternate = alternateCasePath(directory);
+  if (alternate && alternate !== directory) {
+    try {
+      return sameStatIdentity(
+        fs.statSync(directory, { bigint: true }),
+        fs.statSync(alternate, { bigint: true }),
+      );
+    } catch {
+      return false;
+    }
   }
   return false;
 }
@@ -165,7 +225,7 @@ export function canonicalFilesystemIdentity(
   for (const [index, component] of components.entries()) {
     const candidate = path.join(cursor, component);
     try {
-      const stat = fs.lstatSync(candidate);
+      const stat = fs.lstatSync(candidate, { bigint: true });
       if (stat.isSymbolicLink()) {
         throw new Error(`filesystem identity traverses a symbolic link: ${candidate}`);
       }
@@ -195,12 +255,13 @@ export function canonicalFilesystemIdentity(
     throw new Error('filesystem identity must use canonical path spelling');
   }
   if (firstMissing === components.length) {
-    const stat = fs.statSync(canonicalPath);
+    const stat = fs.statSync(canonicalPath, { bigint: true });
+    const identity = serializeFilesystemIdentity(stat);
     return {
       path: canonicalPath,
-      key: `inode:${String(stat.dev)}:${String(stat.ino)}`,
-      device: String(stat.dev),
-      inode: String(stat.ino),
+      key: `inode:${identity.device}:${identity.inode}`,
+      device: identity.device,
+      inode: identity.inode,
       exists: true,
       caseInsensitive,
     };
@@ -272,7 +333,7 @@ function exactCommitId(value, label) {
 export function captureIsolatedGitWorktreeIdentity(repositoryRoot, worktree, branch) {
   const repository = canonicalFilesystemIdentity(repositoryRoot, { requireExisting: true });
   const candidate = canonicalFilesystemIdentity(worktree, { requireExisting: true });
-  const candidateStat = fs.lstatSync(candidate.path);
+  const candidateStat = fs.lstatSync(candidate.path, { bigint: true });
   if (!candidateStat.isDirectory() || candidateStat.isSymbolicLink()) {
     throw new Error('assignment worktree must be a real directory');
   }
@@ -1509,9 +1570,7 @@ function sameResolvedPath(left, right) {
   } catch {
     const normalizedLeft = normalizedAbsolute(left);
     const normalizedRight = normalizedAbsolute(right);
-    return process.platform === 'win32'
-      ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
-      : normalizedLeft === normalizedRight;
+    return normalizedLeft === normalizedRight;
   }
 }
 
@@ -1529,23 +1588,22 @@ function assertFleetStatePath(file, manifest, runId) {
 
 function sameFileIdentity(left, right) {
   return left.isFile() === right.isFile()
-    && left.dev === right.dev
-    && left.ino === right.ino
+    && sameStatIdentity(left, right)
     && left.size === right.size
-    && left.mtimeMs === right.mtimeMs
-    && left.ctimeMs === right.ctimeMs;
+    && left.mtimeNs === right.mtimeNs
+    && left.ctimeNs === right.ctimeNs;
 }
 
 function openVerifiedRegularFile(file) {
-  const before = fs.lstatSync(file);
+  const before = fs.lstatSync(file, { bigint: true });
   if (before.isSymbolicLink() || !before.isFile()) {
     throw new Error('fleet state path is not a real regular file');
   }
   const noFollow = Number.isInteger(fs.constants.O_NOFOLLOW) ? fs.constants.O_NOFOLLOW : 0;
   const handle = fs.openSync(file, fs.constants.O_RDONLY | noFollow);
   try {
-    const descriptor = fs.fstatSync(handle);
-    const after = fs.lstatSync(file);
+    const descriptor = fs.fstatSync(handle, { bigint: true });
+    const after = fs.lstatSync(file, { bigint: true });
     if (!sameFileIdentity(before, descriptor)
         || !sameFileIdentity(descriptor, after)
         || !sameResolvedPath(fs.realpathSync(file), file)) {
@@ -1563,7 +1621,7 @@ export function loadFleetState(file, manifest) {
   assertFleetStatePath(file, manifest, runId);
   const handle = openVerifiedRegularFile(file);
   try {
-    const stat = fs.fstatSync(handle);
+    const stat = fs.fstatSync(handle, { bigint: true });
     if (!stat.isFile()) throw new Error('fleet state descriptor is not a regular file');
     const state = assertFleetState(JSON.parse(fs.readFileSync(handle, 'utf8')), manifest);
     assertFleetStatePath(file, manifest, state.runId);
@@ -1610,21 +1668,30 @@ function processInstanceIdentity(pid) {
         timeout: 2_000,
         env: environment,
       }).trim().replace(/\s+/gu, ' ');
-      const command = execFileSync('/bin/ps', ['-ww', '-o', 'command=', '-p', String(pid)], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 2_000,
-        env: environment,
-      }).trim();
       const boot = execFileSync('/usr/sbin/sysctl', ['-n', 'kern.boottime'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
         timeout: 2_000,
         env: environment,
       }).match(/sec\s*=\s*(\d+).*usec\s*=\s*(\d+)/u);
-      return nonEmpty(started) && nonEmpty(command) && boot
-        ? `darwin:${boot[1]}:${boot[2]}:${started}:${digest(command)}`
+      return nonEmpty(started) && boot
+        ? `darwin:${boot[1]}:${boot[2]}:${started}`
         : null;
+    }
+    if (process.platform === 'win32') {
+      const ticks = execFileSync('powershell.exe', [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `[System.Diagnostics.Process]::GetProcessById(${pid}).StartTime.ToUniversalTime().Ticks`,
+      ], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 2_000,
+        windowsHide: true,
+      }).trim();
+      return /^\d+$/u.test(ticks) ? `win32:${ticks}` : null;
     }
   } catch {
     return null;
@@ -1644,7 +1711,7 @@ function lockOwnerPath(lockDirectory, token) {
 }
 
 function readLockOwner(lockDirectory) {
-  const directoryBefore = fs.lstatSync(lockDirectory);
+  const directoryBefore = fs.lstatSync(lockDirectory, { bigint: true });
   if (directoryBefore.isSymbolicLink() || !directoryBefore.isDirectory()
       || !sameResolvedPath(fs.realpathSync(lockDirectory), lockDirectory)) {
     throw new Error('fleet state lock path is unsafe');
@@ -1655,7 +1722,7 @@ function readLockOwner(lockDirectory) {
   const ownerPath = path.join(lockDirectory, owners[0]);
   const handle = openVerifiedRegularFile(ownerPath);
   try {
-    const ownerStat = fs.fstatSync(handle);
+    const ownerStat = fs.fstatSync(handle, { bigint: true });
     const metadata = JSON.parse(fs.readFileSync(handle, 'utf8'));
     const token = owners[0].slice('owner-'.length, -'.json'.length);
     if (!metadata
@@ -1672,15 +1739,15 @@ function readLockOwner(lockDirectory) {
         || !validTimestamp(metadata.createdAt)) {
       throw new Error('fleet state lock metadata is malformed');
     }
-    const directoryAfter = fs.lstatSync(lockDirectory);
-    if (directoryBefore.dev !== directoryAfter.dev || directoryBefore.ino !== directoryAfter.ino) {
+    const directoryAfter = fs.lstatSync(lockDirectory, { bigint: true });
+    if (!sameStatIdentity(directoryBefore, directoryAfter)) {
       throw new Error('fleet state lock path is unsafe');
     }
     return {
       metadata,
       token,
-      directory: { dev: directoryAfter.dev, ino: directoryAfter.ino },
-      owner: { dev: ownerStat.dev, ino: ownerStat.ino },
+      directory: serializeFilesystemIdentity(directoryAfter),
+      owner: serializeFilesystemIdentity(ownerStat),
     };
   } finally {
     fs.closeSync(handle);
@@ -1721,14 +1788,14 @@ function initializeLockClaim(lockDirectory, token, expectedRevision) {
 }
 
 function inspectLockDirectory(lockDirectory) {
-  const stat = fs.lstatSync(lockDirectory);
+  const stat = fs.lstatSync(lockDirectory, { bigint: true });
   if (stat.isSymbolicLink() || !stat.isDirectory()
       || !sameResolvedPath(fs.realpathSync(lockDirectory), lockDirectory)) {
     throw new Error('fleet state lock path is unsafe');
   }
   return {
-    directory: { dev: stat.dev, ino: stat.ino },
-    mtimeMs: stat.mtimeMs,
+    directory: serializeFilesystemIdentity(stat),
+    mtimeMs: Number(stat.mtimeMs),
   };
 }
 
@@ -1744,8 +1811,8 @@ function acquireLock(lockDirectory, expectedRevision, options) {
       if (!['EEXIST', 'ENOTEMPTY', 'EPERM'].includes(error.code)) throw error;
       try {
         const observed = readLockOwner(lockDirectory);
-        const ownerStat = fs.lstatSync(lockOwnerPath(lockDirectory, observed.token));
-        const stale = Date.now() - ownerStat.mtimeMs >= staleLockMs;
+        const ownerStat = fs.lstatSync(lockOwnerPath(lockDirectory, observed.token), { bigint: true });
+        const stale = Date.now() - Number(ownerStat.mtimeMs) >= staleLockMs;
         if (stale && !lockOwnerIsCurrent(observed.metadata)) {
           options.beforeStaleLockClaim?.();
           if (removeOwnedLockDirectory(lockDirectory, observed, 'stale')) continue;
@@ -1779,22 +1846,25 @@ function quarantineLockDirectory(lockDirectory, ownership, purpose) {
   }
   const quarantine = `${lockDirectory}.${purpose}-${process.pid}-${crypto.randomBytes(16).toString('hex')}`;
   try {
-    const directory = fs.lstatSync(lockDirectory);
-    if (directory.dev !== ownership.directory.dev || directory.ino !== ownership.directory.ino) {
+    const directory = serializeFilesystemIdentity(
+      fs.lstatSync(lockDirectory, { bigint: true }),
+    );
+    if (directory.device !== ownership.directory.device
+        || directory.inode !== ownership.directory.inode) {
       return false;
     }
     if (ownership.token) {
       const current = readLockOwner(lockDirectory);
       if (current.token !== ownership.token
-          || current.directory.dev !== ownership.directory.dev
-          || current.directory.ino !== ownership.directory.ino
-          || current.owner.dev !== ownership.owner.dev
-          || current.owner.ino !== ownership.owner.ino) return false;
+          || current.directory.device !== ownership.directory.device
+          || current.directory.inode !== ownership.directory.inode
+          || current.owner.device !== ownership.owner.device
+          || current.owner.inode !== ownership.owner.inode) return false;
     }
     fs.renameSync(lockDirectory, quarantine);
-    const moved = fs.lstatSync(quarantine);
-    if (moved.dev !== ownership.directory.dev
-        || moved.ino !== ownership.directory.ino
+    const moved = serializeFilesystemIdentity(fs.lstatSync(quarantine, { bigint: true }));
+    if (moved.device !== ownership.directory.device
+        || moved.inode !== ownership.directory.inode
         || !fs.existsSync(path.join(quarantine, path.basename(marker)))) {
       if (!fs.existsSync(lockDirectory)) fs.renameSync(quarantine, lockDirectory);
       throw new Error('fleet state lock changed during atomic quarantine');
@@ -1829,11 +1899,11 @@ function snapshotFleetDirectoryChain(directory) {
   const resolved = path.resolve(directory);
   const parsed = path.parse(resolved);
   const components = resolved.slice(parsed.root.length).split(path.sep).filter(Boolean);
-  const rootStat = fs.lstatSync(parsed.root);
+  const rootStat = fs.lstatSync(parsed.root, { bigint: true });
   if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
     throw new Error('fleet state filesystem root is unsafe');
   }
-  const snapshots = [{ path: parsed.root, dev: rootStat.dev, ino: rootStat.ino }];
+  const snapshots = [{ path: parsed.root, ...serializeFilesystemIdentity(rootStat) }];
   let cursor = parsed.root;
   for (const component of components) {
     cursor = path.join(cursor, component);
@@ -1844,14 +1914,14 @@ function snapshotFleetDirectoryChain(directory) {
         if (error.code !== 'EEXIST') throw error;
       }
     }
-    const stat = fs.lstatSync(cursor);
+    const stat = fs.lstatSync(cursor, { bigint: true });
     if (stat.isSymbolicLink() || !stat.isDirectory()) {
       throw new Error(`fleet state directory ancestry is unsafe: ${cursor}`);
     }
     if (!sameResolvedPath(fs.realpathSync(cursor), cursor)) {
       throw new Error(`fleet state directory ancestry resolved through a link: ${cursor}`);
     }
-    snapshots.push({ path: cursor, dev: stat.dev, ino: stat.ino });
+    snapshots.push({ path: cursor, ...serializeFilesystemIdentity(stat) });
   }
   return snapshots;
 }
@@ -1859,11 +1929,12 @@ function snapshotFleetDirectoryChain(directory) {
 function sameFleetDirectoryChain(snapshots) {
   return snapshots.every((entry) => {
     try {
-      const stat = fs.lstatSync(entry.path);
+      const stat = fs.lstatSync(entry.path, { bigint: true });
+      const identity = serializeFilesystemIdentity(stat);
       return !stat.isSymbolicLink()
         && stat.isDirectory()
-        && stat.dev === entry.dev
-        && stat.ino === entry.ino;
+        && identity.device === entry.device
+        && identity.inode === entry.inode;
     } catch {
       return false;
     }
@@ -1873,7 +1944,7 @@ function sameFleetDirectoryChain(snapshots) {
 function prepareFleetStatePath(file, manifest, runId) {
   assertFleetStatePath(file, manifest, runId);
   const chain = snapshotFleetDirectoryChain(path.dirname(file));
-  if (fs.existsSync(file) && fs.lstatSync(file).isSymbolicLink()) {
+  if (fs.existsSync(file) && fs.lstatSync(file, { bigint: true }).isSymbolicLink()) {
     throw new Error('fleet state path must not be a symbolic link');
   }
   return chain;
@@ -1889,7 +1960,7 @@ function readLockedState(file, expectedRevision, manifest) {
   const handle = openVerifiedRegularFile(file);
   let disk;
   try {
-    const stat = fs.fstatSync(handle);
+    const stat = fs.fstatSync(handle, { bigint: true });
     if (!stat.isFile()) throw new Error('fleet state descriptor is not a regular file');
     disk = JSON.parse(fs.readFileSync(handle, 'utf8'));
   } finally {
@@ -1902,11 +1973,24 @@ function readLockedState(file, expectedRevision, manifest) {
   return disk;
 }
 
-function writeLockedState(file, state, expectedRevision, manifest, options, pending) {
+function writeLockedState(
+  file,
+  state,
+  expectedRevision,
+  manifest,
+  options,
+  pending,
+  lockDirectory,
+  ownership,
+  directoryChain,
+) {
   const next = structuredClone(state);
   next.revision = expectedRevision + 1;
   next.updatedAt = options.now ?? new Date().toISOString();
   assertFleetState(next, manifest);
+  if (!ownsLock(lockDirectory, ownership) || !sameFleetDirectoryChain(directoryChain)) {
+    throw new Error('fleet state directory or lock changed before pending write');
+  }
   const pendingHandle = fs.openSync(pending, 'wx', 0o600);
   try {
     fs.writeFileSync(pendingHandle, `${JSON.stringify(next, null, 2)}\n`);
@@ -1914,7 +1998,19 @@ function writeLockedState(file, state, expectedRevision, manifest, options, pend
   } finally {
     fs.closeSync(pendingHandle);
   }
+  options.beforeStateCommit?.();
+  if (!ownsLock(lockDirectory, ownership) || !sameFleetDirectoryChain(directoryChain)) {
+    throw new Error('fleet state directory or lock changed immediately before commit');
+  }
+  const pendingStat = fs.lstatSync(pending, { bigint: true });
+  if (pendingStat.isSymbolicLink() || !pendingStat.isFile()
+      || !sameResolvedPath(fs.realpathSync(pending), pending)) {
+    throw new Error('pending fleet state path was substituted before commit');
+  }
   fs.renameSync(pending, file);
+  if (!ownsLock(lockDirectory, ownership) || !sameFleetDirectoryChain(directoryChain)) {
+    throw new Error('fleet state directory or lock changed during commit');
+  }
   fsyncDirectory(path.dirname(file));
   return loadFleetState(file, manifest);
 }
@@ -1923,10 +2019,10 @@ function ownsLock(lockDirectory, ownership) {
   try {
     const current = readLockOwner(lockDirectory);
     return current.token === ownership.token
-      && current.directory.dev === ownership.directory.dev
-      && current.directory.ino === ownership.directory.ino
-      && current.owner.dev === ownership.owner.dev
-      && current.owner.ino === ownership.owner.ino;
+      && current.directory.device === ownership.directory.device
+      && current.directory.inode === ownership.directory.inode
+      && current.owner.device === ownership.owner.device
+      && current.owner.inode === ownership.owner.inode;
   } catch {
     return false;
   }
@@ -1942,7 +2038,7 @@ function recoverPendingResidue(file, lockDirectory, ownership) {
   for (const entry of fs.readdirSync(directory)) {
     if (!pattern.test(entry)) continue;
     const residue = path.join(directory, entry);
-    const stat = fs.lstatSync(residue);
+    const stat = fs.lstatSync(residue, { bigint: true });
     if (stat.isSymbolicLink() || !stat.isFile()) {
       throw new Error('pending fleet state residue is not a real regular file');
     }
@@ -1964,7 +2060,7 @@ function withFleetStateLock(file, manifest, runId, expectedRevision, options, op
     if (!sameFleetDirectoryChain(directoryChain)) {
       throw new Error('fleet state directory ancestry changed before mutation');
     }
-    return operation(pending);
+    return operation(pending, lockFile, lock, directoryChain);
   } finally {
     try {
       if (fs.existsSync(pending)) fs.unlinkSync(pending);
@@ -1986,9 +2082,24 @@ export function persistFleetState(file, state, expectedRevision, manifest, optio
     throw new Error(`state revision conflict: expected ${expectedRevision}, received ${state.revision}`);
   }
   assertFleetState(state, manifest);
-  return withFleetStateLock(file, manifest, state.runId, expectedRevision, options, (pending) => {
+  return withFleetStateLock(file, manifest, state.runId, expectedRevision, options, (
+    pending,
+    lockDirectory,
+    ownership,
+    directoryChain,
+  ) => {
     readLockedState(file, expectedRevision, manifest);
-    return writeLockedState(file, state, expectedRevision, manifest, options, pending);
+    return writeLockedState(
+      file,
+      state,
+      expectedRevision,
+      manifest,
+      options,
+      pending,
+      lockDirectory,
+      ownership,
+      directoryChain,
+    );
   });
 }
 
@@ -2001,7 +2112,12 @@ export function mutateFleetState(file, manifest, expectedRevision, mutate, optio
     throw new Error('expected fleet state revision is invalid');
   }
   if (typeof mutate !== 'function') throw new Error('fleet state mutator is required');
-  return withFleetStateLock(file, manifest, runId, expectedRevision, options, (pending) => {
+  return withFleetStateLock(file, manifest, runId, expectedRevision, options, (
+    pending,
+    lockDirectory,
+    ownership,
+    directoryChain,
+  ) => {
     const disk = readLockedState(file, expectedRevision, manifest);
     if (!disk) throw new Error('fleet state mutation requires an existing state file');
     assertFleetStatePath(file, manifest, disk.runId);
@@ -2010,7 +2126,17 @@ export function mutateFleetState(file, manifest, expectedRevision, mutate, optio
       throw new Error('fleet state mutator changed or omitted the expected revision');
     }
     assertFleetState(next, manifest);
-    return writeLockedState(file, next, expectedRevision, manifest, options, pending);
+    return writeLockedState(
+      file,
+      next,
+      expectedRevision,
+      manifest,
+      options,
+      pending,
+      lockDirectory,
+      ownership,
+      directoryChain,
+    );
   });
 }
 
@@ -2115,23 +2241,31 @@ export function transitionIssue(state, manifest, issue, status, detail = {}) {
         || !['completed', 'blocked', 'failed', 'deferred', ...HANDOFF_REASONS].includes(end.reason)) {
       throw new Error('active terminal transition requires exact assignment end identity');
     }
-    if (HANDOFF_REASONS.has(end.reason)) {
+    const requiredHandoffCondition = state.control.cancelled
+      ? 'cancelled'
+      : state.control.budgetExhausted
+        ? 'exhausted'
+        : record.handoffObligation?.condition
+          ?? (HANDOFF_REASONS.has(end.reason) ? end.reason : null);
+    if (requiredHandoffCondition !== null) {
       next.issues[issue].statusReason = detail.reason ?? end.reason;
       next.issues[issue].terminalDisposition = null;
       next.issues[issue].nextAction = 'capture-validated-orchestration-handoff';
       next.issues[issue].handoffObligation = {
         state: 'blocked',
         reason: 'handoff-required',
-        condition: end.reason,
+        condition: requiredHandoffCondition,
         generation: record.assignment.generation,
         workerContext: record.assignment.workerContext,
-        requiredAt: end.endedAt ?? new Date().toISOString(),
+        requiredAt: record.handoffObligation?.requiredAt
+          ?? end.endedAt
+          ?? new Date().toISOString(),
       };
       next.events.push({
         type: 'handoff-required',
         issue,
         generation: record.assignment.generation,
-        condition: end.reason,
+        condition: requiredHandoffCondition,
       });
       return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
     }
@@ -2260,16 +2394,14 @@ function markStoppedWork(next, nextAction) {
       record.nextAction = nextAction;
     } else if (record.status === 'active') {
       record.nextAction = 'capture-validated-orchestration-handoff';
-      if (next.control.budgetExhausted) {
-        record.handoffObligation = {
-          state: 'blocked',
-          reason: 'handoff-required',
-          condition: 'exhausted',
-          generation: record.assignment.generation,
-          workerContext: record.assignment.workerContext,
-          requiredAt: next.updatedAt,
-        };
-      }
+      record.handoffObligation ??= {
+        state: 'blocked',
+        reason: 'handoff-required',
+        condition: next.control.cancelled ? 'cancelled' : 'exhausted',
+        generation: record.assignment.generation,
+        workerContext: record.assignment.workerContext,
+        requiredAt: next.updatedAt,
+      };
     }
   }
 }

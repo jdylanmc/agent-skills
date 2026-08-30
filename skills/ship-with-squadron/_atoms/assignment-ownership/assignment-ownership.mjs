@@ -9,6 +9,7 @@ import {
 import {
   normalizePayload,
   redactPayload,
+  redactTextWithConfiguredIdentifiers,
   renderHandoff,
 } from '../../../_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.mjs';
 import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
@@ -580,9 +581,28 @@ export function validateContinuationArtifact(handoff, payload, expected = null, 
   if (!same(headings, handoff.headings)) defects.push('artifact headings do not match returned metadata');
   try {
     const core = normalizePayload(adaptOrchestrationPayload(payload));
-    const expectedDocument = renderHandoff(redactPayload(core).payload).document;
+    const redacted = redactPayload(core, options.identifiers ?? []);
+    const rendered = renderHandoff(redacted.payload);
+    const settled = redactTextWithConfiguredIdentifiers(
+      rendered.document,
+      options.identifiers ?? [],
+    );
+    const expectedDocument = settled.text;
     if (!bytes.equals(Buffer.from(expectedDocument, 'utf8'))) {
       defects.push('artifact content does not exactly match the normalized orchestration payload');
+    }
+    const counts = new Map();
+    for (const entry of [...redacted.redactions, ...settled.redactions]) {
+      counts.set(entry.category, (counts.get(entry.category) ?? 0) + entry.count);
+    }
+    const expectedRedactions = [...counts.entries()]
+      .map(([category, count]) => ({ category, count }))
+      .sort((left, right) => left.category.localeCompare(right.category));
+    if (!same(handoff.redactions, expectedRedactions)) {
+      defects.push('artifact redaction metadata does not match deterministic rendering');
+    }
+    if (handoff.suggested_skills_included !== (redacted.payload.suggested_skills !== null)) {
+      defects.push('artifact suggested-skill metadata does not match deterministic rendering');
     }
   } catch (error) {
     defects.push(`artifact deterministic rendering failed: ${error.code ?? 'error'}:${error.message}`);
@@ -623,7 +643,7 @@ export function continueWithFreshWorker(state, manifest, input) {
   if (state.control?.cancelled || state.control?.budgetExhausted) {
     throw new Error('handoff remains required but continuation dispatch is forbidden after fleet stop');
   }
-  if (!['stalled', 'exhausted', 'timed-out', 'crashed'].includes(input.reason)) {
+  if (!['stalled', 'exhausted', 'timed-out', 'crashed', 'cancelled'].includes(input.reason)) {
     throw new Error('continuation reason is not a terminal worker condition');
   }
   if (input.branch !== record.assignment.branch || input.worktree !== record.assignment.worktree) {
@@ -755,7 +775,7 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
     record.assignment.baseSha,
     record.assignment.headSha,
   );
-  if (!['stalled', 'exhausted', 'timed-out', 'crashed'].includes(input.reason)) {
+  if (!['stalled', 'exhausted', 'timed-out', 'crashed', 'cancelled'].includes(input.reason)) {
     throw new Error('handoff release reason is not a terminal worker condition');
   }
   if (!nonEmpty(input.targetAgent)) {
@@ -791,10 +811,15 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
 
   const endedAt = input.endedAt ?? new Date().toISOString();
   if (!Number.isFinite(Date.parse(endedAt))) throw new Error('handoff release time is invalid');
+  const releaseReason = state.control.cancelled
+    ? 'cancelled'
+    : state.control.budgetExhausted
+      ? 'exhausted'
+      : record.handoffObligation?.condition ?? input.reason;
   const archived = {
     ...record.assignment,
     active: false,
-    endReason: input.reason,
+    endReason: releaseReason,
     endedAt,
     handoff: {
       path: input.handoff.path,
@@ -820,7 +845,7 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
     && entry.action === 'await-safe-ownership-transition'
     && entry.blocker === 'active-assignment-revision-transition-required'
     && entry.revisionObservation !== null);
-  if (queuedRevision && input.reason !== 'timed-out') {
+  if (queuedRevision && releaseReason !== 'timed-out') {
     next.issues[input.issue].baseSha = queuedRevision.baseSha;
     next.issues[input.issue].headSha = queuedRevision.headSha;
     next.issues[input.issue].changeRequest = null;
@@ -831,12 +856,12 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
   } else if (queuedRevision) {
     next.reShepherdQueue = next.reShepherdQueue.filter((entry) => entry.issue !== input.issue);
   }
-  next.issues[input.issue].status = input.reason === 'timed-out' ? 'timed-out' : 'blocked';
-  next.issues[input.issue].statusReason = input.reason;
-  next.issues[input.issue].terminalDisposition = input.reason === 'timed-out'
+  next.issues[input.issue].status = releaseReason === 'timed-out' ? 'timed-out' : 'blocked';
+  next.issues[input.issue].statusReason = releaseReason;
+  next.issues[input.issue].terminalDisposition = releaseReason === 'timed-out'
     ? 'timed-out-with-handoff'
     : 'blocked';
-  next.issues[input.issue].nextAction = input.nextAction ?? (queuedRevision && input.reason !== 'timed-out'
+  next.issues[input.issue].nextAction = input.nextAction ?? (queuedRevision && releaseReason !== 'timed-out'
     ? manifest.shepherdIntent === 'yes'
       ? 'consume-fresh-re-shepherd-receipt'
       : 'rerun-quality-and-provider-observation'
@@ -846,7 +871,7 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
     type: 'assignment-released-after-handoff',
     issue: input.issue,
     generation: record.assignment.generation,
-    reason: input.reason,
+    reason: releaseReason,
   });
   return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }

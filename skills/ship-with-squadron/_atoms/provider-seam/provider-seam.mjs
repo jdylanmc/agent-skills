@@ -36,6 +36,10 @@ function validTimestamp(value) {
   return nonEmpty(value) && Number.isFinite(Date.parse(value));
 }
 
+export function isFullGitObjectId(value) {
+  return typeof value === 'string' && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(value);
+}
+
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   if (value && typeof value === 'object') {
@@ -120,6 +124,9 @@ function normalizedPublicationIdentity(state, manifest, request) {
   }
   if (!nonEmpty(issue.headSha) || !nonEmpty(issue.baseSha)) {
     throw new Error('publication requires exact current base and head revisions');
+  }
+  if (!isFullGitObjectId(issue.baseSha) || !isFullGitObjectId(issue.headSha)) {
+    throw new Error('publication revisions must be full Git object IDs');
   }
   const quality = persistedPrePublicationPasses(issue, state, manifest);
   if (!quality.passed) {
@@ -241,6 +248,9 @@ function validatePublicationResult(entry, observation, result) {
     defects.push('publication result status is invalid');
   }
   if (!validTimestamp(result?.observedAt)) defects.push('publication observation time is invalid');
+  if (!isFullGitObjectId(result?.baseSha) || !isFullGitObjectId(result?.headSha)) {
+    defects.push('publication result revisions must be full Git object IDs');
+  }
   if (DEGRADED_PUBLICATION_STATUSES.has(result?.status) && result?.identifier !== null) {
     defects.push('degraded publication result must not claim an identifier');
   }
@@ -408,7 +418,9 @@ export function normalizeMergeObservation(state, manifest, observation) {
       || observation.headBranch !== publication.headBranch
       || observation.baseSha !== revision.baseSha
       || observation.headSha !== revision.headSha
-      || !nonEmpty(observation.mergeCommit)
+      || !isFullGitObjectId(observation.baseSha)
+      || !isFullGitObjectId(observation.headSha)
+      || !isFullGitObjectId(observation.mergeCommit)
       || !validTimestamp(observation.observedAt)
       || Date.parse(observation.observedAt) <= Date.parse(revision.confirmedAt)) {
     throw new Error('merge-observation-identity-or-time-mismatch');
@@ -479,8 +491,8 @@ export function normalizeChangeRequestRevisionObservation(state, manifest, obser
       || observation.publicationKey !== publication.key
       || observation.baseBranch !== publication.baseBranch
       || observation.headBranch !== publication.headBranch
-      || !nonEmpty(observation.baseSha)
-      || !nonEmpty(observation.headSha)
+      || !isFullGitObjectId(observation.baseSha)
+      || !isFullGitObjectId(observation.headSha)
       || !validTimestamp(observation.observedAt)) {
     throw new Error('change-request-revision-identity-or-time-mismatch');
   }
