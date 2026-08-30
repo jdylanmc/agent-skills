@@ -30,9 +30,12 @@ Every supplied issue ends as exactly one of:
 - `already-complete`.
 
 The fleet ends as `review-ready`, `partially-review-ready`, `blocked`,
-`budget-exhausted`, or `cancelled`. Cancellation and budget exhaustion stop new
-dispatch, preserve active evidence safely, generate needed handoffs, and leave
-unreached issues explicit.
+`budget-exhausted`, or `cancelled`. Derive readiness from the current complete
+pipeline, confirmed publication, fresh exact receipt or explicit
+Shepherd-not-required obligation, and absence of a current expiry queue. Never
+trust a stale terminal string. Cancellation and at-ceiling budget exhaustion
+stop new dispatch, preserve active evidence safely, generate needed handoffs,
+and leave unreached issues explicit.
 
 No status implies merge, approval, risk acceptance, auto-merge, or tracker
 closure. Report ready only when current revision quality evidence and the

@@ -34,39 +34,56 @@ record -> confirm one closed fleet manifest -> persist state
 1. Reuse the caller's Chronicler context or create one root context. Recording
    is best effort. Fleet control state is authoritative and separately
    persisted.
-2. Present one numbered manifest with the goal, complete issue set and source
-   revisions, dependencies, criteria, current states, ordering, exclusions,
-   concurrency, cost/time/retry budgets, stop conditions, Shepherd intent, and
-   human boundaries. Require one explicit confirmation of the whole manifest.
+2. Present one numbered manifest with the goal, explicit accepted scope,
+   complete issue set and provider-observed source-revision receipts,
+   dependencies, criteria, current states, ordering, explicit exclusions and
+   human decisions (including explicit empty declarations), concurrency,
+   cost/time/retry budgets, stop conditions, Shepherd intent, and human
+   boundaries. Require one explicit confirmation of the whole manifest.
 3. Normalize the manifest and reject malformed graphs. Create the versioned
    run-specific fleet record. Reread after every write.
-4. Compute the local ready frontier. Dispatch only enough issues to fill the
-   top-level concurrency ceiling. Each issue receives a unique branch,
-   worktree, fresh worker context, bounded packet, and assignment generation.
+4. Reobserve every provider-bound source revision against the exact confirmed
+   issue set, then compute the local ready frontier. Drift or an extra issue
+   requires renewed human confirmation. Dispatch only enough pending, unowned
+   issues to fill the top-level concurrency ceiling. Each issue receives a
+   unique branch, worktree, fresh worker context, manifest-bound bounded packet,
+   and assignment generation.
 5. Replace stalled or exhausted workers only after invoking
-   `orchestration-handoff`, rereading and validating the artifact, and producing
-   a fresh consolidated brief. Never revive hidden context.
+   `orchestration-handoff`, rereading and hashing the regular artifact beneath
+   the allowed handoff root, rejecting symlinks and escapes, validating every
+   run/issue/worker/generation/branch/worktree/revision binding, and producing a
+   fresh consolidated brief. Never revive hidden context.
 6. Drive every candidate through the quality sequence exactly as shown above.
-   Bind every receipt to the current base and head. Any head mutation
+   Accept only complete terminal invocation receipts from `run-ci`, Roast, and
+   blast-radius, bound to the current run, issue, base, and head. Roast blockers
+   are exactly unresolved `Priority: Must fix` findings. Any head mutation
    invalidates downstream evidence and restarts at reconciliation.
 7. Invoke the external `blast-radius` seam and adapt its Pull Request 157
    contract without copying or composing its local units. Until that pull
    request is merged and this branch is rebased, report baseline integration as
    pending and refuse review readiness when the capability or proof is
    unavailable.
-8. Publish once through an allow-listed provider adapter. A provider-returned
+8. Persist one stable publication intent before calling the allow-listed
+   provider adapter. Reconcile by its stable provider key after degraded
+   responses or crashes; never create a second intent. A provider-returned
    identifier is required. Never infer publication or merge from a branch,
    worker report, merge grant, or degraded provider response.
 9. When manifest Shepherd intent is `yes`, invoke `shepherd` in a real fresh
    nested worker for every published change request and wait for a terminal
-   disposition. Record the exact receipt and set obligation.
-10. Observe human merges through the provider seam. Recompute dependencies.
-    Expire affected still-open sibling readiness claims, queue fresh Shepherd
-    invocations, and never present them as ready until new exact-revision
-    receipts are complete.
-11. Replenish capacity after every worker terminal transition. Stop new
-    dispatch on cancellation or exhausted cost, time, or retry budget. Preserve
-    validated handoffs and explicit `not-reached` records.
+   disposition. Record the exact receipt and set obligation. When intent is
+   `no`, persist an explicit `not-required` decision and revision-bound set
+   obligation; do not fabricate or dispatch Shepherd.
+10. Observe human merges through the provider seam only when provider,
+    repository, issue, change request, base/head, merge commit, observation
+    time, and stable publication key reconcile exactly. Recompute dependencies.
+    Expire affected still-open sibling readiness claims and fleet disposition
+    immediately, queue generation/revision-specific re-Shepherd work when
+    Shepherd is required or fresh quality/provider revalidation when it is not,
+    and never present it as ready until the exact fresh evidence is consumed.
+11. Replenish capacity after every worker terminal transition. Stop all new
+    assignment and continuation dispatch on cancellation or exhausted cost,
+    time, or retry budget; reaching a ceiling is exhaustion. Preserve active
+    handoff obligations, validated handoffs, and explicit `not-reached` records.
 12. Return concise current status and one terminal disposition for every issue,
     plus the fleet disposition and next human actions.
 

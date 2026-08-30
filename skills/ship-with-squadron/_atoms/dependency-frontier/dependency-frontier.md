@@ -30,5 +30,11 @@ top-level capacity. Nested specialist teams do not consume additional fleet
 issue slots. A predecessor's implementation completion does not satisfy an
 edge requiring `human-merge`; only observed provider state does.
 
+An issue is not dispatchable until its source revision has been reobserved
+against the confirmed manifest. Cancellation or reaching any cost, time, or
+retry ceiling makes dispatch exactly empty, even when capacity and ready work
+remain. Existing active owners remain visible so their handoff obligations are
+not discarded.
+
 This scheduler is local. Do not import, compose, or anticipate
 `chart-a-course`, and do not depend on issue 25.

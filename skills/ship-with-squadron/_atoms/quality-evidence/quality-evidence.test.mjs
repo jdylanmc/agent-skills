@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
   adaptBlastRadiusEvidence,
+  adaptCiEvidence,
+  adaptRoastEvidence,
+  deliveryStagesForManifest,
   evaluateQualityGate,
   invalidateRevisionEvidence,
   reconcileFleetDiff,
@@ -10,99 +14,273 @@ import {
 } from './quality-evidence.mjs';
 
 const revision = { baseSha: 'base', headSha: 'head' };
+const identity = { runId: 'run', issue: '1' };
 
-function blast(overrides = {}) {
-  return {
-    ...revision,
-    assertionLadders: [{
-      rungs: [{ progression: 'completed', 'evidence-outcome': 'supports-assertion' }],
+function manifest(shepherdIntent = 'yes') {
+  return normalizeFleetManifest({
+    confirmation: 'confirmed',
+    goal: 'deliver',
+    acceptedScope: [],
+    exclusions: [],
+    humanDecisions: [],
+    issues: [{
+      identity: '1',
+      sourceRevision: 'r1',
+      sourceReceipt: {
+        invocation: { id: 'read-1', operation: 'read-issue' },
+        provider: 'github', repository: 'owner/repo', issue: '1', revision: 'r1',
+        status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
+      },
+      acceptanceCriteria: [{ id: 'C1', description: 'done' }],
+      scope: [],
+      allowedPaths: ['src/**'],
     }],
-    classifications: {
-      'confirmed-risk': [],
-      'cleared-risk': [{ assertion: 'safe' }],
-      'unproven-assertion': [],
-    },
-    'regression-proof-status': 'selected',
+    dependencies: [],
+    concurrency: 1,
+    budget: { cost: 10, timeMinutes: 60, retries: 2 },
+    repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
+    provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge'] },
+    validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
+    stopConditions: ['cancelled'],
+    humanBoundaries: ['human merge'],
+    shepherdIntent,
+  });
+}
+
+function ci(overrides = {}) {
+  return {
+    invocation: { skill: 'run-ci', id: 'ci-1', runId: 'run', issue: '1' },
+    status: 'passed',
+    terminal: true,
+    complete: true,
+    evidenceComplete: true,
+    completedAt: '2026-08-30T00:10:00Z',
+    steps: [{ name: 'tests', status: 'passed' }],
+    ...revision,
     ...overrides,
   };
 }
 
-test('enforces workflow order and exact revision freshness', () => {
-  const issue = { pipeline: [] };
-  const implemented = recordStage(issue, 'implementation', revision, revision);
-  assert.throws(() => recordStage(implemented, 'run-ci', revision, revision), /expected diff-reconciliation/);
-  assert.throws(() => recordStage(implemented, 'diff-reconciliation', {
-    baseSha: 'base', headSha: 'mutated',
-  }, revision), /stale/);
+function roast(overrides = {}) {
+  return {
+    invocation: { skill: 'roast', id: 'roast-1', runId: 'run', issue: '1' },
+    status: 'completed',
+    terminal: true,
+    complete: true,
+    completedAt: '2026-08-30T00:11:00Z',
+    findings: [],
+    ...revision,
+    ...overrides,
+  };
+}
+
+function blast(overrides = {}) {
+  return {
+    invocation: { skill: 'blast-radius', id: 'blast-1', runId: 'run', issue: '1' },
+    contractPullRequest: 157,
+    status: 'completed',
+    terminal: true,
+    complete: true,
+    completedAt: '2026-08-30T00:12:00Z',
+    ...revision,
+    assertionLadders: [{
+      id: 'A1',
+      assertion: 'consumer remains compatible',
+      affectedBoundary: 'public adapter',
+      badCase: 'consumer rejects output',
+      safetyCriticalReason: 'publication would be unsafe',
+      rungs: [
+        ['assertion', 'supports-assertion'],
+        ['exact-source-citation', 'supports-assertion'],
+        ['ruled-out-bad-case', 'supports-assertion'],
+        ['executable-proof', 'supports-assertion'],
+        ['live-reproduction', 'supports-assertion'],
+      ].map(([name, outcome]) => ({
+        name,
+        progression: 'completed',
+        'evidence-outcome': outcome,
+        evidence: `${name} evidence`,
+        scope: 'current revision',
+      })),
+      stoppingRung: 'live-reproduction',
+      stoppingReason: 'all available rungs completed',
+      strongestSupportedClaim: 'bad case ruled out in recorded scope',
+      nextEvidenceNeeded: 'none before merge',
+    }],
+    classifications: {
+      'confirmed-risk': [],
+      'cleared-risk': [{ assertionId: 'A1', evidence: 'bad case ruled out', scope: 'current revision' }],
+      'unproven-assertion': [],
+    },
+    'regression-proof-status': 'selected',
+    'regression-proof': {
+      id: 'P1',
+      assertionId: 'A1',
+      badCase: 'consumer rejects output',
+      verificationLevel: 'integration',
+      environment: 'isolated test runner',
+      setup: 'install declared dependencies',
+      action: 'run existing integration check',
+      observableResult: 'consumer accepts output',
+      prerequisites: [],
+      authorization: 'read-only execution',
+      cheaperProofInsufficientReason: 'unit check does not cross adapter boundary',
+      outsideCoverage: 'live provider behavior',
+    },
+    'next-evidence-action': null,
+    'next-evidence-reason': null,
+    ...overrides,
+  };
+}
+
+function gate(overrides = {}) {
+  return {
+    manifest: manifest(),
+    identity,
+    revision,
+    reconciliation: { verdict: 'reconciled', ...revision },
+    ciReceipt: ci(),
+    roastReceipt: roast(),
+    blastRadiusReceipt: blast(),
+    criteria: [{
+      id: 'C1',
+      verdict: 'satisfied',
+      evidence: { complete: true, summary: 'test proves criterion', ...revision },
+    }],
+    ...overrides,
+  };
+}
+
+test('requires invocation identity, complete terminal CI, and current revision binding', () => {
+  assert.equal(adaptCiEvidence(ci(), revision, identity).passed, true);
+  assert.equal(adaptCiEvidence({ status: 'passed', evidenceComplete: true }, revision, identity).valid, false);
+  assert.equal(adaptCiEvidence(ci({ headSha: 'stale' }), revision, identity).passed, false);
+  assert.equal(adaptCiEvidence(ci({ terminal: false }), revision, identity).passed, false);
 });
 
-test('reuses deterministic hunk reconciliation without composing ship units', () => {
-  const result = reconcileFleetDiff({
-    ledger: [{ id: 'L1', classification: 'in-scope' }],
-    diff: 'diff --git a/a.txt b/a.txt\n@@ -1 +1 @@\n-old\n+new\n',
-    mapping: [{ file: 'a.txt', hunkIndex: 0, entryId: 'L1' }],
-  });
-  assert.equal(result.verdict, 'reconciled');
-  assert.equal(reconcileFleetDiff({
-    ledger: [{ id: 'L1', classification: 'in-scope' }],
-    diff: 'diff --git a/a.txt b/a.txt\n@@ -1 +1 @@\n-old\n+new\n',
-    mapping: [],
-  }).verdict, 'undisclosed-change');
+test('interprets canonical Roast Priority: Must fix and rejects caller-shaped severity booleans', () => {
+  assert.equal(adaptRoastEvidence(roast(), revision, identity).complete, true);
+  const blocked = adaptRoastEvidence(roast({
+    findings: [{ id: 'R1', Priority: 'Must fix', status: 'open' }],
+  }), revision, identity);
+  assert.deepEqual(blocked.openMustFix, ['R1']);
+  assert.equal(blocked.complete, false);
+  assert.equal(adaptRoastEvidence(roast({
+    findings: [{ id: 'R1', severity: 'blocker', status: 'open' }],
+  }), revision, identity).valid, false);
 });
 
-test('preserves blast-radius vocabulary and refuses gaps as success', () => {
-  assert.equal(adaptBlastRadiusEvidence(blast(), revision).readiness, 'satisfied');
+test('requires nonempty exact Pull Request 157 ladders, classifications, proof, and stopping evidence', () => {
+  assert.equal(adaptBlastRadiusEvidence(blast(), revision, identity).readiness, 'satisfied');
+  assert.equal(adaptBlastRadiusEvidence(blast({ assertionLadders: [] }), revision, identity).readiness, 'invalid');
+  assert.equal(adaptBlastRadiusEvidence(blast({
+    'regression-proof-status': 'selected',
+    'regression-proof': null,
+  }), revision, identity).readiness, 'invalid');
+  assert.equal(adaptBlastRadiusEvidence(blast({
+    contractPullRequest: 156,
+  }), revision, identity).readiness, 'invalid');
+  const inconsistentStop = blast();
+  inconsistentStop.assertionLadders[0].rungs[3] = {
+    name: 'executable-proof',
+    progression: 'unavailable',
+    'evidence-outcome': 'inconclusive',
+    evidence: '',
+    scope: 'current revision',
+  };
+  inconsistentStop.assertionLadders[0].rungs[4] = {
+    name: 'live-reproduction',
+    progression: 'not-attempted',
+    'evidence-outcome': 'inconclusive',
+    evidence: '',
+    scope: 'current revision',
+  };
+  assert.equal(adaptBlastRadiusEvidence(inconsistentStop, revision, identity).readiness, 'invalid');
   assert.equal(adaptBlastRadiusEvidence(blast({
     classifications: {
       'confirmed-risk': [],
       'cleared-risk': [],
-      'unproven-assertion': [{ stoppingRung: 'executable-proof' }],
+      'unproven-assertion': [{
+        assertionId: 'A1',
+        evidence: 'stopped',
+        scope: 'current revision',
+        stoppingRung: 'executable-proof',
+        reason: 'environment unavailable',
+        nextEvidence: 'provision runner',
+      }],
     },
-  }), revision).readiness, 'unproven-assertion');
+  }), revision, identity).readiness, 'unproven-assertion');
   assert.equal(adaptBlastRadiusEvidence(blast({
     'regression-proof-status': 'unavailable',
+    'regression-proof': null,
     'next-evidence-action': 'obtain read-only proof',
     'next-evidence-reason': 'environment absent',
-  }), revision).readiness, 'unavailable');
+  }), revision, identity).readiness, 'unavailable');
 });
 
-test('invalidates downstream evidence after head mutation and bounds remediation', () => {
-  const issue = {
-    baseSha: 'base',
-    headSha: 'old',
+test('quality gate validates raw receipts and human descoping receipts instead of booleans', () => {
+  assert.equal(evaluateQualityGate(gate()).readyForPublication, true);
+  assert.equal(evaluateQualityGate(gate({
+    ciReceipt: { status: 'passed', evidenceComplete: true },
+  })).readyForPublication, false);
+  assert.match(evaluateQualityGate(gate({
+    roastReceipt: roast({ findings: [{ id: 'R1', Priority: 'Must fix', status: 'open' }] }),
+  })).defects.join(' '), /Must fix/);
+  assert.match(evaluateQualityGate(gate({
+    criteria: [{ id: 'C1', verdict: 'descoped-by-human' }],
+  })).defects.join(' '), /human-decision-receipt/);
+
+  const currentManifest = manifest();
+  const descoped = gate({
+    manifest: currentManifest,
+    criteria: [{
+      id: 'C1',
+      verdict: 'descoped-by-human',
+      decisionReceipt: {
+        decisionId: 'HD-1',
+        criterionId: 'C1',
+        manifestDigest: currentManifest.digest,
+        sourceRevision: 'r1',
+        decision: 'descoped',
+        actorType: 'human',
+        decidedAt: '2026-08-30T00:13:00Z',
+      },
+    }],
+  });
+  assert.equal(evaluateQualityGate(descoped).readyForPublication, true);
+});
+
+test('enforces workflow order, conditional Shepherd intent, invalidation, and bounded remediation', () => {
+  const issue = { pipeline: [] };
+  const implemented = recordStage(issue, 'implementation', revision, revision);
+  assert.throws(() => recordStage(implemented, 'run-ci', ci(), revision), /expected diff-reconciliation/);
+  assert.deepEqual(deliveryStagesForManifest(manifest('no')).at(-1), 'publication');
+  assert.throws(
+    () => recordStage({ pipeline: deliveryStagesForManifest(manifest('no')).map((stage) => ({
+      stage, evidence: revision,
+    })) }, 'shepherd', revision, revision, manifest('no')),
+    /not required/,
+  );
+  const invalidated = invalidateRevisionEvidence({
+    baseSha: 'base', headSha: 'old',
     pipeline: [{ stage: 'run-ci', evidence: { baseSha: 'base', headSha: 'old' } }],
     qualityEvidence: { ci: 'passed' },
+    changeRequest: { identifier: 'PR-1' },
     shepherd: { ready: true },
-  };
-  const invalidated = invalidateRevisionEvidence(issue, revision);
+    setObligation: {},
+    terminalDisposition: 'ready-for-human-merge',
+  }, revision);
   assert.deepEqual(invalidated.pipeline, []);
-  assert.deepEqual(invalidated.qualityEvidence, {});
-  assert.equal(invalidated.shepherd, null);
+  assert.equal(invalidated.changeRequest, null);
+  assert.equal(invalidated.terminalDisposition, null);
   assert.equal(remediationDecision({ attempt: 0, limit: 1, defects: ['failed-check'] }).action, 'dispatch-fresh-remediation-worker');
   assert.equal(remediationDecision({ attempt: 1, limit: 1, defects: ['roast-blocker'] }).action, 'hand-back');
 });
 
-test('blocks failed checks, Roast blockers, blast gaps, and unmet criteria', () => {
-  const clearBlast = adaptBlastRadiusEvidence(blast(), revision);
-  const base = {
-    reconciliation: { verdict: 'reconciled' },
-    ci: { status: 'passed', evidenceComplete: true },
-    roast: { findings: [] },
-    blastRadius: clearBlast,
-    criteria: [{ id: 'C1', verdict: 'satisfied' }],
-  };
-  assert.equal(evaluateQualityGate(base).readyForPublication, true);
-  assert.match(evaluateQualityGate({ ...base, ci: { status: 'failed', evidenceComplete: true } }).defects[0], /run-ci/);
-  assert.match(evaluateQualityGate({
-    ...base,
-    roast: { findings: [{ severity: 'blocker' }] },
-  }).defects[0], /roast/);
-  assert.match(evaluateQualityGate({
-    ...base,
-    blastRadius: { readiness: 'unproven-assertion' },
-  }).defects[0], /blast-radius/);
-  assert.match(evaluateQualityGate({
-    ...base,
-    criteria: [{ id: 'C1', verdict: 'not-satisfied' }],
-  }).defects[0], /criterion/);
+test('reuses deterministic hunk reconciliation without composing ship units', () => {
+  assert.equal(reconcileFleetDiff({
+    ledger: [{ id: 'L1', classification: 'in-scope' }],
+    diff: 'diff --git a/a.txt b/a.txt\n@@ -1 +1 @@\n-old\n+new\n',
+    mapping: [{ file: 'a.txt', hunkIndex: 0, entryId: 'L1' }],
+  }).verdict, 'reconciled');
 });

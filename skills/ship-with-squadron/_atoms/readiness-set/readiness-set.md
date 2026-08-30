@@ -22,14 +22,23 @@ an invocation.
 Use the readiness set helper to require:
 
 - exact base SHA, head SHA, observation time, provider state, and up-to-date
-  policy;
+  policy, plus normalized provider, repository, change request, run, issue, and
+  invocation identity;
 - a post-Shepherd reread proving the receipt still matches;
 - `containsCurrentBase: true` under a `required` up-to-date policy;
-- a set obligation naming owner, expiry condition, and re-invocation;
+- a set obligation exactly binding owner, change request, base branch,
+  base/head, expiry condition, re-invocation, generation, and creation time;
 - no degraded or unobserved provider state for a ready claim.
 
-Readiness is snapshot-bound. After an observed sibling merge into the same base,
-expire every affected still-open ready claim whose receipt names the old base,
-mark it stale, reread current base/head, and queue one fresh Shepherd invocation.
-Do not force-push merely because the base moved; Shepherd decides whether its
-trigger and SHA-pinned lease rules require a push.
+When manifest Shepherd intent is `no`, record `not-required` plus a real
+revision-bound set obligation and dispatch no Shepherd.
+
+Readiness is snapshot-bound. After an exact merge observation reconciled to a
+recorded publication, expire every affected still-open ready claim and fleet
+disposition immediately, mark it stale, reread current base/head, and queue one
+generation/revision-specific fresh Shepherd invocation when required. With
+Shepherd intent `no`, queue fresh complete quality/provider revalidation
+instead. A later sibling merge updates an already queued obligation. Consume it
+only with fresh evidence matching that exact generation and revision. Do not
+force-push merely because the base moved; Shepherd decides whether its trigger
+and SHA-pinned lease rules require a push.

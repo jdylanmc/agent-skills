@@ -8,8 +8,42 @@ function dependencySatisfied(edge, record, observedMerges) {
     || record.terminalDisposition === 'already-complete';
 }
 
+function sourceIsCurrent(issue, record, manifest) {
+  const receipt = record.sourceObservation;
+  return receipt?.status === 'observed'
+    && receipt?.terminal === true
+    && receipt?.complete === true
+    && receipt?.provider === manifest.provider.name
+    && receipt?.repository === manifest.repository.id
+    && receipt?.issue === issue.identity
+    && receipt?.revision === issue.sourceRevision
+    && receipt?.manifestDigest === manifest.digest;
+}
+
+export function dispatchBlockReason(fleetState) {
+  if (fleetState.control?.cancelled === true || fleetState.fleetDisposition === 'cancelled') {
+    return 'fleet-cancelled';
+  }
+  if (fleetState.control?.budgetExhausted === true || fleetState.fleetDisposition === 'budget-exhausted') {
+    return 'budget-exhausted';
+  }
+  return null;
+}
+
 export function computeFrontier(manifest, fleetState) {
+  if (fleetState.manifestDigest !== manifest.digest
+      || fleetState.providerConfigurationDigest !== manifest.providerConfigurationDigest
+      || !fleetState.control
+      || typeof fleetState.control.cancelled !== 'boolean'
+      || typeof fleetState.control.budgetExhausted !== 'boolean') {
+    throw new Error('frontier state is not bound to validated fleet control');
+  }
   const records = fleetState.issues;
+  const stateKeys = Object.keys(records).sort();
+  const manifestKeys = manifest.issues.map((issue) => issue.identity).sort();
+  if (JSON.stringify(stateKeys) !== JSON.stringify(manifestKeys)) {
+    throw new Error('fleet state issue set differs from the confirmed closed manifest');
+  }
   const observedMerges = new Set(fleetState.observedHumanMerges.map((entry) => entry.issue));
   const incoming = new Map(manifest.issues.map((issue) => [issue.identity, []]));
   for (const edge of manifest.dependencies) incoming.get(edge.dependent).push(edge);
@@ -23,7 +57,6 @@ export function computeFrontier(manifest, fleetState) {
 
   for (const issue of manifest.issues) {
     const record = records[issue.identity];
-    if (!record) throw new Error(`fleet state is missing issue ${issue.identity}`);
     if (record.status === 'active') {
       active.push({ issue: issue.identity, reason: 'worker-assignment-active' });
       continue;
@@ -38,6 +71,18 @@ export function computeFrontier(manifest, fleetState) {
     }
     if (record.status === 'deferred') {
       deferred.push({ issue: issue.identity, reason: record.statusReason ?? 'issue-deferred' });
+      continue;
+    }
+    if (record.status !== 'pending' || record.assignment !== null) {
+      throw new Error(`pending frontier issue ${issue.identity} has inconsistent ownership state`);
+    }
+
+    if (!sourceIsCurrent(issue, record, manifest)) {
+      blocked.push({
+        issue: issue.identity,
+        reason: `awaiting-source-reobservation:${issue.identity}`,
+        blockers: [{ dependency: issue.identity, reason: `awaiting-source-reobservation:${issue.identity}` }],
+      });
       continue;
     }
 
@@ -57,6 +102,8 @@ export function computeFrontier(manifest, fleetState) {
   }
 
   const available = Math.max(0, manifest.concurrency - active.length);
+  const stopReason = dispatchBlockReason(fleetState);
+  const dispatch = stopReason ? [] : ready.slice(0, available);
   return {
     ready,
     blocked,
@@ -68,12 +115,15 @@ export function computeFrontier(manifest, fleetState) {
       ceiling: manifest.concurrency,
       active: active.length,
       available,
-      dispatch: ready.slice(0, available),
-      nextReplenishment: available > 0 && ready.length > 0
-        ? 'dispatch-ready-frontier'
-        : active.length > 0
-          ? 'worker-terminal-transition'
-          : 'none',
+      dispatch,
+      dispatchBlockedBy: stopReason,
+      nextReplenishment: stopReason
+        ? 'none'
+        : available > 0 && ready.length > 0
+          ? 'dispatch-ready-frontier'
+          : active.length > 0
+            ? 'worker-terminal-transition'
+            : 'none',
     },
   };
 }
