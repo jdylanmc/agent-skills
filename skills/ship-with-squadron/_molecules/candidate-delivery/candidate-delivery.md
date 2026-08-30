@@ -20,6 +20,9 @@ For each ready issue:
    [Readiness set](../../_atoms/readiness-set/readiness-set.md);
 4. update [Fleet disposition](../../_atoms/fleet-disposition/fleet-disposition.md).
 
-Persist and reread after every step that changes control state. Never free a
-capacity slot by weakening a gate. A worker terminal transition replenishes
-from the explicit ready frontier only.
+Persist and reread after every step that changes control state. Publication uses
+intent-before-call and reconciliation. Shepherd intent `no` follows the
+persisted not-required branch rather than a fabricated invocation. Effective
+readiness is recomputed from current evidence after every sibling merge. Never
+free a capacity slot by weakening a gate. A worker terminal transition
+replenishes from the explicit ready frontier only.

@@ -18,5 +18,8 @@ allowed-tools: ["execute","read","search","task"]
 4. Fill available capacity with [Assignment ownership](../../_atoms/assignment-ownership/assignment-ownership.md).
 5. Persist, reread, recompute, and replenish after every material transition.
 
-The manifest stays closed. The scheduler stays local. One state writer and one
-mutable branch/worktree owner operate at a time.
+The manifest stays closed. Source revisions are reobserved before dispatch. The
+scheduler stays local and dispatches nothing after cancellation or at-ceiling
+budget exhaustion. State writes serialize through revision-safe exclusive
+ownership. Each active issue, branch, and worktree has exactly one mutable
+owner.
