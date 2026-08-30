@@ -19,6 +19,8 @@ revision was freshly reobserved. It carries one fresh worker context, one
 isolated branch, one isolated worktree, and a complete manifest-bound packet:
 criteria, scope, exclusions, allowed paths, exact base/head revisions,
 verification, report contract, and the exact forbidden-authority list. The
+verification list and report evidence list exactly equal the confirmed,
+supported validation policy; workers cannot silently omit or invent checks. The
 packet rejects unknown fields and seals the complete task contract: goal, scope,
 context, acceptance, verification, timebox, forbidden authority, report, and
 standing instruction. Workers never select more backlog work.
@@ -41,15 +43,19 @@ For stalled, exhausted, timed-out, or crashed workers:
 4. consume the real persistence result (`path`, `directory`, `name`, bytes,
    headings, redactions, and suggested-skill flag) plus the exact submitted
    orchestration payload. The runtime-selected `handoffs` directory cannot be
-   widened by the caller. Open the direct-child artifact with `O_NOFOLLOW`,
-   hash and read bytes through that same descriptor, compare inode and metadata
-   before/after, snapshot and recheck the trusted non-symlink directory chain,
-   reject symlinks, swaps, and escapes, then validate all
+   widened by the caller. Open the direct-child artifact with `O_NOFOLLOW`
+   when available; on Windows, use real-path containment plus pre-open,
+   descriptor, and post-read same-file verification. Hash and read bytes through
+   that descriptor, compare identity and metadata before/after, snapshot and
+   recheck the trusted non-symlink/reparse directory chain, reject links, swaps,
+   and escapes, then validate all
    consolidated brief sections and exact
    run/issue/prior-generation/branch/worktree/source/target/base/head,
    manifest/source revision, and allowed-path bindings. The continuation task
    contract and packet must exactly equal the original manifest-bound
    assignment, preventing scope or authority expansion;
+   archive the validated handoff identity, artifact digest, and complete
+   binding record with the ended assignment;
 5. dispatch a fresh continuation context on the same owned branch and worktree.
 
 The brief contains `GOAL`, `SCOPE`, `CONTEXT`, `ACCEPTANCE`, `VERIFY`,

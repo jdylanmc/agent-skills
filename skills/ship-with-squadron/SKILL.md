@@ -53,9 +53,11 @@ record -> confirm one closed fleet manifest -> persist state
    and assignment generation.
 5. Replace stalled or exhausted workers only after invoking
    `orchestration-handoff`, consuming its actual returned persistence shape and
-   submitted payload, then reading and hashing bytes through one `O_NOFOLLOW`
-   descriptor beneath the runtime-trusted handoff directory. Reject symlinks,
-   component escapes, swaps, and metadata changes; validate every
+   submitted payload, then reading and hashing bytes through one verified
+   descriptor beneath the runtime-trusted handoff directory. Use
+   `O_NOFOLLOW` where available and the same pre-open/path/descriptor identity
+   plus real-path containment checks where it is not. Reject symlinks, reparse
+   escapes, component escapes, swaps, and metadata changes; validate every
    run/issue/worker/generation/branch/worktree/revision binding, and producing a
    fresh consolidated brief. Never revive hidden context.
 6. Drive every candidate through the quality sequence exactly as shown above.

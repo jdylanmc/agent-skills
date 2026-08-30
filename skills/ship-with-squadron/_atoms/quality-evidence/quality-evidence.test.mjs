@@ -313,6 +313,11 @@ test('quality gate validates raw receipts and human descoping receipts instead o
     }],
   });
   assert.equal(evaluateQualityGate(descoped).readyForPublication, true);
+  const mutatedManifest = structuredClone(descoped.manifest);
+  mutatedManifest.goal = 'mutated authority';
+  const rejected = evaluateQualityGate({ ...descoped, manifest: mutatedManifest });
+  assert.equal(rejected.readyForPublication, false);
+  assert.match(rejected.defects.join('\n'), /manifest digest does not match authority fields/);
 });
 
 test('enforces workflow order, conditional Shepherd intent, invalidation, and bounded remediation', () => {
@@ -324,8 +329,12 @@ test('enforces workflow order, conditional Shepherd intent, invalidation, and bo
     terminal: true,
     completedAt: '2026-08-30T00:05:00Z',
   };
-  const implemented = recordStage(issue, 'implementation', implementation, revision);
-  assert.throws(() => recordStage(implemented, 'run-ci', ci(), revision), /expected diff-reconciliation/);
+  const yesManifest = manifest('yes');
+  const implemented = recordStage(issue, 'implementation', implementation, revision, yesManifest);
+  assert.throws(
+    () => recordStage(implemented, 'run-ci', ci(), revision, yesManifest),
+    /expected diff-reconciliation/,
+  );
   assert.deepEqual(deliveryStagesForManifest(manifest('no')).at(-1), 'publication');
   assert.throws(
     () => recordStage({ pipeline: deliveryStagesForManifest(manifest('no')).map((stage) => ({

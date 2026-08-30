@@ -2,6 +2,7 @@ import {
   persistedPipelinePasses,
   validateReadinessObligation,
 } from '../quality-evidence/quality-evidence.mjs';
+import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 
 export const ISSUE_DISPOSITIONS = Object.freeze([
   'ready-for-human-merge',
@@ -58,6 +59,7 @@ function obligationIsCurrent(obligation, issue, state, manifest, reinvocation) {
 }
 
 export function effectiveIssueReadiness(issue, state, manifest) {
+  assertFleetManifest(manifest);
   if (issue.status === 'completed' && issue.terminalDisposition === 'already-complete') {
     const sealed = manifest.issues.find((entry) => entry.identity === issue.identity);
     return sealed?.status === 'completed' && sealed.sourceReceipt?.issueStatus === 'completed';
@@ -70,6 +72,9 @@ export function effectiveIssueReadiness(issue, state, manifest) {
     return issue.shepherd === null
       && issue.shepherdDecision?.state === 'not-required'
       && issue.shepherdDecision?.manifestDigest === manifest.digest
+      && (!issue.readinessWatermark
+        || Date.parse(issue.setObligation?.createdAt ?? '')
+          > Date.parse(issue.readinessWatermark.observedAt))
       && obligationIsCurrent(
         issue.setObligation,
         issue,
@@ -95,6 +100,7 @@ export function effectiveIssueReadiness(issue, state, manifest) {
 }
 
 export function deriveFleetDisposition(state, manifest) {
+  assertFleetManifest(manifest);
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('fleet disposition state is not bound to the confirmed manifest');
@@ -113,6 +119,7 @@ function checkingIssue(issue) {
 }
 
 export function conciseFleetStatus(state, frontier, manifest) {
+  assertFleetManifest(manifest);
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('fleet status state is not bound to the confirmed manifest');

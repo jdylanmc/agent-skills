@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
+  assertFleetManifest,
   validateIssueSetReceipt,
   validateSourceRevisionReceipt,
 } from '../fleet-manifest/fleet-manifest.mjs';
@@ -58,7 +59,7 @@ const DISPOSITIONS_BY_STATUS = Object.freeze({
   completed: new Set(['ready-for-human-merge', 'already-complete']),
   blocked: new Set(['blocked']),
   failed: new Set(['failed']),
-  'timed-out': new Set(['timed-out-with-handoff']),
+  'timed-out': new Set(['timed-out-with-handoff', 'failed']),
   deferred: new Set(['deferred']),
 });
 const FORBIDDEN_AUTHORITIES = [
@@ -100,11 +101,23 @@ function stable(value) {
   return value;
 }
 
+function digest(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+}
+
 function exactKeys(actual, expected, label) {
   const left = Object.keys(actual ?? {}).sort();
   const right = [...expected].sort();
   if (!same(left, right)) {
     throw new Error(`${label} keys differ: expected ${right.join(', ')}, received ${left.join(', ')}`);
+  }
+}
+
+function assertStateManifestAuthority(state, manifest, label) {
+  assertFleetManifest(manifest);
+  if (state?.manifestDigest !== manifest.digest
+      || state?.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
+    throw new Error(`${label} is not bound to the confirmed manifest authority`);
   }
 }
 
@@ -115,7 +128,7 @@ function assignmentList(state) {
   ]);
 }
 
-function assertAssignment(assignment, issue, manifest, { active }) {
+function assertAssignment(assignment, issue, manifest, state, { active }) {
   if (!assignment || typeof assignment !== 'object' || Array.isArray(assignment)) {
     throw new Error(`${issue} assignment must be an object`);
   }
@@ -129,6 +142,13 @@ function assertAssignment(assignment, issue, manifest, { active }) {
     }
   }
   if (assignment.active !== active) throw new Error(`${issue.identity} assignment active flag is inconsistent`);
+  const expectedKeys = [
+    'generation', 'workerContext', 'branch', 'worktree', 'baseSha', 'headSha',
+    'packet', 'active', 'startedAt',
+    ...(active ? [] : ['endReason', 'endedAt']),
+    ...(!active && assignment.handoff ? ['handoff'] : []),
+  ];
+  exactKeys(assignment, expectedKeys, `${issue.identity} assignment`);
   if (!validTimestamp(assignment.startedAt)) throw new Error(`${issue.identity} assignment startedAt is invalid`);
   if (!nonEmpty(assignment.baseSha) || !nonEmpty(assignment.headSha)) {
     throw new Error(`${issue.identity} assignment requires exact base and head revisions`);
@@ -149,12 +169,11 @@ function assertAssignment(assignment, issue, manifest, { active }) {
       || packet.worktree !== assignment.worktree
       || packet.baseSha !== assignment.baseSha
       || packet.headSha !== assignment.headSha
-      || !Array.isArray(packet.verification)
-      || packet.verification.length === 0
+      || !same(packet.verification, manifest.validationPolicy)
       || !packet.reportContract
+      || !same(Object.keys(packet.reportContract).sort(), ['requiredEvidence', 'summary'])
       || !nonEmpty(packet.reportContract.summary)
-      || !Array.isArray(packet.reportContract.requiredEvidence)
-      || packet.reportContract.requiredEvidence.length === 0
+      || !same(packet.reportContract.requiredEvidence, manifest.validationPolicy)
       || !packet.taskContract
       || !same(Object.keys(packet.taskContract).sort(), [...TASK_CONTRACT_FIELDS].sort())
       || packet.taskContract.goal !== manifest.goal
@@ -180,6 +199,72 @@ function assertAssignment(assignment, issue, manifest, { active }) {
       throw new Error(`${issue.identity} inactive assignment requires a valid end reason`);
     }
     if (!validTimestamp(assignment.endedAt)) throw new Error(`${issue.identity} inactive assignment endedAt is invalid`);
+    if (assignment.handoff !== undefined) {
+      const handoff = assignment.handoff;
+      exactKeys(handoff, [
+        'path', 'directory', 'identity', 'bindingRecord',
+        'artifactSha256', 'bindingsSha256',
+      ], `${issue.identity} assignment handoff`);
+      exactKeys(handoff.identity, [
+        'runId', 'issue', 'priorGeneration', 'sourceAgent', 'targetAgent',
+      ], `${issue.identity} handoff identity`);
+      exactKeys(handoff.bindingRecord, [
+        'runId', 'issue', 'priorGeneration', 'branch', 'worktree', 'baseSha',
+        'headSha', 'manifestDigest', 'sourceRevision', 'stateRevision',
+        'sourceAgent', 'targetAgent', 'inputs',
+      ], `${issue.identity} handoff binding record`);
+      if (!path.isAbsolute(handoff.path)
+          || path.dirname(handoff.path) !== handoff.directory
+          || !/^[a-f0-9]{64}$/.test(handoff.artifactSha256)
+          || handoff.bindingsSha256 !== digest(handoff.bindingRecord)
+          || !same(handoff.identity, {
+            runId: handoff.bindingRecord.runId,
+            issue: handoff.bindingRecord.issue,
+            priorGeneration: handoff.bindingRecord.priorGeneration,
+            sourceAgent: handoff.bindingRecord.sourceAgent,
+            targetAgent: handoff.bindingRecord.targetAgent,
+          })
+          || handoff.bindingRecord.issue !== issue.identity
+          || handoff.bindingRecord.runId !== state.runId
+          || handoff.bindingRecord.priorGeneration !== assignment.generation
+          || handoff.bindingRecord.branch !== assignment.branch
+          || handoff.bindingRecord.worktree !== assignment.worktree
+          || handoff.bindingRecord.baseSha !== assignment.baseSha
+          || handoff.bindingRecord.headSha !== assignment.headSha
+          || handoff.bindingRecord.manifestDigest !== manifest.digest
+          || handoff.bindingRecord.sourceRevision !== issue.sourceRevision
+          || handoff.bindingRecord.sourceAgent !== assignment.workerContext
+          || !nonEmpty(handoff.bindingRecord.targetAgent)
+          || !Number.isInteger(handoff.bindingRecord.stateRevision)
+          || handoff.bindingRecord.stateRevision < 0
+          || handoff.bindingRecord.stateRevision > state.revision
+          || !Array.isArray(handoff.bindingRecord.inputs)) {
+        throw new Error(`${issue.identity} assignment handoff identity or binding is invalid`);
+      }
+      const expectedInputs = [
+        ['issue', issue.identity],
+        ['prior_generation', assignment.generation],
+        ['branch', assignment.branch],
+        ['worktree', assignment.worktree],
+        ['base_sha', assignment.baseSha],
+        ['head_sha', assignment.headSha],
+        ['manifest_digest', manifest.digest],
+        ['source_revision', issue.sourceRevision],
+        ['allowed_paths', JSON.stringify(issue.allowedPaths)],
+        ['state_revision', handoff.bindingRecord.stateRevision],
+      ];
+      if (handoff.bindingRecord.inputs.length !== expectedInputs.length
+          || expectedInputs.some(([name, value], index) => {
+            const binding = handoff.bindingRecord.inputs[index];
+            return !binding
+              || !same(Object.keys(binding).sort(), ['name', 'source', 'value'])
+              || binding.name !== name
+              || String(binding.value) !== String(value)
+              || !nonEmpty(binding.source);
+          })) {
+        throw new Error(`${issue.identity} assignment handoff binding inputs are invalid`);
+      }
+    }
   }
 }
 
@@ -289,7 +374,15 @@ function assertShepherd(issue, manifest, state) {
     throw new Error(`${issue.identity} shepherd state is malformed`);
   }
   if (shepherd.accepted !== true) {
-    if (shepherd.accepted !== false || shepherd.ready !== false || shepherd.freshness !== 'stale') {
+    exactKeys(shepherd, [
+      'accepted', 'ready', 'freshness', 'expiredAt', 'reason', 'generation',
+    ], `${issue.identity} expired Shepherd state`);
+    if (shepherd.accepted !== false
+        || shepherd.ready !== false
+        || shepherd.freshness !== 'expired'
+        || !validTimestamp(shepherd.expiredAt)
+        || !nonEmpty(shepherd.reason)
+        || shepherd.generation !== issue.readinessGeneration) {
       throw new Error(`${issue.identity} unaccepted Shepherd state is not an explicit expiry`);
     }
     return;
@@ -493,7 +586,7 @@ function assertIssueRecord(record, issue, manifest, state) {
     }
   }
   if (record.status === 'active') {
-    assertAssignment(record.assignment, issue, manifest, { active: true });
+    assertAssignment(record.assignment, issue, manifest, state, { active: true });
     if (record.assignment.branch !== record.branch
         || record.assignment.worktree !== record.worktree
         || record.assignment.baseSha !== record.baseSha
@@ -507,7 +600,7 @@ function assertIssueRecord(record, issue, manifest, state) {
     throw new Error(`${issue.identity} branch/worktree persistence is inconsistent`);
   }
   for (const prior of record.continuationChain) {
-    assertAssignment(prior, issue, manifest, { active: false });
+    assertAssignment(prior, issue, manifest, state, { active: false });
   }
   const generations = record.continuationChain.map((entry) => entry.generation);
   if (record.assignment) generations.push(record.assignment.generation);
@@ -519,6 +612,14 @@ function assertIssueRecord(record, issue, manifest, state) {
   }
   if (!DISPOSITIONS_BY_STATUS[record.status].has(record.terminalDisposition)) {
     throw new Error(`${issue.identity} status and terminal disposition are contradictory`);
+  }
+  if (record.terminalDisposition === 'timed-out-with-handoff') {
+    const terminal = record.continuationChain.at(-1);
+    if (!terminal
+        || terminal.endReason !== 'timed-out'
+        || terminal.handoff === undefined) {
+      throw new Error(`${issue.identity} timed-out-with-handoff lacks a validated archived handoff`);
+    }
   }
   if (!Number.isInteger(record.readinessGeneration) || record.readinessGeneration < 0) {
     throw new Error(`${issue.identity} readiness generation is invalid`);
@@ -568,7 +669,8 @@ function assertIssueRecord(record, issue, manifest, state) {
     }
   }
   assertShepherd(record, manifest, state);
-  if (record.shepherd && !same(record.setObligation, record.shepherd.setObligation)) {
+  if (record.shepherd?.accepted === true
+      && !same(record.setObligation, record.shepherd.setObligation)) {
     throw new Error(`${issue.identity} set obligation differs from accepted Shepherd state`);
   }
   if (record.shepherdDecision !== null) {
@@ -598,6 +700,35 @@ function assertIssueRecord(record, issue, manifest, state) {
   } else if (!record.shepherd && record.setObligation !== null) {
     throw new Error(`${issue.identity} has an obligation without an accepted readiness state`);
   }
+  if (record.terminalDisposition === 'ready-for-human-merge') {
+    const pipeline = persistedPipelinePasses(record, state, manifest);
+    if (!pipeline.passed) {
+      throw new Error(`${issue.identity} ready disposition lacks effective pipeline readiness: ${pipeline.defects.join('; ')}`);
+    }
+    if (record.changeRequest === null) {
+      throw new Error(`${issue.identity} ready disposition lacks confirmed publication`);
+    }
+    if (record.readinessWatermark !== null) {
+      const latestReadinessAt = manifest.shepherdIntent === 'yes'
+        ? record.shepherd?.observation?.observedAt
+        : record.setObligation?.createdAt;
+      if (!validTimestamp(latestReadinessAt)
+          || Date.parse(latestReadinessAt) <= Date.parse(record.readinessWatermark.observedAt)) {
+        throw new Error(`${issue.identity} ready disposition predates the latest merge watermark`);
+      }
+    }
+    if (manifest.shepherdIntent === 'yes') {
+      const shepherd = persistedShepherdPasses(record, state, manifest);
+      if (!shepherd.passed) {
+        throw new Error(`${issue.identity} ready disposition lacks effective Shepherd readiness: ${shepherd.defects.join('; ')}`);
+      }
+    } else if (record.shepherd !== null
+        || record.shepherdDecision?.state !== 'not-required'
+        || record.shepherdDecision?.manifestDigest !== manifest.digest
+        || record.setObligation === null) {
+      throw new Error(`${issue.identity} ready disposition lacks exact no-Shepherd readiness`);
+    }
+  }
 }
 
 export function fleetStatePath(repositoryRoot, runId) {
@@ -607,6 +738,7 @@ export function fleetStatePath(repositoryRoot, runId) {
 }
 
 export function createFleetState(manifest, runId, now = new Date().toISOString()) {
+  assertFleetManifest(manifest);
   if (!validRunId(runId)) throw new Error('runId must be path-safe');
   if (!validTimestamp(now)) throw new Error('state creation time is invalid');
   const exhaustedFields = ['cost', 'timeMinutes', 'retries']
@@ -643,7 +775,7 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
         : issue.status === 'blocked'
           ? 'blocked'
           : issue.status === 'timed-out'
-            ? 'timed-out-with-handoff'
+            ? 'failed'
             : issue.status === 'deferred'
               ? 'deferred'
               : null,
@@ -683,6 +815,7 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
 }
 
 export function assertFleetState(state, manifest) {
+  assertFleetManifest(manifest);
   if (state?.schemaVersion !== FLEET_STATE_SCHEMA_VERSION) throw new Error('unsupported fleet state schema');
   exactKeys(state, [
     'schemaVersion', 'revision', 'runId', 'manifestDigest',
@@ -915,12 +1048,71 @@ export function assertFleetState(state, manifest) {
   return state;
 }
 
+function normalizedAbsolute(value) {
+  return path.normalize(path.resolve(value));
+}
+
+function sameResolvedPath(left, right) {
+  const normalizedLeft = normalizedAbsolute(left);
+  const normalizedRight = normalizedAbsolute(right);
+  return process.platform === 'win32'
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
+function assertFleetStatePath(file, manifest, runId) {
+  assertFleetManifest(manifest);
+  if (!path.isAbsolute(file)) throw new Error('fleet state path must be absolute');
+  if (!validRunId(runId)) throw new Error('fleet state path run id is invalid');
+  const normalized = normalizedAbsolute(file);
+  const expected = normalizedAbsolute(fleetStatePath(manifest.repository.root, runId));
+  if (normalized !== expected || file !== normalized) {
+    throw new Error('fleet state path is not bound to the manifest repository and run');
+  }
+  return expected;
+}
+
+function sameFileIdentity(left, right) {
+  return left.isFile() === right.isFile()
+    && left.dev === right.dev
+    && left.ino === right.ino
+    && left.size === right.size
+    && left.mtimeMs === right.mtimeMs
+    && left.ctimeMs === right.ctimeMs;
+}
+
+function openVerifiedRegularFile(file) {
+  const before = fs.lstatSync(file);
+  if (before.isSymbolicLink() || !before.isFile()) {
+    throw new Error('fleet state path is not a real regular file');
+  }
+  const noFollow = Number.isInteger(fs.constants.O_NOFOLLOW) ? fs.constants.O_NOFOLLOW : 0;
+  const handle = fs.openSync(file, fs.constants.O_RDONLY | noFollow);
+  try {
+    const descriptor = fs.fstatSync(handle);
+    const after = fs.lstatSync(file);
+    if (!sameFileIdentity(before, descriptor)
+        || !sameFileIdentity(descriptor, after)
+        || !sameResolvedPath(fs.realpathSync(file), file)) {
+      throw new Error('fleet state file changed or resolved through a link');
+    }
+    return handle;
+  } catch (error) {
+    fs.closeSync(handle);
+    throw error;
+  }
+}
+
 export function loadFleetState(file, manifest) {
-  const handle = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  const runId = path.basename(path.dirname(file));
+  assertFleetStatePath(file, manifest, runId);
+  const handle = openVerifiedRegularFile(file);
   try {
     const stat = fs.fstatSync(handle);
     if (!stat.isFile()) throw new Error('fleet state descriptor is not a regular file');
-    return assertFleetState(JSON.parse(fs.readFileSync(handle, 'utf8')), manifest);
+    const state = assertFleetState(JSON.parse(fs.readFileSync(handle, 'utf8')), manifest);
+    assertFleetStatePath(file, manifest, state.runId);
+    return state;
   } finally {
     fs.closeSync(handle);
   }
@@ -941,56 +1133,81 @@ function processAlive(pid) {
   }
 }
 
-function acquireLock(lockFile, expectedRevision, options) {
+function lockOwnerPath(lockDirectory, token) {
+  return path.join(lockDirectory, `owner-${token}.json`);
+}
+
+function readLockOwner(lockDirectory) {
+  const directoryBefore = fs.lstatSync(lockDirectory);
+  if (directoryBefore.isSymbolicLink() || !directoryBefore.isDirectory()
+      || !sameResolvedPath(fs.realpathSync(lockDirectory), lockDirectory)) {
+    throw new Error('fleet state lock path is unsafe');
+  }
+  const owners = fs.readdirSync(lockDirectory)
+    .filter((entry) => /^owner-[a-f0-9]{48}\.json$/.test(entry));
+  if (owners.length !== 1) throw new Error('fleet state lock metadata has no unique ownership token');
+  const ownerPath = path.join(lockDirectory, owners[0]);
+  const handle = openVerifiedRegularFile(ownerPath);
+  try {
+    const ownerStat = fs.fstatSync(handle);
+    const metadata = JSON.parse(fs.readFileSync(handle, 'utf8'));
+    const token = owners[0].slice('owner-'.length, -'.json'.length);
+    if (metadata?.token !== token || !nonEmpty(token)) {
+      throw new Error('fleet state lock metadata has no ownership token');
+    }
+    const directoryAfter = fs.lstatSync(lockDirectory);
+    if (directoryBefore.dev !== directoryAfter.dev || directoryBefore.ino !== directoryAfter.ino) {
+      throw new Error('fleet state lock path is unsafe');
+    }
+    return {
+      metadata,
+      token,
+      directory: { dev: directoryAfter.dev, ino: directoryAfter.ino },
+      owner: { dev: ownerStat.dev, ino: ownerStat.ino },
+    };
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
+function acquireLock(lockDirectory, expectedRevision, options) {
   const attempts = options.lockAttempts ?? 200;
   const delayMs = options.lockDelayMs ?? 5;
   const staleLockMs = options.staleLockMs ?? 30_000;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const token = crypto.randomBytes(24).toString('hex');
     try {
-      const handle = fs.openSync(lockFile, 'wx', 0o600);
-      const token = crypto.randomBytes(24).toString('hex');
+      fs.mkdirSync(lockDirectory, { mode: 0o700 });
+      const ownerPath = lockOwnerPath(lockDirectory, token);
+      const handle = fs.openSync(ownerPath, 'wx', 0o600);
       const body = `${JSON.stringify({
         pid: process.pid,
         token,
         expectedRevision,
         createdAt: new Date().toISOString(),
       })}\n`;
-      fs.writeFileSync(handle, body);
-      fs.fsyncSync(handle);
-      const stat = fs.fstatSync(handle);
-      return { handle, token, dev: stat.dev, ino: stat.ino };
+      try {
+        fs.writeFileSync(handle, body);
+        fs.fsyncSync(handle);
+      } finally {
+        fs.closeSync(handle);
+      }
+      const directory = fs.lstatSync(lockDirectory);
+      const owner = fs.lstatSync(ownerPath);
+      return {
+        token,
+        directory: { dev: directory.dev, ino: directory.ino },
+        owner: { dev: owner.dev, ino: owner.ino },
+      };
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
       try {
-        const inspectHandle = fs.openSync(
-          lockFile,
-          fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
-        );
-        let stat;
-        let metadata;
-        try {
-          stat = fs.fstatSync(inspectHandle);
-          if (!stat.isFile()) throw new Error('fleet state lock path is unsafe');
-          metadata = JSON.parse(fs.readFileSync(inspectHandle, 'utf8'));
-        } finally {
-          fs.closeSync(inspectHandle);
-        }
-        if (!nonEmpty(metadata?.token)) {
-          throw new Error('fleet state lock metadata has no ownership token');
-        }
-        const pathStat = fs.lstatSync(lockFile);
-        if (pathStat.isSymbolicLink() || !pathStat.isFile()
-            || pathStat.dev !== stat.dev || pathStat.ino !== stat.ino) {
-          throw new Error('fleet state lock path is unsafe');
-        }
-        const stale = Date.now() - stat.mtimeMs >= staleLockMs;
-        if (stale && metadata && !processAlive(metadata.pid)) {
+        const observed = readLockOwner(lockDirectory);
+        const ownerStat = fs.lstatSync(lockOwnerPath(lockDirectory, observed.token));
+        const stale = Date.now() - ownerStat.mtimeMs >= staleLockMs;
+        if (stale && !processAlive(observed.metadata.pid)) {
           options.beforeStaleLockClaim?.();
-          if (claimAndRemoveLock(lockFile, {
-            token: metadata.token,
-            dev: stat.dev,
-            ino: stat.ino,
-          }, 'stale')) continue;
+          if (removeOwnedLockDirectory(lockDirectory, observed, 'stale')) continue;
         }
       } catch (inspectionError) {
         if (inspectionError.code === 'ENOENT') continue;
@@ -1002,39 +1219,40 @@ function acquireLock(lockFile, expectedRevision, options) {
   throw new Error('fleet state write lock is busy');
 }
 
-function claimAndRemoveLock(lockFile, ownership, purpose) {
-  const claim = `${lockFile}.${purpose}-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
+function removeOwnedLockDirectory(lockDirectory, ownership, purpose) {
+  const marker = path.join(
+    lockDirectory,
+    `${purpose}-${process.pid}-${crypto.randomBytes(16).toString('hex')}`,
+  );
   try {
-    fs.renameSync(lockFile, claim);
+    const markerHandle = fs.openSync(marker, 'wx', 0o600);
+    fs.closeSync(markerHandle);
   } catch (error) {
     if (error.code === 'ENOENT') return false;
     throw error;
   }
-  let owned = false;
   try {
-    const handle = fs.openSync(claim, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-    try {
-      const stat = fs.fstatSync(handle);
-      const metadata = JSON.parse(fs.readFileSync(handle, 'utf8'));
-      owned = stat.isFile()
-        && stat.dev === ownership.dev
-        && stat.ino === ownership.ino
-        && metadata.token === ownership.token;
-    } finally {
-      fs.closeSync(handle);
-    }
-    if (!owned) {
-      if (!fs.existsSync(lockFile)) fs.renameSync(claim, lockFile);
-      return false;
-    }
-    fs.unlinkSync(claim);
+    const current = readLockOwner(lockDirectory);
+    if (current.token !== ownership.token
+        || current.directory.dev !== ownership.directory.dev
+        || current.directory.ino !== ownership.directory.ino
+        || current.owner.dev !== ownership.owner.dev
+        || current.owner.ino !== ownership.owner.ino) return false;
+    fs.unlinkSync(lockOwnerPath(lockDirectory, ownership.token));
+    fs.unlinkSync(marker);
+    fs.rmdirSync(lockDirectory);
     return true;
   } finally {
-    if (owned && fs.existsSync(claim)) fs.unlinkSync(claim);
+    try {
+      if (fs.existsSync(marker)) fs.unlinkSync(marker);
+    } catch {
+      // The canonical lock may already belong to a replacement owner.
+    }
   }
 }
 
 function fsyncDirectory(directory) {
+  if (process.platform === 'win32') return;
   const handle = fs.openSync(directory, 'r');
   try {
     fs.fsyncSync(handle);
@@ -1055,22 +1273,19 @@ function snapshotFleetDirectoryChain(directory) {
   let cursor = parsed.root;
   for (const component of components) {
     cursor = path.join(cursor, component);
-    if (!fs.existsSync(cursor)) fs.mkdirSync(cursor, { mode: 0o700 });
+    if (!fs.existsSync(cursor)) {
+      try {
+        fs.mkdirSync(cursor, { mode: 0o700 });
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+      }
+    }
     const stat = fs.lstatSync(cursor);
     if (stat.isSymbolicLink() || !stat.isDirectory()) {
       throw new Error(`fleet state directory ancestry is unsafe: ${cursor}`);
     }
-    const handle = fs.openSync(
-      cursor,
-      fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
-    );
-    try {
-      const descriptor = fs.fstatSync(handle);
-      if (descriptor.dev !== stat.dev || descriptor.ino !== stat.ino) {
-        throw new Error(`fleet state directory ancestry changed: ${cursor}`);
-      }
-    } finally {
-      fs.closeSync(handle);
+    if (!sameResolvedPath(fs.realpathSync(cursor), cursor)) {
+      throw new Error(`fleet state directory ancestry resolved through a link: ${cursor}`);
     }
     snapshots.push({ path: cursor, dev: stat.dev, ino: stat.ino });
   }
@@ -1091,12 +1306,8 @@ function sameFleetDirectoryChain(snapshots) {
   });
 }
 
-function prepareFleetStatePath(file) {
-  if (!path.isAbsolute(file)) throw new Error('fleet state path must be absolute');
-  if (path.basename(file) !== 'fleet-state.json'
-      || path.basename(path.dirname(path.dirname(file))) !== '.ship-with-squadron') {
-    throw new Error('fleet state path must be inside .ship-with-squadron/<run>');
-  }
+function prepareFleetStatePath(file, manifest, runId) {
+  assertFleetStatePath(file, manifest, runId);
   const chain = snapshotFleetDirectoryChain(path.dirname(file));
   if (fs.existsSync(file) && fs.lstatSync(file).isSymbolicLink()) {
     throw new Error('fleet state path must not be a symbolic link');
@@ -1111,7 +1322,7 @@ function readLockedState(file, expectedRevision, manifest) {
     }
     return null;
   }
-  const handle = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  const handle = openVerifiedRegularFile(file);
   let disk;
   try {
     const stat = fs.fstatSync(handle);
@@ -1144,8 +1355,8 @@ function writeLockedState(file, state, expectedRevision, manifest, options, pend
   return loadFleetState(file, manifest);
 }
 
-function withFleetStateLock(file, expectedRevision, options, operation) {
-  const directoryChain = prepareFleetStatePath(file);
+function withFleetStateLock(file, manifest, runId, expectedRevision, options, operation) {
+  const directoryChain = prepareFleetStatePath(file, manifest, runId);
   const lockFile = `${file}.lock`;
   const lock = acquireLock(lockFile, expectedRevision, options);
   const pending = `${file}.next-${process.pid}-${expectedRevision}`;
@@ -1158,9 +1369,8 @@ function withFleetStateLock(file, expectedRevision, options, operation) {
     try {
       if (fs.existsSync(pending)) fs.unlinkSync(pending);
     } finally {
-      fs.closeSync(lock.handle);
       options.beforeReleaseLockClaim?.();
-      claimAndRemoveLock(lockFile, lock, 'release');
+      removeOwnedLockDirectory(lockFile, lock, 'release');
       if (!sameFleetDirectoryChain(directoryChain)) {
         throw new Error('fleet state directory ancestry changed during mutation');
       }
@@ -1170,11 +1380,13 @@ function withFleetStateLock(file, expectedRevision, options, operation) {
 
 export function persistFleetState(file, state, expectedRevision, manifest, options = {}) {
   if (!manifest) throw new Error('manifest is required for every fleet state write');
+  assertFleetManifest(manifest);
+  assertFleetStatePath(file, manifest, state?.runId);
   if (state.revision !== expectedRevision) {
     throw new Error(`state revision conflict: expected ${expectedRevision}, received ${state.revision}`);
   }
   assertFleetState(state, manifest);
-  return withFleetStateLock(file, expectedRevision, options, (pending) => {
+  return withFleetStateLock(file, manifest, state.runId, expectedRevision, options, (pending) => {
     readLockedState(file, expectedRevision, manifest);
     return writeLockedState(file, state, expectedRevision, manifest, options, pending);
   });
@@ -1182,13 +1394,17 @@ export function persistFleetState(file, state, expectedRevision, manifest, optio
 
 export function mutateFleetState(file, manifest, expectedRevision, mutate, options = {}) {
   if (!manifest) throw new Error('manifest is required for every fleet state mutation');
+  assertFleetManifest(manifest);
+  const runId = path.basename(path.dirname(file));
+  assertFleetStatePath(file, manifest, runId);
   if (!Number.isInteger(expectedRevision) || expectedRevision < 0) {
     throw new Error('expected fleet state revision is invalid');
   }
   if (typeof mutate !== 'function') throw new Error('fleet state mutator is required');
-  return withFleetStateLock(file, expectedRevision, options, (pending) => {
+  return withFleetStateLock(file, manifest, runId, expectedRevision, options, (pending) => {
     const disk = readLockedState(file, expectedRevision, manifest);
     if (!disk) throw new Error('fleet state mutation requires an existing state file');
+    assertFleetStatePath(file, manifest, disk.runId);
     const next = mutate(structuredClone(disk));
     if (!next || next.revision !== expectedRevision) {
       throw new Error('fleet state mutator changed or omitted the expected revision');
@@ -1199,6 +1415,7 @@ export function mutateFleetState(file, manifest, expectedRevision, mutate, optio
 }
 
 export function recordSourceRevisionObservation(state, manifest, issue, receipt, now = new Date().toISOString()) {
+  assertFleetManifest(manifest);
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('source reobservation state is not bound to the confirmed manifest');
@@ -1230,6 +1447,7 @@ export function recordIssueSetObservation(
   receipt,
   now = new Date().toISOString(),
 ) {
+  assertFleetManifest(manifest);
   if (manifest.issueSet.kind !== 'tracker-query') {
     throw new Error('issue-set reobservation is only required for tracker-query manifests');
   }
@@ -1258,7 +1476,8 @@ export function recordIssueSetObservation(
   return next;
 }
 
-export function reconcileFrontier(state, frontier) {
+export function reconcileFrontier(state, manifest, frontier) {
+  assertStateManifestAuthority(state, manifest, 'frontier reconciliation state');
   const next = structuredClone(state);
   next.readyFrontier = frontier.ready;
   next.blockedSet = frontier.blocked;
@@ -1270,7 +1489,8 @@ export function reconcileFrontier(state, frontier) {
   return next;
 }
 
-export function transitionIssue(state, issue, status, detail = {}) {
+export function transitionIssue(state, manifest, issue, status, detail = {}) {
+  assertStateManifestAuthority(state, manifest, 'issue transition state');
   const record = state.issues?.[issue];
   if (!record) throw new Error(`unknown issue: ${issue}`);
   if (status === 'active') throw new Error('active status can only be entered through validated assignment');
@@ -1296,11 +1516,17 @@ export function transitionIssue(state, issue, status, detail = {}) {
         || !['completed', 'blocked', 'failed', 'timed-out', 'deferred'].includes(end.reason)) {
       throw new Error('active terminal transition requires exact assignment end identity');
     }
+    if (status === 'timed-out'
+        && detail.terminalDisposition === 'timed-out-with-handoff'
+        && !detail.handoff) {
+      throw new Error('timed-out-with-handoff requires a validated handoff record');
+    }
     next.issues[issue].continuationChain.push({
       ...record.assignment,
       active: false,
       endReason: end.reason,
       endedAt: end.endedAt ?? new Date().toISOString(),
+      ...(detail.handoff ? { handoff: structuredClone(detail.handoff) } : {}),
     });
     next.issues[issue].assignment = null;
   }
@@ -1318,7 +1544,14 @@ export function transitionIssue(state, issue, status, detail = {}) {
   return next;
 }
 
-export function startCheckActivity(state, issue, kind, startedAt = new Date().toISOString()) {
+export function startCheckActivity(
+  state,
+  manifest,
+  issue,
+  kind,
+  startedAt = new Date().toISOString(),
+) {
+  assertStateManifestAuthority(state, manifest, 'check activity state');
   const record = state.issues?.[issue];
   if (!record) throw new Error(`unknown issue: ${issue}`);
   if (!['quality-check', 'publication-observation', 'shepherd-check'].includes(kind)) {
@@ -1344,7 +1577,8 @@ export function startCheckActivity(state, issue, kind, startedAt = new Date().to
   return next;
 }
 
-export function finishCheckActivity(state, issue) {
+export function finishCheckActivity(state, manifest, issue) {
+  assertStateManifestAuthority(state, manifest, 'check activity state');
   const record = state.issues?.[issue];
   if (!record?.checkActivity) throw new Error(`no explicit check activity for ${issue}`);
   const next = structuredClone(state);
@@ -1365,6 +1599,7 @@ function markStoppedWork(next, nextAction) {
 }
 
 export function consumeBudget(state, manifest, usage) {
+  assertStateManifestAuthority(state, manifest, 'budget state');
   if (state.control.cancelled) throw new Error('cannot consume fleet budget after cancellation');
   const next = structuredClone(state);
   for (const field of ['cost', 'timeMinutes', 'retries']) {
@@ -1384,7 +1619,8 @@ export function consumeBudget(state, manifest, usage) {
   return { state: next, exhausted };
 }
 
-export function cancelFleet(state, reason) {
+export function cancelFleet(state, manifest, reason) {
+  assertStateManifestAuthority(state, manifest, 'cancellation state');
   if (!nonEmpty(reason)) throw new Error('cancellation reason is required');
   const next = structuredClone(state);
   next.control.cancelled = true;

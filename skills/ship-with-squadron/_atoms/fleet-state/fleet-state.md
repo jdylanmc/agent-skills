@@ -24,10 +24,14 @@ the frontier, and write with an exact expected revision. Every write validates
 the complete state schema and cross-field invariants before taking an exclusive
 lock, then rereads and compares the disk revision while holding that lock. A
 stale writer stops on a revision conflict. The complete directory ancestry is
-checked component-by-component and rejects symbolic links; state reads use
-`O_NOFOLLOW` where available. Lock acquisition, stale cleanup, and release are
-bound to both an ownership token and inode so a contender's replacement lock is
-never deleted. Writes fsync a sibling pending file,
+checked component-by-component and rejects symbolic links or reparse
+containment changes. Before any path creation or open, the exact normalized
+path must equal the path derived from the manifest repository root and state
+run ID. State reads use `O_NOFOLLOW` where available and verified
+path/descriptor identity otherwise. Lock acquisition uses an atomic,
+token-owned lock directory. Stale cleanup and release claim inside that exact
+directory and remove only the verified token/inode owner, so a contender's
+replacement lock is never moved or deleted. Writes fsync a sibling pending file,
 atomically rename it, and fsync the parent directory. Crash-stale locks are
 recovered only when their recorded process is gone.
 
@@ -47,7 +51,10 @@ publication records, readiness receipts, criteria decisions, and merge
 observations are cross-checked rather than trusted as caller-shaped state. Only
 manifest/provider-sealed completed issues may start as `already-complete`.
 Neither pending nor active work can jump directly to completed; review readiness
-is entered only through the semantic publication/readiness pipeline. Only
+is entered only through a complete semantic pipeline, confirmed current
+publication, exact Shepherd or no-Shepherd obligation, and the latest merge
+watermark. Empty or stale caller-shaped readiness is invalid on load and write.
+Only
 declared status transitions are accepted; mutable ownership is entered only by
 assignment, and there is no general `active -> pending` transition. Budget
 consumption is monotonic; reaching cost, time, or retry limits records
@@ -57,6 +64,9 @@ The active assignment count must equal persisted capacity and never exceed the
 confirmed ceiling. Completed, failed, deferred, blocked, timed-out, and
 per-issue dispositions follow an explicit compatibility matrix; blocked,
 failed, timed-out, or deferred work never satisfies a `completed` dependency.
+`timed-out-with-handoff` additionally requires an archived assignment carrying
+the exact validated handoff identity, artifact digest, and binding record;
+otherwise timeout uses a non-handoff disposition.
 
 Chronicler records operations. This record owns control decisions. Neither is a
 substitute for the other.

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { normalizeOrchestrationPayload } from '../../../_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.mjs';
 import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
+import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
   mutateFleetState,
   reconcileFrontier,
@@ -82,6 +83,7 @@ function manifestIssue(manifest, issue) {
 }
 
 function assertManifestAuthority(state, manifest) {
+  assertFleetManifest(manifest);
   if (state.manifestDigest !== manifest?.digest
       || state.providerConfigurationDigest !== manifest?.providerConfigurationDigest) {
     throw new Error('assignment state is not bound to the confirmed manifest');
@@ -111,15 +113,14 @@ function validateBoundedPacket(packet, state, manifest, issue, input) {
   if (!same(packet.scope, issue.scope)) defects.push('packet scope does not match manifest');
   if (!same(packet.exclusions, manifest.exclusions)) defects.push('packet exclusions do not match manifest');
   if (!same(packet.allowedPaths, issue.allowedPaths)) defects.push('packet allowed paths do not match manifest');
-  if (!Array.isArray(packet.verification) || packet.verification.length === 0
-      || packet.verification.some((entry) => !nonEmpty(entry))) {
-    defects.push('packet verification contract is incomplete');
+  if (!same(packet.verification, manifest.validationPolicy)) {
+    defects.push('packet verification contract does not exactly match confirmed validation policy');
   }
   if (!packet.reportContract || typeof packet.reportContract !== 'object'
+      || !exactObjectKeys(packet.reportContract, ['summary', 'requiredEvidence'])
       || !nonEmpty(packet.reportContract.summary)
-      || !Array.isArray(packet.reportContract.requiredEvidence)
-      || packet.reportContract.requiredEvidence.length === 0) {
-    defects.push('packet report contract is incomplete');
+      || !same(packet.reportContract.requiredEvidence, manifest.validationPolicy)) {
+    defects.push('packet report contract does not exactly derive from confirmed validation policy');
   }
   if (!same(packet.forbiddenAuthorities, FORBIDDEN_AUTHORITIES)) {
     defects.push('packet forbidden authorities are incomplete or reordered');
@@ -229,7 +230,7 @@ export function assignFreshWorker(state, manifest, input) {
   next.issues[input.issue].status = 'active';
   next.issues[input.issue].dependencyState = 'active';
   next.events.push({ type: 'assignment', issue: input.issue, generation });
-  return reconcileFrontier(next, computeFrontier(manifest, next));
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }
 
 export function createSchedulerLease(state, manifest, issue, frontier = computeFrontier(manifest, state)) {
@@ -299,6 +300,25 @@ function exactObjectKeys(value, expected) {
 
 function payloadBinding(payload, name) {
   return payload?.inputs?.find((entry) => entry?.name === name);
+}
+
+function handoffBindingRecord(expected, submitted) {
+  return {
+    runId: expected?.runId ?? null,
+    issue: expected?.issue ?? null,
+    priorGeneration: expected?.priorGeneration ?? null,
+    branch: expected?.branch ?? null,
+    worktree: expected?.worktree ?? null,
+    baseSha: expected?.baseSha ?? null,
+    headSha: expected?.headSha ?? null,
+    manifestDigest: expected?.manifestDigest ?? null,
+    sourceRevision: expected?.sourceRevision ?? null,
+    stateRevision: expected?.stateRevision ?? null,
+    sourceAgent: expected?.sourceAgent ?? null,
+    targetAgent: expected?.targetAgent ?? null,
+    inputs: REQUIRED_HANDOFF_INPUTS.map(([name]) =>
+      structuredClone(payloadBinding(submitted, name) ?? null)),
+  };
 }
 
 export function validateContinuationHandoff(handoff, payload, expected = null) {
@@ -418,6 +438,14 @@ function sameDirectoryChain(before) {
   }
 }
 
+function sameResolvedPath(left, right) {
+  const normalizedLeft = path.normalize(path.resolve(left));
+  const normalizedRight = path.normalize(path.resolve(right));
+  return process.platform === 'win32'
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
 function trustedHandoffRoot() {
   const tempRoot = fs.realpathSync(os.tmpdir());
   const root = path.join(tempRoot, 'handoffs');
@@ -426,7 +454,9 @@ function trustedHandoffRoot() {
     throw new Error('trusted handoff run directory must be a real non-symlink directory');
   }
   const rootReal = fs.realpathSync(root);
-  if (rootReal !== root) throw new Error('trusted handoff run directory resolved through a link');
+  if (!sameResolvedPath(rootReal, root)) {
+    throw new Error('trusted handoff run directory resolved through a link or reparse point');
+  }
   const chain = snapshotDirectoryChain(rootReal);
   if (typeof process.getuid === 'function') {
     const rootEntry = chain.at(-1);
@@ -449,14 +479,28 @@ function safeReadReturnedArtifact(handoff, options = {}) {
       || handoff.path !== path.join(trusted.root, handoff.name)) {
     throw new Error('handoff artifact path is not the exact returned direct child');
   }
-  if (!Number.isInteger(fs.constants.O_NOFOLLOW) || fs.constants.O_NOFOLLOW === 0) {
-    throw new Error('runtime cannot establish O_NOFOLLOW handoff containment');
+  const beforePath = fs.lstatSync(handoff.path, { bigint: true });
+  if (beforePath.isSymbolicLink() || !beforePath.isFile()
+      || !sameResolvedPath(fs.realpathSync(handoff.path), handoff.path)) {
+    throw new Error('handoff artifact is a link, reparse point, or non-file');
   }
-  const flags = fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW;
+  const noFollow = options.forcePortableFallback
+    ? 0
+    : Number.isInteger(fs.constants.O_NOFOLLOW)
+      ? fs.constants.O_NOFOLLOW
+      : 0;
+  const flags = fs.constants.O_RDONLY | noFollow;
   const handle = fs.openSync(handoff.path, flags);
   try {
     const before = fs.fstatSync(handle, { bigint: true });
-    if (!before.isFile()) throw new Error('handoff artifact descriptor is not a regular file');
+    if (!before.isFile()
+        || before.dev !== beforePath.dev
+        || before.ino !== beforePath.ino
+        || before.size !== beforePath.size
+        || before.mtimeNs !== beforePath.mtimeNs
+        || before.ctimeNs !== beforePath.ctimeNs) {
+      throw new Error('handoff artifact descriptor is not the same regular file');
+    }
     options.afterOpen?.();
     const content = fs.readFileSync(handle);
     const after = fs.fstatSync(handle, { bigint: true });
@@ -468,6 +512,7 @@ function safeReadReturnedArtifact(handoff, options = {}) {
         || after.dev !== pathStat.dev || after.ino !== pathStat.ino
         || after.size !== pathStat.size || after.mtimeNs !== pathStat.mtimeNs
         || after.ctimeNs !== pathStat.ctimeNs
+        || !sameResolvedPath(fs.realpathSync(handoff.path), handoff.path)
         || !sameDirectoryChain(trusted.chain)) {
       throw new Error('handoff artifact changed while being verified');
     }
@@ -516,12 +561,8 @@ export function validateContinuationArtifact(handoff, payload, expected = null, 
     valid: defects.length === 0,
     defects,
     digest: artifactDigest,
-    bindingsDigest: digest({
-      runId: expected?.runId,
-      sourceAgent: expected?.sourceAgent,
-      targetAgent: expected?.targetAgent,
-      inputs: REQUIRED_HANDOFF_INPUTS.map(([name]) => payloadBinding(submitted, name)),
-    }),
+    bindingRecord: handoffBindingRecord(expected, submitted),
+    bindingsDigest: digest(handoffBindingRecord(expected, submitted)),
     content,
   };
 }
@@ -595,6 +636,14 @@ export function continueWithFreshWorker(state, manifest, input) {
     handoff: {
       path: input.handoff.path,
       directory: input.handoff.directory,
+      identity: {
+        runId: expected.runId,
+        issue: expected.issue,
+        priorGeneration: expected.priorGeneration,
+        sourceAgent: expected.sourceAgent,
+        targetAgent: expected.targetAgent,
+      },
+      bindingRecord: structuredClone(artifact.bindingRecord),
       artifactSha256: artifact.digest,
       bindingsSha256: artifact.bindingsDigest,
     },

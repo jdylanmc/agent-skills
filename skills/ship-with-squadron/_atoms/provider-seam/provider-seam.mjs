@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import { persistedPrePublicationPasses } from '../quality-evidence/quality-evidence.mjs';
 
 export const PROVIDER_OPERATIONS = Object.freeze([
@@ -61,7 +62,12 @@ export function authorizeProviderOperation(state, manifest, operation) {
   if (!PROVIDER_OPERATIONS.includes(operation)) {
     return { authorized: false, reason: `unknown-operation:${operation}` };
   }
-  if (!state || !manifest
+  try {
+    assertFleetManifest(manifest);
+  } catch {
+    return { authorized: false, reason: 'persisted-manifest-authority-mismatch' };
+  }
+  if (!state
       || state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     return { authorized: false, reason: 'persisted-manifest-authority-mismatch' };
@@ -329,8 +335,12 @@ export function recordPublication(state, manifest, key, result) {
 }
 
 export function publicationRecoveryAction(state, manifest, key) {
-  if (!manifest
-      || state.manifestDigest !== manifest.digest
+  try {
+    assertFleetManifest(manifest);
+  } catch {
+    return { action: 'stop-recovery-manifest-mismatch' };
+  }
+  if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     return { action: 'stop-recovery-manifest-mismatch' };
   }

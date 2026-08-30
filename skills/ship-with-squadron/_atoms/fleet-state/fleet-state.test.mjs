@@ -46,13 +46,26 @@ const manifest = normalizeFleetManifest({
   dependencies: [],
   concurrency: 1,
   budget: { cost: 1, timeMinutes: 10, retries: 2 },
-  repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
+  repository: { id: 'owner/repo', root: SANDBOX, baseBranch: 'main' },
   provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],
   humanBoundaries: ['human merge'],
   shepherdIntent: 'yes',
 });
+
+function writeLock(lockDirectory, metadata, modifiedAt = null) {
+  fs.mkdirSync(lockDirectory, { recursive: true, mode: 0o700 });
+  const owner = path.join(lockDirectory, `owner-${metadata.token}.json`);
+  fs.writeFileSync(owner, `${JSON.stringify(metadata)}\n`, { mode: 0o600 });
+  if (modifiedAt) fs.utimesSync(owner, modifiedAt, modifiedAt);
+  return owner;
+}
+
+function readLock(lockDirectory) {
+  const owner = fs.readdirSync(lockDirectory).find((entry) => entry.startsWith('owner-'));
+  return JSON.parse(fs.readFileSync(path.join(lockDirectory, owner), 'utf8'));
+}
 
 test('persists, rereads, validates schema, and compare-and-swaps run state', (t) => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
@@ -119,14 +132,13 @@ test('recovers a crash-stale ownership-bound lock before the exclusive revision 
   const file = fleetStatePath(SANDBOX, 'stale-lock');
   const initial = createFleetState(manifest, 'stale-lock');
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(`${file}.lock`, JSON.stringify({
+  const old = new Date('2020-01-01T00:00:00Z');
+  writeLock(`${file}.lock`, {
     pid: 99999999,
-    token: 'stale-owner-token',
+    token: 'a'.repeat(48),
     expectedRevision: 0,
     createdAt: '2020-01-01T00:00:00Z',
-  }));
-  const old = new Date('2020-01-01T00:00:00Z');
-  fs.utimesSync(`${file}.lock`, old, old);
+  }, old);
   const written = persistFleetState(file, initial, 0, manifest, { staleLockMs: 0 });
   assert.equal(written.revision, 1);
   assert.equal(fs.existsSync(`${file}.lock`), false);
@@ -137,20 +149,19 @@ test('never deletes a replacement lock during stale cleanup or release races', (
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
   const staleFile = fleetStatePath(SANDBOX, 'stale-race');
   fs.mkdirSync(path.dirname(staleFile), { recursive: true });
-  fs.writeFileSync(`${staleFile}.lock`, JSON.stringify({
+  const old = new Date('2020-01-01T00:00:00Z');
+  writeLock(`${staleFile}.lock`, {
     pid: 99999999,
-    token: 'old-stale-token',
+    token: 'b'.repeat(48),
     expectedRevision: 0,
     createdAt: '2020-01-01T00:00:00Z',
-  }));
-  const old = new Date('2020-01-01T00:00:00Z');
-  fs.utimesSync(`${staleFile}.lock`, old, old);
-  const replacement = JSON.stringify({
+  }, old);
+  const replacement = {
     pid: process.pid,
-    token: 'new-live-token',
+    token: 'c'.repeat(48),
     expectedRevision: 0,
     createdAt: new Date().toISOString(),
-  });
+  };
   assert.throws(() => persistFleetState(
     staleFile,
     createFleetState(manifest, 'stale-race'),
@@ -160,20 +171,20 @@ test('never deletes a replacement lock during stale cleanup or release races', (
       staleLockMs: 0,
       lockAttempts: 1,
       beforeStaleLockClaim() {
-        fs.unlinkSync(`${staleFile}.lock`);
-        fs.writeFileSync(`${staleFile}.lock`, replacement);
+        fs.rmSync(`${staleFile}.lock`, { recursive: true });
+        writeLock(`${staleFile}.lock`, replacement);
       },
     },
   ), /write lock is busy/);
-  assert.equal(fs.readFileSync(`${staleFile}.lock`, 'utf8'), replacement);
+  assert.deepEqual(readLock(`${staleFile}.lock`), replacement);
 
   const releaseFile = fleetStatePath(SANDBOX, 'release-race');
-  const releaseReplacement = JSON.stringify({
+  const releaseReplacement = {
     pid: process.pid,
-    token: 'release-live-token',
+    token: 'd'.repeat(48),
     expectedRevision: 1,
     createdAt: new Date().toISOString(),
-  });
+  };
   persistFleetState(
     releaseFile,
     createFleetState(manifest, 'release-race'),
@@ -181,12 +192,72 @@ test('never deletes a replacement lock during stale cleanup or release races', (
     manifest,
     {
       beforeReleaseLockClaim() {
-        fs.unlinkSync(`${releaseFile}.lock`);
-        fs.writeFileSync(`${releaseFile}.lock`, releaseReplacement);
+        fs.rmSync(`${releaseFile}.lock`, { recursive: true });
+        writeLock(`${releaseFile}.lock`, releaseReplacement);
       },
     },
   );
-  assert.equal(fs.readFileSync(`${releaseFile}.lock`, 'utf8'), releaseReplacement);
+  assert.deepEqual(readLock(`${releaseFile}.lock`), releaseReplacement);
+});
+
+test('multiprocess stale reclamation never removes a replacement live lock', async (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const file = fleetStatePath(SANDBOX, 'stale-multiprocess');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const old = new Date('2020-01-01T00:00:00Z');
+  writeLock(`${file}.lock`, {
+    pid: 99999999,
+    token: 'e'.repeat(48),
+    expectedRevision: 0,
+    createdAt: old.toISOString(),
+  }, old);
+  const manifestFile = path.join(SANDBOX, 'stale-manifest.json');
+  const ready = path.join(SANDBOX, 'stale-ready');
+  const proceed = path.join(SANDBOX, 'stale-proceed');
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+  const script = `
+    import fs from 'node:fs';
+    import { createFleetState, persistFleetState } from ${JSON.stringify(MODULE)};
+    const [file, manifestFile, ready, proceed] = process.argv.slice(1);
+    const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+    try {
+      persistFleetState(file, createFleetState(manifest, 'stale-multiprocess'), 0, manifest, {
+        staleLockMs: 0,
+        lockAttempts: 1,
+        beforeStaleLockClaim() {
+          fs.writeFileSync(ready, 'ready');
+          while (!fs.existsSync(proceed)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
+        },
+      });
+      process.stdout.write('unexpected-success');
+    } catch (error) {
+      process.stdout.write(error.message);
+    }
+  `;
+  const childResult = new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [
+      '--input-type=module', '-e', script, file, manifestFile, ready, proceed,
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => code === 0 ? resolve(stdout) : reject(new Error(stderr)));
+  });
+  while (!fs.existsSync(ready)) await new Promise((resolve) => setTimeout(resolve, 5));
+  fs.rmSync(`${file}.lock`, { recursive: true });
+  const replacement = {
+    pid: process.pid,
+    token: 'f'.repeat(48),
+    expectedRevision: 0,
+    createdAt: new Date().toISOString(),
+  };
+  writeLock(`${file}.lock`, replacement);
+  fs.writeFileSync(proceed, 'proceed');
+  assert.match(await childResult, /write lock is busy/);
+  assert.deepEqual(readLock(`${file}.lock`), replacement);
 });
 
 test('rejects symlinks anywhere in the fleet-state directory ancestry', (t) => {
@@ -205,10 +276,57 @@ test('rejects symlinks anywhere in the fleet-state directory ancestry', (t) => {
     throw error;
   }
   const file = fleetStatePath(linked, 'symlink-run');
+  const linkedManifest = normalizeFleetManifest({
+    confirmation: 'confirmed',
+    goal: manifest.goal,
+    acceptedScope: manifest.acceptedScope,
+    exclusions: manifest.exclusions,
+    dependencies: manifest.dependencies,
+    concurrency: manifest.concurrency,
+    budget: manifest.budget,
+    repository: { ...manifest.repository, root: linked },
+    provider: manifest.provider,
+    validationPolicy: manifest.validationPolicy,
+    stopConditions: manifest.stopConditions,
+    humanBoundaries: manifest.humanBoundaries,
+    shepherdIntent: manifest.shepherdIntent,
+    issues: manifest.issues.map((issue) => ({
+      identity: issue.identity,
+      sourceRevision: issue.sourceRevision,
+      sourceReceipt: issue.sourceReceipt,
+      acceptanceCriteria: issue.acceptanceCriteria,
+      scope: issue.scope,
+      allowedPaths: issue.allowedPaths,
+      status: issue.status,
+    })),
+    humanDecisions: [],
+  });
   assert.throws(
-    () => persistFleetState(file, createFleetState(manifest, 'symlink-run'), 0, manifest),
+    () => persistFleetState(
+      file,
+      createFleetState(linkedManifest, 'symlink-run'),
+      0,
+      linkedManifest,
+    ),
     /directory ancestry is unsafe/,
   );
+});
+
+test('wrong repository or run path is rejected before creating directories', () => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  const wrongRepository = path.join(ROOT, '.test-sandbox', 'wrong-squadron-root');
+  fs.rmSync(wrongRepository, { recursive: true, force: true });
+  const state = createFleetState(manifest, 'bound-run');
+  assert.throws(
+    () => persistFleetState(fleetStatePath(wrongRepository, 'bound-run'), state, 0, manifest),
+    /not bound to the manifest repository and run/,
+  );
+  assert.equal(fs.existsSync(wrongRepository), false);
+  assert.throws(
+    () => persistFleetState(fleetStatePath(SANDBOX, 'wrong-run'), state, 0, manifest),
+    /not bound to the manifest repository and run/,
+  );
+  assert.equal(fs.existsSync(path.join(SANDBOX, '.ship-with-squadron', 'wrong-run')), false);
 });
 
 test('reobserves the exact source revision and rejects closed-set or ownership forgery', () => {
@@ -248,26 +366,26 @@ test('uses at-ceiling budget semantics, stops dispatch, and preserves cancellati
   assert.equal(budget.state.issues['1'].terminalDisposition, 'not-reached');
   assert.equal(budget.state.issues['1'].nextAction, 'await-renewed-human-confirmation');
 
-  const cancelled = cancelFleet(initial, 'operator requested stop');
+  const cancelled = cancelFleet(initial, manifest, 'operator requested stop');
   assert.equal(cancelled.control.cancelled, true);
   assert.equal(cancelled.fleetDisposition, 'cancelled');
   assert.equal(cancelled.issues['1'].nextAction, 'await-new-human-invocation');
   assert.throws(
-    () => transitionIssue(initial, '1', 'active'),
+    () => transitionIssue(initial, manifest, '1', 'active'),
     /only be entered through validated assignment/,
   );
   assert.throws(
-    () => transitionIssue(initial, '1', 'pending'),
+    () => transitionIssue(initial, manifest, '1', 'pending'),
     /validated handoff replacement/,
   );
   assert.throws(
-    () => transitionIssue(initial, '1', 'failed', {
+    () => transitionIssue(initial, manifest, '1', 'failed', {
       terminalDisposition: 'blocked',
     }),
     /contradicts status failed/,
   );
   assert.throws(
-    () => transitionIssue(initial, '1', 'completed', {
+    () => transitionIssue(initial, manifest, '1', 'completed', {
       terminalDisposition: 'blocked',
     }),
     /semantic publication\/readiness pipeline/,
@@ -302,4 +420,56 @@ test('state invariants rederive semantic evidence and enforce active capacity', 
     },
   ];
   assert.throws(() => assertFleetState(failedCi, manifest), /forged run-ci evidence/);
+
+  const forgedReady = createFleetState(manifest, 'run-forged-ready');
+  forgedReady.issues['1'].status = 'completed';
+  forgedReady.issues['1'].terminalDisposition = 'ready-for-human-merge';
+  forgedReady.issues['1'].nextAction = 'await-human-merge';
+  assert.throws(
+    () => assertFleetState(forgedReady, manifest),
+    /ready disposition lacks effective pipeline readiness/,
+  );
+});
+
+test('does not claim timed-out-with-handoff without archived validated handoff evidence', () => {
+  const timedOutIssue = {
+    ...manifest.issues[0],
+    status: 'timed-out',
+    sourceReceipt: {
+      ...manifest.issues[0].sourceReceipt,
+      issueStatus: 'timed-out',
+    },
+  };
+  const timedOutManifest = normalizeFleetManifest({
+    confirmation: 'confirmed',
+    goal: manifest.goal,
+    acceptedScope: manifest.acceptedScope,
+    exclusions: manifest.exclusions,
+    humanDecisions: [],
+    issues: [{
+      identity: timedOutIssue.identity,
+      sourceRevision: timedOutIssue.sourceRevision,
+      sourceReceipt: timedOutIssue.sourceReceipt,
+      acceptanceCriteria: timedOutIssue.acceptanceCriteria,
+      scope: manifest.issues[0].scope,
+      allowedPaths: manifest.issues[0].allowedPaths,
+      status: 'timed-out',
+    }],
+    dependencies: [],
+    concurrency: manifest.concurrency,
+    budget: manifest.budget,
+    repository: manifest.repository,
+    provider: manifest.provider,
+    validationPolicy: manifest.validationPolicy,
+    stopConditions: manifest.stopConditions,
+    humanBoundaries: manifest.humanBoundaries,
+    shepherdIntent: manifest.shepherdIntent,
+  });
+  const state = createFleetState(timedOutManifest, 'timed-out');
+  assert.equal(state.issues['1'].terminalDisposition, 'failed');
+  state.issues['1'].terminalDisposition = 'timed-out-with-handoff';
+  assert.throws(
+    () => assertFleetState(state, timedOutManifest),
+    /lacks a validated archived handoff/,
+  );
 });
