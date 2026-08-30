@@ -77,8 +77,9 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
    A blocker is cleared exactly three ways, and the cycle may only take the
    first on its own:
 
-   - **Remediated** — a bounded dispatch fixes it, and step 3 and step 4 run
-     again over the result.
+   - **Remediated** — a bounded dispatch fixes it, and steps 3 through 5 run
+     again over the result: reconciliation, complete declared validation, and a
+     fresh Roast.
    - **Disputed** — the operator, shown the finding and its evidence, records
      that it is wrong or does not apply. The cycle never disputes a finding on
      its own behalf; that would be the change arguing with its own review.
@@ -90,20 +91,42 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
    deciding needs to see it rather than wait for it.
 
 6. **Remediate, within a limit.** A validation failure or a review blocker
-   becomes a **new bounded dispatch** against the same ledger. Record the
-   attempt count and its declared limit before the first attempt.
+   becomes a **new bounded dispatch** against the same ledger. The remediation
+   limit is exactly **five attempts** per delivery cycle. Record `0/5` before
+   the first attempt and increment it after each returned remediation. The
+   initial validation and Roast establish the defects and do not consume an
+   attempt; each later dispatch consumes one slot even when it returns no
+   candidate change.
 
-   After each remediation, return to step 3. A fix is a change, and an
-   unreconciled fix is exactly how an undisclosed change enters late, when
-   attention is lowest.
+   After each remediation, return to step 3, rerun the repository's complete
+   declared validation, and submit the resulting candidate to a fresh Roast.
+   A fix is a change, and an unreconciled fix is exactly how an undisclosed
+   change enters late, when attention is lowest.
 
-   When the limit is reached, stop and hand back with the outstanding defects
-   named. An unbounded retry loop converts a defect the operator should see into
-   time spent not seeing it.
+   Successful convergence stops the loop as soon as validation is green and all
+   review blockers are cleared. With defects still outstanding, the only early
+   stops and their outcomes are:
+
+   - an out-of-ledger requested change → `undisclosed-change`;
+   - evidence that maps ambiguously to the ledger → `ambiguous-mapping`;
+   - unavailable safe isolation → `isolation-refused`;
+   - explicit operator cancellation → `handed-back`;
+   - a required tool, permission, or authority reported unavailable by the
+     workflow that owns it → `handed-back`.
+
+   Every other remediable validation or review defect receives the remaining
+   attempts through five. The run must not invent another early exit or choose
+   a smaller limit merely because two or three rounds were expensive.
+
+   When attempt five returns without clearing the defects, stop and hand back
+   with every outstanding defect named. Never start attempt six, suppress a
+   finding, or weaken validation to manufacture convergence. An unbounded retry
+   loop converts a defect the operator should see into time spent not seeing it.
 
 7. **Verdict.** Report criterion by criterion with evidence, then the derived
    aggregate. Report the reconciliation verdict, the validation envelope, the
-   review findings, and the remediation attempts used.
+   review findings, and remediation accounting as `n/5`, where `n` excludes the
+   initial validation and Roast and counts every returned remediation dispatch.
 
 ## Cycle Outcomes
 
@@ -111,7 +134,7 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
 | --- | --- |
 | `verified` | Reconciled, validation green, review blockers cleared, every criterion `satisfied` or `descoped`. |
 | `incomplete` | Reconciled and validated, but a criterion is `partial`, `not-satisfied`, or `not-verifiable`. |
-| `handed-back` | The remediation limit was reached with defects outstanding. |
+| `handed-back` | The remediation limit was reached with defects outstanding, the operator cancelled, or a required tool, permission, or authority became unavailable. |
 | `undisclosed-change` | The diff contains changes the confirmed ledger does not. The cycle stopped. |
 | `ambiguous-mapping` | One change is claimed by more than one ledger entry, so "exactly one entry" is unverifiable. The cycle stopped. |
 | `isolation-refused` | No safe place to work and no consent to proceed without one. |
