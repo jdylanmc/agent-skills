@@ -4,6 +4,7 @@ import {
   normalizeUpToDatePolicy,
   validateFreshnessReceipt,
 } from '../../../_base/_atoms/landability/landability.mjs';
+import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
   persistedPipelinePasses,
   persistedPublicationPipelinePasses,
@@ -28,6 +29,37 @@ function validTimestamp(value) {
 
 function normalizeProvider(value) {
   return nonEmpty(value) ? value.trim().toLowerCase() : null;
+}
+
+function same(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function archiveSuccessfulAssignment(record, completion) {
+  if (record.assignment === null || record.assignment === undefined) {
+    if (record.status === 'active') {
+      throw new Error('completed readiness cannot leave an active issue without assignment identity');
+    }
+    return;
+  }
+  const expectedKeys = ['generation', 'workerContext', 'baseSha', 'headSha', 'completedAt', 'resultDigest'];
+  if (!completion
+      || !same(Object.keys(completion).sort(), expectedKeys.sort())
+      || completion.generation !== record.assignment.generation
+      || completion.workerContext !== record.assignment.workerContext
+      || completion.baseSha !== record.assignment.baseSha
+      || completion.headSha !== record.assignment.headSha
+      || !validTimestamp(completion.completedAt)
+      || !/^[a-f0-9]{64}$/.test(completion.resultDigest)) {
+    throw new Error('completed readiness requires exact validated assignment success identity');
+  }
+  record.continuationChain.push({
+    ...record.assignment,
+    active: false,
+    endReason: 'completed',
+    endedAt: completion.completedAt,
+  });
+  record.assignment = null;
 }
 
 function expectedFields(expected) {
@@ -120,7 +152,14 @@ export function acceptShepherdReturn(input, expected = {}) {
   };
 }
 
-export function recordShepherdNotRequired(state, manifest, issueIdentity, obligation) {
+export function recordShepherdNotRequired(
+  state,
+  manifest,
+  issueIdentity,
+  obligation,
+  assignmentCompletion = null,
+) {
+  assertFleetManifest(manifest);
   if (manifest.shepherdIntent !== 'no') throw new Error('Shepherd-not-required requires manifest intent no');
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
@@ -159,6 +198,7 @@ export function recordShepherdNotRequired(state, manifest, issueIdentity, obliga
   );
   if (defects.length) throw new Error(`invalid Shepherd-not-required obligation: ${defects.join('; ')}`);
   const next = structuredClone(state);
+  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion);
   next.issues[issueIdentity].shepherd = null;
   next.issues[issueIdentity].shepherdDecision = {
     state: 'not-required',
@@ -196,6 +236,7 @@ export function expireReadinessAfterSiblingMerge(
   revisions,
   now = new Date().toISOString(),
 ) {
+  assertFleetManifest(manifest);
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('readiness expiry state is not bound to the confirmed manifest');
@@ -275,10 +316,22 @@ export function expireReadinessAfterSiblingMerge(
     const generation = priorGeneration + 1;
     const changeRequest = recordChangeRequest;
     const publicationKey = recordPublicationKey;
-    if (record.shepherd) {
-      record.shepherd.ready = false;
-      record.shepherd.freshness = 'stale';
-      record.shepherd.accepted = false;
+    const priorReadiness = record.shepherd?.accepted === true
+      ? record.shepherd
+      : record.setObligation
+        ? { setObligation: record.setObligation }
+        : null;
+    if (record.shepherd?.accepted === true) {
+      record.shepherd = {
+        accepted: false,
+        ready: false,
+        freshness: 'expired',
+        expiredAt: now,
+        reason: `sibling-merge:${mergeObservation.changeRequest}`,
+        generation,
+      };
+    } else {
+      record.shepherd = null;
     }
     record.status = 'blocked';
     record.dependencyState = 'blocked';
@@ -300,7 +353,9 @@ export function expireReadinessAfterSiblingMerge(
       changeRequest,
       publicationKey,
       reason: `sibling-merge:${mergeObservation.changeRequest}`,
-      oldBaseSha: record.shepherd?.receipt?.baseSha ?? record.setObligation?.baseSha ?? null,
+      oldBaseSha: priorReadiness?.receipt?.baseSha
+        ?? priorReadiness?.setObligation?.baseSha
+        ?? null,
       currentBaseSha: null,
       currentHeadSha: null,
       generation,
@@ -386,6 +441,7 @@ export function recordReadinessRevisionObservation(
   issueIdentity,
   observation,
 ) {
+  assertFleetManifest(manifest);
   const queue = state.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
   if (!queue || queue.action !== 'acquire-current-change-request-revision') {
     throw new Error(`no blocked revision acquisition for ${issueIdentity}`);
@@ -430,6 +486,7 @@ export function recordReadinessRevisionObservation(
 }
 
 export function consumeReShepherdQueue(state, manifest, issueIdentity, accepted, revalidation) {
+  assertFleetManifest(manifest);
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('re-Shepherd state is not bound to the confirmed manifest');
@@ -504,6 +561,7 @@ export function consumeReShepherdQueue(state, manifest, issueIdentity, accepted,
 }
 
 export function consumeNoShepherdRevalidation(state, manifest, issueIdentity, revalidation, obligation) {
+  assertFleetManifest(manifest);
   if (manifest.shepherdIntent !== 'no') throw new Error('no-Shepherd revalidation requires manifest intent no');
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {

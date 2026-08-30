@@ -41,12 +41,18 @@ Use the fleet manifest helper to reject duplicate identities,
 duplicate or ambiguous edges, missing endpoints, self-edges, cycles, invalid
 budgets, absent or mismatched source receipts, missing criteria, implicit scope,
 and a validation policy missing `run-ci`, `roast`, or `blast-radius-proof`.
+The first version supports exactly that baseline policy and rejects additions
+rather than accepting checks that its packet, pipeline, persistence, and
+readiness gates cannot enforce.
 Human descoping is an immutable manifest decision: nonempty actor identity,
 decision ID/text/time, issue, criterion, source revision, and manifest
 confirmation binding are all required. An actor-type label alone is invalid.
 Persist the returned manifest and provider-configuration digests with fleet
-state. Reobserve exact source revisions before first dispatch; drift or an extra
-issue requires a newly confirmed manifest.
+state. Every exported consumer exact-schema validates the normalized manifest
+and recomputes both digests from all authority fields; retaining old digest
+scalars after mutating authority is rejected. Reobserve exact source revisions
+before first dispatch; drift or an extra issue requires a newly confirmed
+manifest.
 
 ## Boundaries
 

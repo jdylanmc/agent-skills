@@ -1,4 +1,5 @@
 import { reconcile } from '../../../ship/_atoms/diff-reconciliation/diff-reconciliation.mjs';
+import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 
 export const DELIVERY_STAGES = Object.freeze([
   'implementation',
@@ -108,6 +109,7 @@ export function validateReadinessObligation(
 }
 
 export function persistedShepherdPasses(issueRecord, state, manifest) {
+  assertFleetManifest(manifest);
   const defects = [];
   const shepherd = issueRecord?.shepherd;
   const receipt = shepherd?.receipt;
@@ -557,11 +559,13 @@ export function adaptBlastRadiusEvidence(report, revision, identity = {}) {
 }
 
 export function deliveryStagesForManifest(manifest) {
+  assertFleetManifest(manifest);
   if (manifest?.shepherdIntent === 'no') return DELIVERY_STAGES.slice(0, -1);
   return [...DELIVERY_STAGES];
 }
 
-export function recordStage(issueRecord, stage, evidence, revision, manifest = { shepherdIntent: 'yes' }) {
+export function recordStage(issueRecord, stage, evidence, revision, manifest) {
+  assertFleetManifest(manifest);
   const stages = deliveryStagesForManifest(manifest);
   const index = stages.indexOf(stage);
   if (index < 0) throw new Error(`delivery stage is not required by manifest: ${stage}`);
@@ -744,6 +748,7 @@ function evaluatePersistedStages(issueRecord, state, manifest, required) {
 }
 
 export function persistedPipelinePasses(issueRecord, state, manifest) {
+  assertFleetManifest(manifest);
   return evaluatePersistedStages(
     issueRecord,
     state,
@@ -753,6 +758,7 @@ export function persistedPipelinePasses(issueRecord, state, manifest) {
 }
 
 export function persistedPrePublicationPasses(issueRecord, state, manifest) {
+  assertFleetManifest(manifest);
   const required = deliveryStagesForManifest(manifest);
   const publicationIndex = required.indexOf('publication');
   return evaluatePersistedStages(
@@ -764,6 +770,7 @@ export function persistedPrePublicationPasses(issueRecord, state, manifest) {
 }
 
 export function persistedPublicationPipelinePasses(issueRecord, state, manifest) {
+  assertFleetManifest(manifest);
   const required = deliveryStagesForManifest(manifest);
   const shepherdIndex = required.indexOf('shepherd');
   const throughPublication = shepherdIndex < 0 ? required : required.slice(0, shepherdIndex);
@@ -782,6 +789,11 @@ export function evaluateQualityGate(input = {}) {
   const issue = manifest?.issues?.find((entry) => entry.identity === input.identity?.issue);
   if (!manifest || !revision || !issue) {
     return { readyForPublication: false, defects: ['quality-gate:missing-manifest-revision-or-issue'] };
+  }
+  try {
+    assertFleetManifest(manifest);
+  } catch (error) {
+    return { readyForPublication: false, defects: [`quality-gate:${error.message}`] };
   }
   if (input.reconciliation?.verdict !== 'reconciled' || !revisionMatches(input.reconciliation, revision)) {
     defects.push(`reconciliation:${input.reconciliation?.verdict ?? 'missing-or-stale'}`);

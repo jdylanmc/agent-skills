@@ -47,6 +47,10 @@ proved `satisfied` or `descoped-by-human` by a human decision receipt bound to
 criterion ID, manifest digest, source revision, decision, actor, and time.
 Absent, malformed, stale, degraded, or incomplete evidence enters bounded
 remediation and never publication readiness.
+The confirmed policy is exact: the first version accepts only `run-ci`,
+`roast`, and `blast-radius-proof`. Manifest additions are rejected until a
+future version can carry them consistently through assignment, evidence,
+persistence, and readiness.
 
 ## Blast-radius adapter
 

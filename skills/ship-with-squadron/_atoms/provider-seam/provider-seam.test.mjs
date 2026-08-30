@@ -169,6 +169,12 @@ test('authorizes only the persisted manifest allow-list, never caller configurat
   for (const operation of FORBIDDEN_PROVIDER_OPERATIONS) {
     assert.equal(authorizeProviderOperation(state(), manifest, operation).authorized, false);
   }
+  const mutated = structuredClone(manifest);
+  mutated.repository.baseBranch = 'mutated';
+  assert.deepEqual(authorizeProviderOperation(state(), mutated, 'read-issue'), {
+    authorized: false,
+    reason: 'persisted-manifest-authority-mismatch',
+  });
 });
 
 test('records publication intent before call and reconciles crash recovery idempotently', () => {

@@ -143,7 +143,15 @@ test('query-backed sets block until exact membership is reobserved', () => {
     acceptedScope: manifest.acceptedScope,
     exclusions: manifest.exclusions,
     humanDecisions: [],
-    issues: manifest.issues,
+    issues: manifest.issues.map((issue) => ({
+      identity: issue.identity,
+      sourceRevision: issue.sourceRevision,
+      sourceReceipt: issue.sourceReceipt,
+      acceptanceCriteria: issue.acceptanceCriteria,
+      scope: issue.scope,
+      allowedPaths: issue.allowedPaths,
+      status: issue.status,
+    })),
     issueSet: {
       kind: 'tracker-query', queryIdentity: 'saved:fleet', queryRevision: 'q1',
       membershipDigest: digest, receipt,

@@ -1,4 +1,7 @@
-import { validateIssueSetReceipt } from '../fleet-manifest/fleet-manifest.mjs';
+import {
+  assertFleetManifest,
+  validateIssueSetReceipt,
+} from '../fleet-manifest/fleet-manifest.mjs';
 import { normalizeMergeObservation } from '../provider-seam/provider-seam.mjs';
 import { effectiveIssueReadiness } from '../fleet-disposition/fleet-disposition.mjs';
 
@@ -58,6 +61,7 @@ export function dispatchBlockReason(fleetState) {
 }
 
 export function computeFrontier(manifest, fleetState) {
+  assertFleetManifest(manifest);
   if (fleetState.manifestDigest !== manifest.digest
       || fleetState.providerConfigurationDigest !== manifest.providerConfigurationDigest
       || !fleetState.control

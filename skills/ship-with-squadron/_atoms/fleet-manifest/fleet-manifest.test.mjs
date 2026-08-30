@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   BASELINE_POLICY,
+  assertFleetManifest,
   manifestDigest,
   normalizeFleetManifest,
   validateSourceRevisionReceipt,
@@ -100,8 +101,34 @@ test('requires explicit scope, exclusions, human decisions, and mandatory baseli
     validationPolicy: ['run-ci', 'roast'],
   })), /blast-radius-proof/);
   assert.throws(() => normalizeFleetManifest(manifest({
+    validationPolicy: [...BASELINE_POLICY, 'mutation-testing'],
+  })), /unsupported checks: mutation-testing/);
+  assert.throws(() => normalizeFleetManifest(manifest({
     issues: [{ ...issue('1', 'r1'), allowedPaths: [] }],
   })), /allowedPaths must be non-empty/);
+});
+
+test('recomputes both authority digests and rejects retained scalars after mutation', () => {
+  const normalized = normalizeFleetManifest(manifest());
+  assert.equal(assertFleetManifest(normalized), normalized);
+  const mutatedAuthority = structuredClone(normalized);
+  mutatedAuthority.goal = 'mutated after confirmation';
+  assert.throws(
+    () => assertFleetManifest(mutatedAuthority),
+    /manifest digest does not match authority fields/,
+  );
+  const mutatedProvider = structuredClone(normalized);
+  mutatedProvider.provider.allowedOperations = ['read-issue'];
+  const unsigned = structuredClone(mutatedProvider);
+  delete unsigned.digest;
+  mutatedProvider.digest = manifestDigest(unsigned);
+  assert.throws(
+    () => assertFleetManifest(mutatedProvider),
+    /provider configuration digest does not match authority fields/,
+  );
+  const extra = structuredClone(normalized);
+  extra.silentAuthority = true;
+  assert.throws(() => assertFleetManifest(extra), /unknown fields/);
 });
 
 test('rejects stale source receipts and malformed closed dependency graphs', () => {

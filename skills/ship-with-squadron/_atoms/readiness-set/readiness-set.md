@@ -32,7 +32,10 @@ Use the readiness set helper to require:
 - no degraded or unobserved provider state for a ready claim.
 
 When manifest Shepherd intent is `no`, record `not-required` plus a real
-revision-bound set obligation and dispatch no Shepherd.
+revision-bound set obligation and dispatch no Shepherd. Before entering
+completed readiness, archive any active assignment through an exact
+generation/worker/base/head/result-bound success transition so no mutable owner
+remains.
 
 Readiness is snapshot-bound. After an exact merge observation reconciled to a
 recorded publication, persist the merge and invalidate every affected open
@@ -53,3 +56,10 @@ fresh semantic quality evidence matches that exact generation and revision.
 Duplicate merge redelivery is idempotent. Do not
 force-push merely because the base moved; Shepherd decides whether its trigger
 and SHA-pinned lease rules require a push.
+
+Expiry uses one explicit persisted representation: accepted nested readiness is
+replaced by an `expired` marker bound to the new generation, while nested and
+issue-level set obligations and no-Shepherd decisions are cleared together.
+The resulting blocked state must still pass the full fleet-state invariants.
+The landed change request retains its review-ready evidence, and its observed
+merge continues to satisfy dependent work while open siblings expire.

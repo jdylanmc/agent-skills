@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
+  assertFleetState,
   createFleetState,
   fleetStatePath,
   loadFleetState,
@@ -26,7 +28,6 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SANDBOX = path.join(ROOT, '.test-sandbox', 'ship-with-squadron-handoff');
-const SAFE_FD_SUPPORTED = Number.isInteger(fs.constants.O_NOFOLLOW) && fs.constants.O_NOFOLLOW !== 0;
 
 function source(issue, observedAt = '2026-08-30T00:00:00Z') {
   return {
@@ -53,7 +54,7 @@ const manifest = normalizeFleetManifest({
   dependencies: [],
   concurrency: 2,
   budget: { cost: 10, timeMinutes: 60, retries: 2 },
-  repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
+  repository: { id: 'owner/repo', root: SANDBOX, baseBranch: 'main' },
   provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],
@@ -77,8 +78,11 @@ function state() {
 
 function packet(issue, branch, worktree) {
   const record = manifest.issues.find((entry) => entry.identity === issue);
-  const verification = ['run declared tests'];
-  const reportContract = { summary: 'return changes', requiredEvidence: ['tests', 'diff'] };
+  const verification = [...manifest.validationPolicy];
+  const reportContract = {
+    summary: 'return confirmed validation evidence',
+    requiredEvidence: [...manifest.validationPolicy],
+  };
   return {
     schemaVersion: 1,
     manifestDigest: manifest.digest,
@@ -219,6 +223,14 @@ function handoff(file, content) {
   };
 }
 
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+  }
+  return value;
+}
+
 function setRuntimeTemp(t) {
   const previous = process.env.TMPDIR;
   process.env.TMPDIR = SANDBOX;
@@ -250,6 +262,15 @@ test('assigns only pending unowned issues with a complete manifest-bound packet'
   assert.throws(() => assignFreshWorker(fresh, manifest, {
     issue: 'a', branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-1',
     baseSha: 'base', headSha: 'head',
+    packet: {
+      ...packet('a', 'issue-a', '/work/a'),
+      verification: ['run-ci'],
+    },
+    schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
+  }), /exactly match confirmed validation policy/);
+  assert.throws(() => assignFreshWorker(fresh, manifest, {
+    issue: 'a', branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-1',
+    baseSha: 'base', headSha: 'head',
     packet: { ...packet('a', 'issue-a', '/work/a'), extraAuthority: 'publish-anywhere' },
     schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
   }), /schema is not exact/);
@@ -261,6 +282,13 @@ test('assigns only pending unowned issues with a complete manifest-bound packet'
     baseSha: 'base', headSha: 'head', packet: packet('a', 'issue-a', '/work/a'),
     schedulerLease: staleLease,
   }), /scheduler lease/);
+  const mutatedManifest = structuredClone(manifest);
+  mutatedManifest.goal = 'retained digest with mutated authority';
+  assert.throws(() => assignFreshWorker(fresh, mutatedManifest, {
+    issue: 'a', branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-1',
+    baseSha: 'base', headSha: 'head', packet: packet('a', 'issue-a', '/work/a'),
+    schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
+  }), /manifest digest does not match authority fields/);
 });
 
 test('continues only after rereading actual orchestration-handoff persistence output', (t) => {
@@ -271,14 +299,6 @@ test('continues only after rereading actual orchestration-handoff persistence ou
   const persisted = persistOrchestrationHandoff(payload, {
     now: new Date('2026-08-30T00:02:30Z'),
   });
-  if (!SAFE_FD_SUPPORTED) {
-    assert.throws(() => continueWithFreshWorker(assigned(), manifest, {
-      issue: 'a', reason: 'stalled', handoff: persisted, handoffPayload: payload,
-      branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-2',
-      packet: packet('a', 'issue-a', '/work/a'),
-    }), /cannot establish O_NOFOLLOW/);
-    return;
-  }
   const continued = continueWithFreshWorker(assigned(), manifest, {
     issue: 'a',
     reason: 'stalled',
@@ -294,6 +314,25 @@ test('continues only after rereading actual orchestration-handoff persistence ou
   assert.equal(continued.issues.a.status, 'active');
   assert.equal(continued.issues.a.assignment.generation, 2);
   assert.equal(continued.issues.a.continuationChain[0].endReason, 'stalled');
+  assert.equal(
+    continued.issues.a.continuationChain[0].handoff.identity.targetAgent,
+    'worker-2',
+  );
+  assert.match(
+    continued.issues.a.continuationChain[0].handoff.artifactSha256,
+    /^[a-f0-9]{64}$/,
+  );
+  assert.doesNotThrow(() => assertFleetState(continued, manifest));
+  const forgedBinding = structuredClone(continued);
+  const archivedHandoff = forgedBinding.issues.a.continuationChain[0].handoff;
+  archivedHandoff.bindingRecord.inputs[0].value = 'b';
+  archivedHandoff.bindingsSha256 = crypto.createHash('sha256')
+    .update(JSON.stringify(stable(archivedHandoff.bindingRecord)))
+    .digest('hex');
+  assert.throws(
+    () => assertFleetState(forgedBinding, manifest),
+    /handoff binding inputs are invalid/,
+  );
   assert.equal(validateContinuationArtifact(persisted, payload, {
     runId: 'run', issue: 'a', priorGeneration: 1, branch: 'issue-a', worktree: '/work/a',
     sourceAgent: 'worker-1', targetAgent: 'worker-2', baseSha: 'base', headSha: 'head',
@@ -310,6 +349,15 @@ test('continues only after rereading actual orchestration-handoff persistence ou
     stateRevision: 0, acceptanceCriteria: ['done'],
     taskContract: packet('a', 'issue-a', '/work/a').taskContract,
   };
+  assert.equal(
+    validateContinuationArtifact(
+      persisted,
+      payload,
+      expectedContinuation,
+      { forcePortableFallback: true },
+    ).valid,
+    true,
+  );
   const expandedScope = structuredClone(payload);
   expandedScope.task_contract.scope = JSON.stringify(['issue a', 'adjacent issue']);
   assert.equal(
@@ -353,21 +401,18 @@ test('rejects symlink/path escape, stale bindings, and fabricated paths', (t) =>
     branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-2',
     packet: packet('a', 'issue-a', '/work/a'),
   }), /artifact/);
-  if (SAFE_FD_SUPPORTED) {
-    const swap = path.join(root, 'swap.md');
-    fs.writeFileSync(swap, content);
-    assert.equal(validateContinuationArtifact(
-      handoff(swap, content),
-      payload,
-      null,
-      {
-        afterOpen() {
-          fs.renameSync(swap, `${swap}.old`);
-          fs.writeFileSync(swap, content);
-        },
+  const swap = path.join(root, 'swap.md');
+  fs.writeFileSync(swap, content);
+  assert.equal(validateContinuationArtifact(
+    handoff(swap, content),
+    payload,
+    null,
+    {
+      afterOpen() {
+        fs.writeFileSync(swap, `${content}changed`);
       },
-    ).valid, false);
-  }
+    },
+  ).valid, false);
 });
 
 test('fleet stop preserves handoff obligation but dispatches no continuation', (t) => {
@@ -389,10 +434,9 @@ test('fleet stop preserves handoff obligation but dispatches no continuation', (
 });
 
 test('persisted assignment consumes a serialized revision-bound scheduler lease', (t) => {
-  const root = path.join(SANDBOX, 'persisted-assignment');
-  fs.rmSync(root, { recursive: true, force: true });
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const file = fleetStatePath(root, 'run');
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const file = fleetStatePath(SANDBOX, 'run');
   persistFleetState(file, state(), 0, manifest, { now: '2026-08-30T00:02:00Z' });
   const persistedState = loadFleetState(file, manifest);
   const schedulerLease = createSchedulerLease(persistedState, manifest, 'a');

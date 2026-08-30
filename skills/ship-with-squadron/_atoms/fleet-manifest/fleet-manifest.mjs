@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
 
 const ISSUE_STATUSES = new Set([
   'pending', 'completed', 'blocked', 'failed', 'timed-out', 'deferred',
@@ -13,6 +14,19 @@ const SAFE_PROVIDER_OPERATIONS = new Set([
 ]);
 const BASELINE_POLICY = Object.freeze(['run-ci', 'roast', 'blast-radius-proof']);
 const SOURCE_STATUS = 'observed';
+const MANIFEST_INPUT_FIELDS = new Set([
+  'confirmation', 'goal', 'acceptedScope', 'issues', 'issueSet', 'dependencies',
+  'exclusions', 'concurrency', 'budget', 'repository', 'provider',
+  'validationPolicy', 'stopConditions', 'shepherdIntent', 'humanBoundaries',
+  'humanDecisions',
+]);
+const MANIFEST_FIELDS = new Set([
+  'schemaVersion', 'goal', 'acceptedScope', 'issues', 'dependencies',
+  'exclusions', 'concurrency', 'budget', 'repository', 'provider',
+  'providerConfigurationDigest', 'validationPolicy', 'stopConditions',
+  'shepherdIntent', 'humanBoundaries', 'humanDecisions',
+  'confirmationBindingDigest', 'issueSet', 'confirmation', 'closedSet', 'digest',
+]);
 
 function nonEmpty(value, field) {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -77,6 +91,11 @@ function normalizeCriteria(criteria, identity) {
     if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) {
       throw new Error(`${identity}.acceptanceCriteria[${index}] must be a string or object`);
     }
+    assertOnlyKeys(
+      normalized,
+      new Set(['id', 'description']),
+      `${identity}.acceptanceCriteria[${index}]`,
+    );
     const id = nonEmpty(normalized.id, `${identity}.acceptanceCriteria[${index}].id`);
     if (ids.has(id)) throw new Error(`${identity} has duplicate criterion id: ${id}`);
     ids.add(id);
@@ -133,6 +152,7 @@ function normalizeSourceReceipt(receipt, expected, field) {
 }
 
 export function validateSourceRevisionReceipt(receipt, manifest, issueIdentity) {
+  assertFleetManifest(manifest);
   const issue = manifest.issues.find((entry) => entry.identity === issueIdentity);
   if (!issue) throw new Error(`unknown manifest issue: ${issueIdentity}`);
   return normalizeSourceReceipt(receipt, {
@@ -169,6 +189,11 @@ function normalizeIssueSetReceipt(receipt, expected, field) {
     throw new Error(`${field}.members must be a non-empty array`);
   }
   const normalizedMembers = members.map((member, index) => ({
+    ...(assertOnlyKeys(
+      member,
+      new Set(['identity', 'sourceRevision']),
+      `${field}.members[${index}]`,
+    ) ?? {}),
     identity: nonEmpty(member?.identity, `${field}.members[${index}].identity`),
     sourceRevision: nonEmpty(
       member?.sourceRevision,
@@ -268,6 +293,7 @@ function normalizeHumanDecisions(input, issues, manifestBindingDigest) {
 }
 
 export function validateIssueSetReceipt(receipt, manifest) {
+  assertFleetManifest(manifest);
   if (manifest.issueSet.kind !== 'tracker-query') {
     throw new Error('issue-set receipt is only valid for a tracker-query manifest');
   }
@@ -282,6 +308,7 @@ export function validateIssueSetReceipt(receipt, manifest) {
 }
 
 export function normalizeFleetManifest(input = {}) {
+  assertOnlyKeys(input, MANIFEST_INPUT_FIELDS, 'fleet manifest');
   if (input.confirmation !== 'confirmed') {
     throw new Error('fleet manifest requires one explicit confirmed state');
   }
@@ -300,6 +327,11 @@ export function normalizeFleetManifest(input = {}) {
     root: nonEmpty(repository.root, 'repository.root'),
     baseBranch: nonEmpty(repository.baseBranch, 'repository.baseBranch'),
   };
+  assertOnlyKeys(repository, new Set(['id', 'root', 'baseBranch']), 'repository');
+  if (!path.isAbsolute(normalizedRepository.root)
+      || path.normalize(path.resolve(normalizedRepository.root)) !== normalizedRepository.root) {
+    throw new Error('repository.root must be an exact normalized absolute path');
+  }
   const provider = input.provider;
   if (!provider || typeof provider !== 'object' || Array.isArray(provider)) {
     throw new Error('provider configuration is required');
@@ -307,6 +339,7 @@ export function normalizeFleetManifest(input = {}) {
   if (!Array.isArray(provider.allowedOperations) || provider.allowedOperations.length === 0) {
     throw new Error('provider.allowedOperations must be a non-empty array');
   }
+  assertOnlyKeys(provider, new Set(['name', 'allowedOperations']), 'provider');
   const providerName = nonEmpty(provider.name, 'provider.name').toLowerCase();
   for (const operation of provider.allowedOperations) {
     if (!SAFE_PROVIDER_OPERATIONS.has(operation)) {
@@ -320,6 +353,10 @@ export function normalizeFleetManifest(input = {}) {
 
   const identities = new Set();
   const issues = input.issues.map((issue, index) => {
+    assertOnlyKeys(issue, new Set([
+      'identity', 'sourceRevision', 'sourceReceipt', 'acceptanceCriteria',
+      'scope', 'allowedPaths', 'status',
+    ]), `issues[${index}]`);
     const identity = nonEmpty(issue?.identity, `issues[${index}].identity`);
     if (identities.has(identity)) throw new Error(`duplicate issue identity: ${identity}`);
     identities.add(identity);
@@ -408,6 +445,11 @@ export function normalizeFleetManifest(input = {}) {
     if ('from' in edge || 'to' in edge || !('dependency' in edge) || !('dependent' in edge)) {
       throw new Error(`dependencies[${index}] has ambiguous direction; use dependency and dependent`);
     }
+    assertOnlyKeys(
+      edge,
+      new Set(['dependency', 'dependent', 'satisfiedBy']),
+      `dependencies[${index}]`,
+    );
     const dependency = nonEmpty(edge.dependency, `dependencies[${index}].dependency`);
     const dependent = nonEmpty(edge.dependent, `dependencies[${index}].dependent`);
     if (!identities.has(dependency)) throw new Error(`missing dependency endpoint: ${dependency}`);
@@ -449,6 +491,7 @@ export function normalizeFleetManifest(input = {}) {
   if (!budget || typeof budget !== 'object' || Array.isArray(budget)) {
     throw new Error('budget must be an object');
   }
+  assertOnlyKeys(budget, new Set(['cost', 'timeMinutes', 'retries']), 'budget');
   for (const field of ['cost', 'timeMinutes', 'retries']) {
     if (!Number.isFinite(budget[field]) || budget[field] < 0) {
       throw new Error(`budget.${field} must be a non-negative number`);
@@ -462,6 +505,13 @@ export function normalizeFleetManifest(input = {}) {
     if (!validationPolicy.includes(baseline)) {
       throw new Error(`validationPolicy is missing mandatory baseline: ${baseline}`);
     }
+  }
+  const unsupportedPolicy = validationPolicy.filter((entry) => !BASELINE_POLICY.includes(entry));
+  if (unsupportedPolicy.length) {
+    throw new Error(`validationPolicy contains unsupported checks: ${[...new Set(unsupportedPolicy)].sort().join(', ')}`);
+  }
+  if (new Set(validationPolicy).size !== validationPolicy.length) {
+    throw new Error('validationPolicy contains duplicate checks');
   }
   const stopConditions = explicitStringArray(input, 'stopConditions', { nonEmptyArray: true });
   const humanBoundaries = explicitStringArray(input, 'humanBoundaries', { nonEmptyArray: true });
@@ -477,7 +527,7 @@ export function normalizeFleetManifest(input = {}) {
     budget,
     repository: normalizedRepository,
     provider: normalizedProvider,
-    validationPolicy: [...new Set(validationPolicy)],
+    validationPolicy: [...BASELINE_POLICY],
     stopConditions,
     shepherdIntent: input.shepherdIntent,
     humanBoundaries,
@@ -504,7 +554,7 @@ export function normalizeFleetManifest(input = {}) {
     repository: normalizedRepository,
     provider: normalizedProvider,
     providerConfigurationDigest: providerConfigurationDigest(normalizedRepository, normalizedProvider),
-    validationPolicy: [...new Set(validationPolicy)],
+    validationPolicy: [...BASELINE_POLICY],
     stopConditions,
     shepherdIntent: input.shepherdIntent,
     humanBoundaries,
@@ -515,6 +565,86 @@ export function normalizeFleetManifest(input = {}) {
     closedSet: true,
   };
   return { ...manifest, digest: manifestDigest(manifest) };
+}
+
+function manifestInput(manifest) {
+  const sourceReceipt = (receipt) => ({
+    invocation: structuredClone(receipt.invocation),
+    provider: receipt.provider,
+    repository: receipt.repository,
+    issue: receipt.issue,
+    revision: receipt.revision,
+    issueStatus: receipt.issueStatus,
+    status: receipt.status,
+    terminal: receipt.terminal,
+    complete: receipt.complete,
+    observedAt: receipt.observedAt,
+  });
+  const issueSet = manifest.issueSet.kind === 'tracker-query'
+    ? {
+      kind: 'tracker-query',
+      queryIdentity: manifest.issueSet.queryIdentity,
+      queryRevision: manifest.issueSet.queryRevision,
+      membershipDigest: manifest.issueSet.membershipDigest,
+      receipt: structuredClone(manifest.issueSet.receipt),
+    }
+    : {
+      kind: 'explicit',
+      membershipDigest: manifest.issueSet.membershipDigest,
+      members: structuredClone(manifest.issueSet.members),
+    };
+  return {
+    confirmation: manifest.confirmation,
+    goal: manifest.goal,
+    acceptedScope: structuredClone(manifest.acceptedScope),
+    issues: manifest.issues.map((issue) => ({
+      identity: issue.identity,
+      sourceRevision: issue.sourceRevision,
+      sourceReceipt: sourceReceipt(issue.sourceReceipt),
+      acceptanceCriteria: structuredClone(issue.acceptanceCriteria),
+      scope: structuredClone(issue.scope),
+      allowedPaths: structuredClone(issue.allowedPaths),
+      status: issue.status,
+    })),
+    issueSet,
+    dependencies: structuredClone(manifest.dependencies),
+    exclusions: structuredClone(manifest.exclusions),
+    concurrency: manifest.concurrency,
+    budget: structuredClone(manifest.budget),
+    repository: structuredClone(manifest.repository),
+    provider: structuredClone(manifest.provider),
+    validationPolicy: structuredClone(manifest.validationPolicy),
+    stopConditions: structuredClone(manifest.stopConditions),
+    shepherdIntent: manifest.shepherdIntent,
+    humanBoundaries: structuredClone(manifest.humanBoundaries),
+    humanDecisions: manifest.humanDecisions.map(({ manifestDigest: ignored, ...decision }) =>
+      structuredClone(decision)),
+  };
+}
+
+export function assertFleetManifest(manifest) {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new Error('confirmed fleet manifest is required');
+  }
+  assertOnlyKeys(manifest, MANIFEST_FIELDS, 'normalized fleet manifest');
+  if (manifest.schemaVersion !== 1 || manifest.confirmation !== 'confirmed'
+      || manifest.closedSet !== true) {
+    throw new Error('normalized fleet manifest authority is invalid');
+  }
+  const unsigned = structuredClone(manifest);
+  delete unsigned.digest;
+  if (manifest.digest !== manifestDigest(unsigned)) {
+    throw new Error('fleet manifest digest does not match authority fields');
+  }
+  if (manifest.providerConfigurationDigest
+      !== providerConfigurationDigest(manifest.repository, manifest.provider)) {
+    throw new Error('provider configuration digest does not match authority fields');
+  }
+  const normalized = normalizeFleetManifest(manifestInput(manifest));
+  if (JSON.stringify(stable(normalized)) !== JSON.stringify(stable(manifest))) {
+    throw new Error('fleet manifest is not the exact normalized confirmed schema');
+  }
+  return manifest;
 }
 
 export { BASELINE_POLICY };
