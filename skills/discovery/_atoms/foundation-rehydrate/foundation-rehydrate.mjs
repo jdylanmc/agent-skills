@@ -316,6 +316,10 @@ function rehydratedState(subject, artifact, mode, ignored) {
       locator: artifact.locator,
       revision: artifact.revision,
     },
+    // Resolutions are durable state outside FOUNDATION_FIELDS. Preserve the
+    // parser's exact ordered multiset so the next persist can prove prior
+    // resolutions remain immutable without caller-side state.
+    resolved: artifact.parsed.resolved,
     ignored,
   };
   for (const field of FOUNDATION_FIELDS) {

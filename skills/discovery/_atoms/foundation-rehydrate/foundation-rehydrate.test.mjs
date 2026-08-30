@@ -93,7 +93,7 @@ test.after(() => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
 });
 
-test('cold-start rehydration reads the artifact and returns the eleven distinct fields', () => {
+test('cold-start rehydration reads the artifact and returns the complete persisted state', () => {
   const root = freshRepo();
   seed(root);
   const result = rehydrateFoundation(intake(root));
@@ -104,17 +104,42 @@ test('cold-start rehydration reads the artifact and returns the eleven distinct 
   }
   assert.deepEqual(result.confirmedFacts, ['A confirmed fact.']);
   assert.deepEqual(result.openQuestions, ['An open question.']);
+  assert.deepEqual(result.resolved, []);
   assert.equal(result.foundation.alignment, 'confirmed');
   assert.equal(result.foundation.locator, LOCATOR);
 });
 
-test('compacted-session rehydration matches the carried continuation', () => {
+test('cold-start and compacted-session rehydration preserve exact resolution order, duplicates, and field qualification', () => {
   const root = freshRepo();
-  const { revision } = seed(root);
-  const result = rehydrateFoundation(intake(root, { expected: { locator: LOCATOR, revision } }));
-  assert.equal(result.status, REHYDRATED);
-  assert.equal(result.mode, MODES.compactedSession);
-  assert.deepEqual(result.continuation, { locator: LOCATOR, revision });
+  const resolved = [
+    { field: 'openQuestions', entry: 'Same text.', resolution: 'First answer.' },
+    { field: 'openQuestions', entry: 'Same text.', resolution: 'First answer.' },
+    { field: 'frontier', entry: 'Same text.', resolution: 'Different field.' },
+    { field: 'openQuestions', entry: 'Other text.', resolution: 'Second answer.' },
+  ];
+  const { revision } = seed(root, { resolved });
+
+  const cold = rehydrateFoundation(intake(root));
+  assert.equal(cold.status, REHYDRATED);
+  assert.equal(cold.mode, MODES.coldStart);
+  assert.deepEqual(cold.resolved, resolved);
+
+  const compacted = rehydrateFoundation(intake(root, { expected: { locator: LOCATOR, revision } }));
+  assert.equal(compacted.status, REHYDRATED);
+  assert.equal(compacted.mode, MODES.compactedSession);
+  assert.deepEqual(compacted.continuation, { locator: LOCATOR, revision });
+  assert.deepEqual(compacted.resolved, resolved);
+});
+
+test('the legacy empty Resolved marker rehydrates as an empty resolution list in both modes', () => {
+  const root = freshRepo();
+  const { revision } = seed(root, { resolved: [] });
+
+  const cold = rehydrateFoundation(intake(root));
+  const compacted = rehydrateFoundation(intake(root, { expected: { locator: LOCATOR, revision } }));
+
+  assert.deepEqual(cold.resolved, []);
+  assert.deepEqual(compacted.resolved, []);
 });
 
 test('the continuation record carries the exact locator and current revision', () => {
@@ -458,6 +483,85 @@ test('R2: a duplicate-heading artifact under a matching-revision continuation is
   const result = rehydrateFoundation(intake(root, { expected: { locator: LOCATOR, revision: revisionOf(modified) } }));
   assert.equal(result.status, RECOVERY.unreadable);
   assert.match(result.readFailure, /could not be parsed/);
+});
+
+test('malformed or hostile Resolved records fail closed in both rehydration modes', () => {
+  const cases = [
+    ['unknown retained field', '- openQuestions: An open question. — answered', '- nextAction: An open question. — answered'],
+    ['empty resolution', '- openQuestions: An open question. — answered', '- openQuestions: An open question. — '],
+    ['ambiguous delimiter', '- openQuestions: An open question. — answered', '- openQuestions: An open question. — answered — rewritten'],
+    ['unknown entry escape', '- openQuestions: An open question. — answered', '- openQuestions: An \\q question. — answered'],
+    ['unknown resolution escape', '- openQuestions: An open question. — answered', '- openQuestions: An open question. — answered\\|'],
+    ['trailing resolution escape', '- openQuestions: An open question. — answered', '- openQuestions: An open question. — answered\\'],
+  ];
+
+  for (const [label, validLine, hostileLine] of cases) {
+    const root = freshRepo();
+    seed(root, {
+      resolved: [{ field: 'openQuestions', entry: 'An open question.', resolution: 'answered' }],
+    });
+    const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+    const hostile = fs.readFileSync(dest, 'utf8').replace(validLine, hostileLine);
+    fs.writeFileSync(dest, hostile);
+
+    const cold = rehydrateFoundation(intake(root));
+    assert.equal(cold.status, RECOVERY.unreadable, `${label}: cold start`);
+    assert.equal(cold.resolved, undefined, `${label}: cold start has no partial resolved`);
+
+    const compacted = rehydrateFoundation(
+      intake(root, { expected: { locator: LOCATOR, revision: revisionOf(hostile) } }),
+    );
+    assert.equal(compacted.status, RECOVERY.unreadable, `${label}: compacted session`);
+    assert.equal(compacted.resolved, undefined, `${label}: compacted session has no partial resolved`);
+    assert.match(compacted.readFailure, /could not be parsed/, label);
+  }
+});
+
+test('a physically empty Resolved section is unreadable in cold-start and matching-revision compacted modes', () => {
+  const root = freshRepo();
+  seed(root, {
+    resolved: [{ field: 'openQuestions', entry: 'An open question.', resolution: 'answered' }],
+  });
+  const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+  const emptyResolved = fs.readFileSync(dest, 'utf8')
+    .replace('- openQuestions: An open question. — answered\n', '');
+  fs.writeFileSync(dest, emptyResolved);
+
+  const cold = rehydrateFoundation(intake(root));
+  assert.equal(cold.status, RECOVERY.unreadable);
+  assert.equal(cold.resolved, undefined);
+
+  const compacted = rehydrateFoundation(
+    intake(root, { expected: { locator: LOCATOR, revision: revisionOf(emptyResolved) } }),
+  );
+  assert.equal(compacted.status, RECOVERY.unreadable);
+  assert.equal(compacted.resolved, undefined);
+  assert.match(compacted.readFailure, /could not be parsed/);
+});
+
+test('unsupported or missing schemas remain unreadable rather than inventing resolutions', () => {
+  for (const [label, mutate] of [
+    ['unsupported schema', (bytes) => bytes.replace('- Schema: 1', '- Schema: 2')],
+    ['missing schema', (bytes) => bytes.replace('- Schema: 1\n', '')],
+  ]) {
+    const root = freshRepo();
+    seed(root, {
+      resolved: [{ field: 'openQuestions', entry: 'An open question.', resolution: 'answered' }],
+    });
+    const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+    const hostile = mutate(fs.readFileSync(dest, 'utf8'));
+    fs.writeFileSync(dest, hostile);
+
+    const cold = rehydrateFoundation(intake(root));
+    assert.equal(cold.status, RECOVERY.unreadable, `${label}: cold start`);
+    assert.equal(cold.resolved, undefined);
+
+    const compacted = rehydrateFoundation(
+      intake(root, { expected: { locator: LOCATOR, revision: revisionOf(hostile) } }),
+    );
+    assert.equal(compacted.status, RECOVERY.unreadable, `${label}: compacted session`);
+    assert.equal(compacted.resolved, undefined);
+  }
 });
 
 // --- R7: an unreadable non-canonical candidate fails closed -----------------
