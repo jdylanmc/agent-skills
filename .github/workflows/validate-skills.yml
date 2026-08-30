@@ -102,6 +102,7 @@ jobs:
           skills/chart-a-course/chart-a-course.conformance.test.mjs
           skills/chart-a-course/_atoms/graph-normalization/graph-normalization.test.mjs
           skills/chart-a-course/_atoms/course-analysis/course-analysis.test.mjs
+          skills/blast-radius/blast-radius.conformance.test.mjs
           skills/changelog/changelog.conformance.test.mjs
           skills/changelog/_atoms/changelog-target/changelog-target.test.mjs
           skills/interrogate/interrogate.conformance.test.mjs
