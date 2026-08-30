@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
+import { manifestDigest, normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import { computeFrontier } from './dependency-frontier.mjs';
 
 function source(issue) {
@@ -90,4 +90,88 @@ test('rejects any issue outside the confirmed closed set', () => {
   const current = state();
   current.issues.extra = { status: 'pending' };
   assert.throws(() => computeFrontier(manifest, current), /closed manifest/);
+});
+
+test('failed, blocked, timed-out, and deferred predecessors never satisfy completed edges', () => {
+  for (const [status, disposition] of [
+    ['completed', 'blocked'],
+    ['failed', 'failed'],
+    ['deferred', 'timed-out-with-handoff'],
+    ['deferred', 'deferred'],
+  ]) {
+    const current = state({ b: status });
+    current.issues.b.terminalDisposition = disposition;
+    assert.equal(
+      computeFrontier(manifest, current).blocked.find((entry) => entry.issue === 'c').reason,
+      'awaiting-completion:b',
+    );
+  }
+  const satisfied = state({ b: 'completed' });
+  satisfied.issues.b.terminalDisposition = 'ready-for-human-merge';
+  assert.ok(computeFrontier(manifest, satisfied).ready.some((entry) => entry.issue === 'c'));
+});
+
+test('rejects active capacity above the confirmed concurrency ceiling', () => {
+  assert.throws(
+    () => computeFrontier(manifest, state({ a: 'active', b: 'active', c: 'active' })),
+    /exceed confirmed manifest concurrency/,
+  );
+});
+
+test('query-backed sets block until exact membership is reobserved', () => {
+  const members = manifest.issues
+    .map(({ identity, sourceRevision }) => ({ identity, sourceRevision }))
+    .sort((left, right) => left.identity.localeCompare(right.identity));
+  const digest = manifestDigest(members);
+  const receipt = {
+    invocation: { id: 'query-confirm', operation: 'read-issue-set' },
+    provider: 'github', repository: 'owner/repo',
+    queryIdentity: 'saved:fleet', queryRevision: 'q1',
+    membershipDigest: digest, members,
+    status: 'observed', terminal: true, complete: true,
+    observedAt: '2026-08-30T00:00:00Z',
+  };
+  const queryManifest = normalizeFleetManifest({
+    confirmation: 'confirmed',
+    goal: manifest.goal,
+    acceptedScope: manifest.acceptedScope,
+    exclusions: manifest.exclusions,
+    humanDecisions: [],
+    issues: manifest.issues,
+    issueSet: {
+      kind: 'tracker-query', queryIdentity: 'saved:fleet', queryRevision: 'q1',
+      membershipDigest: digest, receipt,
+    },
+    dependencies: manifest.dependencies,
+    concurrency: manifest.concurrency,
+    budget: manifest.budget,
+    repository: manifest.repository,
+    provider: {
+      name: 'github',
+      allowedOperations: ['read-issue', 'read-issue-set', 'publish-change-request', 'observe-merge'],
+    },
+    validationPolicy: manifest.validationPolicy,
+    stopConditions: manifest.stopConditions,
+    humanBoundaries: manifest.humanBoundaries,
+    shepherdIntent: manifest.shepherdIntent,
+  });
+  const current = state();
+  current.manifestDigest = queryManifest.digest;
+  current.providerConfigurationDigest = queryManifest.providerConfigurationDigest;
+  for (const issue of queryManifest.issues) {
+    current.issues[issue.identity].sourceObservation.manifestDigest = queryManifest.digest;
+  }
+  current.issueSetObservation = null;
+  assert.deepEqual(computeFrontier(queryManifest, current).capacity.dispatch, []);
+  current.issueSetObservation = {
+    ...receipt,
+    invocation: { id: 'query-reobserve', operation: 'read-issue-set' },
+    observedAt: '2026-08-30T00:01:00Z',
+    manifestDigest: queryManifest.digest,
+    reobservedAt: '2026-08-30T00:01:01Z',
+  };
+  assert.deepEqual(
+    computeFrontier(queryManifest, current).capacity.dispatch.map((entry) => entry.issue),
+    ['a', 'd'],
+  );
 });

@@ -53,6 +53,12 @@ function expected(issue = 'b', generation = 1, baseSha = 'base-1') {
 }
 
 function shepherd(expectation = expected(), overrides = {}) {
+  const receiptTime = expectation.obligationGeneration === 1
+    ? '2026-08-30T00:01:00Z'
+    : '2026-08-30T00:04:00Z';
+  const observationTime = expectation.obligationGeneration === 1
+    ? '2026-08-30T00:01:01Z'
+    : '2026-08-30T00:04:01Z';
   return {
     invocation: {
       skill: 'shepherd',
@@ -69,7 +75,7 @@ function shepherd(expectation = expected(), overrides = {}) {
       terminal: true,
       complete: true,
       receipt: {
-        observedAt: '2026-08-30T00:00:00Z',
+        observedAt: receiptTime,
         provider: expectation.provider,
         repository: expectation.repository,
         changeRequest: expectation.changeRequest,
@@ -81,7 +87,7 @@ function shepherd(expectation = expected(), overrides = {}) {
       },
     },
     observation: {
-      observedAt: '2026-08-30T00:01:00Z',
+      observedAt: observationTime,
       provider: expectation.provider,
       repository: expectation.repository,
       changeRequest: expectation.changeRequest,
@@ -120,6 +126,7 @@ function state() {
     issues: {
       a: {
         identity: 'a', baseSha: 'base-1', headSha: 'head-a',
+        acceptanceCriteria: manifest().issues.find((issue) => issue.identity === 'a').acceptanceCriteria,
         changeRequest: {
           identifier: 'PR-A', publicationKey: 'pub-a', baseBranch: 'main',
           provider: 'github', repository: 'owner/repo', headSha: 'head-a',
@@ -132,6 +139,7 @@ function state() {
       },
       b: {
         identity: 'b', baseSha: 'base-1', headSha: 'head-b',
+        acceptanceCriteria: manifest().issues.find((issue) => issue.identity === 'b').acceptanceCriteria,
         changeRequest: {
           identifier: 'PR-B', publicationKey: 'pub-b', baseBranch: 'main',
           provider: 'github', repository: 'owner/repo', headSha: 'head-b',
@@ -144,6 +152,7 @@ function state() {
       },
       c: {
         identity: 'c', baseSha: 'base-1', headSha: 'head-c',
+        acceptanceCriteria: manifest().issues.find((issue) => issue.identity === 'c').acceptanceCriteria,
         changeRequest: {
           identifier: 'PR-C', publicationKey: 'pub-c', baseBranch: 'main',
           provider: 'github', repository: 'owner/repo', headSha: 'head-c',
@@ -157,16 +166,28 @@ function state() {
     },
     publications: [
       {
-        state: 'confirmed', key: 'pub-a', provider: 'github', repository: 'owner/repo',
+        key: 'pub-a', provider: 'github', repository: 'owner/repo',
         issue: 'a', identifier: 'PR-A', baseBranch: 'main', headBranch: 'issue-a', headSha: 'head-a',
+        observations: [{
+          state: 'confirmed', baseSha: 'base-1', headSha: 'head-a',
+          confirmedAt: '2026-08-30T00:00:30Z',
+        }],
       },
       {
-        state: 'confirmed', key: 'pub-b', provider: 'github', repository: 'owner/repo',
+        key: 'pub-b', provider: 'github', repository: 'owner/repo',
         issue: 'b', identifier: 'PR-B', baseBranch: 'main', headBranch: 'issue-b', headSha: 'head-b',
+        observations: [{
+          state: 'confirmed', baseSha: 'base-1', headSha: 'head-b',
+          confirmedAt: '2026-08-30T00:00:30Z',
+        }],
       },
       {
-        state: 'confirmed', key: 'pub-c', provider: 'github', repository: 'owner/repo',
+        key: 'pub-c', provider: 'github', repository: 'owner/repo',
         issue: 'c', identifier: 'PR-C', baseBranch: 'main', headBranch: 'issue-c', headSha: 'head-c',
+        observations: [{
+          state: 'confirmed', baseSha: 'base-1', headSha: 'head-c',
+          confirmedAt: '2026-08-30T00:00:30Z',
+        }],
       },
     ],
     observedHumanMerges: [],
@@ -178,13 +199,19 @@ function state() {
 }
 
 const mergeA = {
+  invocation: { id: 'merge-a-observe', operation: 'observe-merge', providerKey: 'pub-a' },
   observed: true,
+  status: 'observed',
+  terminal: true,
+  complete: true,
+  merged: true,
   provider: 'github',
   repository: 'owner/repo',
   issue: 'a',
   changeRequest: 'PR-A',
   publicationKey: 'pub-a',
   baseBranch: 'main',
+  baseSha: 'base-1',
   headBranch: 'issue-a',
   headSha: 'head-a',
   mergeCommit: 'merge-a',
@@ -192,6 +219,7 @@ const mergeA = {
 };
 const mergeC = {
   ...mergeA,
+  invocation: { id: 'merge-c-observe', operation: 'observe-merge', providerKey: 'pub-c' },
   issue: 'c',
   changeRequest: 'PR-C',
   publicationKey: 'pub-c',
@@ -200,6 +228,95 @@ const mergeC = {
   mergeCommit: 'merge-c',
   observedAt: '2026-08-30T00:03:00Z',
 };
+
+function revision(issue, baseSha, observedAt) {
+  return {
+    invocation: {
+      id: `revision-${issue}-${baseSha}`,
+      operation: 'observe-change-request-revision',
+      providerKey: `pub-${issue}`,
+    },
+    status: 'observed',
+    terminal: true,
+    complete: true,
+    provider: 'github',
+    repository: 'owner/repo',
+    issue,
+    changeRequest: `PR-${issue.toUpperCase()}`,
+    baseBranch: 'main',
+    baseSha,
+    headSha: `head-${issue}`,
+    observedAt,
+  };
+}
+
+function validNoShepherdPipeline(baseSha, headSha) {
+  const common = {
+    baseSha, headSha, complete: true, terminal: true,
+    completedAt: '2026-08-30T00:05:00Z',
+  };
+  const blast = {
+    ...common,
+    evidenceComplete: true,
+    invocation: { skill: 'blast-radius', id: 'blast-b', runId: 'run', issue: 'b' },
+    contractPullRequest: 157, status: 'completed',
+    assertionLadders: [{
+      id: 'A1', assertion: 'safe', affectedBoundary: 'adapter', badCase: 'breakage',
+      safetyCriticalReason: 'unsafe delivery',
+      rungs: [
+        'assertion', 'exact-source-citation', 'ruled-out-bad-case',
+        'executable-proof', 'live-reproduction',
+      ].map((name) => ({
+        name, progression: 'completed', 'evidence-outcome': 'supports-assertion',
+        evidence: `${name} proof`, scope: 'current revision',
+      })),
+      stoppingRung: 'live-reproduction', stoppingReason: 'complete',
+      strongestSupportedClaim: 'safe in scope', nextEvidenceNeeded: 'none',
+    }],
+    classifications: {
+      'confirmed-risk': [],
+      'cleared-risk': [{ assertionId: 'A1', evidence: 'proof', scope: 'current revision' }],
+      'unproven-assertion': [],
+    },
+    'regression-proof-status': 'selected',
+    'regression-proof': {
+      id: 'P1', assertionId: 'A1', badCase: 'breakage', verificationLevel: 'integration',
+      environment: 'test', setup: 'setup', action: 'run', observableResult: 'pass',
+      prerequisites: [], authorization: 'read-only', cheaperProofInsufficientReason: 'boundary',
+      outsideCoverage: 'provider',
+    },
+    'next-evidence-action': null, 'next-evidence-reason': null,
+  };
+  return [
+    ['implementation', { ...common, status: 'completed' }],
+    ['diff-reconciliation', { ...common, verdict: 'reconciled' }],
+    ['run-ci', {
+      ...common,
+      invocation: { skill: 'run-ci', id: 'ci-b', runId: 'run', issue: 'b' },
+      status: 'passed', evidenceComplete: true, steps: [{ name: 'tests', status: 'passed' }],
+    }],
+    ['roast', {
+      ...common,
+      invocation: { skill: 'roast', id: 'roast-b', runId: 'run', issue: 'b' },
+      status: 'completed', findings: [],
+      evidenceComplete: true,
+    }],
+    ['blast-radius-proof', blast],
+    ['bounded-remediation', { ...common, status: 'completed', unresolvedDefects: [] }],
+    ['criterion-verdict', {
+      ...common,
+      verdicts: [{
+        id: 'C1', verdict: 'satisfied',
+        evidence: { complete: true, summary: 'proven', baseSha, headSha },
+      }],
+    }],
+    ['publication', {
+      baseSha, headSha, status: 'confirmed', terminal: true, complete: true,
+      observedAt: '2026-08-30T00:05:30Z', provider: 'github', repository: 'owner/repo',
+      issue: 'b', changeRequest: 'PR-B', publicationKey: 'pub-b',
+    }],
+  ].map(([stage, evidence]) => ({ stage, evidence }));
+}
 
 test('accepts only exact provider/CR/revision/owner-bound real nested Shepherd returns', () => {
   const expectation = expected();
@@ -217,11 +334,17 @@ test('accepts only exact provider/CR/revision/owner-bound real nested Shepherd r
 });
 
 test('expires readiness immediately and queues generation/revision-specific re-Shepherd work', () => {
+  assert.throws(() => expireReadinessAfterSiblingMerge(
+    state(),
+    manifest(),
+    mergeA,
+    { b: revision('b', 'base-2', '2026-08-30T00:01:59Z') },
+  ), /current revision observation is incomplete/);
   const current = expireReadinessAfterSiblingMerge(
     state(),
     manifest(),
     mergeA,
-    { b: { baseSha: 'base-2', headSha: 'head-b', observedAt: '2026-08-30T00:02:01Z' } },
+    { b: revision('b', 'base-2', '2026-08-30T00:02:01Z') },
     '2026-08-30T00:02:02Z',
   );
   assert.equal(current.issues.b.shepherd.ready, false);
@@ -229,13 +352,23 @@ test('expires readiness immediately and queues generation/revision-specific re-S
   assert.equal(current.fleetDisposition, 'blocked');
   assert.equal(current.reShepherdQueue[0].generation, 2);
   assert.equal(current.reShepherdQueue[0].baseSha, 'base-2');
-  assert.equal(current.issues.b.pipeline.at(-1).stage, 'publication');
+  assert.equal(current.issues.b.pipeline.length, 0);
+  assert.equal(current.issues.b.changeRequest, null);
+  const duplicate = expireReadinessAfterSiblingMerge(
+    current,
+    manifest(),
+    mergeA,
+    {},
+    '2026-08-30T00:02:03Z',
+  );
+  assert.equal(duplicate.reShepherdQueue[0].generation, 2);
+  assert.equal(duplicate.expiredReadinessClaims.length, current.expiredReadinessClaims.length);
 
   const repeat = expireReadinessAfterSiblingMerge(
     current,
     manifest(),
     mergeC,
-    { b: { baseSha: 'base-3', headSha: 'head-b', observedAt: '2026-08-30T00:03:01Z' } },
+    { b: revision('b', 'base-3', '2026-08-30T00:03:01Z') },
     '2026-08-30T00:03:02Z',
   );
   assert.equal(repeat.reShepherdQueue.length, 1);
@@ -248,12 +381,29 @@ test('consumes queued work only with a fresh accepted receipt bound to the queue
     state(),
     manifest(),
     mergeA,
-    { b: { baseSha: 'base-2', headSha: 'head-b', observedAt: '2026-08-30T00:02:01Z' } },
+    { b: revision('b', 'base-2', '2026-08-30T00:02:01Z') },
   );
   const expectation = expected('b', 2, 'base-2');
   const fresh = acceptShepherdReturn(shepherd(expectation), expectation);
-  assert.throws(() => consumeReShepherdQueue(expired, 'b', accepted('b')), /queued generation/);
-  const consumed = consumeReShepherdQueue(expired, 'b', fresh);
+  assert.throws(
+    () => consumeReShepherdQueue(expired, manifest(), 'b', accepted('b'), null),
+    /queued generation/,
+  );
+  expired.publications.find((entry) => entry.key === 'pub-b').observations.push({
+    state: 'confirmed', baseSha: 'base-2', headSha: 'head-b',
+    confirmedAt: '2026-08-30T00:05:30Z',
+  });
+  expired.issues.b.changeRequest = {
+    identifier: 'PR-B', publicationKey: 'pub-b', baseBranch: 'main',
+    provider: 'github', repository: 'owner/repo', baseSha: 'base-2', headSha: 'head-b',
+  };
+  const consumed = consumeReShepherdQueue(expired, manifest(), 'b', fresh, {
+    status: 'completed',
+    terminal: true,
+    complete: true,
+    completedAt: '2026-08-30T00:05:45Z',
+    pipeline: validNoShepherdPipeline('base-2', 'head-b'),
+  });
   assert.equal(consumed.reShepherdQueue.length, 0);
   assert.equal(consumed.issues.b.terminalDisposition, 'ready-for-human-merge');
   assert.equal(consumed.issues.b.pipeline.at(-1).stage, 'shepherd');
@@ -262,6 +412,7 @@ test('consumes queued work only with a fresh accepted receipt bound to the queue
 test('manifest Shepherd intent no records a real not-required state and obligation without dispatch', () => {
   const noManifest = manifest('no');
   const current = {
+    runId: 'run',
     manifestDigest: noManifest.digest,
     providerConfigurationDigest: noManifest.providerConfigurationDigest,
     issues: {
@@ -269,12 +420,38 @@ test('manifest Shepherd intent no records a real not-required state and obligati
         identity: 'a',
         baseSha: 'base-1',
         headSha: 'head-a',
-        changeRequest: { identifier: 'PR-A' },
+        acceptanceCriteria: noManifest.issues.find((issue) => issue.identity === 'a').acceptanceCriteria,
+        pipeline: validNoShepherdPipeline('base-1', 'head-a').map((entry) => {
+          const evidence = structuredClone(entry.evidence);
+          if (evidence.invocation) {
+            evidence.invocation.issue = 'a';
+            evidence.invocation.id = evidence.invocation.id.replace('-b', '-a');
+          }
+          if (entry.stage === 'criterion-verdict') {
+            evidence.verdicts[0].evidence.summary = 'proven for a';
+          }
+          if (entry.stage === 'publication') {
+            evidence.issue = 'a';
+            evidence.changeRequest = 'PR-A';
+            evidence.publicationKey = 'pub-a';
+          }
+          return { stage: entry.stage, evidence };
+        }),
+        changeRequest: {
+          identifier: 'PR-A', publicationKey: 'pub-a', baseSha: 'base-1', headSha: 'head-a',
+        },
         shepherd: null,
         shepherdDecision: null,
         setObligation: null,
       },
     },
+    publications: [{
+      key: 'pub-a', identifier: 'PR-A',
+      observations: [{
+        state: 'confirmed', baseSha: 'base-1', headSha: 'head-a',
+        confirmedAt: '2026-08-30T00:05:30Z',
+      }],
+    }],
     events: [],
   };
   const next = recordShepherdNotRequired(current, noManifest, 'a', {
@@ -296,11 +473,13 @@ test('manifest Shepherd intent no records a real not-required state and obligati
 test('no-Shepherd expiry is consumed by fresh quality/provider revalidation, never a fabricated Shepherd', () => {
   const noManifest = manifest('no');
   const current = {
+    runId: 'run',
     manifestDigest: noManifest.digest,
     providerConfigurationDigest: noManifest.providerConfigurationDigest,
     issues: {
       b: {
         identity: 'b', baseSha: 'base-1', headSha: 'head-b',
+        acceptanceCriteria: noManifest.issues.find((issue) => issue.identity === 'b').acceptanceCriteria,
         changeRequest: { identifier: 'PR-B' },
         shepherd: null,
         shepherdDecision: { state: 'not-required', manifestDigest: noManifest.digest },
@@ -312,13 +491,18 @@ test('no-Shepherd expiry is consumed by fresh quality/provider revalidation, nev
       issue: 'b', changeRequest: 'PR-B', generation: 2,
       baseSha: 'base-2', headSha: 'head-b',
       action: 'rerun-quality-and-provider-observation',
+      revisionObservation: revision('b', 'base-2', '2026-08-30T00:03:01Z'),
+    }],
+    publications: [{
+      key: 'pub-b', identifier: 'PR-B',
+      observations: [{
+        state: 'confirmed', baseSha: 'base-2', headSha: 'head-b',
+        confirmedAt: '2026-08-30T00:05:30Z',
+      }],
     }],
     events: [],
   };
-  const pipeline = [
-    'implementation', 'diff-reconciliation', 'run-ci', 'roast',
-    'blast-radius-proof', 'bounded-remediation', 'criterion-verdict', 'publication',
-  ].map((stage) => ({ stage, evidence: { baseSha: 'base-2', headSha: 'head-b' } }));
+  const pipeline = validNoShepherdPipeline('base-2', 'head-b');
   const obligation = {
     owner: 'b', changeRequest: 'PR-B', baseBranch: 'main',
     baseSha: 'base-2', headSha: 'head-b',
@@ -329,10 +513,12 @@ test('no-Shepherd expiry is consumed by fresh quality/provider revalidation, nev
   };
   assert.throws(() => consumeNoShepherdRevalidation(current, noManifest, 'b', {
     status: 'completed', terminal: true, complete: true,
+    completedAt: '2026-08-30T00:06:00Z',
     issue: 'b', changeRequest: 'PR-B', baseSha: 'stale', headSha: 'head-b', pipeline,
   }, obligation), /incomplete or stale/);
   const consumed = consumeNoShepherdRevalidation(current, noManifest, 'b', {
     status: 'completed', terminal: true, complete: true,
+    completedAt: '2026-08-30T00:06:00Z',
     issue: 'b', changeRequest: 'PR-B', baseSha: 'base-2', headSha: 'head-b', pipeline,
   }, obligation);
   assert.equal(consumed.reShepherdQueue.length, 0);

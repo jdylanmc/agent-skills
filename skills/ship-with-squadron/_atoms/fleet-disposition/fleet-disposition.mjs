@@ -1,4 +1,6 @@
-import { deliveryStagesForManifest } from '../quality-evidence/quality-evidence.mjs';
+import {
+  persistedPipelinePasses,
+} from '../quality-evidence/quality-evidence.mjs';
 
 export const ISSUE_DISPOSITIONS = Object.freeze([
   'ready-for-human-merge',
@@ -18,29 +20,16 @@ export const FLEET_DISPOSITIONS = Object.freeze([
   'cancelled',
 ]);
 
-function pipelineIsCurrent(issue, manifest) {
-  const required = deliveryStagesForManifest(manifest);
-  const completed = issue.pipeline ?? [];
-  if (completed.length !== required.length) return false;
-  return completed.every((entry, index) => {
-    if (entry.stage !== required[index]) return false;
-    if (entry.stage === 'shepherd') {
-      return entry.evidence?.baseSha === issue.shepherd?.receipt?.baseSha
-        && entry.evidence?.headSha === issue.shepherd?.receipt?.headSha;
-    }
-    return entry.evidence?.baseSha === issue.baseSha
-      && entry.evidence?.headSha === issue.headSha;
-  });
-}
-
 function publicationIsCurrent(issue, state) {
   if (!issue.changeRequest) return false;
   return state.publications.some((entry) =>
-    entry.state === 'confirmed'
-    && entry.key === issue.changeRequest.publicationKey
+    entry.key === issue.changeRequest.publicationKey
     && entry.identifier === issue.changeRequest.identifier
     && entry.issue === issue.identity
-    && entry.headSha === issue.headSha);
+    && entry.observations?.some((observation) =>
+      observation.state === 'confirmed'
+      && observation.baseSha === issue.baseSha
+      && observation.headSha === issue.headSha));
 }
 
 function obligationIsCurrent(obligation, issue, reinvocation, baseSha = issue.baseSha) {
@@ -55,7 +44,8 @@ function obligationIsCurrent(obligation, issue, reinvocation, baseSha = issue.ba
 export function effectiveIssueReadiness(issue, state, manifest) {
   if (issue.terminalDisposition === 'already-complete') return true;
   if (state.reShepherdQueue.some((entry) => entry.issue === issue.identity)) return false;
-  if (!pipelineIsCurrent(issue, manifest) || !publicationIsCurrent(issue, state)) return false;
+  if (!persistedPipelinePasses(issue, state, manifest).passed
+      || !publicationIsCurrent(issue, state)) return false;
   if (manifest.shepherdIntent === 'no') {
     return issue.shepherd === null
       && issue.shepherdDecision?.state === 'not-required'
@@ -95,13 +85,8 @@ export function deriveFleetDisposition(state, manifest) {
   return 'blocked';
 }
 
-function checkingIssue(issue, manifest, state) {
-  if (effectiveIssueReadiness(issue, state, manifest)) return false;
-  if (!issue.changeRequest) {
-    return (issue.pipeline ?? []).some((entry) =>
-      ['run-ci', 'roast', 'blast-radius-proof'].includes(entry.stage));
-  }
-  return !state.reShepherdQueue.some((entry) => entry.issue === issue.identity);
+function checkingIssue(issue) {
+  return issue.checkActivity?.state === 'active';
 }
 
 export function conciseFleetStatus(state, frontier, manifest) {
@@ -110,13 +95,29 @@ export function conciseFleetStatus(state, frontier, manifest) {
     throw new Error('fleet status state is not bound to the confirmed manifest');
   }
   const issues = Object.values(state.issues);
+  const frontierBlocked = frontier.blocked.map((entry) => ({
+    issue: entry.issue,
+    reason: entry.reason,
+  }));
+  const terminalBlocked = issues
+    .filter((issue) => issue.terminalDisposition === 'blocked'
+      && !frontierBlocked.some((entry) => entry.issue === issue.identity))
+    .map((issue) => ({
+      issue: issue.identity,
+      reason: issue.statusReason ?? issue.nextAction ?? 'blocked',
+    }));
   return {
     active: frontier.active.map((entry) => entry.issue),
-    blocked: frontier.blocked.map((entry) => ({ issue: entry.issue, reason: entry.reason })),
+    blocked: [...frontierBlocked, ...terminalBlocked],
     replacements: issues
       .filter((issue) => (issue.continuationChain?.length ?? 0) > 0 && issue.status === 'active')
       .map((issue) => issue.identity),
-    checking: issues.filter((issue) => checkingIssue(issue, manifest, state)).map((issue) => issue.identity),
+    checking: issues.filter((issue) => checkingIssue(issue)).map((issue) => issue.identity),
+    failed: issues.filter((issue) => issue.status === 'failed').map((issue) => issue.identity),
+    deferred: issues.filter((issue) => issue.status === 'deferred').map((issue) => issue.identity),
+    awaitingHuman: issues
+      .filter((issue) => issue.nextAction?.startsWith('await-'))
+      .map((issue) => issue.identity),
     reviewReady: issues
       .filter((issue) => issue.changeRequest && effectiveIssueReadiness(issue, state, manifest))
       .map((issue) => issue.identity),

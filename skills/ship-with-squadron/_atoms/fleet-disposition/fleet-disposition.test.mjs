@@ -91,8 +91,10 @@ function state() {
     shepherd: null,
     terminalDisposition: null,
     continuationChain: [],
+    checkActivity: { kind: 'quality-check', state: 'active', startedAt: '2026-08-30T00:00:00Z' },
   };
   const b = readyIssue('b');
+  b.terminalDisposition = 'already-complete';
   const c = {
     ...readyIssue('c'),
     shepherd: { ...readyIssue('c').shepherd, accepted: false, ready: false, freshness: 'stale' },
@@ -103,8 +105,14 @@ function state() {
     control: { cancelled: false, budgetExhausted: false },
     issues: { a, b, c },
     publications: [
-      { state: 'confirmed', key: 'pub-b', identifier: 'PR-B', issue: 'b', baseSha: 'base', headSha: 'head-b' },
-      { state: 'confirmed', key: 'pub-c', identifier: 'PR-C', issue: 'c', baseSha: 'base', headSha: 'head-c' },
+      {
+        key: 'pub-b', identifier: 'PR-B', issue: 'b',
+        observations: [{ state: 'confirmed', baseSha: 'base', headSha: 'head-b' }],
+      },
+      {
+        key: 'pub-c', identifier: 'PR-C', issue: 'c',
+        observations: [{ state: 'confirmed', baseSha: 'base', headSha: 'head-c' }],
+      },
     ],
     reShepherdQueue: [{
       issue: 'c', changeRequest: 'PR-C', generation: 2, baseSha: 'current-base', headSha: 'head-c',
@@ -133,7 +141,14 @@ test('derives effective readiness rather than trusting stale terminal strings', 
   assert.equal(effectiveIssueReadiness(current.issues.b, current, manifest), true);
   assert.equal(effectiveIssueReadiness(current.issues.c, current, manifest), false);
   assert.equal(deriveFleetDisposition(current, manifest), 'partially-review-ready');
-  current.issues.b.shepherd.receipt.headSha = 'stale';
+  current.issues.b.terminalDisposition = 'ready-for-human-merge';
+  current.issues.b.pipeline.find((entry) => entry.stage === 'run-ci').evidence = {
+    invocation: { skill: 'run-ci', id: 'ci-b', runId: undefined, issue: 'b' },
+    status: 'failed', terminal: true, complete: true, evidenceComplete: true,
+    completedAt: '2026-08-30T00:01:00Z',
+    steps: [{ name: 'tests', status: 'failed' }],
+    baseSha: 'base', headSha: 'head-b',
+  };
   assert.equal(effectiveIssueReadiness(current.issues.b, current, manifest), false);
   assert.equal(deriveFleetDisposition(current, manifest), 'blocked');
   const complete = {
@@ -158,4 +173,10 @@ test('renders distinct active, blocked, checking, expired, and review-ready stat
   assert.deepEqual(status.checking, ['a']);
   assert.deepEqual(status.reviewReady, ['b']);
   assert.deepEqual(status.expired, ['c']);
+  current.issues.a.checkActivity = null;
+  assert.deepEqual(conciseFleetStatus(current, {
+    active: [{ issue: 'a' }],
+    blocked: [],
+    capacity: { nextReplenishment: 'worker-terminal-transition' },
+  }, manifest).checking, []);
 });

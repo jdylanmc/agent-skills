@@ -16,13 +16,13 @@ import {
 const revision = { baseSha: 'base', headSha: 'head' };
 const identity = { runId: 'run', issue: '1' };
 
-function manifest(shepherdIntent = 'yes') {
+function manifest(shepherdIntent = 'yes', humanDecisions = []) {
   return normalizeFleetManifest({
     confirmation: 'confirmed',
     goal: 'deliver',
     acceptedScope: [],
     exclusions: [],
-    humanDecisions: [],
+    humanDecisions,
     issues: [{
       identity: '1',
       sourceRevision: 'r1',
@@ -67,6 +67,7 @@ function roast(overrides = {}) {
     status: 'completed',
     terminal: true,
     complete: true,
+    evidenceComplete: true,
     completedAt: '2026-08-30T00:11:00Z',
     findings: [],
     ...revision,
@@ -81,6 +82,7 @@ function blast(overrides = {}) {
     status: 'completed',
     terminal: true,
     complete: true,
+    evidenceComplete: true,
     completedAt: '2026-08-30T00:12:00Z',
     ...revision,
     assertionLadders: [{
@@ -168,11 +170,13 @@ test('interprets canonical Roast Priority: Must fix and rejects caller-shaped se
   assert.equal(adaptRoastEvidence(roast({
     findings: [{ id: 'R1', severity: 'blocker', status: 'open' }],
   }), revision, identity).valid, false);
+  assert.equal(adaptRoastEvidence(roast({ evidenceComplete: false }), revision, identity).complete, false);
 });
 
 test('requires nonempty exact Pull Request 157 ladders, classifications, proof, and stopping evidence', () => {
   assert.equal(adaptBlastRadiusEvidence(blast(), revision, identity).readiness, 'satisfied');
   assert.equal(adaptBlastRadiusEvidence(blast({ assertionLadders: [] }), revision, identity).readiness, 'invalid');
+  assert.equal(adaptBlastRadiusEvidence(blast({ evidenceComplete: false }), revision, identity).readiness, 'invalid');
   assert.equal(adaptBlastRadiusEvidence(blast({
     'regression-proof-status': 'selected',
     'regression-proof': null,
@@ -230,20 +234,33 @@ test('quality gate validates raw receipts and human descoping receipts instead o
     criteria: [{ id: 'C1', verdict: 'descoped-by-human' }],
   })).defects.join(' '), /human-decision-receipt/);
 
-  const currentManifest = manifest();
+  const currentManifest = manifest('yes', [{
+    id: 'HD-1',
+    actor: 'human@example.test',
+    issue: '1',
+    criterionId: 'C1',
+    sourceRevision: 'r1',
+    decision: 'descoped',
+    decisionText: 'Criterion intentionally removed from this confirmed delivery.',
+    decidedAt: '2026-08-30T00:13:00Z',
+  }]);
+  const decision = currentManifest.humanDecisions[0];
   const descoped = gate({
     manifest: currentManifest,
     criteria: [{
       id: 'C1',
       verdict: 'descoped-by-human',
       decisionReceipt: {
-        decisionId: 'HD-1',
-        criterionId: 'C1',
-        manifestDigest: currentManifest.digest,
-        sourceRevision: 'r1',
-        decision: 'descoped',
+        decisionId: decision.id,
+        actor: decision.actor,
         actorType: 'human',
-        decidedAt: '2026-08-30T00:13:00Z',
+        issue: decision.issue,
+        criterionId: decision.criterionId,
+        manifestDigest: decision.manifestDigest,
+        sourceRevision: decision.sourceRevision,
+        decision: decision.decision,
+        decisionText: decision.decisionText,
+        decidedAt: decision.decidedAt,
       },
     }],
   });
@@ -252,7 +269,14 @@ test('quality gate validates raw receipts and human descoping receipts instead o
 
 test('enforces workflow order, conditional Shepherd intent, invalidation, and bounded remediation', () => {
   const issue = { pipeline: [] };
-  const implemented = recordStage(issue, 'implementation', revision, revision);
+  const implementation = {
+    ...revision,
+    status: 'completed',
+    complete: true,
+    terminal: true,
+    completedAt: '2026-08-30T00:05:00Z',
+  };
+  const implemented = recordStage(issue, 'implementation', implementation, revision);
   assert.throws(() => recordStage(implemented, 'run-ci', ci(), revision), /expected diff-reconciliation/);
   assert.deepEqual(deliveryStagesForManifest(manifest('no')).at(-1), 'publication');
   assert.throws(

@@ -19,6 +19,7 @@ the persisted manifest and provider-configuration digests, never call input.
 Use the provider seam helper to allow only:
 
 - `read-issue`;
+- `read-issue-set`;
 - `publish-change-request`;
 - `observe-merge`.
 
@@ -26,17 +27,21 @@ Every adapter condition is preserved. Unsupported, missing, unauthenticated,
 degraded, and unobserved provider state is not empty, clean, published, or
 merged state.
 
-Before a provider call, persist one stable publication intent keyed by the
-manifest, configuration, issue, source, branch, and base. Reconcile that key
-before any retry. Distinguish intent recorded, retryable degraded attempts, and
-confirmed publication so crash recovery never creates a duplicate.
+Before a provider call, persist one stable logical publication identity keyed
+by manifest, configuration, issue, source, and branches, plus a separate
+base/head observation for every revision. Reconcile that key before any retry.
+An existing change request is reobserved after revision mutation and must return
+the same provider identifier; stale confirmation is never current and crash
+recovery never creates a duplicate.
 `published` or `found-existing` requires the provider-returned identifier; a
 pushed branch or predicted identifier is not publication.
 
 Only a complete terminal provider snapshot whose invocation key, provider,
-repository, issue, change request, base branch, head branch/SHA, merge commit,
+repository, issue, change request, base branch/SHA, head branch/SHA, merge commit,
 and valid observation time exactly reconcile to a confirmed publication proves
-a human merge. Merge grants and worker reports are evidence, not authority.
+a human merge. The normalized persisted record has one exact schema and unique
+publication/merge identity. Merge grants and worker reports are evidence, not
+authority.
 
 The seam has no operation for merge, approve, enable auto-merge, accept risk,
 force-push, close issue, or close change request. All are explicitly refused.

@@ -17,7 +17,9 @@ used-by: ["ship-with-squadron/_molecules/candidate-delivery/candidate-delivery.m
 Use the fleet disposition helper to render one concise
 terminal status containing active assignments, blockers and reasons,
 replacements, checking change requests, genuinely review-ready change requests,
-expired claims, and next capacity replenishment.
+expired claims, failed/deferred/awaiting-human work, and next capacity
+replenishment. `checking` appears only while an explicit persisted check
+activity exists; blocked or terminal work is never relabeled as checking.
 
 Every supplied issue ends as exactly one of:
 
@@ -33,7 +35,11 @@ The fleet ends as `review-ready`, `partially-review-ready`, `blocked`,
 `budget-exhausted`, or `cancelled`. Derive readiness from the current complete
 pipeline, confirmed publication, fresh exact receipt or explicit
 Shepherd-not-required obligation, and absence of a current expiry queue. Never
-trust a stale terminal string. Cancellation and at-ceiling budget exhaustion
+trust a stale terminal string or structurally valid but failed receipt.
+Continuous Integration must pass, Roast must have no unresolved canonical
+`Priority: Must fix`, blast radius must be exactly `satisfied`, criteria must
+carry legitimate evidence/decisions, and publication must be confirmed for the
+current revision. Cancellation and at-ceiling budget exhaustion
 stop new dispatch, preserve active evidence safely, generate needed handoffs,
 and leave unreached issues explicit.
 

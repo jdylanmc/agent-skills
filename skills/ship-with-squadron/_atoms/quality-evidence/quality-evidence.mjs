@@ -38,6 +38,20 @@ function revisionMatches(evidence, revision) {
   return evidence?.baseSha === revision?.baseSha && evidence?.headSha === revision?.headSha;
 }
 
+function simpleStagePasses(stage, evidence) {
+  if (evidence?.complete !== true
+      || evidence?.terminal !== true
+      || !validTimestamp(evidence?.completedAt)) return false;
+  if (stage === 'implementation') return evidence.status === 'completed';
+  if (stage === 'diff-reconciliation') return evidence.verdict === 'reconciled';
+  if (stage === 'bounded-remediation') {
+    return evidence.status === 'completed'
+      && Array.isArray(evidence.unresolvedDefects)
+      && evidence.unresolvedDefects.length === 0;
+  }
+  return true;
+}
+
 function invocationDefects(receipt, skill, identity) {
   const defects = [];
   const invocation = receipt?.invocation;
@@ -88,7 +102,9 @@ export function adaptRoastEvidence(receipt, revision, identity = {}) {
   if (!revisionMatches(receipt, revision)) defects.push('Roast evidence is not bound to current base and head');
   if (receipt?.status !== 'completed') defects.push('Roast status must be completed');
   if (receipt?.terminal !== true) defects.push('Roast receipt is not terminal');
-  if (receipt?.complete !== true) defects.push('Roast receipt is incomplete');
+  if (receipt?.complete !== true || receipt?.evidenceComplete !== true) {
+    defects.push('Roast receipt is incomplete or truncated');
+  }
   if (!validTimestamp(receipt?.completedAt)) defects.push('Roast completion time is absent or invalid');
   if (!Array.isArray(receipt?.findings)) {
     defects.push('Roast findings must be an array');
@@ -214,7 +230,10 @@ function validateRegressionProof(report, ladderIds, defects) {
 export function adaptBlastRadiusEvidence(report, revision, identity = {}) {
   const defects = invocationDefects(report, 'blast-radius', identity);
   if (report?.contractPullRequest !== 157) defects.push('blast-radius contract must identify Pull Request 157');
-  if (report?.status !== 'completed' || report?.terminal !== true || report?.complete !== true) {
+  if (report?.status !== 'completed'
+      || report?.terminal !== true
+      || report?.complete !== true
+      || report?.evidenceComplete !== true) {
     defects.push('blast-radius evidence must be complete and terminal');
   }
   if (!validTimestamp(report?.completedAt)) defects.push('blast-radius completion time is absent or invalid');
@@ -296,6 +315,27 @@ export function recordStage(issueRecord, stage, evidence, revision, manifest = {
   const index = stages.indexOf(stage);
   if (index < 0) throw new Error(`delivery stage is not required by manifest: ${stage}`);
   if (!revisionMatches(evidence, revision)) throw new Error(`${stage} evidence is stale for current revision`);
+  if (stage === 'run-ci' && !adaptCiEvidence(evidence, revision).passed) {
+    throw new Error('run-ci evidence does not pass');
+  }
+  if (stage === 'roast' && !adaptRoastEvidence(evidence, revision).complete) {
+    throw new Error('Roast evidence does not pass');
+  }
+  if (stage === 'blast-radius-proof'
+      && adaptBlastRadiusEvidence(evidence, revision).readiness !== 'satisfied') {
+    throw new Error('blast-radius evidence does not satisfy readiness');
+  }
+  if (['implementation', 'diff-reconciliation', 'bounded-remediation'].includes(stage)
+      && !simpleStagePasses(stage, evidence)) {
+    throw new Error(`${stage} evidence does not semantically pass`);
+  }
+  if (stage === 'publication'
+      && (evidence.status !== 'confirmed'
+        || evidence.complete !== true
+        || evidence.terminal !== true
+        || !validTimestamp(evidence.observedAt))) {
+    throw new Error('publication evidence is not confirmed');
+  }
   const completed = issueRecord.pipeline ?? [];
   const expected = stages[completed.length];
   if (stage !== expected) throw new Error(`workflow order violation: expected ${expected}, received ${stage}`);
@@ -329,6 +369,28 @@ export function remediationDecision({ attempt, limit, defects }) {
       : { action: 'hand-back', reason: 'remediation-budget-exhausted' };
 }
 
+function humanDecisionFor(manifest, issue, criterion, receipt) {
+  const decision = manifest.humanDecisions?.find((entry) => entry.id === receipt?.decisionId);
+  if (!decision) return null;
+  const expected = {
+    decisionId: decision.id,
+    actor: decision.actor,
+    actorType: 'human',
+    issue: decision.issue,
+    criterionId: decision.criterionId,
+    manifestDigest: decision.manifestDigest,
+    sourceRevision: decision.sourceRevision,
+    decision: decision.decision,
+    decisionText: decision.decisionText,
+    decidedAt: decision.decidedAt,
+  };
+  return JSON.stringify(receipt) === JSON.stringify(expected)
+    && decision.issue === issue.identity
+    && decision.criterionId === criterion.id
+    ? decision
+    : null;
+}
+
 function evaluateCriteria(criteria, issue, manifest, revision, defects) {
   if (!Array.isArray(criteria) || criteria.length === 0) {
     defects.push('criteria:missing');
@@ -351,14 +413,7 @@ function evaluateCriteria(criteria, issue, manifest, revision, defects) {
       }
     } else if (criterion.verdict === 'descoped-by-human') {
       const receipt = criterion.decisionReceipt;
-      if (!receipt
-          || receipt.criterionId !== criterion.id
-          || receipt.manifestDigest !== manifest.digest
-          || receipt.sourceRevision !== issue.sourceRevision
-          || receipt.decision !== 'descoped'
-          || receipt.actorType !== 'human'
-          || !nonEmpty(receipt.decisionId)
-          || !validTimestamp(receipt.decidedAt)) {
+      if (!humanDecisionFor(manifest, issue, criterion, receipt)) {
         defects.push(`criterion:${criterion.id}:invalid-human-decision-receipt`);
       }
     } else {
@@ -366,6 +421,108 @@ function evaluateCriteria(criteria, issue, manifest, revision, defects) {
     }
   }
   if (seen.size !== expected.size) defects.push('criteria:incomplete-set');
+}
+
+function evaluatePersistedStage(stage, entry, issueRecord, state, manifest, defects) {
+  const revision = stage === 'shepherd' ? issueRecord.shepherd?.receipt : issueRecord;
+  if (!entry?.evidence || !revisionMatches(entry.evidence, revision)) {
+    defects.push(`${stage}:stale-or-missing`);
+    return;
+  }
+  if (stage === 'run-ci') {
+    const adapted = adaptCiEvidence(entry.evidence, issueRecord, {
+      runId: state.runId,
+      issue: issueRecord.identity,
+    });
+    if (!adapted.passed) defects.push(`run-ci:${adapted.defects.join('|') || adapted.status}`);
+  } else if (stage === 'roast') {
+    const adapted = adaptRoastEvidence(entry.evidence, issueRecord, {
+      runId: state.runId,
+      issue: issueRecord.identity,
+    });
+    if (!adapted.complete) defects.push(`roast:${adapted.openMustFix.join(',') || adapted.defects.join('|')}`);
+  } else if (stage === 'blast-radius-proof') {
+    const adapted = adaptBlastRadiusEvidence(entry.evidence, issueRecord, {
+      runId: state.runId,
+      issue: issueRecord.identity,
+    });
+    if (adapted.readiness !== 'satisfied') defects.push(`blast-radius:${adapted.readiness}`);
+  } else if (stage === 'criterion-verdict') {
+    evaluateCriteria(entry.evidence.verdicts, issueRecord, manifest, issueRecord, defects);
+  } else if (stage === 'publication') {
+    const publication = state.publications?.find((candidate) =>
+      candidate.key === entry.evidence.publicationKey
+      && candidate.identifier === entry.evidence.changeRequest);
+    const observation = publication?.observations?.find((candidate) =>
+      candidate.baseSha === issueRecord.baseSha
+      && candidate.headSha === issueRecord.headSha
+      && candidate.state === 'confirmed');
+    if (!publication
+        || !observation
+        || entry.evidence.status !== 'confirmed'
+        || entry.evidence.terminal !== true
+        || entry.evidence.complete !== true
+        || entry.evidence.provider !== manifest.provider.name
+        || entry.evidence.repository !== manifest.repository.id
+        || entry.evidence.issue !== issueRecord.identity
+        || entry.evidence.observedAt !== observation.confirmedAt
+        || !validTimestamp(entry.evidence.observedAt)) {
+      defects.push('publication:not-confirmed-for-current-revision');
+    }
+  } else if (stage === 'shepherd') {
+    if (issueRecord.shepherd?.accepted !== true || issueRecord.shepherd?.ready !== true) {
+      defects.push('shepherd:not-ready');
+    }
+  } else if (!simpleStagePasses(stage, entry.evidence)) {
+    defects.push(`${stage}:incomplete-or-failed`);
+  }
+}
+
+function evaluatePersistedStages(issueRecord, state, manifest, required) {
+  const defects = [];
+  const pipeline = issueRecord?.pipeline ?? [];
+  if (pipeline.length !== required.length) defects.push('pipeline:incomplete');
+  for (const [index, stage] of required.entries()) {
+    const entry = pipeline[index];
+    if (entry?.stage !== stage) {
+      defects.push(`${stage}:missing-or-out-of-order`);
+      continue;
+    }
+    evaluatePersistedStage(stage, entry, issueRecord, state, manifest, defects);
+  }
+  return { passed: defects.length === 0, defects };
+}
+
+export function persistedPipelinePasses(issueRecord, state, manifest) {
+  return evaluatePersistedStages(
+    issueRecord,
+    state,
+    manifest,
+    deliveryStagesForManifest(manifest),
+  );
+}
+
+export function persistedPrePublicationPasses(issueRecord, state, manifest) {
+  const required = deliveryStagesForManifest(manifest);
+  const publicationIndex = required.indexOf('publication');
+  return evaluatePersistedStages(
+    { ...issueRecord, pipeline: issueRecord.pipeline.slice(0, publicationIndex) },
+    state,
+    manifest,
+    required.slice(0, publicationIndex),
+  );
+}
+
+export function persistedPublicationPipelinePasses(issueRecord, state, manifest) {
+  const required = deliveryStagesForManifest(manifest);
+  const shepherdIndex = required.indexOf('shepherd');
+  const throughPublication = shepherdIndex < 0 ? required : required.slice(0, shepherdIndex);
+  return evaluatePersistedStages(
+    { ...issueRecord, pipeline: issueRecord.pipeline.slice(0, throughPublication.length) },
+    state,
+    manifest,
+    throughPublication,
+  );
 }
 
 export function evaluateQualityGate(input = {}) {

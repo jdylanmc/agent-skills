@@ -42,15 +42,20 @@ record -> confirm one closed fleet manifest -> persist state
    boundaries. Require one explicit confirmation of the whole manifest.
 3. Normalize the manifest and reject malformed graphs. Create the versioned
    run-specific fleet record. Reread after every write.
-4. Reobserve every provider-bound source revision against the exact confirmed
-   issue set, then compute the local ready frontier. Drift or an extra issue
+4. Reobserve every provider-bound source revision and, for query-backed sets,
+   exact query identity/revision/membership against the confirmed issue set,
+   then compute the local ready frontier. Drift or an extra issue
    requires renewed human confirmation. Dispatch only enough pending, unowned
-   issues to fill the top-level concurrency ceiling. Each issue receives a
+   issues to fill the top-level concurrency ceiling. Every assignment consumes
+   a serialized state-revision/frontier lease for current `capacity.dispatch`.
+   Each issue receives a
    unique branch, worktree, fresh worker context, manifest-bound bounded packet,
    and assignment generation.
 5. Replace stalled or exhausted workers only after invoking
-   `orchestration-handoff`, rereading and hashing the regular artifact beneath
-   the allowed handoff root, rejecting symlinks and escapes, validating every
+   `orchestration-handoff`, consuming its actual returned persistence shape and
+   submitted payload, then reading and hashing bytes through one `O_NOFOLLOW`
+   descriptor beneath the runtime-trusted handoff directory. Reject symlinks,
+   component escapes, swaps, and metadata changes; validate every
    run/issue/worker/generation/branch/worktree/revision binding, and producing a
    fresh consolidated brief. Never revive hidden context.
 6. Drive every candidate through the quality sequence exactly as shown above.
@@ -63,9 +68,10 @@ record -> confirm one closed fleet manifest -> persist state
    request is merged and this branch is rebased, report baseline integration as
    pending and refuse review readiness when the capability or proof is
    unavailable.
-8. Persist one stable publication intent before calling the allow-listed
-   provider adapter. Reconcile by its stable provider key after degraded
-   responses or crashes; never create a second intent. A provider-returned
+8. Persist one stable logical publication identity and a revision-specific
+   base/head observation before calling the allow-listed provider adapter.
+   Reconcile by its stable provider key after degraded responses, revision
+   mutation, or crashes; never create a second change request. A provider-returned
    identifier is required. Never infer publication or merge from a branch,
    worker report, merge grant, or degraded provider response.
 9. When manifest Shepherd intent is `yes`, invoke `shepherd` in a real fresh
@@ -77,8 +83,11 @@ record -> confirm one closed fleet manifest -> persist state
     repository, issue, change request, base/head, merge commit, observation
     time, and stable publication key reconcile exactly. Recompute dependencies.
     Expire affected still-open sibling readiness claims and fleet disposition
-    immediately, queue generation/revision-specific re-Shepherd work when
-    Shepherd is required or fresh quality/provider revalidation when it is not,
+    immediately. Require provider-bound
+    revision observations after the triggering merge, clear stale quality and
+    publication evidence, and queue merge/revision-generation-specific
+    revalidation plus re-Shepherd work when Shepherd is required or fresh
+    quality/provider revalidation when it is not,
     and never present it as ready until the exact fresh evidence is consumed.
 11. Replenish capacity after every worker terminal transition. Stop all new
     assignment and continuation dispatch on cancellation or exhausted cost,

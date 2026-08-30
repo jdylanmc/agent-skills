@@ -1,11 +1,28 @@
+import { validateIssueSetReceipt } from '../fleet-manifest/fleet-manifest.mjs';
+import { normalizeMergeObservation } from '../provider-seam/provider-seam.mjs';
+
 const TERMINAL = new Set(['completed', 'failed', 'deferred']);
 
 function dependencySatisfied(edge, record, observedMerges) {
   if (edge.satisfiedBy === 'completed') {
-    return record.status === 'completed' || record.terminalDisposition === 'already-complete';
+    return record.status === 'completed'
+      && ['ready-for-human-merge', 'already-complete'].includes(record.terminalDisposition);
   }
-  return observedMerges.has(edge.dependency)
+  return (observedMerges.has(edge.dependency)
+      && record.status === 'completed'
+      && ['ready-for-human-merge', 'already-complete'].includes(record.terminalDisposition))
     || record.terminalDisposition === 'already-complete';
+}
+
+function queryMembershipIsCurrent(manifest, fleetState) {
+  if (manifest.issueSet.kind === 'explicit') return true;
+  try {
+    const normalized = validateIssueSetReceipt(fleetState.issueSetObservation, manifest);
+    return fleetState.issueSetObservation?.manifestDigest === manifest.digest
+      && normalized.membershipDigest === manifest.issueSet.membershipDigest;
+  } catch {
+    return false;
+  }
 }
 
 function sourceIsCurrent(issue, record, manifest) {
@@ -44,7 +61,14 @@ export function computeFrontier(manifest, fleetState) {
   if (JSON.stringify(stateKeys) !== JSON.stringify(manifestKeys)) {
     throw new Error('fleet state issue set differs from the confirmed closed manifest');
   }
-  const observedMerges = new Set(fleetState.observedHumanMerges.map((entry) => entry.issue));
+  const observedMerges = new Set();
+  for (const entry of fleetState.observedHumanMerges) {
+    try {
+      observedMerges.add(normalizeMergeObservation(fleetState, manifest, entry).issue);
+    } catch (error) {
+      throw new Error(`scheduler rejected invalid persisted merge observation: ${error.message}`);
+    }
+  }
   const incoming = new Map(manifest.issues.map((issue) => [issue.identity, []]));
   for (const edge of manifest.dependencies) incoming.get(edge.dependent).push(edge);
 
@@ -77,6 +101,15 @@ export function computeFrontier(manifest, fleetState) {
       throw new Error(`pending frontier issue ${issue.identity} has inconsistent ownership state`);
     }
 
+    if (!queryMembershipIsCurrent(manifest, fleetState)) {
+      blocked.push({
+        issue: issue.identity,
+        reason: 'awaiting-query-membership-reobservation',
+        blockers: [{ dependency: issue.identity, reason: 'awaiting-query-membership-reobservation' }],
+      });
+      continue;
+    }
+
     if (!sourceIsCurrent(issue, record, manifest)) {
       blocked.push({
         issue: issue.identity,
@@ -102,6 +135,9 @@ export function computeFrontier(manifest, fleetState) {
   }
 
   const available = Math.max(0, manifest.concurrency - active.length);
+  if (active.length > manifest.concurrency) {
+    throw new Error('active assignments exceed confirmed manifest concurrency');
+  }
   const stopReason = dispatchBlockReason(fleetState);
   const dispatch = stopReason ? [] : ready.slice(0, available);
   return {
