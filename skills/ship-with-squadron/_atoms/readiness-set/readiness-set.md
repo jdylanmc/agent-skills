@@ -36,8 +36,9 @@ revision-bound set obligation and dispatch no Shepherd.
 Readiness is snapshot-bound. After an exact merge observation reconciled to a
 recorded publication, expire every affected still-open ready claim and fleet
 disposition immediately, mark it stale, and accept only a complete
-provider-bound change-request revision receipt observed after the triggering
-merge. Clear stale quality/publication evidence and queue one
+provider/repository/change-request/publication/base-branch/base-SHA/head-branch/
+head-SHA revision receipt observed after the triggering merge. Clear stale
+quality/publication evidence and queue one
 merge/revision-generation-specific revalidation plus fresh Shepherd invocation
 when required. With
 Shepherd intent `no`, queue fresh complete quality/provider revalidation

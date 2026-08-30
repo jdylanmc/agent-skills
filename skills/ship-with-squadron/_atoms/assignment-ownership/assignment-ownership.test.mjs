@@ -7,6 +7,7 @@ import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
   createFleetState,
   fleetStatePath,
+  loadFleetState,
   persistFleetState,
   recordSourceRevisionObservation,
 } from '../fleet-state/fleet-state.mjs';
@@ -18,6 +19,9 @@ import {
   continueWithFreshWorker,
   validateContinuationArtifact,
 } from './assignment-ownership.mjs';
+import {
+  persistOrchestrationHandoff,
+} from '../../../_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SANDBOX = path.join(ROOT, '.test-sandbox', 'ship-with-squadron-handoff');
@@ -219,17 +223,17 @@ test('assigns only pending unowned issues with a complete manifest-bound packet'
   }), /scheduler lease/);
 });
 
-test('continues only after rereading a real safe bound handoff artifact', (t) => {
+test('continues only after rereading actual orchestration-handoff persistence output', (t) => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
   const root = setRuntimeTemp(t);
-  const file = path.join(root, 'handoff.md');
   const payload = handoffPayload();
-  const content = handoffContent(payload);
-  fs.writeFileSync(file, content);
+  const persisted = persistOrchestrationHandoff(payload, {
+    now: new Date('2026-08-30T00:02:30Z'),
+  });
   if (!SAFE_FD_SUPPORTED) {
     assert.throws(() => continueWithFreshWorker(assigned(), manifest, {
-      issue: 'a', reason: 'stalled', handoff: handoff(file, content), handoffPayload: payload,
+      issue: 'a', reason: 'stalled', handoff: persisted, handoffPayload: payload,
       branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-2',
       packet: packet('a', 'issue-a', '/work/a'),
     }), /cannot establish O_NOFOLLOW/);
@@ -238,7 +242,7 @@ test('continues only after rereading a real safe bound handoff artifact', (t) =>
   const continued = continueWithFreshWorker(assigned(), manifest, {
     issue: 'a',
     reason: 'stalled',
-    handoff: handoff(file, content),
+    handoff: persisted,
     handoffPayload: payload,
     branch: 'issue-a',
     worktree: '/work/a',
@@ -250,11 +254,15 @@ test('continues only after rereading a real safe bound handoff artifact', (t) =>
   assert.equal(continued.issues.a.status, 'active');
   assert.equal(continued.issues.a.assignment.generation, 2);
   assert.equal(continued.issues.a.continuationChain[0].endReason, 'stalled');
-  assert.equal(validateContinuationArtifact(handoff(file, content), payload, {
+  assert.equal(validateContinuationArtifact(persisted, payload, {
     runId: 'run', issue: 'a', priorGeneration: 1, branch: 'issue-a', worktree: '/work/a',
     sourceAgent: 'worker-1', targetAgent: 'worker-2', baseSha: 'base', headSha: 'head',
     manifestDigest: manifest.digest, stateRevision: 0, acceptanceCriteria: ['done'],
   }).valid, true);
+  assert.equal(validateContinuationArtifact(
+    persisted,
+    { ...payload, synthetic_result_fields: true },
+  ).valid, false);
 });
 
 test('rejects symlink/path escape, stale bindings, and fabricated paths', (t) => {
@@ -323,6 +331,8 @@ test('persisted assignment consumes a serialized revision-bound scheduler lease'
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const file = fleetStatePath(root, 'run');
   persistFleetState(file, state(), 0, manifest, { now: '2026-08-30T00:02:00Z' });
+  const persistedState = loadFleetState(file, manifest);
+  const schedulerLease = createSchedulerLease(persistedState, manifest, 'a');
   const assignedState = assignFreshWorkerPersisted(file, manifest, {
     issue: 'a',
     branch: 'issue-a',
@@ -331,10 +341,20 @@ test('persisted assignment consumes a serialized revision-bound scheduler lease'
     baseSha: 'base',
     headSha: 'head',
     packet: packet('a', 'issue-a', '/work/a'),
+    schedulerLease,
     startedAt: '2026-08-30T00:03:00Z',
   }, { now: '2026-08-30T00:03:01Z' });
   assert.equal(assignedState.revision, 2);
   assert.equal(assignedState.activeCapacity, 1);
+  assert.throws(() => assignFreshWorkerPersisted(file, manifest, {
+    issue: 'b',
+    branch: 'issue-b',
+    worktree: '/work/b',
+    workerContext: 'worker-without-lease',
+    baseSha: 'base',
+    headSha: 'head',
+    packet: packet('b', 'issue-b', '/work/b'),
+  }), /requires a state-revision-bound scheduler lease/);
   assert.throws(() => assignFreshWorkerPersisted(file, manifest, {
     issue: 'a',
     branch: 'issue-a',
@@ -343,5 +363,6 @@ test('persisted assignment consumes a serialized revision-bound scheduler lease'
     baseSha: 'base',
     headSha: 'head',
     packet: packet('a', 'issue-a', '/work/a'),
-  }), /not in current capacity.dispatch|not pending/);
+    schedulerLease,
+  }), /state revision conflict|not in current capacity.dispatch|not pending/);
 });

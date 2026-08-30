@@ -153,7 +153,7 @@ test('reobserves the exact source revision and rejects closed-set or ownership f
   assert.throws(() => assertFleetState(forged, manifest), /assignment/);
   const publication = structuredClone(initial);
   publication.issues['1'].changeRequest = { identifier: 'PR-1' };
-  assert.throws(() => assertFleetState(publication, manifest), /confirmed publication/);
+  assert.throws(() => assertFleetState(publication, manifest), /change request keys differ|confirmed publication/);
 });
 
 test('uses at-ceiling budget semantics, stops dispatch, and preserves cancellation obligations', () => {
@@ -181,6 +181,12 @@ test('uses at-ceiling budget semantics, stops dispatch, and preserves cancellati
       terminalDisposition: 'blocked',
     }),
     /contradicts status failed/,
+  );
+  assert.throws(
+    () => transitionIssue(initial, '1', 'completed', {
+      terminalDisposition: 'blocked',
+    }),
+    /contradicts status completed/,
   );
 });
 

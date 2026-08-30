@@ -47,8 +47,11 @@ function state(statuses = {}, merges = [], control = {}) {
       status: statuses[issue.identity] ?? 'pending',
       assignment: statuses[issue.identity] === 'active' ? { active: true } : null,
       terminalDisposition: null,
+      sourceReceipt: issue.sourceReceipt,
       sourceObservation: {
         ...issue.sourceReceipt,
+        invocation: { id: `reobserve-${issue.identity}`, operation: 'read-issue' },
+        observedAt: '2026-08-30T00:00:30Z',
         manifestDigest: manifest.digest,
         reobservedAt: '2026-08-30T00:01:00Z',
       },
@@ -94,9 +97,9 @@ test('rejects any issue outside the confirmed closed set', () => {
 
 test('failed, blocked, timed-out, and deferred predecessors never satisfy completed edges', () => {
   for (const [status, disposition] of [
-    ['completed', 'blocked'],
+    ['blocked', 'blocked'],
     ['failed', 'failed'],
-    ['deferred', 'timed-out-with-handoff'],
+    ['timed-out', 'timed-out-with-handoff'],
     ['deferred', 'deferred'],
   ]) {
     const current = state({ b: status });

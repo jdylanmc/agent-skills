@@ -236,7 +236,7 @@ test('quality gate validates raw receipts and human descoping receipts instead o
 
   const currentManifest = manifest('yes', [{
     id: 'HD-1',
-    actor: 'human@example.test',
+    actor: 'human-reviewer-17',
     issue: '1',
     criterionId: 'C1',
     sourceRevision: 'r1',

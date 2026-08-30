@@ -170,7 +170,7 @@ test('binds tracker-query membership provenance and rejects membership/source dr
 test('human descoping records require an actual actor and exact issue/criterion binding', () => {
   const decision = {
     id: 'HD-1',
-    actor: 'human@example.test',
+    actor: 'human-reviewer-17',
     issue: '1',
     criterionId: '1-C1',
     sourceRevision: 'r1',

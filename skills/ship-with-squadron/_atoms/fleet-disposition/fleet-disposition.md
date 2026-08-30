@@ -20,6 +20,9 @@ replacements, checking change requests, genuinely review-ready change requests,
 expired claims, failed/deferred/awaiting-human work, and next capacity
 replenishment. `checking` appears only while an explicit persisted check
 activity exists; blocked or terminal work is never relabeled as checking.
+Active, blocked, checking, failed, deferred, awaiting-human, and review-ready
+status buckets are mutually exclusive; replacement and expiry lists are
+orthogonal obligations.
 
 Every supplied issue ends as exactly one of:
 

@@ -168,7 +168,7 @@ test('records publication intent before call and reconciles crash recovery idemp
   const begun = beginPublication(state(), manifest, request, '2026-08-30T00:05:00Z');
   assert.equal(begun.action, 'call-provider-with-stable-key');
   assert.equal(begun.state.publications[0].observations[0].state, 'intent-recorded');
-  assert.equal(publicationRecoveryAction(begun.state, begun.key).action, 'reconcile-by-stable-provider-key-before-retry');
+  assert.equal(publicationRecoveryAction(begun.state, manifest, begun.key).action, 'reconcile-by-stable-provider-key-before-retry');
 
   const recovered = beginPublication(begun.state, manifest, request);
   assert.equal(recovered.key, begun.key);
@@ -184,6 +184,25 @@ test('records publication intent before call and reconciles crash recovery idemp
 
   const published = reconcilePublication(begun.state, manifest, begun.key, result(begun.key));
   assert.equal(published.publications[0].observations[0].state, 'confirmed');
+  assert.deepEqual(published.publications[0].observations[0].attempts[0], {
+    invocation: {
+      id: 'publish-1',
+      operation: 'publish-change-request',
+      providerKey: begun.key,
+    },
+    status: 'published',
+    observedAt: '2026-08-30T00:10:00Z',
+    terminal: true,
+    complete: true,
+    provider: 'github',
+    repository: 'owner/repo',
+    issue: '1',
+    baseBranch: 'main',
+    headBranch: 'issue-1',
+    baseSha: 'base',
+    headSha: 'head',
+    identifier: 'PR-1',
+  });
   assert.equal(published.issues['1'].changeRequest.identifier, 'PR-1');
   assert.equal(beginPublication(published, manifest, request).action, 'already-confirmed-current-revision');
   assert.equal(reconcilePublication(published, manifest, begun.key, result(begun.key)).publications.length, 1);
@@ -196,7 +215,17 @@ test('preserves retryable degradation and refuses malformed caller-shaped public
     identifier: null,
   }));
   assert.equal(degraded.publications[0].observations[0].state, 'retryable-degraded');
-  assert.equal(publicationRecoveryAction(degraded, begun.key).previousAttempts, 1);
+  assert.equal(publicationRecoveryAction(degraded, manifest, begun.key).previousAttempts, 1);
+  const exhausted = reconcilePublication(degraded, manifest, begun.key, result(begun.key, {
+    invocation: { id: 'publish-2', operation: 'publish-change-request', providerKey: begun.key },
+    status: 'transient-failure',
+    observedAt: '2026-08-30T00:11:00Z',
+    identifier: null,
+  }));
+  assert.equal(
+    publicationRecoveryAction(exhausted, manifest, begun.key).action,
+    'stop-recovery-retry-budget-exhausted',
+  );
   assert.throws(() => reconcilePublication(begun.state, manifest, begun.key, {
     status: 'published',
     identifier: 'PR-1',
@@ -265,8 +294,9 @@ test('reuses one logical publication while requiring revision-specific confirmat
   const next = beginPublication(revised, manifest, nextRequest, '2026-08-30T00:20:00Z');
   assert.equal(next.state.publications.length, 1);
   assert.equal(next.action, 'reobserve-existing-publication');
-  assert.equal(publicationRecoveryAction(next.state, next.key).action, 'reconcile-by-stable-provider-key-before-retry');
+  assert.equal(publicationRecoveryAction(next.state, manifest, next.key).action, 'reconcile-by-stable-provider-key-before-retry');
   const confirmed = reconcilePublication(next.state, manifest, next.key, result(next.key, {
+    invocation: { id: 'publish-2', operation: 'publish-change-request', providerKey: next.key },
     status: 'found-existing',
     baseSha: 'base-2',
     headSha: 'head-2',

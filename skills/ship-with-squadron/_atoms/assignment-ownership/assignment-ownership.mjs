@@ -2,10 +2,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { normalizeOrchestrationPayload } from '../../../_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.mjs';
 import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
 import {
-  loadFleetState,
-  persistFleetState,
+  mutateFleetState,
   reconcileFrontier,
 } from '../fleet-state/fleet-state.mjs';
 
@@ -199,10 +199,22 @@ export function createSchedulerLease(state, manifest, issue, frontier = computeF
 }
 
 export function assignFreshWorkerPersisted(file, manifest, input, options = {}) {
-  const state = loadFleetState(file, manifest);
-  const schedulerLease = createSchedulerLease(state, manifest, input.issue);
-  const assigned = assignFreshWorker(state, manifest, { ...input, schedulerLease });
-  return persistFleetState(file, assigned, schedulerLease.stateRevision, manifest, options);
+  if (!input.schedulerLease || !Number.isInteger(input.schedulerLease.stateRevision)) {
+    throw new Error('persisted assignment requires a state-revision-bound scheduler lease');
+  }
+  return mutateFleetState(
+    file,
+    manifest,
+    input.schedulerLease.stateRevision,
+    (state) => {
+      const schedulerLease = createSchedulerLease(state, manifest, input.issue);
+      if (!same(input.schedulerLease, schedulerLease)) {
+        throw new Error('persisted assignment did not consume the current scheduler lease');
+      }
+      return assignFreshWorker(state, manifest, input);
+    },
+    options,
+  );
 }
 
 const HANDOFF_RESULT_KEYS = [
@@ -233,6 +245,12 @@ function payloadBinding(payload, name) {
 
 export function validateContinuationHandoff(handoff, payload, expected = null) {
   const defects = [];
+  let normalizedPayload = null;
+  try {
+    normalizedPayload = normalizeOrchestrationPayload(payload);
+  } catch (error) {
+    defects.push(`orchestration payload is invalid: ${error.code ?? error.message}`);
+  }
   if (!exactObjectKeys(handoff, HANDOFF_RESULT_KEYS)) {
     defects.push('handoff result does not match the persisted orchestration result contract');
   }
@@ -249,19 +267,20 @@ export function validateContinuationHandoff(handoff, payload, expected = null) {
       || path.basename(handoff?.path ?? '') !== handoff?.name) {
     defects.push('handoff result directory/name do not bind the returned path');
   }
-  if (payload?.schema_version !== 1) defects.push('orchestration payload schema_version must be 1');
-  if (expected && payload?.run_identity?.run_id !== expected.runId) defects.push('payload run identity does not match');
-  if (expected && payload?.source_agent?.id !== expected.sourceAgent) defects.push('payload source agent does not match');
-  if (expected && payload?.target_agent?.id !== expected.targetAgent) defects.push('payload target agent does not match');
+  const submitted = normalizedPayload ?? payload;
+  if (submitted?.schema_version !== 1) defects.push('orchestration payload schema_version must be 1');
+  if (expected && submitted?.run_identity?.run_id !== expected.runId) defects.push('payload run identity does not match');
+  if (expected && submitted?.source_agent?.id !== expected.sourceAgent) defects.push('payload source agent does not match');
+  if (expected && submitted?.target_agent?.id !== expected.targetAgent) defects.push('payload target agent does not match');
   for (const field of [
     'task_contract', 'inputs', 'constraints', 'assumptions',
     'artifacts_and_references', 'acceptance_criteria', 'open_questions',
   ]) {
-    if (!(field in (payload ?? {}))) defects.push(`payload ${field} is absent`);
+    if (!(field in (submitted ?? {}))) defects.push(`payload ${field} is absent`);
   }
-  if (!Array.isArray(payload?.acceptance_criteria)
-      || payload.acceptance_criteria.length === 0
-      || payload.acceptance_criteria.some((entry) => !nonEmpty(entry))) {
+  if (!Array.isArray(submitted?.acceptance_criteria)
+      || submitted.acceptance_criteria.length === 0
+      || submitted.acceptance_criteria.some((entry) => !nonEmpty(entry))) {
     defects.push('payload acceptance criteria are incomplete');
   }
   for (const section of BRIEF_SECTIONS) {
@@ -269,13 +288,13 @@ export function validateContinuationHandoff(handoff, payload, expected = null) {
       GOAL: 'goal', SCOPE: 'scope', CONTEXT: 'context', VERIFY: 'verify',
       TIMEBOX: 'timebox', FORBIDDEN: 'forbidden', REPORT: 'report', STANDING: 'standing',
     }[section];
-    if (field && !nonEmpty(payload?.task_contract?.[field])) {
+    if (field && !nonEmpty(submitted?.task_contract?.[field])) {
       defects.push(`payload brief section ${section} is absent`);
     }
   }
   if (expected) {
     for (const [inputName, expectedField] of REQUIRED_HANDOFF_INPUTS) {
-      const bindings = payload.inputs.filter((entry) => entry?.name === inputName);
+      const bindings = submitted.inputs.filter((entry) => entry?.name === inputName);
       const binding = bindings[0];
       if (bindings.length !== 1
           || !binding
@@ -284,11 +303,54 @@ export function validateContinuationHandoff(handoff, payload, expected = null) {
         defects.push(`payload binding ${inputName} does not match`);
       }
     }
-    if (!same(payload.acceptance_criteria, expected.acceptanceCriteria)) {
+    if (!same(submitted.acceptance_criteria, expected.acceptanceCriteria)) {
       defects.push('payload acceptance criteria do not match the confirmed issue');
     }
   }
   return { valid: defects.length === 0, defects };
+}
+
+function directoryChain(directory) {
+  const resolved = path.resolve(directory);
+  const parsed = path.parse(resolved);
+  const relative = resolved.slice(parsed.root.length).split(path.sep).filter(Boolean);
+  const chain = [parsed.root];
+  let cursor = parsed.root;
+  for (const component of relative) {
+    cursor = path.join(cursor, component);
+    chain.push(cursor);
+  }
+  return chain;
+}
+
+function snapshotDirectoryChain(directory) {
+  return directoryChain(directory).map((entry) => {
+    const stat = fs.lstatSync(entry, { bigint: true });
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error('trusted handoff directory chain is not entirely real directories');
+    }
+    return {
+      path: entry,
+      dev: stat.dev,
+      ino: stat.ino,
+      mode: stat.mode,
+      uid: stat.uid,
+    };
+  });
+}
+
+function sameDirectoryChain(before) {
+  try {
+    const after = snapshotDirectoryChain(before.at(-1).path);
+    return before.length === after.length && before.every((entry, index) =>
+      entry.path === after[index].path
+      && entry.dev === after[index].dev
+      && entry.ino === after[index].ino
+      && entry.mode === after[index].mode
+      && entry.uid === after[index].uid);
+  } catch {
+    return false;
+  }
 }
 
 function trustedHandoffRoot() {
@@ -300,7 +362,14 @@ function trustedHandoffRoot() {
   }
   const rootReal = fs.realpathSync(root);
   if (rootReal !== root) throw new Error('trusted handoff run directory resolved through a link');
-  return rootReal;
+  const chain = snapshotDirectoryChain(rootReal);
+  if (typeof process.getuid === 'function') {
+    const rootEntry = chain.at(-1);
+    if (Number(rootEntry.uid) !== process.getuid() || (Number(rootEntry.mode) & 0o022) !== 0) {
+      throw new Error('trusted handoff run directory ownership or mode is unsafe');
+    }
+  }
+  return { root: rootReal, chain };
 }
 
 function safeReadReturnedArtifact(handoff, options = {}) {
@@ -308,10 +377,11 @@ function safeReadReturnedArtifact(handoff, options = {}) {
     throw new Error('artifact path and returned directory must be absolute');
   }
   const trusted = trustedHandoffRoot();
-  if (handoff.directory !== trusted || path.dirname(handoff.path) !== trusted) {
+  if (handoff.directory !== trusted.root || path.dirname(handoff.path) !== trusted.root) {
     throw new Error('handoff artifact escapes the runtime-trusted handoff directory');
   }
-  if (path.basename(handoff.path) !== handoff.name || handoff.path !== path.join(trusted, handoff.name)) {
+  if (path.basename(handoff.path) !== handoff.name
+      || handoff.path !== path.join(trusted.root, handoff.name)) {
     throw new Error('handoff artifact path is not the exact returned direct child');
   }
   if (!Number.isInteger(fs.constants.O_NOFOLLOW) || fs.constants.O_NOFOLLOW === 0) {
@@ -332,7 +402,8 @@ function safeReadReturnedArtifact(handoff, options = {}) {
         || before.ctimeNs !== after.ctimeNs
         || after.dev !== pathStat.dev || after.ino !== pathStat.ino
         || after.size !== pathStat.size || after.mtimeNs !== pathStat.mtimeNs
-        || after.ctimeNs !== pathStat.ctimeNs) {
+        || after.ctimeNs !== pathStat.ctimeNs
+        || !sameDirectoryChain(trusted.chain)) {
       throw new Error('handoff artifact changed while being verified');
     }
     return content;
@@ -344,6 +415,7 @@ function safeReadReturnedArtifact(handoff, options = {}) {
 export function validateContinuationArtifact(handoff, payload, expected = null, options = {}) {
   const result = validateContinuationHandoff(handoff, payload, expected);
   if (!result.valid) return result;
+  const submitted = normalizeOrchestrationPayload(payload);
   let bytes;
   try {
     bytes = safeReadReturnedArtifact(handoff, options);
@@ -363,7 +435,7 @@ export function validateContinuationArtifact(handoff, payload, expected = null, 
   }
   if (expected) {
     for (const [inputName, expectedField] of REQUIRED_HANDOFF_INPUTS) {
-      const binding = payloadBinding(payload, inputName);
+      const binding = payloadBinding(submitted, inputName);
       const rendered = `- ${inputName}: ${binding.value} (source: ${binding.source})`;
       if (!new RegExp(`(^|\\n)${escapeRegExp(rendered)}\\s*$`, 'm').test(content)) {
         defects.push(`artifact binding ${inputName} is absent`);
@@ -383,7 +455,7 @@ export function validateContinuationArtifact(handoff, payload, expected = null, 
       runId: expected?.runId,
       sourceAgent: expected?.sourceAgent,
       targetAgent: expected?.targetAgent,
-      inputs: REQUIRED_HANDOFF_INPUTS.map(([name]) => payloadBinding(payload, name)),
+      inputs: REQUIRED_HANDOFF_INPUTS.map(([name]) => payloadBinding(submitted, name)),
     }),
     content,
   };

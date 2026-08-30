@@ -22,7 +22,9 @@ the exact forbidden-authority list. Workers never select more backlog work.
 Assignment also consumes a scheduler lease bound to the confirmed manifest,
 provider configuration, exact fleet-state revision, recomputed dependency
 frontier, current `capacity.dispatch`, and active count. The compare-and-swap
-write serializes ownership; stale-frontier and capacity races fail.
+mutation reacquires the state lock, rereads the leased revision, recomputes the
+frontier while ownership is serialized, and compares the complete lease before
+writing. Stale-frontier and capacity races fail.
 
 Use the assignment ownership helper to reject concurrent
 ownership of the same issue, branch, or worktree and reuse of any worker
@@ -38,7 +40,8 @@ For stalled, exhausted, timed-out, or crashed workers:
    orchestration payload. The runtime-selected `handoffs` directory cannot be
    widened by the caller. Open the direct-child artifact with `O_NOFOLLOW`,
    hash and read bytes through that same descriptor, compare inode and metadata
-   before/after, reject symlinks, swaps, and escapes, then validate all
+   before/after, snapshot and recheck the trusted non-symlink directory chain,
+   reject symlinks, swaps, and escapes, then validate all
    consolidated brief sections and exact
    run/issue/prior-generation/branch/worktree/source/target/base/head bindings;
 5. dispatch a fresh continuation context on the same owned branch and worktree.
