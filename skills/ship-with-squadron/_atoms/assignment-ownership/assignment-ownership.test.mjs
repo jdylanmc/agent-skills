@@ -635,11 +635,11 @@ test('configured redaction and returned metadata are re-derived during artifact 
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
   setRuntimeTemp(t);
   const payload = handoffPayload('fleet-owner');
-  payload.task_contract.context = 'contact private-alias@example.invalid for continuation';
+  payload.task_contract.context = 'contact ZXCVB12345 for continuation';
   const identifiers = [{
-    value: 'private-alias@example.invalid',
+    value: 'ZXCVB12345',
     evidenceType: 'configured-identifier',
-    normalized: 'privatealiasexampleinvalid',
+    normalized: 'zxcvb12345',
   }];
   const persisted = persistOrchestrationHandoff(payload, {
     now: new Date('2026-08-30T00:02:30Z'),
