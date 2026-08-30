@@ -134,6 +134,15 @@ jobs:
           skills/ship/_atoms/merge-gate/merge-gate.test.mjs
           skills/ship/_atoms/shepherd-handoff/shepherd-handoff.test.mjs
           skills/ship/ship.conformance.test.mjs
+          skills/ship-with-squadron/_atoms/fleet-manifest/fleet-manifest.test.mjs
+          skills/ship-with-squadron/_atoms/dependency-frontier/dependency-frontier.test.mjs
+          skills/ship-with-squadron/_atoms/fleet-state/fleet-state.test.mjs
+          skills/ship-with-squadron/_atoms/assignment-ownership/assignment-ownership.test.mjs
+          skills/ship-with-squadron/_atoms/quality-evidence/quality-evidence.test.mjs
+          skills/ship-with-squadron/_atoms/provider-seam/provider-seam.test.mjs
+          skills/ship-with-squadron/_atoms/readiness-set/readiness-set.test.mjs
+          skills/ship-with-squadron/_atoms/fleet-disposition/fleet-disposition.test.mjs
+          skills/ship-with-squadron/ship-with-squadron.conformance.test.mjs
           skills/eli5/_atoms/explanation-ladder/explanation-ladder.test.mjs
           skills/eli5/_atoms/explanation-ladder/explanation-ladder.adversarial.test.mjs
           skills/eli5/eli5.conformance.test.mjs
