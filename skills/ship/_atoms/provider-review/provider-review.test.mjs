@@ -15,11 +15,15 @@ import test from 'node:test';
 
 import { detectProvider } from '../../../_base/_atoms/provider-detect/provider-detect.mjs';
 import {
+  GITHUB_LATEST_REVIEWS_QUERY,
   GITHUB_REVIEW_THREADS_QUERY,
+  GITHUB_THREAD_COMMENTS_QUERY,
   ProviderCommandError,
   assertReadOnlyCommand,
   interpretReviewThreads,
+  latestReviewsCommand,
   reviewThreadsCommand,
+  threadCommentsCommand,
   unresolvedReviewThreads,
 } from './provider-review.mjs';
 
@@ -64,8 +68,26 @@ const AZURE_TARGET = {
   repository: { organizationUrl: 'https://dev.azure.com/contoso', project: 'project', name: 'repo' },
 };
 
-function githubResponse(threads) {
-  return { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: threads } } } } };
+function githubResponse(threads, {
+  reviewDecision = 'REVIEW_REQUIRED',
+  reviews = [],
+  reviewsHasNextPage = false,
+  reviewsEndCursor = reviewsHasNextPage ? 'R0' : null,
+} = {}) {
+  return {
+    data: {
+      repository: {
+        pullRequest: {
+          reviewDecision,
+          latestOpinionatedReviews: {
+            pageInfo: { hasNextPage: reviewsHasNextPage, endCursor: reviewsEndCursor },
+            nodes: reviews,
+          },
+          reviewThreads: { pageInfo: { hasNextPage: false }, nodes: threads },
+        },
+      },
+    },
+  };
 }
 
 test('GitHub threads are read through the official tool with its own pagination and a query document', () => {
@@ -89,6 +111,8 @@ test('GitHub threads are read through the official tool with its own pagination 
   assert.ok(command.args.includes('number=42'));
   assert.ok(command.args.includes(`query=${GITHUB_REVIEW_THREADS_QUERY}`));
   assert.match(GITHUB_REVIEW_THREADS_QUERY, /isResolved/);
+  assert.match(GITHUB_REVIEW_THREADS_QUERY, /reviewDecision/);
+  assert.match(GITHUB_REVIEW_THREADS_QUERY, /latestOpinionatedReviews\(first: 100\)/);
   // The public host takes no --hostname; that is reserved for enterprise hosts.
   assert.ok(!command.args.includes('--hostname'));
 });
@@ -105,6 +129,22 @@ test('a GitHub Enterprise host reaches the command over SSH and HTTPS alike', ()
     assert.ok(command.args.includes('owner=example'));
     assert.ok(command.args.includes('name=repo'));
   }
+});
+
+test('GitHub pagination follow-ups are deterministic sanctioned GraphQL reads', () => {
+  const reviews = latestReviewsCommand(GITHUB, GITHUB_TARGET, { cursor: 'review-cursor' });
+  assert.equal(reviews.operation, 'read-latest-reviews-page');
+  assert.ok(reviews.args.includes('cursor=review-cursor'));
+  assert.ok(reviews.args.includes(`query=${GITHUB_LATEST_REVIEWS_QUERY}`));
+
+  const comments = threadCommentsCommand(GITHUB, GITHUB_TARGET, { threadId: 'T1', cursor: 'comment-cursor' });
+  assert.equal(comments.operation, 'read-review-thread-comments-page');
+  assert.ok(comments.args.includes('threadId=T1'));
+  assert.ok(comments.args.includes('cursor=comment-cursor'));
+  assert.ok(comments.args.includes(`query=${GITHUB_THREAD_COMMENTS_QUERY}`));
+
+  assert.doesNotThrow(() => assertReadOnlyCommand(reviews));
+  assert.doesNotThrow(() => assertReadOnlyCommand(comments));
 });
 
 test('Azure DevOps threads are read through the official tool with an explicit GET', () => {
@@ -286,9 +326,299 @@ test('a change request that genuinely has no threads is observed and empty', () 
   assert.deepEqual(unresolvedReviewThreads(none), {
     observed: true,
     operation: 'unresolved-review-threads',
+    provider: 'github',
+    identityBound: false,
+    repository: null,
+    changeRequest: null,
+    reviewDecision: 'REVIEW_REQUIRED',
+    verdicts: [],
+    observationDigest: none.observationDigest,
     complete: true,
     threads: [],
   });
+});
+
+test('a review reading is bound to the repository and change request used for the read', () => {
+  const read = interpretReviewThreads(
+    GITHUB,
+    githubResponse([]),
+    { repository: 'jdylanmc/agent-skills', changeRequest: 102 },
+  );
+
+  assert.equal(read.identityBound, true);
+  assert.equal(read.repository, 'jdylanmc/agent-skills');
+  assert.equal(read.changeRequest, '102');
+  assert.deepEqual(unresolvedReviewThreads(read), {
+    observed: true,
+    operation: 'unresolved-review-threads',
+    provider: 'github',
+    identityBound: true,
+    repository: 'jdylanmc/agent-skills',
+    changeRequest: '102',
+    reviewDecision: 'REVIEW_REQUIRED',
+    verdicts: [],
+    observationDigest: read.observationDigest,
+    complete: true,
+    threads: [],
+  });
+});
+
+test('a threadless blocking review remains observable evidence', () => {
+  const read = interpretReviewThreads(
+    GITHUB,
+    githubResponse([], {
+      reviewDecision: 'CHANGES_REQUESTED',
+      reviews: [{
+        id: 'R1',
+        state: 'CHANGES_REQUESTED',
+        author: { login: 'reviewer' },
+        body: 'Please change the behavior.',
+      }],
+    }),
+    GITHUB_TARGET,
+  );
+
+  assert.equal(read.complete, true);
+  assert.equal(read.reviewDecision, 'CHANGES_REQUESTED');
+  assert.equal(read.verdicts.length, 1);
+  assert.equal(read.verdicts[0].gatesMerge, true);
+  assert.equal(read.verdicts[0].untrusted, true);
+  assert.deepEqual(unresolvedReviewThreads(read).verdicts, read.verdicts);
+});
+
+test('approval is non-blocking and absent gating evidence is incomplete', () => {
+  const approved = interpretReviewThreads(
+    GITHUB,
+    githubResponse([], {
+      reviewDecision: 'APPROVED',
+      reviews: [{ id: 'R1', state: 'APPROVED', author: { login: 'reviewer' }, body: 'Looks good.' }],
+    }),
+    GITHUB_TARGET,
+  );
+  assert.equal(approved.complete, true);
+  assert.equal(approved.verdicts[0].gatesMerge, false);
+
+  const superseded = githubResponse([], {
+    reviewDecision: 'APPROVED',
+    reviews: [{ id: 'R2', state: 'APPROVED', author: { login: 'reviewer' }, body: 'Updated approval.' }],
+  });
+  superseded.data.repository.pullRequest.reviews = {
+    nodes: [{ id: 'R1', state: 'CHANGES_REQUESTED', author: { login: 'reviewer' }, body: 'Old request.' }],
+  };
+  const latestOnly = interpretReviewThreads(GITHUB, superseded, GITHUB_TARGET);
+  assert.equal(latestOnly.complete, true);
+  assert.deepEqual(latestOnly.verdicts.map((verdict) => [verdict.id, verdict.gatesMerge]), [['R2', false]]);
+
+  const missing = githubResponse([]);
+  delete missing.data.repository.pullRequest.reviewDecision;
+  const unobservable = interpretReviewThreads(GITHUB, missing, GITHUB_TARGET);
+  assert.equal(unobservable.complete, false);
+  assert.ok(unobservable.incomplete.some((entry) => entry.truncated === 'reviewDecision'));
+
+  const nullable = interpretReviewThreads(GITHUB, githubResponse([], { reviewDecision: null }), GITHUB_TARGET);
+  assert.equal(nullable.complete, false);
+  assert.ok(nullable.incomplete.some(
+    (entry) => entry.truncated === 'reviewDecision' && entry.reason === 'gating-state-unconfirmed',
+  ));
+});
+
+test('follow-up pages merge latest reviews and nested comments by stable identity in deterministic order', () => {
+  const primary = githubResponse([
+    {
+      id: 'T1',
+      isResolved: false,
+      comments: {
+        pageInfo: { hasNextPage: true, endCursor: 'C1' },
+        nodes: [{ id: 'C2', author: { login: 'r' }, body: 'second' }],
+      },
+    },
+  ], {
+    reviewDecision: 'CHANGES_REQUESTED',
+    reviewsHasNextPage: true,
+    reviews: [{ id: 'R2', state: 'APPROVED', author: { login: 'b' }, body: 'ok' }],
+  });
+  const read = interpretReviewThreads(GITHUB, {
+    primary,
+    latestReviews: [
+      {
+        requestedCursor: 'R0',
+        response: {
+        data: { repository: { pullRequest: { latestOpinionatedReviews: {
+          pageInfo: { hasNextPage: true, endCursor: 'R2' },
+          nodes: [{ id: 'R1', state: 'CHANGES_REQUESTED', author: { login: 'a' }, body: 'block' }],
+        } } } },
+        },
+      },
+      {
+        requestedCursor: 'R2',
+        response: {
+        data: { repository: { pullRequest: { latestOpinionatedReviews: {
+          pageInfo: { hasNextPage: false },
+          nodes: [{ id: 'R2', state: 'APPROVED', author: { login: 'b' }, body: 'ok' }],
+        } } } },
+        },
+      },
+    ],
+    threadComments: {
+      T1: [
+        {
+          requestedCursor: 'C1',
+          response: {
+          data: { node: { id: 'T1', comments: {
+            pageInfo: { hasNextPage: true, endCursor: 'C2' },
+            nodes: [
+              { id: 'C2', author: { login: 'r' }, body: 'second' },
+              { id: 'C1', author: { login: 'r' }, body: 'first' },
+            ],
+          } } },
+          },
+        },
+        {
+          requestedCursor: 'C2',
+          response: {
+          data: { node: { id: 'T1', comments: {
+            pageInfo: { hasNextPage: false },
+            nodes: [{ id: 'C3', author: { login: 'r' }, body: 'third' }],
+          } } },
+          },
+        },
+      ],
+    },
+  }, GITHUB_TARGET);
+
+  assert.equal(read.complete, true);
+  assert.deepEqual(read.verdicts.map((verdict) => verdict.id), ['R1', 'R2']);
+  assert.deepEqual(read.threads[0].comments.map((comment) => comment.id), ['C1', 'C2', 'C3']);
+  assert.equal(read.verdicts[0].gatesMerge, true);
+  assert.match(read.observationDigest, /^[a-f0-9]{64}$/);
+});
+
+test('missing or failed GitHub follow-up pages remain incomplete', () => {
+  const primary = githubResponse([
+    {
+      id: 'T1',
+      isResolved: false,
+      comments: { pageInfo: { hasNextPage: true, endCursor: 'C0' }, nodes: [] },
+    },
+  ], { reviewsHasNextPage: true });
+
+  const missing = interpretReviewThreads(GITHUB, { primary }, GITHUB_TARGET);
+  assert.equal(missing.complete, false);
+  assert.ok(missing.incomplete.some((entry) => entry.reason === 'follow-up-missing'));
+
+  const failed = interpretReviewThreads(GITHUB, {
+    primary,
+    latestReviews: [{ requestedCursor: 'R0', response: { errors: [{ message: 'denied' }] } }],
+    threadComments: {
+      T1: [{ requestedCursor: 'C0', response: { errors: [{ message: 'denied' }] } }],
+    },
+  }, GITHUB_TARGET);
+  assert.equal(failed.observed, true);
+  assert.equal(failed.complete, false);
+  assert.ok(failed.incomplete.some((entry) => entry.reason === 'follow-up-failed'));
+});
+
+test('review threads do not substitute for missing latest-review nodes', () => {
+  const payload = githubResponse([
+    { id: 'T1', isResolved: false, comments: { pageInfo: { hasNextPage: false }, nodes: [] } },
+  ]);
+  delete payload.data.repository.pullRequest.latestOpinionatedReviews.nodes;
+
+  const read = interpretReviewThreads(GITHUB, payload, GITHUB_TARGET);
+  assert.equal(read.observed, true);
+  assert.equal(read.complete, false);
+  assert.ok(read.incomplete.some(
+    (entry) => entry.truncated === 'latestOpinionatedReviews' && entry.reason === 'review-nodes-absent',
+  ));
+});
+
+test('follow-up pagination requires one contiguous cursor-bound chain ending once', () => {
+  const response = (requestedCursor, hasNextPage, endCursor, id) => ({
+    requestedCursor,
+    response: {
+      data: { repository: { pullRequest: { latestOpinionatedReviews: {
+        pageInfo: { hasNextPage, ...(endCursor ? { endCursor } : {}) },
+        nodes: [{ id, state: 'APPROVED', author: { login: 'r' }, body: id }],
+      } } } },
+    },
+  });
+  const primary = githubResponse([], { reviewsHasNextPage: true, reviewsEndCursor: 'R0' });
+  const valid = interpretReviewThreads(GITHUB, {
+    primary,
+    latestReviews: [
+      response('R0', true, 'R1', 'review-1'),
+      response('R1', false, null, 'review-2'),
+    ],
+  }, GITHUB_TARGET);
+  assert.equal(valid.complete, true);
+
+  const cases = [
+    ['gap', [
+      response('R0', true, 'R1', 'review-1'),
+      response('R2', false, null, 'review-2'),
+    ], 'cursor-chain-discontinuous'],
+    ['reorder', [
+      response('R1', false, null, 'review-2'),
+      response('R0', true, 'R1', 'review-1'),
+    ], 'cursor-chain-discontinuous'],
+    ['duplicate', [
+      response('R0', true, 'R0', 'review-1'),
+      response('R0', false, null, 'review-2'),
+    ], 'duplicate-cursor'],
+    ['duplicate-page', [
+      response('R0', true, 'R1', 'review-1'),
+      response('R1', true, 'R1', 'review-1'),
+    ], 'duplicate-page'],
+    ['true-without-next-cursor', [
+      response('R0', true, null, 'review-1'),
+    ], 'next-cursor-missing'],
+    ['false-before-true', [
+      response('R0', false, null, 'review-1'),
+      response('R1', true, 'R2', 'review-2'),
+    ], 'pages-after-terminal'],
+  ];
+  for (const [label, latestReviews, reason] of cases) {
+    const read = interpretReviewThreads(GITHUB, { primary, latestReviews }, GITHUB_TARGET);
+    assert.equal(read.complete, false, label);
+    assert.ok(read.incomplete.some(
+      (entry) => entry.truncated === 'latestOpinionatedReviews' && entry.reason === reason,
+    ), label);
+  }
+});
+
+test('thread-comment follow-ups enforce the same cursor chain proof', () => {
+  const primary = githubResponse([{
+    id: 'T1',
+    isResolved: false,
+    comments: { pageInfo: { hasNextPage: true, endCursor: 'C0' }, nodes: [] },
+  }]);
+  const page = (requestedCursor, hasNextPage, endCursor, id) => ({
+    requestedCursor,
+    response: {
+      data: { node: { id: 'T1', comments: {
+        pageInfo: { hasNextPage, ...(endCursor ? { endCursor } : {}) },
+        nodes: [{ id, author: { login: 'r' }, body: id }],
+      } } },
+    },
+  });
+  const valid = interpretReviewThreads(GITHUB, {
+    primary,
+    threadComments: {
+      T1: [page('C0', true, 'C1', 'comment-1'), page('C1', false, null, 'comment-2')],
+    },
+  }, GITHUB_TARGET);
+  assert.equal(valid.complete, true);
+
+  const invalid = interpretReviewThreads(GITHUB, {
+    primary,
+    threadComments: {
+      T1: [page('C0', false, null, 'comment-1'), page('C1', true, 'C2', 'comment-2')],
+    },
+  }, GITHUB_TARGET);
+  assert.equal(invalid.complete, false);
+  assert.ok(invalid.incomplete.some(
+    (entry) => entry.threadId === 'T1' && entry.reason === 'pages-after-terminal',
+  ));
 });
 
 test('a GraphQL response that reports errors beside its data is unobserved, never an empty conversation', () => {
@@ -411,16 +741,24 @@ test('a response missing the completeness metadata it requested is unconfirmed, 
 
 test('a multi-page --paginate array aggregates all threads and settles completeness on the final page', () => {
   const pageOne = {
-    data: { repository: { pullRequest: { reviewThreads: {
-      pageInfo: { hasNextPage: true },
-      nodes: [{ id: 'T1', isResolved: true, comments: { pageInfo: { hasNextPage: false }, nodes: [] } }],
-    } } } },
+    data: { repository: { pullRequest: {
+      reviewDecision: 'REVIEW_REQUIRED',
+      latestOpinionatedReviews: { pageInfo: { hasNextPage: false }, nodes: [] },
+      reviewThreads: {
+        pageInfo: { hasNextPage: true },
+        nodes: [{ id: 'T1', isResolved: true, comments: { pageInfo: { hasNextPage: false }, nodes: [] } }],
+      },
+    } } },
   };
   const pageTwo = {
-    data: { repository: { pullRequest: { reviewThreads: {
-      pageInfo: { hasNextPage: false },
-      nodes: [{ id: 'T2', isResolved: false, comments: { pageInfo: { hasNextPage: false }, nodes: [] } }],
-    } } } },
+    data: { repository: { pullRequest: {
+      reviewDecision: 'REVIEW_REQUIRED',
+      latestOpinionatedReviews: { pageInfo: { hasNextPage: false }, nodes: [] },
+      reviewThreads: {
+        pageInfo: { hasNextPage: false },
+        nodes: [{ id: 'T2', isResolved: false, comments: { pageInfo: { hasNextPage: false }, nodes: [] } }],
+      },
+    } } },
   };
   const read = interpretReviewThreads(GITHUB, [pageOne, pageTwo]);
   assert.equal(read.observed, true);

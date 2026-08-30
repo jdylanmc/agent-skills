@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["execute"]
 includes: ["ship/_atoms/provider-review/provider-review.mjs"]
 composes: []
-used-by: []
+used-by: ["ship/SKILL.md"]
 ---
 
 # Provider Review
@@ -18,12 +18,11 @@ Read the review conversation on one change request: each thread, its file and
 line when it has one, whether the provider reports it resolved, and the comments
 in it.
 
-## Local, Not Shared, And Unconsumed Today
+## Local And Ship-Owned
 
 This unit lives local to `ship`, not under `_base`. A unit earns `_base` only
-once a second skill composes it, and today *no* skill composes this one: its
-consumer arrives with issue #102, which wires review reading into ship's review
-half. Until then it lands unconsumed, deliberately, and its `used-by` is empty.
+once a second skill composes it. Ship composes this unit for continuation of an
+existing change request; Shepherd does not.
 
 Keeping it local to `ship` is what makes a boundary enforceable by composition
 rather than merely promised. `shepherd` reads merge and validation state through
@@ -44,8 +43,16 @@ Use this only when detection reports `supported-provider`.
 
 | Operation | Input | Output |
 | --- | --- | --- |
-| `read-review-threads` | Change-request identifier and repository address. | Threads with path, line, reported resolution state, and comments. |
+| `read-review-threads` | Change-request identifier and repository address. | Threads with path, line, reported resolution state, comments, current review decision, latest reviewer verdicts, and an observation digest. |
+| `read-latest-reviews-page` | The same target plus the next review cursor. | One sanctioned GraphQL follow-up page for `latestOpinionatedReviews`. |
+| `read-review-thread-comments-page` | The same target plus a thread node ID and next comment cursor. | One sanctioned GraphQL follow-up page for that thread's comments. |
 | `unresolved-review-threads` | A read result. | Threads not reported resolved, or an explicit statement that threads were not read. |
+
+Interpret a provider response with the same repository and change-request
+identity used to build its sanctioned command. The normalized reading carries
+`identityBound`, canonical `repository`, and `changeRequest` fields, and the
+unresolved-thread view preserves them. A reading without that binding may be
+inspected, but it cannot authorize Ship continuation.
 
 GitHub exposes thread resolution only through GraphQL, which `gh api graphql`
 reaches with the tool's own authentication, host configuration, and
@@ -58,6 +65,40 @@ Azure DevOps has no first-class thread subcommand, so threads are read through
 carrying its own authentication and organization configuration. Neither path
 hand-rolls a call against a raw REST endpoint.
 
+GitHub gating comes from the pull request's current `reviewDecision` and
+`latestOpinionatedReviews`, never from the historical `reviews` connection.
+That distinction prevents a superseded `CHANGES_REQUESTED` review from
+remaining blocking after the same reviewer approves. A latest verdict has a
+stable node identity, normalized state and body, and `gatesMerge`; it gates only
+when both its current state and the pull request's current decision say changes
+are requested. A current threadless changes-requested verdict remains evidence.
+If `reviewDecision` is absent or `null`, gating is unknown and the read is
+incomplete.
+
+The primary query intentionally leaves explicit completeness signals on latest
+reviews and every thread's comments. When either exceeds 100 nodes, follow its
+`endCursor` with the target-local `read-latest-reviews-page` or
+`read-review-thread-comments-page` command until a page explicitly reports
+`hasNextPage: false`. Pass each response as
+`{ requestedCursor, response }`, in command order, so the interpreter can prove
+that every page was requested with the preceding page's returned `endCursor`.
+It refuses a gap, reorder, repeated cursor or page, a terminal page followed by
+another page, `hasNextPage: true` without a next cursor, or a chain without
+exactly one final terminal page. The interpreter merges a proven chain by
+GraphQL node ID and sorts by that stable identity. Missing
+`latestOpinionatedReviews.nodes` is incomplete even when
+`reviewThreads.nodes` exists. Missing, malformed, truncated, unbound, or
+error-bearing follow-up pages keep `complete: false`; no partial packet is
+promoted to complete. These are sanctioned read-only GraphQL queries: no REST
+endpoint, shared `_base` unit, or Shepherd authority is involved.
+
+Every observed review packet carries a deterministic SHA-256
+`observationDigest` over the normalized current decision, latest verdicts, all
+thread resolution states, and all comments. `unresolved-review-threads`
+preserves the digest even though it filters the visible thread list. Consumers
+can therefore distinguish an unchanged observation from a resolve-to-unresolve
+or nonblocking-to-blocking transition whose GraphQL node IDs did not change.
+
 ## Unread Is Not None
 
 | Situation | Result |
@@ -69,7 +110,7 @@ hand-rolls a call against a raw REST endpoint.
 | A slurped array with an element that is not a page object. | `observed: false`, reason `response-absent`. |
 | A comment connection that confirms `hasNextPage === false` but carries no `nodes` array. | `observed: true` with `complete: false` and reason `comment-nodes-absent`. |
 | A thread whose resolution state the provider did not report. | Counted as unresolved. |
-| A read whose outer thread page or a thread's nested comment page was truncated, or whose requested `pageInfo` completeness signal was absent or non-boolean. | `observed: true` with `complete: false` and an `incomplete` list naming what was truncated or left unconfirmed (`reason: 'completeness-unconfirmed'`). |
+| A read whose outer thread page, latest-review page, or nested comment page was truncated, whose latest-review `nodes` or requested `pageInfo` completeness signal was absent, or whose required follow-up was missing, failed, or not one contiguous cursor-bound chain. | `observed: true` with `complete: false` and an `incomplete` list naming what was truncated, failed, unbound, or left unconfirmed. |
 
 "No threads" and "threads not read" lead a caller to opposite conclusions, and
 only one of them is safe to act on, so an unread result is never normalized to
