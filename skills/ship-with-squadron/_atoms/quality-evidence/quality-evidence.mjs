@@ -19,6 +19,18 @@ export const BLAST_RADIUS_VOCABULARY = Object.freeze({
   outcomes: ['supports-assertion', 'supports-bad-case', 'inconclusive', 'conflicting'],
   regressionProofStatus: ['selected', 'unavailable'],
 });
+export const BLAST_RADIUS_CONTRACT = Object.freeze({
+  repository: 'jdylanmc/agent-skills',
+  pullRequest: 157,
+  branch: 'origin/issue-70-blast-radius-proof',
+  baseRevision: '02ae9f84c782b9e57dfec20cda344fb494e57049',
+  revision: '4a946e4500479e028112b77bdf268c5b7a8aae1f',
+});
+export const READINESS_OBLIGATION_FIELDS = Object.freeze([
+  'owner', 'provider', 'repository', 'changeRequest', 'publicationKey',
+  'baseBranch', 'baseSha', 'headSha', 'expiresWhen', 'reinvocation',
+  'generation', 'createdAt',
+]);
 
 const CI_STATUSES = new Set([
   'passed', 'failed', 'intermittent', 'environment-failed',
@@ -39,6 +51,60 @@ function validTimestamp(value) {
 
 function normalizedProvider(value) {
   return nonEmpty(value) ? value.trim().toLowerCase() : null;
+}
+
+function exactObjectKeys(value, expected) {
+  return value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
+}
+
+export function validateReadinessObligation(
+  obligation,
+  expected,
+  generation,
+  reinvocation = 'invoke-fresh-shepherd',
+  minimumCreatedAt = null,
+) {
+  const defects = [];
+  if (!exactObjectKeys(obligation, READINESS_OBLIGATION_FIELDS)) {
+    return ['set obligation schema is not exact'];
+  }
+  const fields = {
+    owner: expected.issue,
+    provider: normalizedProvider(expected.provider),
+    repository: expected.repository,
+    changeRequest: expected.changeRequest,
+    publicationKey: expected.publicationKey,
+    baseBranch: expected.baseBranch,
+    baseSha: expected.baseSha,
+    headSha: expected.headSha,
+  };
+  for (const [field, expectedValue] of Object.entries(fields)) {
+    const actual = field === 'provider'
+      ? normalizedProvider(obligation[field])
+      : obligation[field];
+    if (!expectedValue || actual !== expectedValue) {
+      defects.push(`set obligation ${field} does not match`);
+    }
+  }
+  if (obligation.expiresWhen !== 'sibling-merge-into-base') {
+    defects.push('set obligation expiry is invalid');
+  }
+  if (obligation.reinvocation !== reinvocation) {
+    defects.push('set obligation reinvocation is invalid');
+  }
+  if (!Number.isInteger(generation) || generation < 1 || obligation.generation !== generation) {
+    defects.push('set obligation generation does not match');
+  }
+  if (!validTimestamp(obligation.createdAt)) {
+    defects.push('set obligation creation time is invalid');
+  } else if (validTimestamp(minimumCreatedAt)
+      && Date.parse(obligation.createdAt) < Date.parse(minimumCreatedAt)) {
+    defects.push('set obligation predates current readiness evidence');
+  }
+  return defects;
 }
 
 export function persistedShepherdPasses(issueRecord, state, manifest) {
@@ -69,7 +135,7 @@ export function persistedShepherdPasses(issueRecord, state, manifest) {
       || receipt.repository !== manifest?.repository?.id
       || receipt.changeRequest !== issueRecord?.changeRequest?.identifier
       || receipt.baseBranch !== manifest?.repository?.baseBranch
-      || !nonEmpty(receipt.baseSha)
+      || receipt.baseSha !== issueRecord?.baseSha
       || receipt.headSha !== issueRecord?.headSha
       || !validTimestamp(receipt.observedAt)
       || receipt.complete !== true
@@ -81,25 +147,33 @@ export function persistedShepherdPasses(issueRecord, state, manifest) {
       || observation.repository !== manifest?.repository?.id
       || observation.changeRequest !== issueRecord?.changeRequest?.identifier
       || observation.baseBranch !== manifest?.repository?.baseBranch
-      || observation.baseSha !== receipt?.baseSha
-      || observation.headSha !== receipt?.headSha
+      || observation.baseSha !== issueRecord?.baseSha
+      || observation.headSha !== issueRecord?.headSha
       || !validTimestamp(observation.observedAt)
       || Date.parse(observation.observedAt) <= Date.parse(receipt?.observedAt ?? '')
       || (receipt?.upToDatePolicy === 'required' && observation.containsCurrentBase !== true)) {
     defects.push('Shepherd persisted post-return observation is invalid');
   }
-  if (!obligation
-      || obligation.owner !== issueRecord?.identity
-      || obligation.changeRequest !== issueRecord?.changeRequest?.identifier
-      || obligation.baseBranch !== manifest?.repository?.baseBranch
-      || obligation.baseSha !== receipt?.baseSha
-      || obligation.headSha !== receipt?.headSha
-      || obligation.expiresWhen !== 'sibling-merge-into-base'
-      || obligation.reinvocation !== 'invoke-fresh-shepherd'
-      || !Number.isInteger(obligation.generation)
-      || obligation.generation < 1
-      || !validTimestamp(obligation.createdAt)) {
+  const obligationDefects = validateReadinessObligation(obligation, {
+    issue: issueRecord?.identity,
+    provider: manifest?.provider?.name,
+    repository: manifest?.repository?.id,
+    changeRequest: issueRecord?.changeRequest?.identifier,
+    publicationKey: issueRecord?.changeRequest?.publicationKey,
+    baseBranch: manifest?.repository?.baseBranch,
+    baseSha: issueRecord?.baseSha,
+    headSha: issueRecord?.headSha,
+  }, issueRecord?.readinessGeneration, 'invoke-fresh-shepherd', observation?.observedAt);
+  if (obligationDefects.length) {
     defects.push('Shepherd persisted set obligation is invalid');
+  }
+  const watermarkAt = issueRecord?.readinessWatermark?.observedAt;
+  if (issueRecord?.readinessWatermark
+      && (!validTimestamp(watermarkAt)
+        || Date.parse(receipt?.observedAt ?? '') <= Date.parse(watermarkAt)
+        || Date.parse(observation?.observedAt ?? '') <= Date.parse(watermarkAt)
+        || obligation?.generation !== issueRecord.readinessWatermark.generation)) {
+    defects.push('Shepherd evidence predates the latest relevant merge watermark');
   }
   return { passed: defects.length === 0, defects };
 }
@@ -211,6 +285,13 @@ export function reconcileFleetDiff(input) {
 
 function validateLadder(ladder, index, defects) {
   const prefix = `assertionLadders[${index}]`;
+  if (!exactObjectKeys(ladder, [
+    'id', 'assertion', 'affectedBoundary', 'badCase', 'safetyCriticalReason',
+    'rungs', 'stoppingRung', 'stoppingReason', 'strongestSupportedClaim',
+    'nextEvidenceNeeded',
+  ])) {
+    defects.push(`${prefix} schema is not exact`);
+  }
   for (const field of ['id', 'assertion', 'affectedBoundary', 'badCase', 'safetyCriticalReason']) {
     if (!nonEmpty(ladder?.[field])) defects.push(`${prefix}.${field} is absent`);
   }
@@ -220,8 +301,16 @@ function validateLadder(ladder, index, defects) {
   }
   let stopped = false;
   let firstStoppingRung = null;
+  let decisiveBadCase = false;
+  let decisiveClear = false;
+  let conflicting = false;
+  const badCaseEvidence = [];
+  const clearedEvidence = [];
   for (const [rungIndex, rung] of ladder.rungs.entries()) {
     const expectedName = BLAST_RADIUS_VOCABULARY.rungs[rungIndex];
+    if (!exactObjectKeys(rung, ['name', 'progression', 'evidence-outcome', 'evidence', 'scope'])) {
+      defects.push(`${prefix}.rungs[${rungIndex}] schema is not exact`);
+    }
     if (rung?.name !== expectedName) defects.push(`${prefix}.rungs[${rungIndex}].name must be ${expectedName}`);
     if (!BLAST_RADIUS_VOCABULARY.progression.includes(rung?.progression)) {
       defects.push(`invalid progression: ${rung?.progression}`);
@@ -240,6 +329,9 @@ function validateLadder(ladder, index, defects) {
     if (stopped && rung?.progression !== 'not-attempted') {
       defects.push(`${prefix}.rungs[${rungIndex}] must be not-attempted after the stopping rung`);
     }
+    if (!stopped && rung?.progression === 'not-attempted') {
+      defects.push(`${prefix}.rungs[${rungIndex}] is not-attempted before a stopping rung`);
+    }
     if (!stopped && (
       rung?.progression === 'unavailable'
       || rung?.progression === 'not-applicable'
@@ -251,6 +343,20 @@ function validateLadder(ladder, index, defects) {
     if (rung?.progression === 'not-applicable' && rung?.name !== 'live-reproduction') {
       defects.push(`${prefix}.rungs[${rungIndex}] uses not-applicable before live reproduction`);
     }
+    if (rung?.progression === 'completed') {
+      if (rung?.['evidence-outcome'] === 'conflicting') conflicting = true;
+      if (rungIndex >= 1 && rung?.['evidence-outcome'] === 'supports-bad-case') {
+        decisiveBadCase = true;
+        badCaseEvidence.push({ evidence: rung.evidence, scope: rung.scope });
+      }
+      if (rungIndex >= 2 && rung?.['evidence-outcome'] === 'supports-assertion') {
+        decisiveClear = true;
+        clearedEvidence.push({ evidence: rung.evidence, scope: rung.scope });
+      }
+    }
+  }
+  if (ladder.rungs[0]?.progression !== 'completed') {
+    defects.push(`${prefix}.rungs[0] assertion must be completed`);
   }
   const expectedStoppingRung = firstStoppingRung ?? BLAST_RADIUS_VOCABULARY.rungs.at(-1);
   const names = ladder.rungs.map((rung) => rung.name);
@@ -262,6 +368,14 @@ function validateLadder(ladder, index, defects) {
       || !nonEmpty(ladder?.nextEvidenceNeeded)) {
     defects.push(`${prefix} stopping evidence is incomplete`);
   }
+  const permittedClassification = conflicting || (decisiveBadCase && decisiveClear)
+    ? 'unproven-assertion'
+    : decisiveBadCase
+      ? 'confirmed-risk'
+      : decisiveClear
+        ? 'cleared-risk'
+        : 'unproven-assertion';
+  return { permittedClassification, badCaseEvidence, clearedEvidence };
 }
 
 function validateRegressionProof(report, ladderIds, defects) {
@@ -276,6 +390,11 @@ function validateRegressionProof(report, ladderIds, defects) {
       defects.push('selected regression proof is absent');
       return;
     }
+    if (!exactObjectKeys(proof, [
+      'id', 'assertionId', 'badCase', 'verificationLevel', 'environment',
+      'setup', 'action', 'observableResult', 'prerequisites', 'authorization',
+      'cheaperProofInsufficientReason', 'outsideCoverage',
+    ])) defects.push('regression-proof schema is not exact');
     const fields = [
       'id', 'assertionId', 'badCase', 'verificationLevel', 'environment',
       'setup', 'action', 'observableResult', 'authorization',
@@ -299,7 +418,21 @@ function validateRegressionProof(report, ladderIds, defects) {
 
 export function adaptBlastRadiusEvidence(report, revision, identity = {}) {
   const defects = invocationDefects(report, 'blast-radius', identity);
-  if (report?.contractPullRequest !== 157) defects.push('blast-radius contract must identify Pull Request 157');
+  if (!exactObjectKeys(report, [
+    'invocation', 'contractRepository', 'contractPullRequest', 'contractBranch',
+    'contractBaseRevision', 'contractRevision', 'status', 'terminal', 'complete',
+    'evidenceComplete', 'completedAt', 'baseSha', 'headSha', 'assertionLadders',
+    'classifications', 'analysisBoundaries', 'crossBoundaryGaps',
+    'regression-proof-status', 'regression-proof',
+    'next-evidence-action', 'next-evidence-reason',
+  ])) defects.push('blast-radius report schema is not exact');
+  if (report?.contractRepository !== BLAST_RADIUS_CONTRACT.repository
+      || report?.contractPullRequest !== BLAST_RADIUS_CONTRACT.pullRequest
+      || report?.contractBranch !== BLAST_RADIUS_CONTRACT.branch
+      || report?.contractBaseRevision !== BLAST_RADIUS_CONTRACT.baseRevision
+      || report?.contractRevision !== BLAST_RADIUS_CONTRACT.revision) {
+    defects.push('blast-radius contract revision is not the review-stable Pull Request 157 contract');
+  }
   if (report?.status !== 'completed'
       || report?.terminal !== true
       || report?.complete !== true
@@ -311,16 +444,29 @@ export function adaptBlastRadiusEvidence(report, revision, identity = {}) {
   if (!Array.isArray(report?.assertionLadders) || report.assertionLadders.length === 0) {
     defects.push('assertionLadders must be a non-empty array');
   }
+  if (!Array.isArray(report?.analysisBoundaries) || report.analysisBoundaries.length === 0
+      || report.analysisBoundaries.some((entry) => !nonEmpty(entry))) {
+    defects.push('analysisBoundaries must be a non-empty string array');
+  }
+  if (!Array.isArray(report?.crossBoundaryGaps)
+      || report.crossBoundaryGaps.some((entry) => !nonEmpty(entry))) {
+    defects.push('crossBoundaryGaps must be a string array');
+  }
   const ladderIds = new Set();
+  const ladderSemantics = new Map();
   for (const [index, ladder] of (report?.assertionLadders ?? []).entries()) {
-    validateLadder(ladder, index, defects);
+    const semantic = validateLadder(ladder, index, defects);
     if (nonEmpty(ladder?.id)) {
       if (ladderIds.has(ladder.id)) defects.push(`duplicate assertion ladder identity: ${ladder.id}`);
       ladderIds.add(ladder.id);
+      ladderSemantics.set(ladder.id, semantic);
     }
   }
 
   const classifications = report?.classifications ?? {};
+  if (!exactObjectKeys(classifications, BLAST_RADIUS_VOCABULARY.classifications)) {
+    defects.push('classification vocabulary is not exact');
+  }
   const classified = [];
   for (const key of BLAST_RADIUS_VOCABULARY.classifications) {
     if (!Array.isArray(classifications[key])) {
@@ -328,18 +474,53 @@ export function adaptBlastRadiusEvidence(report, revision, identity = {}) {
       continue;
     }
     for (const [index, entry] of classifications[key].entries()) {
+      const expectedFields = key === 'confirmed-risk'
+        ? ['assertionId', 'assertion', 'badCase', 'evidence', 'scope', 'occurrenceOrNecessaryProduction']
+        : key === 'cleared-risk'
+          ? ['assertionId', 'assertion', 'evidence', 'scope']
+          : ['assertionId', 'assertion', 'evidence', 'scope', 'stoppingRung', 'reason', 'nextEvidence'];
+      if (!exactObjectKeys(entry, expectedFields)) {
+        defects.push(`${key}[${index}] schema is not exact`);
+      }
       if (!nonEmpty(entry?.assertionId) || !ladderIds.has(entry.assertionId)) {
         defects.push(`${key}[${index}] does not identify an assertion ladder`);
+      }
+      const ladder = report.assertionLadders.find((candidate) => candidate.id === entry?.assertionId);
+      if (!nonEmpty(entry?.assertion) || entry.assertion !== ladder?.assertion) {
+        defects.push(`${key}[${index}] assertion text does not match its ladder`);
       }
       if (!nonEmpty(entry?.evidence) || !nonEmpty(entry?.scope)) {
         defects.push(`${key}[${index}] lacks exact evidence or scope`);
       }
-      if (key === 'confirmed-risk' && (!nonEmpty(entry.badCase) || !nonEmpty(entry.occurrenceOrNecessaryProduction))) {
+      if (key === 'confirmed-risk' && (
+        !nonEmpty(entry.badCase)
+        || entry.badCase !== ladder?.badCase
+        || !nonEmpty(entry.occurrenceOrNecessaryProduction)
+      )) {
         defects.push(`${key}[${index}] lacks bad-case proof`);
       }
       if (key === 'unproven-assertion'
           && (!nonEmpty(entry.stoppingRung) || !nonEmpty(entry.reason) || !nonEmpty(entry.nextEvidence))) {
         defects.push(`${key}[${index}] lacks stopping evidence`);
+      }
+      if (ladderSemantics.get(entry?.assertionId)?.permittedClassification !== key) {
+        defects.push(`${key}[${index}] contradicts ladder progression and outcomes`);
+      }
+      const semantic = ladderSemantics.get(entry?.assertionId);
+      const evidenceSet = key === 'confirmed-risk'
+        ? semantic?.badCaseEvidence
+        : key === 'cleared-risk'
+          ? semantic?.clearedEvidence
+          : null;
+      if (evidenceSet && !evidenceSet.some((candidate) =>
+        candidate.evidence === entry.evidence && candidate.scope === entry.scope)) {
+        defects.push(`${key}[${index}] evidence does not identify a decisive completed rung`);
+      }
+      if (key === 'unproven-assertion'
+          && (entry.stoppingRung !== ladder?.stoppingRung
+            || entry.reason !== ladder?.stoppingReason
+            || entry.nextEvidence !== ladder?.nextEvidenceNeeded)) {
+        defects.push(`${key}[${index}] stopping fields do not match its ladder`);
       }
       classified.push(entry?.assertionId);
     }

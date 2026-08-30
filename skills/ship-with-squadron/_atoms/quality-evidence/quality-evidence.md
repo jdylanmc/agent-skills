@@ -63,14 +63,20 @@ exact vocabulary:
 - `regression-proof-status`: `selected` or `unavailable`.
 
 The adapter requires a complete terminal invocation identifying Pull Request
-157, at least one five-rung ladder, exact ordered rung progression/outcomes,
-the first stopping rung and evidence, exclusive classification of every ladder,
-and one nonempty identified regression-proof slot. Empty ladders or proof,
+157, public branch `origin/issue-70-blast-radius-proof`, base
+`02ae9f84c782b9e57dfec20cda344fb494e57049`, and review-stable contract head
+`4a946e4500479e028112b77bdf268c5b7a8aae1f`. It requires at least one five-rung
+ladder, exact ordered rung progression/outcomes, the first stopping rung and
+evidence, exclusive classification of every ladder, and one nonempty identified
+regression-proof slot. Classification is derived from acquired sequential
+evidence: source-or-stronger `supports-bad-case` may confirm, ruled-out-bad-case-
+or-stronger `supports-assertion` may clear, and unavailable, conflicting,
+all-not-attempted, or otherwise nondecisive evidence cannot clear. Empty ladders or proof,
 `unavailable`, `unproven-assertion`, invalid revision binding, or malformed
 cross-field evidence never becomes success. A `confirmed-risk` requires
 remediation or a human decision outside this fleet; the fleet cannot accept
 risk.
 
-Until Pull Request 157 is merged into the baseline and this branch is rebased,
-the skill declares the capability as required external integration. It may not
-claim the local baseline is integrated.
+Until Pull Request 157 is merged into the baseline, the skill declares the
+review-stable capability as a required external integration and fails closed
+unless the exact contract revision is present.

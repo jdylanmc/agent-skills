@@ -18,6 +18,7 @@ import {
   createSchedulerLease,
   continueWithFreshWorker,
   validateContinuationArtifact,
+  validateContinuationHandoff,
 } from './assignment-ownership.mjs';
 import {
   persistOrchestrationHandoff,
@@ -31,7 +32,7 @@ function source(issue, observedAt = '2026-08-30T00:00:00Z') {
   return {
     invocation: { id: `read-${issue}-${observedAt}`, operation: 'read-issue' },
     provider: 'github', repository: 'owner/repo', issue, revision: `r-${issue}`,
-    status: 'observed', terminal: true, complete: true, observedAt,
+    issueStatus: 'pending', status: 'observed', terminal: true, complete: true, observedAt,
   };
 }
 
@@ -53,7 +54,7 @@ const manifest = normalizeFleetManifest({
   concurrency: 2,
   budget: { cost: 10, timeMinutes: 60, retries: 2 },
   repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
-  provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge'] },
+  provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],
   humanBoundaries: ['human merge'],
@@ -76,7 +77,10 @@ function state() {
 
 function packet(issue, branch, worktree) {
   const record = manifest.issues.find((entry) => entry.identity === issue);
+  const verification = ['run declared tests'];
+  const reportContract = { summary: 'return changes', requiredEvidence: ['tests', 'diff'] };
   return {
+    schemaVersion: 1,
     manifestDigest: manifest.digest,
     issue,
     sourceRevision: record.sourceRevision,
@@ -84,11 +88,33 @@ function packet(issue, branch, worktree) {
     scope: record.scope,
     exclusions: manifest.exclusions,
     allowedPaths: record.allowedPaths,
-    verification: ['run declared tests'],
-    reportContract: { summary: 'return changes', requiredEvidence: ['tests', 'diff'] },
+    verification,
+    reportContract,
     forbiddenAuthorities: [...FORBIDDEN_AUTHORITIES],
+    taskContract: {
+      goal: manifest.goal,
+      scope: JSON.stringify(record.scope),
+      context: JSON.stringify({
+        acceptedScope: manifest.acceptedScope,
+        humanBoundaries: manifest.humanBoundaries,
+        issue,
+        repository: manifest.repository.id,
+        sourceRevision: record.sourceRevision,
+      }),
+      acceptance: record.acceptanceCriteria.map((entry) => entry.description),
+      verify: verification.join('\n'),
+      timebox: JSON.stringify({ cost: 10, retries: 2, timeMinutes: 60 }),
+      forbidden: FORBIDDEN_AUTHORITIES.join('\n'),
+      report: JSON.stringify({
+        requiredEvidence: reportContract.requiredEvidence,
+        summary: reportContract.summary,
+      }),
+      standing: 'one-issue-one-branch-one-worktree-no-adjacent-work',
+    },
     branch,
     worktree,
+    baseSha: 'base',
+    headSha: 'head',
   };
 }
 
@@ -108,6 +134,7 @@ function assigned() {
 }
 
 function handoffPayload(target = 'worker-2') {
+  const original = packet('a', 'issue-a', '/work/a');
   const inputs = [
     ['issue', 'a'],
     ['prior_generation', '1'],
@@ -116,6 +143,8 @@ function handoffPayload(target = 'worker-2') {
     ['base_sha', 'base'],
     ['head_sha', 'head'],
     ['manifest_digest', manifest.digest],
+    ['source_revision', 'r-a'],
+    ['allowed_paths', JSON.stringify(['src/a/**'])],
     ['state_revision', '0'],
   ].map(([name, value]) => ({ name, value, source: 'fleet-state' }));
   return {
@@ -124,15 +153,20 @@ function handoffPayload(target = 'worker-2') {
     source_agent: { id: 'worker-1', role: 'implementation worker' },
     target_agent: { id: target, role: 'continuation worker', invocation_reason: 'stalled' },
     task_contract: {
-      goal: 'finish', scope: 'issue a', context: 'verified prior artifacts',
-      verify: 'tests', timebox: 'bounded', forbidden: 'remote mutation',
-      report: 'changes', standing: 'continue',
+      goal: original.taskContract.goal,
+      scope: original.taskContract.scope,
+      context: original.taskContract.context,
+      verify: original.taskContract.verify,
+      timebox: original.taskContract.timebox,
+      forbidden: original.taskContract.forbidden,
+      report: original.taskContract.report,
+      standing: original.taskContract.standing,
     },
     inputs,
     constraints: ['no remote mutation'],
     assumptions: [],
     artifacts_and_references: [],
-    acceptance_criteria: ['done'],
+    acceptance_criteria: original.taskContract.acceptance,
     open_questions: [],
   };
 }
@@ -143,14 +177,14 @@ function handoffContent(payload = handoffPayload()) {
     '## Goal',
     'Create a safe orchestration handoff.',
     'GOAL', payload.task_contract.goal,
-    'SCOPE', 'issue a',
-    'CONTEXT', 'verified prior artifacts',
-    'ACCEPTANCE', 'done',
-    'VERIFY', 'tests',
-    'TIMEBOX', 'bounded',
-    'FORBIDDEN', 'remote mutation',
-    'REPORT', 'changes',
-    'STANDING', 'continue',
+    'SCOPE', payload.task_contract.scope,
+    'CONTEXT', payload.task_contract.context,
+    'ACCEPTANCE', payload.acceptance_criteria.join('\n'),
+    'VERIFY', payload.task_contract.verify,
+    'TIMEBOX', payload.task_contract.timebox,
+    'FORBIDDEN', payload.task_contract.forbidden,
+    'REPORT', payload.task_contract.report,
+    'STANDING', payload.task_contract.standing,
     '## Current Progress',
     '- run_id: run',
     '- id: worker-1',
@@ -213,6 +247,12 @@ test('assigns only pending unowned issues with a complete manifest-bound packet'
     packet: { ...packet('a', 'issue-a', '/work/a'), forbiddenAuthorities: ['merge'] },
     schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
   }), /forbidden authorities/);
+  assert.throws(() => assignFreshWorker(fresh, manifest, {
+    issue: 'a', branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-1',
+    baseSha: 'base', headSha: 'head',
+    packet: { ...packet('a', 'issue-a', '/work/a'), extraAuthority: 'publish-anywhere' },
+    schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
+  }), /schema is not exact/);
   const stale = state();
   const staleLease = createSchedulerLease(stale, manifest, 'a');
   stale.revision += 1;
@@ -257,8 +297,31 @@ test('continues only after rereading actual orchestration-handoff persistence ou
   assert.equal(validateContinuationArtifact(persisted, payload, {
     runId: 'run', issue: 'a', priorGeneration: 1, branch: 'issue-a', worktree: '/work/a',
     sourceAgent: 'worker-1', targetAgent: 'worker-2', baseSha: 'base', headSha: 'head',
-    manifestDigest: manifest.digest, stateRevision: 0, acceptanceCriteria: ['done'],
+    manifestDigest: manifest.digest, sourceRevision: 'r-a',
+    allowedPaths: JSON.stringify(['src/a/**']),
+    stateRevision: 0, acceptanceCriteria: ['done'],
+    taskContract: packet('a', 'issue-a', '/work/a').taskContract,
   }).valid, true);
+  const expectedContinuation = {
+    runId: 'run', issue: 'a', priorGeneration: 1, branch: 'issue-a', worktree: '/work/a',
+    sourceAgent: 'worker-1', targetAgent: 'worker-2', baseSha: 'base', headSha: 'head',
+    manifestDigest: manifest.digest, sourceRevision: 'r-a',
+    allowedPaths: JSON.stringify(['src/a/**']),
+    stateRevision: 0, acceptanceCriteria: ['done'],
+    taskContract: packet('a', 'issue-a', '/work/a').taskContract,
+  };
+  const expandedScope = structuredClone(payload);
+  expandedScope.task_contract.scope = JSON.stringify(['issue a', 'adjacent issue']);
+  assert.equal(
+    validateContinuationHandoff(persisted, expandedScope, expectedContinuation).valid,
+    false,
+  );
+  const expandedAuthority = structuredClone(payload);
+  expandedAuthority.task_contract.forbidden = 'merge permitted';
+  assert.equal(
+    validateContinuationHandoff(persisted, expandedAuthority, expectedContinuation).valid,
+    false,
+  );
   assert.equal(validateContinuationArtifact(
     persisted,
     { ...payload, synthetic_result_fields: true },

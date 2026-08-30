@@ -22,7 +22,7 @@ const manifest = normalizeFleetManifest({
     sourceReceipt: {
       invocation: { id: `read-${identity}`, operation: 'read-issue' },
       provider: 'github', repository: 'owner/repo', issue: identity, revision: `r-${identity}`,
-      status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
+      issueStatus: 'pending', status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
     },
     acceptanceCriteria: ['done'], scope: [], allowedPaths: [`${identity}/**`],
   })),
@@ -30,7 +30,7 @@ const manifest = normalizeFleetManifest({
   concurrency: 2,
   budget: { cost: 10, timeMinutes: 60, retries: 2 },
   repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
-  provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge'] },
+  provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],
   humanBoundaries: ['human merge'],
@@ -43,41 +43,142 @@ function readyIssue(identity) {
   const changeRequest = {
     identifier: `PR-${identity.toUpperCase()}`,
     publicationKey: `pub-${identity}`,
+    provider: 'github',
+    repository: 'owner/repo',
+    baseBranch: 'main',
+    headBranch: `issue-${identity}`,
+    baseSha,
+    headSha,
   };
   const obligation = {
     owner: identity,
+    provider: 'github',
+    repository: 'owner/repo',
     changeRequest: changeRequest.identifier,
-    baseSha: 'current-base',
+    publicationKey: changeRequest.publicationKey,
+    baseBranch: 'main',
+    baseSha,
     headSha,
     expiresWhen: 'sibling-merge-into-base',
     reinvocation: 'invoke-fresh-shepherd',
+    generation: 1,
+    createdAt: '2026-08-30T00:09:01Z',
   };
+  const common = {
+    baseSha, headSha, complete: true, terminal: true,
+    completedAt: '2026-08-30T00:05:00Z',
+  };
+  const blast = {
+    ...common,
+    evidenceComplete: true,
+    invocation: { skill: 'blast-radius', id: `blast-${identity}`, issue: identity },
+    contractRepository: 'jdylanmc/agent-skills',
+    contractPullRequest: 157,
+    contractBranch: 'origin/issue-70-blast-radius-proof',
+    contractBaseRevision: '02ae9f84c782b9e57dfec20cda344fb494e57049',
+    contractRevision: '4a946e4500479e028112b77bdf268c5b7a8aae1f',
+    status: 'completed',
+    assertionLadders: [{
+      id: 'A1', assertion: 'safe', affectedBoundary: 'adapter', badCase: 'breakage',
+      safetyCriticalReason: 'unsafe delivery',
+      rungs: [
+        'assertion', 'exact-source-citation', 'ruled-out-bad-case',
+        'executable-proof', 'live-reproduction',
+      ].map((name) => ({
+        name, progression: 'completed', 'evidence-outcome': 'supports-assertion',
+        evidence: `${name} proof`, scope: 'current revision',
+      })),
+      stoppingRung: 'live-reproduction', stoppingReason: 'complete',
+      strongestSupportedClaim: 'safe in scope', nextEvidenceNeeded: 'none',
+    }],
+    classifications: {
+      'confirmed-risk': [],
+      'cleared-risk': [{ assertionId: 'A1', assertion: 'safe', evidence: 'ruled-out-bad-case proof', scope: 'current revision' }],
+      'unproven-assertion': [],
+    },
+    analysisBoundaries: ['current revision and traced consumers'],
+    crossBoundaryGaps: [],
+    'regression-proof-status': 'selected',
+    'regression-proof': {
+      id: 'P1', assertionId: 'A1', badCase: 'breakage', verificationLevel: 'integration',
+      environment: 'test', setup: 'setup', action: 'run', observableResult: 'pass',
+      prerequisites: [], authorization: 'read-only', cheaperProofInsufficientReason: 'boundary',
+      outsideCoverage: 'provider',
+    },
+    'next-evidence-action': null,
+    'next-evidence-reason': null,
+  };
+  const receipt = {
+    provider: 'github', repository: 'owner/repo',
+    changeRequest: changeRequest.identifier, baseBranch: 'main',
+    baseSha, headSha, observedAt: '2026-08-30T00:09:00Z',
+    upToDatePolicy: 'required', complete: true,
+  };
+  const observation = {
+    provider: 'github', repository: 'owner/repo',
+    changeRequest: changeRequest.identifier, baseBranch: 'main',
+    baseSha, headSha, observedAt: '2026-08-30T00:09:01Z',
+    containsCurrentBase: true,
+  };
+  const pipeline = [
+    ['implementation', { ...common, status: 'completed' }],
+    ['diff-reconciliation', { ...common, verdict: 'reconciled' }],
+    ['run-ci', {
+      ...common,
+      invocation: { skill: 'run-ci', id: `ci-${identity}`, issue: identity },
+      status: 'passed', evidenceComplete: true, steps: [{ name: 'tests', status: 'passed' }],
+    }],
+    ['roast', {
+      ...common,
+      invocation: { skill: 'roast', id: `roast-${identity}`, issue: identity },
+      status: 'completed', findings: [], evidenceComplete: true,
+    }],
+    ['blast-radius-proof', blast],
+    ['bounded-remediation', { ...common, status: 'completed', unresolvedDefects: [] }],
+    ['criterion-verdict', {
+      ...common,
+      verdicts: [{
+        id: 'C1', verdict: 'satisfied',
+        evidence: { complete: true, summary: 'proven', baseSha, headSha },
+      }],
+    }],
+    ['publication', {
+      baseSha, headSha, status: 'confirmed', terminal: true, complete: true,
+      observedAt: '2026-08-30T00:08:00Z', provider: 'github', repository: 'owner/repo',
+      issue: identity, changeRequest: changeRequest.identifier,
+      publicationKey: changeRequest.publicationKey,
+    }],
+    ['shepherd', receipt],
+  ].map(([stage, evidence]) => ({ stage, evidence }));
   return {
     identity,
     status: 'completed',
     baseSha,
     headSha,
+    acceptanceCriteria: [{ id: 'C1', description: 'done' }],
     continuationChain: [],
     changeRequest,
-    pipeline: deliveryStagesForManifest(manifest).map((stage) => ({
-      stage,
-      evidence: {
-        baseSha: stage === 'shepherd' ? 'current-base' : baseSha,
-        headSha,
-      },
-    })),
+    pipeline,
     shepherd: {
       accepted: true,
       ready: true,
       freshness: 'fresh',
-      receipt: {
-        provider: 'github',
-        changeRequest: changeRequest.identifier,
-        baseSha: 'current-base',
-        headSha,
+      disposition: 'mergeable-and-green',
+      terminal: true,
+      complete: true,
+      defects: [],
+      invocationId: `shepherd-${identity}`,
+      invocation: {
+        skill: 'shepherd', id: `shepherd-${identity}`, runId: undefined,
+        issue: identity, changeRequest: changeRequest.identifier,
+        mode: 'nested-worker', freshContext: true, status: 'returned',
       },
+      receipt,
+      observation,
       setObligation: obligation,
     },
+    readinessGeneration: 1,
+    readinessWatermark: null,
     terminalDisposition: 'ready-for-human-merge',
   };
 }
@@ -96,7 +197,6 @@ function state() {
     checkActivity: { kind: 'quality-check', state: 'active', startedAt: '2026-08-30T00:00:00Z' },
   };
   const b = readyIssue('b');
-  b.terminalDisposition = 'already-complete';
   const c = {
     ...readyIssue('c'),
     shepherd: { ...readyIssue('c').shepherd, accepted: false, ready: false, freshness: 'stale' },
@@ -109,11 +209,17 @@ function state() {
     publications: [
       {
         key: 'pub-b', identifier: 'PR-B', issue: 'b',
-        observations: [{ state: 'confirmed', baseSha: 'base', headSha: 'head-b' }],
+        observations: [{
+          state: 'confirmed', baseSha: 'base', headSha: 'head-b',
+          confirmedAt: '2026-08-30T00:08:00Z',
+        }],
       },
       {
         key: 'pub-c', identifier: 'PR-C', issue: 'c',
-        observations: [{ state: 'confirmed', baseSha: 'base', headSha: 'head-c' }],
+        observations: [{
+          state: 'confirmed', baseSha: 'base', headSha: 'head-c',
+          confirmedAt: '2026-08-30T00:08:00Z',
+        }],
       },
     ],
     reShepherdQueue: [{
@@ -153,7 +259,7 @@ test('derives effective readiness rather than trusting stale terminal strings', 
   };
   assert.equal(effectiveIssueReadiness(current.issues.b, current, manifest), false);
   assert.equal(deriveFleetDisposition(current, manifest), 'blocked');
-  const complete = {
+  const forgedComplete = {
     manifestDigest: manifest.digest,
     providerConfigurationDigest: manifest.providerConfigurationDigest,
     control: { cancelled: false, budgetExhausted: false },
@@ -161,7 +267,7 @@ test('derives effective readiness rather than trusting stale terminal strings', 
     publications: [],
     reShepherdQueue: [],
   };
-  assert.equal(deriveFleetDisposition(complete, manifest), 'review-ready');
+  assert.equal(deriveFleetDisposition(forgedComplete, manifest), 'blocked');
 });
 
 test('renders distinct active, blocked, checking, expired, and review-ready status', () => {

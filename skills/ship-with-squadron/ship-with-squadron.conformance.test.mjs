@@ -48,7 +48,7 @@ test('directly composes Chronicler and local fleet molecules only', () => {
   assert.ok(!closure.some((file) => file.startsWith('blast-radius/')));
 });
 
-test('pins required local workflow skills and honest unmerged blast-radius seam', () => {
+test('pins required local workflow skills and review-stable external blast-radius seam', () => {
   assert.deepEqual(frontmatter(ENTRY).requiresSkills, [
     { id: 'run-ci', source: 'local', required: true },
     { id: 'roast', source: 'local', required: true },
@@ -58,7 +58,8 @@ test('pins required local workflow skills and honest unmerged blast-radius seam'
   ]);
   const quality = read('ship-with-squadron/_atoms/quality-evidence/quality-evidence.md').replace(/\s+/g, ' ');
   assert.match(quality, /Pull Request 157 is merged/);
-  assert.match(quality, /may not claim the local baseline is integrated/);
+  assert.match(quality, /4a946e4500479e028112b77bdf268c5b7a8aae1f/);
+  assert.match(quality, /fails closed unless the exact contract revision is present/);
 });
 
 test('pins full delivery order and forbidden authority', () => {
@@ -75,6 +76,7 @@ test('pins full delivery order and forbidden authority', () => {
   ]);
   assert.deepEqual(PROVIDER_OPERATIONS, [
     'read-issue', 'read-issue-set', 'publish-change-request', 'observe-merge',
+    'observe-change-request-revision',
   ]);
   assert.deepEqual(FORBIDDEN_PROVIDER_OPERATIONS, [
     'merge', 'approve', 'enable-auto-merge', 'accept-risk',

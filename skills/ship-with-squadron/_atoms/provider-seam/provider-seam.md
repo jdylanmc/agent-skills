@@ -21,7 +21,14 @@ Use the provider seam helper to allow only:
 - `read-issue`;
 - `read-issue-set`;
 - `publish-change-request`;
-- `observe-merge`.
+- `observe-merge`;
+- `observe-change-request-revision`.
+
+The revision operation is a narrow read-only receipt for one already-recorded
+publication. Its exact schema binds invocation, stable provider key, provider,
+repository, issue, change request, base branch/SHA, head branch/SHA, and
+observation time. Unknown fields, wildcard paths, and generic API escape hatches
+are rejected.
 
 Every adapter condition is preserved. Unsupported, missing, unauthenticated,
 degraded, and unobserved provider state is not empty, clean, published, or

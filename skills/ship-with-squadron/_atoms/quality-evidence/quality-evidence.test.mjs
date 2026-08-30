@@ -29,7 +29,7 @@ function manifest(shepherdIntent = 'yes', humanDecisions = []) {
       sourceReceipt: {
         invocation: { id: 'read-1', operation: 'read-issue' },
         provider: 'github', repository: 'owner/repo', issue: '1', revision: 'r1',
-        status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
+        issueStatus: 'pending', status: 'observed', terminal: true, complete: true, observedAt: '2026-08-30T00:00:00Z',
       },
       acceptanceCriteria: [{ id: 'C1', description: 'done' }],
       scope: [],
@@ -39,7 +39,7 @@ function manifest(shepherdIntent = 'yes', humanDecisions = []) {
     concurrency: 1,
     budget: { cost: 10, timeMinutes: 60, retries: 2 },
     repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
-    provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge'] },
+    provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
     validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
     stopConditions: ['cancelled'],
     humanBoundaries: ['human merge'],
@@ -78,7 +78,11 @@ function roast(overrides = {}) {
 function blast(overrides = {}) {
   return {
     invocation: { skill: 'blast-radius', id: 'blast-1', runId: 'run', issue: '1' },
+    contractRepository: 'jdylanmc/agent-skills',
     contractPullRequest: 157,
+    contractBranch: 'origin/issue-70-blast-radius-proof',
+    contractBaseRevision: '02ae9f84c782b9e57dfec20cda344fb494e57049',
+    contractRevision: '4a946e4500479e028112b77bdf268c5b7a8aae1f',
     status: 'completed',
     terminal: true,
     complete: true,
@@ -111,9 +115,11 @@ function blast(overrides = {}) {
     }],
     classifications: {
       'confirmed-risk': [],
-      'cleared-risk': [{ assertionId: 'A1', evidence: 'bad case ruled out', scope: 'current revision' }],
+      'cleared-risk': [{ assertionId: 'A1', assertion: 'consumer remains compatible', evidence: 'ruled-out-bad-case evidence', scope: 'current revision' }],
       'unproven-assertion': [],
     },
+    analysisBoundaries: ['current revision and traced consumers'],
+    crossBoundaryGaps: [],
     'regression-proof-status': 'selected',
     'regression-proof': {
       id: 'P1',
@@ -184,6 +190,22 @@ test('requires nonempty exact Pull Request 157 ladders, classifications, proof, 
   assert.equal(adaptBlastRadiusEvidence(blast({
     contractPullRequest: 156,
   }), revision, identity).readiness, 'invalid');
+  assert.equal(adaptBlastRadiusEvidence(blast({
+    contractRevision: 'stale-contract',
+  }), revision, identity).readiness, 'invalid');
+  const allNotAttempted = blast();
+  allNotAttempted.assertionLadders[0].rungs = allNotAttempted.assertionLadders[0].rungs.map(
+    (rung) => ({
+      ...rung,
+      progression: 'not-attempted',
+      'evidence-outcome': 'inconclusive',
+      evidence: '',
+    }),
+  );
+  assert.equal(
+    adaptBlastRadiusEvidence(allNotAttempted, revision, identity).readiness,
+    'invalid',
+  );
   const inconsistentStop = blast();
   inconsistentStop.assertionLadders[0].rungs[3] = {
     name: 'executable-proof',
@@ -200,20 +222,46 @@ test('requires nonempty exact Pull Request 157 ladders, classifications, proof, 
     scope: 'current revision',
   };
   assert.equal(adaptBlastRadiusEvidence(inconsistentStop, revision, identity).readiness, 'invalid');
-  assert.equal(adaptBlastRadiusEvidence(blast({
+  const unproven = blast({
     classifications: {
       'confirmed-risk': [],
       'cleared-risk': [],
       'unproven-assertion': [{
         assertionId: 'A1',
+        assertion: 'consumer remains compatible',
         evidence: 'stopped',
         scope: 'current revision',
-        stoppingRung: 'executable-proof',
+        stoppingRung: 'ruled-out-bad-case',
         reason: 'environment unavailable',
         nextEvidence: 'provision runner',
       }],
     },
-  }), revision, identity).readiness, 'unproven-assertion');
+  });
+  unproven.assertionLadders[0].rungs[2] = {
+    name: 'ruled-out-bad-case',
+    progression: 'unavailable',
+    'evidence-outcome': 'inconclusive',
+    evidence: '',
+    scope: 'current revision',
+  };
+  unproven.assertionLadders[0].rungs[3] = {
+    name: 'executable-proof',
+    progression: 'not-attempted',
+    'evidence-outcome': 'inconclusive',
+    evidence: '',
+    scope: 'current revision',
+  };
+  unproven.assertionLadders[0].rungs[4] = {
+    name: 'live-reproduction',
+    progression: 'not-attempted',
+    'evidence-outcome': 'inconclusive',
+    evidence: '',
+    scope: 'current revision',
+  };
+  unproven.assertionLadders[0].stoppingRung = 'ruled-out-bad-case';
+  unproven.assertionLadders[0].stoppingReason = 'environment unavailable';
+  unproven.assertionLadders[0].nextEvidenceNeeded = 'provision runner';
+  assert.equal(adaptBlastRadiusEvidence(unproven, revision, identity).readiness, 'unproven-assertion');
   assert.equal(adaptBlastRadiusEvidence(blast({
     'regression-proof-status': 'unavailable',
     'regression-proof': null,

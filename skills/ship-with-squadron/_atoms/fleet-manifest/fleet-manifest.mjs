@@ -9,6 +9,7 @@ const SAFE_PROVIDER_OPERATIONS = new Set([
   'read-issue-set',
   'publish-change-request',
   'observe-merge',
+  'observe-change-request-revision',
 ]);
 const BASELINE_POLICY = Object.freeze(['run-ci', 'roast', 'blast-radius-proof']);
 const SOURCE_STATUS = 'observed';
@@ -97,6 +98,11 @@ function normalizeSourceReceipt(receipt, expected, field) {
   if (!invocation || typeof invocation !== 'object' || Array.isArray(invocation)) {
     throw new Error(`${field}.invocation is required`);
   }
+  assertOnlyKeys(receipt, new Set([
+    'invocation', 'provider', 'repository', 'issue', 'revision', 'issueStatus',
+    'status', 'terminal', 'complete', 'observedAt', 'manifestDigest', 'reobservedAt',
+  ]), field);
+  assertOnlyKeys(invocation, new Set(['id', 'operation']), `${field}.invocation`);
   const normalized = {
     invocation: {
       id: nonEmpty(invocation.id, `${field}.invocation.id`),
@@ -106,6 +112,7 @@ function normalizeSourceReceipt(receipt, expected, field) {
     repository: nonEmpty(receipt.repository, `${field}.repository`),
     issue: nonEmpty(receipt.issue, `${field}.issue`),
     revision: nonEmpty(receipt.revision, `${field}.revision`),
+    issueStatus: nonEmpty(receipt.issueStatus, `${field}.issueStatus`),
     status: nonEmpty(receipt.status, `${field}.status`),
     terminal: receipt.terminal === true,
     complete: receipt.complete === true,
@@ -117,7 +124,7 @@ function normalizeSourceReceipt(receipt, expected, field) {
   if (normalized.status !== SOURCE_STATUS || !normalized.terminal || !normalized.complete) {
     throw new Error(`${field} must be a complete terminal observed provider receipt`);
   }
-  for (const key of ['provider', 'repository', 'issue', 'revision']) {
+  for (const key of ['provider', 'repository', 'issue', 'revision', 'issueStatus']) {
     if (normalized[key] !== expected[key]) {
       throw new Error(`${field}.${key} does not match the confirmed manifest`);
     }
@@ -133,6 +140,7 @@ export function validateSourceRevisionReceipt(receipt, manifest, issueIdentity) 
     repository: manifest.repository.id,
     issue: issue.identity,
     revision: issue.sourceRevision,
+    issueStatus: issue.status,
   }, `${issue.identity}.sourceReceipt`);
 }
 
@@ -326,6 +334,7 @@ export function normalizeFleetManifest(input = {}) {
       repository: normalizedRepository.id,
       issue: identity,
       revision: sourceRevision,
+      issueStatus: status,
     }, `${identity}.sourceReceipt`);
     return {
       identity,

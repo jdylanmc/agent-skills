@@ -29,6 +29,10 @@ Dispatch only the stable manifest-order prefix that fits the available
 top-level capacity. Nested specialist teams do not consume additional fleet
 issue slots. A predecessor's implementation completion does not satisfy an
 edge requiring `human-merge`; only observed provider state does.
+An edge requiring `completed` accepts only a manifest/provider-sealed
+`already-complete` issue or a semantically current `ready-for-human-merge`
+pipeline. Contradictory status/disposition pairs and caller-shaped completion
+strings remain blocked.
 
 An issue is not dispatchable until its source revision has been reobserved
 against the confirmed manifest. Cancellation or reaching any cost, time, or

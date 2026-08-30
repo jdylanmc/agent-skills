@@ -17,8 +17,11 @@ used-by: ["ship-with-squadron/_molecules/fleet-control/fleet-control.md"]
 Every initial dispatch is for a pending, unowned, nonterminal issue whose source
 revision was freshly reobserved. It carries one fresh worker context, one
 isolated branch, one isolated worktree, and a complete manifest-bound packet:
-criteria, scope, exclusions, allowed paths, verification, report contract, and
-the exact forbidden-authority list. Workers never select more backlog work.
+criteria, scope, exclusions, allowed paths, exact base/head revisions,
+verification, report contract, and the exact forbidden-authority list. The
+packet rejects unknown fields and seals the complete task contract: goal, scope,
+context, acceptance, verification, timebox, forbidden authority, report, and
+standing instruction. Workers never select more backlog work.
 Assignment also consumes a scheduler lease bound to the confirmed manifest,
 provider configuration, exact fleet-state revision, recomputed dependency
 frontier, current `capacity.dispatch`, and active count. The compare-and-swap
@@ -43,7 +46,10 @@ For stalled, exhausted, timed-out, or crashed workers:
    before/after, snapshot and recheck the trusted non-symlink directory chain,
    reject symlinks, swaps, and escapes, then validate all
    consolidated brief sections and exact
-   run/issue/prior-generation/branch/worktree/source/target/base/head bindings;
+   run/issue/prior-generation/branch/worktree/source/target/base/head,
+   manifest/source revision, and allowed-path bindings. The continuation task
+   contract and packet must exactly equal the original manifest-bound
+   assignment, preventing scope or authority expansion;
 5. dispatch a fresh continuation context on the same owned branch and worktree.
 
 The brief contains `GOAL`, `SCOPE`, `CONTEXT`, `ACCEPTANCE`, `VERIFY`,

@@ -19,6 +19,16 @@ const FORBIDDEN_AUTHORITIES = Object.freeze([
   'close-tracker-work',
   'select-adjacent-work',
 ]);
+const PACKET_FIELDS = Object.freeze([
+  'schemaVersion', 'manifestDigest', 'issue', 'sourceRevision',
+  'acceptanceCriteria', 'scope', 'exclusions', 'allowedPaths',
+  'verification', 'reportContract', 'forbiddenAuthorities', 'taskContract',
+  'branch', 'worktree', 'baseSha', 'headSha',
+]);
+const TASK_CONTRACT_FIELDS = Object.freeze([
+  'goal', 'scope', 'context', 'acceptance', 'verify', 'timebox',
+  'forbidden', 'report', 'standing',
+]);
 
 function nonEmpty(value) {
   return typeof value === 'string' && value.trim() !== '';
@@ -38,6 +48,20 @@ function stable(value) {
 
 function digest(value) {
   return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+}
+
+function canonicalTaskContext(manifest, issue) {
+  return JSON.stringify(stable({
+    acceptedScope: manifest.acceptedScope,
+    humanBoundaries: manifest.humanBoundaries,
+    issue: issue.identity,
+    repository: manifest.repository.id,
+    sourceRevision: issue.sourceRevision,
+  }));
+}
+
+function canonicalTaskTimebox(manifest) {
+  return JSON.stringify(stable(manifest.budget));
 }
 
 function escapeRegExp(value) {
@@ -74,6 +98,10 @@ function validateBoundedPacket(packet, state, manifest, issue, input) {
   if (!packet || typeof packet !== 'object' || Array.isArray(packet)) {
     return { valid: false, defects: ['implementation packet is absent'] };
   }
+  if (!exactObjectKeys(packet, PACKET_FIELDS)) {
+    defects.push('implementation packet schema is not exact');
+  }
+  if (packet.schemaVersion !== 1) defects.push('packet schema version is invalid');
   if (packet.manifestDigest !== state.manifestDigest || packet.manifestDigest !== manifest.digest) {
     defects.push('packet manifest digest is not current');
   }
@@ -96,8 +124,36 @@ function validateBoundedPacket(packet, state, manifest, issue, input) {
   if (!same(packet.forbiddenAuthorities, FORBIDDEN_AUTHORITIES)) {
     defects.push('packet forbidden authorities are incomplete or reordered');
   }
+  const taskContract = packet.taskContract;
+  if (!exactObjectKeys(taskContract, TASK_CONTRACT_FIELDS)) {
+    defects.push('packet task contract schema is not exact');
+  } else {
+    const acceptance = issue.acceptanceCriteria.map((criterion) => criterion.description);
+    if (taskContract.goal !== manifest.goal) defects.push('packet task goal does not match manifest');
+    if (taskContract.scope !== JSON.stringify(issue.scope)) defects.push('packet task scope does not match manifest');
+    if (taskContract.context !== canonicalTaskContext(manifest, issue)) {
+      defects.push('packet task context does not match manifest');
+    }
+    if (!same(taskContract.acceptance, acceptance)) defects.push('packet task acceptance does not match manifest');
+    if (taskContract.verify !== packet.verification.join('\n')) defects.push('packet task verify contract differs');
+    if (taskContract.timebox !== canonicalTaskTimebox(manifest)) {
+      defects.push('packet task timebox does not match manifest budget');
+    }
+    if (taskContract.forbidden !== FORBIDDEN_AUTHORITIES.join('\n')) {
+      defects.push('packet task forbidden contract differs');
+    }
+    if (taskContract.report !== JSON.stringify(stable(packet.reportContract))) {
+      defects.push('packet task report contract differs');
+    }
+    if (taskContract.standing !== 'one-issue-one-branch-one-worktree-no-adjacent-work') {
+      defects.push('packet task standing instruction differs');
+    }
+  }
   if (packet.branch !== input.branch || packet.worktree !== input.worktree) {
     defects.push('packet branch/worktree binding does not match assignment');
+  }
+  if (packet.baseSha !== input.baseSha || packet.headSha !== input.headSha) {
+    defects.push('packet base/head revision binding does not match assignment');
   }
   return { valid: defects.length === 0, defects };
 }
@@ -229,6 +285,8 @@ const REQUIRED_HANDOFF_INPUTS = [
   ['base_sha', 'baseSha'],
   ['head_sha', 'headSha'],
   ['manifest_digest', 'manifestDigest'],
+  ['source_revision', 'sourceRevision'],
+  ['allowed_paths', 'allowedPaths'],
   ['state_revision', 'stateRevision'],
 ];
 
@@ -305,6 +363,13 @@ export function validateContinuationHandoff(handoff, payload, expected = null) {
     }
     if (!same(submitted.acceptance_criteria, expected.acceptanceCriteria)) {
       defects.push('payload acceptance criteria do not match the confirmed issue');
+    }
+    const continuedContract = {
+      ...submitted.task_contract,
+      acceptance: submitted.acceptance_criteria,
+    };
+    if (!same(stable(continuedContract), stable(expected.taskContract))) {
+      defects.push('payload task contract does not match the original manifest-bound assignment');
     }
   }
   return { valid: defects.length === 0, defects };
@@ -499,6 +564,9 @@ export function continueWithFreshWorker(state, manifest, input) {
     manifestDigest: manifest.digest,
     stateRevision: state.revision,
     acceptanceCriteria: issue.acceptanceCriteria.map((criterion) => criterion.description),
+    sourceRevision: issue.sourceRevision,
+    allowedPaths: JSON.stringify(issue.allowedPaths),
+    taskContract: record.assignment.packet.taskContract,
   };
   const handoff = validateContinuationHandoff(input.handoff, input.handoffPayload, expected);
   if (!handoff.valid) throw new Error(`invalid orchestration handoff: ${handoff.defects.join('; ')}`);
@@ -508,8 +576,15 @@ export function continueWithFreshWorker(state, manifest, input) {
     expected,
   );
   if (!artifact.valid) throw new Error(`invalid orchestration handoff artifact: ${artifact.defects.join('; ')}`);
-  const packet = validateBoundedPacket(input.packet, state, manifest, issue, input);
+  const packet = validateBoundedPacket(input.packet, state, manifest, issue, {
+    ...input,
+    baseSha: record.assignment.baseSha,
+    headSha: record.assignment.headSha,
+  });
   if (!packet.valid) throw new Error(`invalid continuation packet: ${packet.defects.join('; ')}`);
+  if (!same(stable(input.packet), stable(record.assignment.packet))) {
+    throw new Error('continuation packet differs from the original manifest-bound assignment');
+  }
 
   const next = structuredClone(state);
   const prior = {

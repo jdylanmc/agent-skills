@@ -26,18 +26,23 @@ Use the readiness set helper to require:
   invocation identity;
 - a post-Shepherd reread proving the receipt still matches;
 - `containsCurrentBase: true` under a `required` up-to-date policy;
-- a set obligation exactly binding owner, change request, base branch,
-  base/head, expiry condition, re-invocation, generation, and creation time;
+- one shared strict set-obligation schema exactly binding owner, provider,
+  repository, change request, stable publication, base branch, base/head,
+  expiry condition, re-invocation, generation, and creation time;
 - no degraded or unobserved provider state for a ready claim.
 
 When manifest Shepherd intent is `no`, record `not-required` plus a real
 revision-bound set obligation and dispatch no Shepherd.
 
 Readiness is snapshot-bound. After an exact merge observation reconciled to a
-recorded publication, expire every affected still-open ready claim and fleet
-disposition immediately, mark it stale, and accept only a complete
+recorded publication, persist the merge and invalidate every affected open
+publication before considering any sibling revision receipt. This includes the
+first Shepherd invocation while it is still in flight. Advance and persist a
+merge watermark/generation, mark readiness stale, and accept only a complete
 provider/repository/change-request/publication/base-branch/base-SHA/head-branch/
-head-SHA revision receipt observed after the triggering merge. Clear stale
+head-SHA revision receipt observed after the triggering merge. Missing or
+malformed revision evidence leaves that sibling blocked with a durable queue
+entry without rolling back other invalidations. Clear stale
 quality/publication evidence and queue one
 merge/revision-generation-specific revalidation plus fresh Shepherd invocation
 when required. With

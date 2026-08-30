@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -12,14 +13,16 @@ import {
   deliveryStagesForManifest,
   persistedPipelinePasses,
   persistedShepherdPasses,
+  validateReadinessObligation,
 } from '../quality-evidence/quality-evidence.mjs';
 import {
+  normalizeChangeRequestRevisionObservation,
   normalizeMergeObservation,
   publicationKey,
 } from '../provider-seam/provider-seam.mjs';
 import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.mjs';
 
-export const FLEET_STATE_SCHEMA_VERSION = 2;
+export const FLEET_STATE_SCHEMA_VERSION = 3;
 const ISSUE_STATUSES = new Set([
   'pending', 'active', 'completed', 'blocked', 'failed', 'timed-out', 'deferred',
 ]);
@@ -33,10 +36,10 @@ const ISSUE_DISPOSITIONS = new Set([
   'already-complete',
 ]);
 const TERMINAL_TRANSITIONS = new Map([
-  ['pending', new Set(['completed', 'blocked', 'failed', 'timed-out', 'deferred'])],
-  ['active', new Set(['completed', 'blocked', 'failed', 'timed-out', 'deferred'])],
+  ['pending', new Set(['blocked', 'failed', 'timed-out', 'deferred'])],
+  ['active', new Set(['blocked', 'failed', 'timed-out', 'deferred'])],
   ['completed', new Set(['blocked'])],
-  ['blocked', new Set(['completed', 'failed', 'timed-out', 'deferred'])],
+  ['blocked', new Set(['failed', 'timed-out', 'deferred'])],
   ['failed', new Set()],
   ['timed-out', new Set()],
   ['deferred', new Set()],
@@ -62,6 +65,16 @@ const FORBIDDEN_AUTHORITIES = [
   'merge', 'approve', 'enable-auto-merge', 'accept-risk', 'force-push',
   'close-tracker-work', 'select-adjacent-work',
 ];
+const PACKET_FIELDS = [
+  'schemaVersion', 'manifestDigest', 'issue', 'sourceRevision',
+  'acceptanceCriteria', 'scope', 'exclusions', 'allowedPaths',
+  'verification', 'reportContract', 'forbiddenAuthorities', 'taskContract',
+  'branch', 'worktree', 'baseSha', 'headSha',
+];
+const TASK_CONTRACT_FIELDS = [
+  'goal', 'scope', 'context', 'acceptance', 'verify', 'timebox',
+  'forbidden', 'report', 'standing',
+];
 
 function validRunId(runId) {
   return typeof runId === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(runId);
@@ -77,6 +90,14 @@ function validTimestamp(value) {
 
 function same(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+  }
+  return value;
 }
 
 function exactKeys(actual, expected, label) {
@@ -114,6 +135,8 @@ function assertAssignment(assignment, issue, manifest, { active }) {
   }
   const packet = assignment.packet;
   if (!packet || typeof packet !== 'object'
+      || !same(Object.keys(packet).sort(), [...PACKET_FIELDS].sort())
+      || packet.schemaVersion !== 1
       || packet.manifestDigest !== manifest.digest
       || packet.issue !== issue.identity
       || packet.sourceRevision !== issue.sourceRevision
@@ -124,12 +147,31 @@ function assertAssignment(assignment, issue, manifest, { active }) {
       || !same(packet.forbiddenAuthorities, FORBIDDEN_AUTHORITIES)
       || packet.branch !== assignment.branch
       || packet.worktree !== assignment.worktree
+      || packet.baseSha !== assignment.baseSha
+      || packet.headSha !== assignment.headSha
       || !Array.isArray(packet.verification)
       || packet.verification.length === 0
       || !packet.reportContract
       || !nonEmpty(packet.reportContract.summary)
       || !Array.isArray(packet.reportContract.requiredEvidence)
-      || packet.reportContract.requiredEvidence.length === 0) {
+      || packet.reportContract.requiredEvidence.length === 0
+      || !packet.taskContract
+      || !same(Object.keys(packet.taskContract).sort(), [...TASK_CONTRACT_FIELDS].sort())
+      || packet.taskContract.goal !== manifest.goal
+      || packet.taskContract.scope !== JSON.stringify(issue.scope)
+      || packet.taskContract.context !== JSON.stringify(stable({
+        acceptedScope: manifest.acceptedScope,
+        humanBoundaries: manifest.humanBoundaries,
+        issue: issue.identity,
+        repository: manifest.repository.id,
+        sourceRevision: issue.sourceRevision,
+      }))
+      || !same(packet.taskContract.acceptance, issue.acceptanceCriteria.map((entry) => entry.description))
+      || packet.taskContract.verify !== packet.verification.join('\n')
+      || packet.taskContract.timebox !== JSON.stringify(stable(manifest.budget))
+      || packet.taskContract.forbidden !== FORBIDDEN_AUTHORITIES.join('\n')
+      || packet.taskContract.report !== JSON.stringify(stable(packet.reportContract))
+      || packet.taskContract.standing !== 'one-issue-one-branch-one-worktree-no-adjacent-work') {
     throw new Error(`${issue.identity} assignment packet is absent or not manifest-bound`);
   }
   if (!active) {
@@ -262,17 +304,16 @@ function assertShepherd(issue, manifest, state) {
       || !validTimestamp(receipt.observedAt)) {
     throw new Error(`${issue.identity} shepherd receipt is not exactly bound`);
   }
-  if (!obligation
-      || obligation.owner !== issue.identity
-      || obligation.changeRequest !== issue.changeRequest.identifier
-      || obligation.baseBranch !== manifest.repository.baseBranch
-      || obligation.baseSha !== receipt.baseSha
-      || obligation.headSha !== receipt.headSha
-      || obligation.expiresWhen !== 'sibling-merge-into-base'
-      || obligation.reinvocation !== 'invoke-fresh-shepherd'
-      || !Number.isInteger(obligation.generation)
-      || obligation.generation < 1
-      || !validTimestamp(obligation.createdAt)) {
+  if (validateReadinessObligation(obligation, {
+    issue: issue.identity,
+    provider: manifest.provider.name,
+    repository: manifest.repository.id,
+    changeRequest: issue.changeRequest.identifier,
+    publicationKey: issue.changeRequest.publicationKey,
+    baseBranch: manifest.repository.baseBranch,
+    baseSha: issue.baseSha,
+    headSha: issue.headSha,
+  }, issue.readinessGeneration, 'invoke-fresh-shepherd', shepherd.observation?.observedAt).length) {
     throw new Error(`${issue.identity} shepherd set obligation is incomplete or forged`);
   }
   const semantic = persistedShepherdPasses(issue, state, manifest);
@@ -406,7 +447,7 @@ function assertIssueRecord(record, issue, manifest, state) {
     'branch', 'worktree', 'baseSha', 'headSha', 'status', 'statusReason', 'implementationStatus',
     'qualityEvidence', 'pipeline', 'changeRequest', 'shepherd',
     'shepherdDecision', 'setObligation', 'terminalDisposition', 'nextAction',
-    'checkActivity',
+    'checkActivity', 'readinessGeneration', 'readinessWatermark',
   ], `fleet state issue ${issue.identity}`);
   if (record.identity !== issue.identity) throw new Error(`identity mismatch for ${issue.identity}`);
   if (record.sourceRevision !== issue.sourceRevision) {
@@ -442,6 +483,7 @@ function assertIssueRecord(record, issue, manifest, state) {
           repository: record.sourceObservation.repository,
           issue: record.sourceObservation.issue,
           revision: record.sourceObservation.revision,
+          issueStatus: record.sourceObservation.issueStatus,
           status: record.sourceObservation.status,
           terminal: record.sourceObservation.terminal,
           complete: record.sourceObservation.complete,
@@ -478,11 +520,28 @@ function assertIssueRecord(record, issue, manifest, state) {
   if (!DISPOSITIONS_BY_STATUS[record.status].has(record.terminalDisposition)) {
     throw new Error(`${issue.identity} status and terminal disposition are contradictory`);
   }
+  if (!Number.isInteger(record.readinessGeneration) || record.readinessGeneration < 0) {
+    throw new Error(`${issue.identity} readiness generation is invalid`);
+  }
+  if (record.readinessWatermark !== null) {
+    exactKeys(record.readinessWatermark, [
+      'generation', 'observedAt', 'triggeringPublicationKey', 'triggeringMergeCommit',
+    ], `${issue.identity} readiness watermark`);
+    if (record.readinessWatermark.generation !== record.readinessGeneration
+        || record.readinessGeneration < 1
+        || !validTimestamp(record.readinessWatermark.observedAt)
+        || !nonEmpty(record.readinessWatermark.triggeringPublicationKey)
+        || !nonEmpty(record.readinessWatermark.triggeringMergeCommit)) {
+      throw new Error(`${issue.identity} readiness watermark is malformed`);
+    }
+  }
   if (record.checkActivity !== null) {
     if (!record.checkActivity
         || !['quality-check', 'publication-observation', 'shepherd-check'].includes(record.checkActivity.kind)
         || record.checkActivity.state !== 'active'
-        || !validTimestamp(record.checkActivity.startedAt)) {
+        || !validTimestamp(record.checkActivity.startedAt)
+        || (record.checkActivity.kind === 'shepherd-check'
+          && record.checkActivity.generation !== record.readinessGeneration)) {
       throw new Error(`${issue.identity} check activity is malformed`);
     }
   }
@@ -513,16 +572,27 @@ function assertIssueRecord(record, issue, manifest, state) {
     throw new Error(`${issue.identity} set obligation differs from accepted Shepherd state`);
   }
   if (record.shepherdDecision !== null) {
+    const readinessPublication = state.publications.find((entry) =>
+      entry.key === record.changeRequest?.publicationKey
+      && entry.identifier === record.changeRequest?.identifier);
+    const readinessPublicationObservation = readinessPublication?.observations.find((entry) =>
+      entry.state === 'confirmed'
+      && entry.baseSha === record.baseSha
+      && entry.headSha === record.headSha);
     if (manifest.shepherdIntent !== 'no'
         || record.shepherdDecision.state !== 'not-required'
         || record.shepherdDecision.manifestDigest !== manifest.digest
-        || !record.setObligation
-        || record.setObligation.owner !== issue.identity
-        || record.setObligation.changeRequest !== record.changeRequest?.identifier
-        || record.setObligation.baseSha !== record.baseSha
-        || record.setObligation.headSha !== record.headSha
-        || record.setObligation.expiresWhen !== 'sibling-merge-into-base'
-        || record.setObligation.reinvocation !== 'rerun-quality-and-provider-observation') {
+        || validateReadinessObligation(record.setObligation, {
+          issue: issue.identity,
+          provider: manifest.provider.name,
+          repository: manifest.repository.id,
+          changeRequest: record.changeRequest?.identifier,
+          publicationKey: record.changeRequest?.publicationKey,
+          baseBranch: manifest.repository.baseBranch,
+          baseSha: record.baseSha,
+          headSha: record.headSha,
+        }, record.readinessGeneration, 'rerun-quality-and-provider-observation',
+        readinessPublicationObservation?.confirmedAt).length) {
       throw new Error(`${issue.identity} has forged Shepherd-not-required state`);
     }
   } else if (!record.shepherd && record.setObligation !== null) {
@@ -564,6 +634,8 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
     shepherdDecision: null,
     setObligation: null,
     checkActivity: null,
+    readinessGeneration: 0,
+    readinessWatermark: null,
     terminalDisposition: issue.status === 'completed'
       ? 'already-complete'
       : issue.status === 'failed'
@@ -684,6 +756,15 @@ export function assertFleetState(state, manifest) {
     throw new Error('fleet state contains duplicate publication invocation identities');
   }
   for (const issue of manifest.issues) assertIssueRecord(state.issues[issue.identity], issue, manifest, state);
+  for (const issue of manifest.issues) {
+    const record = state.issues[issue.identity];
+    if (record.terminalDisposition === 'already-complete'
+        && (issue.status !== 'completed'
+          || issue.sourceReceipt.issueStatus !== 'completed'
+          || record.status !== 'completed')) {
+      throw new Error(`${issue.identity} already-complete is not sealed by the confirmed provider receipt`);
+    }
+  }
 
   const active = assignmentList(state).filter((assignment) => assignment.active);
   const workerContexts = assignmentList(state).map((assignment) => assignment.workerContext);
@@ -707,6 +788,14 @@ export function assertFleetState(state, manifest) {
         || !['ready-for-human-merge', 'already-complete'].includes(issue.terminalDisposition)) {
       throw new Error('observed merge contradicts the issue terminal transition matrix');
     }
+    for (const record of Object.values(state.issues)) {
+      if (record.readinessWatermark && !state.observedHumanMerges.some((merge) =>
+        merge.publicationKey === record.readinessWatermark.triggeringPublicationKey
+        && merge.mergeCommit === record.readinessWatermark.triggeringMergeCommit
+        && merge.observedAt === record.readinessWatermark.observedAt)) {
+        throw new Error(`${record.identity} readiness watermark has no observed merge`);
+      }
+    }
   }
   for (const field of ['publicationKey', 'mergeCommit']) {
     const values = state.observedHumanMerges.map((entry) => entry[field]);
@@ -729,6 +818,12 @@ export function assertFleetState(state, manifest) {
     throw new Error('explicit issue sets must not forge query observations');
   }
   for (const queued of state.reShepherdQueue) {
+    exactKeys(queued, [
+      'issue', 'changeRequest', 'publicationKey', 'reason', 'generation',
+      'baseSha', 'headSha', 'sourceStateRevision', 'triggeringPublicationKey',
+      'triggeringMergeCommit', 'mergeObservedAt', 'revisionObservation',
+      'blocker', 'queuedAt', 'action',
+    ], `re-Shepherd queue ${queued.issue}`);
     const issue = state.issues[queued.issue];
     const publication = state.publications.find((entry) =>
       entry.key === queued.publicationKey && entry.identifier === queued.changeRequest);
@@ -736,25 +831,79 @@ export function assertFleetState(state, manifest) {
         || !publication
         || !Number.isInteger(queued.generation)
         || queued.generation < 1
-        || !nonEmpty(queued.baseSha)
-        || !nonEmpty(queued.headSha)
+        || queued.generation !== issue.readinessGeneration
+        || !nonEmpty(queued.reason)
+        || !Number.isInteger(queued.sourceStateRevision)
+        || queued.sourceStateRevision < 0
+        || queued.sourceStateRevision > state.revision
+        || !validTimestamp(queued.queuedAt)
         || !nonEmpty(queued.triggeringPublicationKey)
         || !nonEmpty(queued.triggeringMergeCommit)
-        || queued.revisionObservation?.status !== 'observed'
-        || queued.revisionObservation?.observed !== true
-        || queued.revisionObservation?.terminal !== true
-        || queued.revisionObservation?.complete !== true
-        || queued.revisionObservation?.issue !== queued.issue
-        || queued.revisionObservation?.changeRequest !== queued.changeRequest
-        || queued.revisionObservation?.publicationKey !== queued.publicationKey
-        || queued.revisionObservation?.provider !== publication.provider
-        || queued.revisionObservation?.repository !== publication.repository
-        || queued.revisionObservation?.baseBranch !== publication.baseBranch
-        || queued.revisionObservation?.headBranch !== publication.headBranch
-        || queued.revisionObservation?.baseSha !== queued.baseSha
-        || queued.revisionObservation?.headSha !== queued.headSha
-        || !validTimestamp(queued.revisionObservation?.observedAt)) {
+        || !validTimestamp(queued.mergeObservedAt)
+        || Date.parse(queued.queuedAt) < Date.parse(queued.mergeObservedAt)
+        || issue.readinessWatermark?.observedAt !== queued.mergeObservedAt
+        || issue.readinessWatermark?.triggeringPublicationKey !== queued.triggeringPublicationKey
+        || issue.readinessWatermark?.triggeringMergeCommit !== queued.triggeringMergeCommit
+        || (queued.revisionObservation === null
+          ? (!nonEmpty(queued.blocker)
+            || queued.baseSha !== null
+            || queued.headSha !== null
+            || queued.action !== 'acquire-current-change-request-revision')
+          : (queued.blocker !== null
+            || queued.revisionObservation.status !== 'observed'
+            || queued.revisionObservation.observed !== true
+            || queued.revisionObservation.terminal !== true
+            || queued.revisionObservation.complete !== true
+            || queued.revisionObservation.issue !== queued.issue
+            || queued.revisionObservation.changeRequest !== queued.changeRequest
+            || queued.revisionObservation.publicationKey !== queued.publicationKey
+            || queued.revisionObservation.provider !== publication.provider
+            || queued.revisionObservation.repository !== publication.repository
+            || queued.revisionObservation.baseBranch !== publication.baseBranch
+            || queued.revisionObservation.headBranch !== publication.headBranch
+            || queued.revisionObservation.baseSha !== queued.baseSha
+            || queued.revisionObservation.headSha !== queued.headSha
+            || !validTimestamp(queued.revisionObservation.observedAt)
+            || Date.parse(queued.revisionObservation.observedAt) <= Date.parse(queued.mergeObservedAt)
+            || queued.action !== (manifest.shepherdIntent === 'yes'
+              ? 'invoke-fresh-shepherd'
+              : 'rerun-quality-and-provider-observation')))) {
       throw new Error('re-Shepherd queue entry is incomplete or forged');
+    }
+    if (queued.revisionObservation !== null) {
+      const normalizedRevision = normalizeChangeRequestRevisionObservation(
+        state,
+        manifest,
+        queued.revisionObservation,
+      );
+      if (!same(normalizedRevision, queued.revisionObservation)) {
+        throw new Error('re-Shepherd revision observation is not normalized');
+      }
+    }
+  }
+  for (const expired of state.expiredReadinessClaims) {
+    exactKeys(expired, [
+      'issue', 'changeRequest', 'publicationKey', 'reason', 'oldBaseSha',
+      'currentBaseSha', 'currentHeadSha', 'generation', 'expiredAt',
+      'sourceStateRevision', 'triggeringPublicationKey', 'triggeringMergeCommit',
+      'revisionObservation',
+    ], `expired readiness ${expired.issue}`);
+    if (!state.issues[expired.issue]
+        || !nonEmpty(expired.changeRequest)
+        || !nonEmpty(expired.publicationKey)
+        || !nonEmpty(expired.reason)
+        || !Number.isInteger(expired.generation)
+        || expired.generation < 1
+        || !validTimestamp(expired.expiredAt)
+        || !Number.isInteger(expired.sourceStateRevision)
+        || expired.sourceStateRevision < 0
+        || !nonEmpty(expired.triggeringPublicationKey)
+        || !nonEmpty(expired.triggeringMergeCommit)
+        || (expired.revisionObservation === null
+          ? (expired.currentBaseSha !== null || expired.currentHeadSha !== null)
+          : (expired.currentBaseSha !== expired.revisionObservation.baseSha
+            || expired.currentHeadSha !== expired.revisionObservation.headSha))) {
+      throw new Error('expired readiness claim is incomplete or forged');
     }
   }
   if (state.fleetDisposition !== null) {
@@ -767,8 +916,14 @@ export function assertFleetState(state, manifest) {
 }
 
 export function loadFleetState(file, manifest) {
-  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  return assertFleetState(parsed, manifest);
+  const handle = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const stat = fs.fstatSync(handle);
+    if (!stat.isFile()) throw new Error('fleet state descriptor is not a regular file');
+    return assertFleetState(JSON.parse(fs.readFileSync(handle, 'utf8')), manifest);
+  } finally {
+    fs.closeSync(handle);
+  }
 }
 
 function wait(milliseconds) {
@@ -793,34 +948,49 @@ function acquireLock(lockFile, expectedRevision, options) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const handle = fs.openSync(lockFile, 'wx', 0o600);
+      const token = crypto.randomBytes(24).toString('hex');
       const body = `${JSON.stringify({
         pid: process.pid,
+        token,
         expectedRevision,
         createdAt: new Date().toISOString(),
       })}\n`;
       fs.writeFileSync(handle, body);
       fs.fsyncSync(handle);
-      return handle;
+      const stat = fs.fstatSync(handle);
+      return { handle, token, dev: stat.dev, ino: stat.ino };
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
       try {
-        const stat = fs.lstatSync(lockFile);
-        if (stat.isSymbolicLink() || !stat.isFile()) {
+        const inspectHandle = fs.openSync(
+          lockFile,
+          fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
+        );
+        let stat;
+        let metadata;
+        try {
+          stat = fs.fstatSync(inspectHandle);
+          if (!stat.isFile()) throw new Error('fleet state lock path is unsafe');
+          metadata = JSON.parse(fs.readFileSync(inspectHandle, 'utf8'));
+        } finally {
+          fs.closeSync(inspectHandle);
+        }
+        if (!nonEmpty(metadata?.token)) {
+          throw new Error('fleet state lock metadata has no ownership token');
+        }
+        const pathStat = fs.lstatSync(lockFile);
+        if (pathStat.isSymbolicLink() || !pathStat.isFile()
+            || pathStat.dev !== stat.dev || pathStat.ino !== stat.ino) {
           throw new Error('fleet state lock path is unsafe');
         }
         const stale = Date.now() - stat.mtimeMs >= staleLockMs;
-        let metadata = null;
-        try {
-          metadata = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
-        } catch {
-          if (stale) {
-            fs.unlinkSync(lockFile);
-            continue;
-          }
-        }
         if (stale && metadata && !processAlive(metadata.pid)) {
-          fs.unlinkSync(lockFile);
-          continue;
+          options.beforeStaleLockClaim?.();
+          if (claimAndRemoveLock(lockFile, {
+            token: metadata.token,
+            dev: stat.dev,
+            ino: stat.ino,
+          }, 'stale')) continue;
         }
       } catch (inspectionError) {
         if (inspectionError.code === 'ENOENT') continue;
@@ -832,6 +1002,38 @@ function acquireLock(lockFile, expectedRevision, options) {
   throw new Error('fleet state write lock is busy');
 }
 
+function claimAndRemoveLock(lockFile, ownership, purpose) {
+  const claim = `${lockFile}.${purpose}-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
+  try {
+    fs.renameSync(lockFile, claim);
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+  let owned = false;
+  try {
+    const handle = fs.openSync(claim, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    try {
+      const stat = fs.fstatSync(handle);
+      const metadata = JSON.parse(fs.readFileSync(handle, 'utf8'));
+      owned = stat.isFile()
+        && stat.dev === ownership.dev
+        && stat.ino === ownership.ino
+        && metadata.token === ownership.token;
+    } finally {
+      fs.closeSync(handle);
+    }
+    if (!owned) {
+      if (!fs.existsSync(lockFile)) fs.renameSync(claim, lockFile);
+      return false;
+    }
+    fs.unlinkSync(claim);
+    return true;
+  } finally {
+    if (owned && fs.existsSync(claim)) fs.unlinkSync(claim);
+  }
+}
+
 function fsyncDirectory(directory) {
   const handle = fs.openSync(directory, 'r');
   try {
@@ -841,16 +1043,65 @@ function fsyncDirectory(directory) {
   }
 }
 
+function snapshotFleetDirectoryChain(directory) {
+  const resolved = path.resolve(directory);
+  const parsed = path.parse(resolved);
+  const components = resolved.slice(parsed.root.length).split(path.sep).filter(Boolean);
+  const rootStat = fs.lstatSync(parsed.root);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+    throw new Error('fleet state filesystem root is unsafe');
+  }
+  const snapshots = [{ path: parsed.root, dev: rootStat.dev, ino: rootStat.ino }];
+  let cursor = parsed.root;
+  for (const component of components) {
+    cursor = path.join(cursor, component);
+    if (!fs.existsSync(cursor)) fs.mkdirSync(cursor, { mode: 0o700 });
+    const stat = fs.lstatSync(cursor);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error(`fleet state directory ancestry is unsafe: ${cursor}`);
+    }
+    const handle = fs.openSync(
+      cursor,
+      fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
+    );
+    try {
+      const descriptor = fs.fstatSync(handle);
+      if (descriptor.dev !== stat.dev || descriptor.ino !== stat.ino) {
+        throw new Error(`fleet state directory ancestry changed: ${cursor}`);
+      }
+    } finally {
+      fs.closeSync(handle);
+    }
+    snapshots.push({ path: cursor, dev: stat.dev, ino: stat.ino });
+  }
+  return snapshots;
+}
+
+function sameFleetDirectoryChain(snapshots) {
+  return snapshots.every((entry) => {
+    try {
+      const stat = fs.lstatSync(entry.path);
+      return !stat.isSymbolicLink()
+        && stat.isDirectory()
+        && stat.dev === entry.dev
+        && stat.ino === entry.ino;
+    } catch {
+      return false;
+    }
+  });
+}
+
 function prepareFleetStatePath(file) {
   if (!path.isAbsolute(file)) throw new Error('fleet state path must be absolute');
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const parent = fs.lstatSync(path.dirname(file));
-  if (!parent.isDirectory() || parent.isSymbolicLink()) {
-    throw new Error('fleet state parent must be a real directory');
+  if (path.basename(file) !== 'fleet-state.json'
+      || path.basename(path.dirname(path.dirname(file))) !== '.ship-with-squadron') {
+    throw new Error('fleet state path must be inside .ship-with-squadron/<run>');
   }
+  const chain = snapshotFleetDirectoryChain(path.dirname(file));
   if (fs.existsSync(file) && fs.lstatSync(file).isSymbolicLink()) {
     throw new Error('fleet state path must not be a symbolic link');
   }
+  return chain;
 }
 
 function readLockedState(file, expectedRevision, manifest) {
@@ -860,7 +1111,15 @@ function readLockedState(file, expectedRevision, manifest) {
     }
     return null;
   }
-  const disk = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const handle = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let disk;
+  try {
+    const stat = fs.fstatSync(handle);
+    if (!stat.isFile()) throw new Error('fleet state descriptor is not a regular file');
+    disk = JSON.parse(fs.readFileSync(handle, 'utf8'));
+  } finally {
+    fs.closeSync(handle);
+  }
   assertFleetState(disk, manifest);
   if (disk.revision !== expectedRevision) {
     throw new Error(`state revision conflict: disk is ${disk.revision}, expected ${expectedRevision}`);
@@ -886,18 +1145,25 @@ function writeLockedState(file, state, expectedRevision, manifest, options, pend
 }
 
 function withFleetStateLock(file, expectedRevision, options, operation) {
-  prepareFleetStatePath(file);
+  const directoryChain = prepareFleetStatePath(file);
   const lockFile = `${file}.lock`;
-  const lockHandle = acquireLock(lockFile, expectedRevision, options);
+  const lock = acquireLock(lockFile, expectedRevision, options);
   const pending = `${file}.next-${process.pid}-${expectedRevision}`;
   try {
+    if (!sameFleetDirectoryChain(directoryChain)) {
+      throw new Error('fleet state directory ancestry changed before mutation');
+    }
     return operation(pending);
   } finally {
     try {
       if (fs.existsSync(pending)) fs.unlinkSync(pending);
     } finally {
-      fs.closeSync(lockHandle);
-      if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile);
+      fs.closeSync(lock.handle);
+      options.beforeReleaseLockClaim?.();
+      claimAndRemoveLock(lockFile, lock, 'release');
+      if (!sameFleetDirectoryChain(directoryChain)) {
+        throw new Error('fleet state directory ancestry changed during mutation');
+      }
     }
   }
 }
@@ -1009,6 +1275,9 @@ export function transitionIssue(state, issue, status, detail = {}) {
   if (!record) throw new Error(`unknown issue: ${issue}`);
   if (status === 'active') throw new Error('active status can only be entered through validated assignment');
   if (status === 'pending') throw new Error('pending status can only be retained through validated handoff replacement');
+  if (status === 'completed') {
+    throw new Error('completed status can only be entered through the semantic publication/readiness pipeline');
+  }
   if (!TERMINAL_TRANSITIONS.get(record.status)?.has(status)) {
     throw new Error(`invalid issue transition: ${record.status} -> ${status}`);
   }
@@ -1062,7 +1331,15 @@ export function startCheckActivity(state, issue, kind, startedAt = new Date().to
     throw new Error('terminal or awaiting-human issue cannot start a check obligation');
   }
   const next = structuredClone(state);
-  next.issues[issue].checkActivity = { kind, state: 'active', startedAt };
+  if (kind === 'shepherd-check') next.issues[issue].readinessGeneration += 1;
+  next.issues[issue].checkActivity = {
+    kind,
+    state: 'active',
+    startedAt,
+    ...(kind === 'shepherd-check'
+      ? { generation: next.issues[issue].readinessGeneration }
+      : {}),
+  };
   next.events.push({ type: 'check-activity-started', issue, kind });
   return next;
 }

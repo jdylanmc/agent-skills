@@ -23,6 +23,9 @@ activity exists; blocked or terminal work is never relabeled as checking.
 Active, blocked, checking, failed, deferred, awaiting-human, and review-ready
 status buckets are mutually exclusive; replacement and expiry lists are
 orthogonal obligations.
+An effectively `ready-for-human-merge` issue is listed in `reviewReady` even
+when its next action is `await-human-merge`; generic awaiting-human grouping
+never hides actual review readiness.
 
 Every supplied issue ends as exactly one of:
 
