@@ -54,6 +54,7 @@ function readyIssue(identity) {
   };
   return {
     identity,
+    status: 'completed',
     baseSha,
     headSha,
     continuationChain: [],
@@ -84,6 +85,7 @@ function readyIssue(identity) {
 function state() {
   const a = {
     identity: 'a',
+    status: 'active',
     baseSha: 'base',
     headSha: 'head-a',
     pipeline: [{ stage: 'run-ci', evidence: { baseSha: 'base', headSha: 'head-a' } }],
@@ -155,7 +157,7 @@ test('derives effective readiness rather than trusting stale terminal strings', 
     manifestDigest: manifest.digest,
     providerConfigurationDigest: manifest.providerConfigurationDigest,
     control: { cancelled: false, budgetExhausted: false },
-    issues: { a: { identity: 'a', terminalDisposition: 'already-complete' } },
+    issues: { a: { identity: 'a', status: 'completed', terminalDisposition: 'already-complete' } },
     publications: [],
     reShepherdQueue: [],
   };
@@ -169,7 +171,7 @@ test('renders distinct active, blocked, checking, expired, and review-ready stat
     blocked: [{ issue: 'c', reason: 'awaiting-re-shepherd' }],
     capacity: { nextReplenishment: 'worker-terminal-transition' },
   }, manifest);
-  assert.deepEqual(status.active, ['a']);
+  assert.deepEqual(status.active, []);
   assert.deepEqual(status.checking, ['a']);
   assert.deepEqual(status.reviewReady, ['b']);
   assert.deepEqual(status.expired, ['c']);

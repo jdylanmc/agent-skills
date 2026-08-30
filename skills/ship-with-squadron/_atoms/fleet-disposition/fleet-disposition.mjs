@@ -42,7 +42,8 @@ function obligationIsCurrent(obligation, issue, reinvocation, baseSha = issue.ba
 }
 
 export function effectiveIssueReadiness(issue, state, manifest) {
-  if (issue.terminalDisposition === 'already-complete') return true;
+  if (issue.status === 'completed' && issue.terminalDisposition === 'already-complete') return true;
+  if (issue.status !== 'completed' || issue.terminalDisposition !== 'ready-for-human-merge') return false;
   if (state.reShepherdQueue.some((entry) => entry.issue === issue.identity)) return false;
   if (!persistedPipelinePasses(issue, state, manifest).passed
       || !publicationIsCurrent(issue, state)) return false;
@@ -95,6 +96,30 @@ export function conciseFleetStatus(state, frontier, manifest) {
     throw new Error('fleet status state is not bound to the confirmed manifest');
   }
   const issues = Object.values(state.issues);
+  const checking = new Set(issues
+    .filter((issue) => checkingIssue(issue))
+    .map((issue) => issue.identity));
+  const failed = new Set(issues
+    .filter((issue) => issue.status === 'failed' && !checking.has(issue.identity))
+    .map((issue) => issue.identity));
+  const deferred = new Set(issues
+    .filter((issue) => ['deferred', 'timed-out'].includes(issue.status)
+      && !checking.has(issue.identity))
+    .map((issue) => issue.identity));
+  const awaitingHuman = new Set(issues
+    .filter((issue) => issue.nextAction?.startsWith('await-')
+      && !checking.has(issue.identity)
+      && !failed.has(issue.identity)
+      && !deferred.has(issue.identity))
+    .map((issue) => issue.identity));
+  const reviewReady = new Set(issues
+    .filter((issue) => issue.changeRequest
+      && effectiveIssueReadiness(issue, state, manifest)
+      && !checking.has(issue.identity)
+      && !failed.has(issue.identity)
+      && !deferred.has(issue.identity)
+      && !awaitingHuman.has(issue.identity))
+    .map((issue) => issue.identity));
   const frontierBlocked = frontier.blocked.map((entry) => ({
     issue: entry.issue,
     reason: entry.reason,
@@ -106,21 +131,31 @@ export function conciseFleetStatus(state, frontier, manifest) {
       issue: issue.identity,
       reason: issue.statusReason ?? issue.nextAction ?? 'blocked',
     }));
+  const blocked = [...frontierBlocked, ...terminalBlocked]
+    .filter((entry) => !checking.has(entry.issue)
+      && !failed.has(entry.issue)
+      && !deferred.has(entry.issue)
+      && !awaitingHuman.has(entry.issue)
+      && !reviewReady.has(entry.issue));
+  const blockedIdentities = new Set(blocked.map((entry) => entry.issue));
   return {
-    active: frontier.active.map((entry) => entry.issue),
-    blocked: [...frontierBlocked, ...terminalBlocked],
+    active: frontier.active
+      .map((entry) => entry.issue)
+      .filter((issue) => !checking.has(issue)
+        && !failed.has(issue)
+        && !deferred.has(issue)
+        && !awaitingHuman.has(issue)
+        && !reviewReady.has(issue)
+        && !blockedIdentities.has(issue)),
+    blocked,
     replacements: issues
       .filter((issue) => (issue.continuationChain?.length ?? 0) > 0 && issue.status === 'active')
       .map((issue) => issue.identity),
-    checking: issues.filter((issue) => checkingIssue(issue)).map((issue) => issue.identity),
-    failed: issues.filter((issue) => issue.status === 'failed').map((issue) => issue.identity),
-    deferred: issues.filter((issue) => issue.status === 'deferred').map((issue) => issue.identity),
-    awaitingHuman: issues
-      .filter((issue) => issue.nextAction?.startsWith('await-'))
-      .map((issue) => issue.identity),
-    reviewReady: issues
-      .filter((issue) => issue.changeRequest && effectiveIssueReadiness(issue, state, manifest))
-      .map((issue) => issue.identity),
+    checking: [...checking],
+    failed: [...failed],
+    deferred: [...deferred],
+    awaitingHuman: [...awaitingHuman],
+    reviewReady: [...reviewReady],
     expired: state.reShepherdQueue.map((entry) => entry.issue),
     nextCapacityReplenishment: frontier.capacity.nextReplenishment,
   };

@@ -11,6 +11,7 @@ import {
   adaptRoastEvidence,
   deliveryStagesForManifest,
   persistedPipelinePasses,
+  persistedShepherdPasses,
 } from '../quality-evidence/quality-evidence.mjs';
 import {
   normalizeMergeObservation,
@@ -19,7 +20,9 @@ import {
 import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.mjs';
 
 export const FLEET_STATE_SCHEMA_VERSION = 2;
-const ISSUE_STATUSES = new Set(['pending', 'active', 'completed', 'failed', 'deferred']);
+const ISSUE_STATUSES = new Set([
+  'pending', 'active', 'completed', 'blocked', 'failed', 'timed-out', 'deferred',
+]);
 const ISSUE_DISPOSITIONS = new Set([
   'ready-for-human-merge',
   'blocked',
@@ -30,21 +33,30 @@ const ISSUE_DISPOSITIONS = new Set([
   'already-complete',
 ]);
 const TERMINAL_TRANSITIONS = new Map([
-  ['pending', new Set(['completed', 'failed', 'deferred'])],
-  ['active', new Set(['completed', 'failed', 'deferred'])],
-  ['completed', new Set()],
+  ['pending', new Set(['completed', 'blocked', 'failed', 'timed-out', 'deferred'])],
+  ['active', new Set(['completed', 'blocked', 'failed', 'timed-out', 'deferred'])],
+  ['completed', new Set(['blocked'])],
+  ['blocked', new Set(['completed', 'failed', 'timed-out', 'deferred'])],
   ['failed', new Set()],
+  ['timed-out', new Set()],
   ['deferred', new Set()],
 ]);
 const PUBLICATION_STATES = new Set(['intent-recorded', 'retryable-degraded', 'confirmed']);
+const PUBLICATION_ATTEMPT_STATES = new Set([
+  'published', 'found-existing', 'provider-tool-unobserved',
+  'provider-tool-missing', 'provider-tool-unauthenticated',
+  'provider-tool-unsupported', 'provider-unsupported', 'transient-failure',
+]);
 const DEPENDENCY_STATES = new Set(['unclassified', 'ready', 'blocked', 'active']);
 const HANDOFF_REASONS = new Set(['stalled', 'exhausted', 'timed-out', 'crashed']);
 const DISPOSITIONS_BY_STATUS = Object.freeze({
-  pending: new Set([null, 'blocked', 'not-reached']),
+  pending: new Set([null, 'not-reached']),
   active: new Set([null]),
-  completed: new Set(['ready-for-human-merge', 'blocked', 'already-complete']),
+  completed: new Set(['ready-for-human-merge', 'already-complete']),
+  blocked: new Set(['blocked']),
   failed: new Set(['failed']),
-  deferred: new Set(['deferred', 'timed-out-with-handoff']),
+  'timed-out': new Set(['timed-out-with-handoff']),
+  deferred: new Set(['deferred']),
 });
 const FORBIDDEN_AUTHORITIES = [
   'merge', 'approve', 'enable-auto-merge', 'accept-risk', 'force-push',
@@ -121,7 +133,8 @@ function assertAssignment(assignment, issue, manifest, { active }) {
     throw new Error(`${issue.identity} assignment packet is absent or not manifest-bound`);
   }
   if (!active) {
-    if (!HANDOFF_REASONS.has(assignment.endReason) && !['completed', 'failed', 'deferred'].includes(assignment.endReason)) {
+    if (!HANDOFF_REASONS.has(assignment.endReason)
+        && !['completed', 'blocked', 'failed', 'deferred'].includes(assignment.endReason)) {
       throw new Error(`${issue.identity} inactive assignment requires a valid end reason`);
     }
     if (!validTimestamp(assignment.endedAt)) throw new Error(`${issue.identity} inactive assignment endedAt is invalid`);
@@ -146,7 +159,11 @@ function assertPublication(entry, manifest, state) {
   }
   const issue = state.issues[entry.issue];
   if (!issue) throw new Error(`publication ${entry.key} names an unknown issue`);
-  if (!nonEmpty(entry.headBranch)) {
+  const manifestIssue = manifest.issues.find((candidate) => candidate.identity === entry.issue);
+  if (!manifestIssue
+      || entry.sourceRevision !== manifestIssue.sourceRevision
+      || !nonEmpty(entry.headBranch)
+      || (issue.branch !== null && entry.headBranch !== issue.branch)) {
     throw new Error(`publication ${entry.key} has incomplete identity`);
   }
   if (entry.key !== publicationKey(entry)) throw new Error(`publication ${entry.key} has forged stable key`);
@@ -170,12 +187,36 @@ function assertPublication(entry, manifest, state) {
     if (revisions.has(revisionKey)) throw new Error(`publication ${entry.key} duplicates a revision observation`);
     revisions.add(revisionKey);
     for (const attempt of observation.attempts) {
-      if (!nonEmpty(attempt?.invocationId)
+      exactKeys(attempt, [
+        'invocation', 'status', 'observedAt', 'terminal', 'complete',
+        'provider', 'repository', 'issue', 'baseBranch', 'headBranch',
+        'baseSha', 'headSha', 'identifier',
+      ], `publication ${entry.key} attempt`);
+      exactKeys(attempt.invocation, ['id', 'operation', 'providerKey'], `publication ${entry.key} invocation`);
+      if (!nonEmpty(attempt.invocation.id)
+          || attempt.invocation.operation !== 'publish-change-request'
+          || attempt.invocation.providerKey !== entry.key
           || !nonEmpty(attempt?.status)
           || !validTimestamp(attempt?.observedAt)
           || attempt.terminal !== true
-          || attempt.complete !== true) {
+          || attempt.complete !== true
+          || attempt.provider !== entry.provider
+          || attempt.repository !== entry.repository
+          || attempt.issue !== entry.issue
+          || attempt.baseBranch !== entry.baseBranch
+          || attempt.headBranch !== entry.headBranch
+          || attempt.baseSha !== observation.baseSha
+          || attempt.headSha !== observation.headSha
+          || !PUBLICATION_ATTEMPT_STATES.has(attempt.status)
+          || Date.parse(attempt.observedAt) < Date.parse(observation.intentAt)) {
         throw new Error(`publication ${entry.key} contains malformed attempt evidence`);
+      }
+      if (['published', 'found-existing'].includes(attempt.status)) {
+        if (!nonEmpty(attempt.identifier) || attempt.identifier !== entry.identifier) {
+          throw new Error(`publication ${entry.key} attempt has the wrong provider identifier`);
+        }
+      } else if (attempt.identifier !== null) {
+        throw new Error(`publication ${entry.key} degraded attempt claims an identifier`);
       }
     }
     if (observation.state === 'confirmed') {
@@ -186,6 +227,7 @@ function assertPublication(entry, manifest, state) {
       const confirmationAttempt = observation.attempts.at(-1);
       if (!confirmationAttempt
           || !['published', 'found-existing'].includes(confirmationAttempt.status)
+          || confirmationAttempt.identifier !== entry.identifier
           || confirmationAttempt.observedAt !== observation.confirmedAt) {
         throw new Error(`publication ${entry.key} lacks a complete provider confirmation attempt`);
       }
@@ -198,7 +240,7 @@ function assertPublication(entry, manifest, state) {
   }
 }
 
-function assertShepherd(issue, manifest) {
+function assertShepherd(issue, manifest, state) {
   if (issue.shepherd === null) return;
   const shepherd = issue.shepherd;
   if (!shepherd || typeof shepherd !== 'object') {
@@ -232,6 +274,10 @@ function assertShepherd(issue, manifest) {
       || obligation.generation < 1
       || !validTimestamp(obligation.createdAt)) {
     throw new Error(`${issue.identity} shepherd set obligation is incomplete or forged`);
+  }
+  const semantic = persistedShepherdPasses(issue, state, manifest);
+  if (!semantic.passed) {
+    throw new Error(`${issue.identity} persisted Shepherd state is invalid: ${semantic.defects.join('; ')}`);
   }
 }
 
@@ -388,6 +434,8 @@ function assertIssueRecord(record, issue, manifest, state) {
     const source = validateSourceRevisionReceipt(record.sourceObservation, manifest, issue.identity);
     if (record.sourceObservation.manifestDigest !== manifest.digest
         || !validTimestamp(record.sourceObservation.reobservedAt)
+        || record.sourceObservation.invocation.id === record.sourceReceipt.invocation.id
+        || Date.parse(record.sourceObservation.observedAt) <= Date.parse(record.sourceReceipt.observedAt)
         || !same(source, {
           invocation: record.sourceObservation.invocation,
           provider: record.sourceObservation.provider,
@@ -439,6 +487,10 @@ function assertIssueRecord(record, issue, manifest, state) {
     }
   }
   if (record.changeRequest !== null) {
+    exactKeys(record.changeRequest, [
+      'identifier', 'provider', 'repository', 'baseBranch', 'headBranch',
+      'baseSha', 'headSha', 'publicationKey',
+    ], `${issue.identity} change request`);
     const publication = state.publications.find((entry) =>
       entry.issue === issue.identity
       && entry.identifier === record.changeRequest.identifier
@@ -450,11 +502,13 @@ function assertIssueRecord(record, issue, manifest, state) {
         || record.changeRequest.provider !== manifest.provider.name
         || record.changeRequest.repository !== manifest.repository.id
         || record.changeRequest.baseBranch !== manifest.repository.baseBranch
+        || record.changeRequest.headBranch !== publication.headBranch
+        || record.changeRequest.baseSha !== record.baseSha
         || record.changeRequest.headSha !== record.headSha) {
       throw new Error(`${issue.identity} change request is not reconciled to confirmed publication`);
     }
   }
-  assertShepherd(record, manifest);
+  assertShepherd(record, manifest, state);
   if (record.shepherd && !same(record.setObligation, record.shepherd.setObligation)) {
     throw new Error(`${issue.identity} set obligation differs from accepted Shepherd state`);
   }
@@ -514,9 +568,13 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
       ? 'already-complete'
       : issue.status === 'failed'
         ? 'failed'
-        : issue.status === 'deferred'
-          ? 'deferred'
-          : null,
+        : issue.status === 'blocked'
+          ? 'blocked'
+          : issue.status === 'timed-out'
+            ? 'timed-out-with-handoff'
+            : issue.status === 'deferred'
+              ? 'deferred'
+              : null,
     nextAction: exhaustedFields.length && issue.status === 'pending'
       ? 'await-renewed-human-confirmation'
       : null,
@@ -618,6 +676,13 @@ export function assertFleetState(state, manifest) {
   if (new Set(publicationIdentifiers).size !== publicationIdentifiers.length) {
     throw new Error('fleet state contains duplicate provider publication identifiers');
   }
+  const publicationInvocationIds = state.publications
+    .flatMap((entry) => entry.observations)
+    .flatMap((observation) => observation.attempts)
+    .map((attempt) => attempt.invocation.id);
+  if (new Set(publicationInvocationIds).size !== publicationInvocationIds.length) {
+    throw new Error('fleet state contains duplicate publication invocation identities');
+  }
   for (const issue of manifest.issues) assertIssueRecord(state.issues[issue.identity], issue, manifest, state);
 
   const active = assignmentList(state).filter((assignment) => assignment.active);
@@ -654,7 +719,10 @@ export function assertFleetState(state, manifest) {
   if (manifest.issueSet.kind === 'tracker-query' && state.issueSetObservation !== null) {
     validateIssueSetReceipt(state.issueSetObservation, manifest);
     if (state.issueSetObservation.manifestDigest !== manifest.digest
-        || !validTimestamp(state.issueSetObservation.reobservedAt)) {
+        || !validTimestamp(state.issueSetObservation.reobservedAt)
+        || state.issueSetObservation.invocation.id === manifest.issueSet.receipt.invocation.id
+        || Date.parse(state.issueSetObservation.observedAt)
+          <= Date.parse(manifest.issueSet.receipt.observedAt)) {
       throw new Error('issue-set observation is not bound to the confirmed manifest');
     }
   } else if (manifest.issueSet.kind === 'explicit' && state.issueSetObservation !== null) {
@@ -673,10 +741,16 @@ export function assertFleetState(state, manifest) {
         || !nonEmpty(queued.triggeringPublicationKey)
         || !nonEmpty(queued.triggeringMergeCommit)
         || queued.revisionObservation?.status !== 'observed'
+        || queued.revisionObservation?.observed !== true
         || queued.revisionObservation?.terminal !== true
         || queued.revisionObservation?.complete !== true
         || queued.revisionObservation?.issue !== queued.issue
         || queued.revisionObservation?.changeRequest !== queued.changeRequest
+        || queued.revisionObservation?.publicationKey !== queued.publicationKey
+        || queued.revisionObservation?.provider !== publication.provider
+        || queued.revisionObservation?.repository !== publication.repository
+        || queued.revisionObservation?.baseBranch !== publication.baseBranch
+        || queued.revisionObservation?.headBranch !== publication.headBranch
         || queued.revisionObservation?.baseSha !== queued.baseSha
         || queued.revisionObservation?.headSha !== queued.headSha
         || !validTimestamp(queued.revisionObservation?.observedAt)) {
@@ -767,13 +841,8 @@ function fsyncDirectory(directory) {
   }
 }
 
-export function persistFleetState(file, state, expectedRevision, manifest, options = {}) {
-  if (!manifest) throw new Error('manifest is required for every fleet state write');
+function prepareFleetStatePath(file) {
   if (!path.isAbsolute(file)) throw new Error('fleet state path must be absolute');
-  if (state.revision !== expectedRevision) {
-    throw new Error(`state revision conflict: expected ${expectedRevision}, received ${state.revision}`);
-  }
-  assertFleetState(state, manifest);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const parent = fs.lstatSync(path.dirname(file));
   if (!parent.isDirectory() || parent.isSymbolicLink()) {
@@ -782,33 +851,47 @@ export function persistFleetState(file, state, expectedRevision, manifest, optio
   if (fs.existsSync(file) && fs.lstatSync(file).isSymbolicLink()) {
     throw new Error('fleet state path must not be a symbolic link');
   }
+}
+
+function readLockedState(file, expectedRevision, manifest) {
+  if (!fs.existsSync(file)) {
+    if (expectedRevision !== 0) {
+      throw new Error(`state revision conflict: state file absent at revision ${expectedRevision}`);
+    }
+    return null;
+  }
+  const disk = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assertFleetState(disk, manifest);
+  if (disk.revision !== expectedRevision) {
+    throw new Error(`state revision conflict: disk is ${disk.revision}, expected ${expectedRevision}`);
+  }
+  return disk;
+}
+
+function writeLockedState(file, state, expectedRevision, manifest, options, pending) {
+  const next = structuredClone(state);
+  next.revision = expectedRevision + 1;
+  next.updatedAt = options.now ?? new Date().toISOString();
+  assertFleetState(next, manifest);
+  const pendingHandle = fs.openSync(pending, 'wx', 0o600);
+  try {
+    fs.writeFileSync(pendingHandle, `${JSON.stringify(next, null, 2)}\n`);
+    fs.fsyncSync(pendingHandle);
+  } finally {
+    fs.closeSync(pendingHandle);
+  }
+  fs.renameSync(pending, file);
+  fsyncDirectory(path.dirname(file));
+  return loadFleetState(file, manifest);
+}
+
+function withFleetStateLock(file, expectedRevision, options, operation) {
+  prepareFleetStatePath(file);
   const lockFile = `${file}.lock`;
   const lockHandle = acquireLock(lockFile, expectedRevision, options);
   const pending = `${file}.next-${process.pid}-${expectedRevision}`;
   try {
-    if (fs.existsSync(file)) {
-      const disk = JSON.parse(fs.readFileSync(file, 'utf8'));
-      assertFleetState(disk, manifest);
-      if (disk.revision !== expectedRevision) {
-        throw new Error(`state revision conflict: disk is ${disk.revision}, expected ${expectedRevision}`);
-      }
-    } else if (expectedRevision !== 0) {
-      throw new Error(`state revision conflict: state file absent at revision ${expectedRevision}`);
-    }
-    const next = structuredClone(state);
-    next.revision = expectedRevision + 1;
-    next.updatedAt = options.now ?? new Date().toISOString();
-    assertFleetState(next, manifest);
-    const pendingHandle = fs.openSync(pending, 'wx', 0o600);
-    try {
-      fs.writeFileSync(pendingHandle, `${JSON.stringify(next, null, 2)}\n`);
-      fs.fsyncSync(pendingHandle);
-    } finally {
-      fs.closeSync(pendingHandle);
-    }
-    fs.renameSync(pending, file);
-    fsyncDirectory(path.dirname(file));
-    return loadFleetState(file, manifest);
+    return operation(pending);
   } finally {
     try {
       if (fs.existsSync(pending)) fs.unlinkSync(pending);
@@ -817,6 +900,36 @@ export function persistFleetState(file, state, expectedRevision, manifest, optio
       if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile);
     }
   }
+}
+
+export function persistFleetState(file, state, expectedRevision, manifest, options = {}) {
+  if (!manifest) throw new Error('manifest is required for every fleet state write');
+  if (state.revision !== expectedRevision) {
+    throw new Error(`state revision conflict: expected ${expectedRevision}, received ${state.revision}`);
+  }
+  assertFleetState(state, manifest);
+  return withFleetStateLock(file, expectedRevision, options, (pending) => {
+    readLockedState(file, expectedRevision, manifest);
+    return writeLockedState(file, state, expectedRevision, manifest, options, pending);
+  });
+}
+
+export function mutateFleetState(file, manifest, expectedRevision, mutate, options = {}) {
+  if (!manifest) throw new Error('manifest is required for every fleet state mutation');
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 0) {
+    throw new Error('expected fleet state revision is invalid');
+  }
+  if (typeof mutate !== 'function') throw new Error('fleet state mutator is required');
+  return withFleetStateLock(file, expectedRevision, options, (pending) => {
+    const disk = readLockedState(file, expectedRevision, manifest);
+    if (!disk) throw new Error('fleet state mutation requires an existing state file');
+    const next = mutate(structuredClone(disk));
+    if (!next || next.revision !== expectedRevision) {
+      throw new Error('fleet state mutator changed or omitted the expected revision');
+    }
+    assertFleetState(next, manifest);
+    return writeLockedState(file, next, expectedRevision, manifest, options, pending);
+  });
 }
 
 export function recordSourceRevisionObservation(state, manifest, issue, receipt, now = new Date().toISOString()) {
@@ -831,8 +944,9 @@ export function recordSourceRevisionObservation(state, manifest, issue, receipt,
   if (record.status !== 'pending' || record.assignment !== null) {
     throw new Error('source revision must be reobserved before first dispatch');
   }
-  if (Date.parse(normalized.observedAt) < Date.parse(record.sourceReceipt.observedAt)) {
-    throw new Error('source revision reobservation predates the confirmed manifest receipt');
+  if (Date.parse(normalized.observedAt) <= Date.parse(record.sourceReceipt.observedAt)
+      || normalized.invocation.id === record.sourceReceipt.invocation.id) {
+    throw new Error('source revision reobservation must be a fresh provider invocation after confirmation');
   }
   const next = structuredClone(state);
   next.issues[issue].sourceObservation = {
@@ -859,8 +973,9 @@ export function recordIssueSetObservation(
   }
   const normalized = validateIssueSetReceipt(receipt, manifest);
   if (!validTimestamp(now)) throw new Error('issue-set reobservation time is invalid');
-  if (Date.parse(normalized.observedAt) < Date.parse(manifest.issueSet.receipt.observedAt)) {
-    throw new Error('issue-set reobservation predates the confirmed query receipt');
+  if (Date.parse(normalized.observedAt) <= Date.parse(manifest.issueSet.receipt.observedAt)
+      || normalized.invocation.id === manifest.issueSet.receipt.invocation.id) {
+    throw new Error('issue-set reobservation must be a fresh provider invocation after confirmation');
   }
   const next = structuredClone(state);
   next.issueSetObservation = {
@@ -909,7 +1024,7 @@ export function transitionIssue(state, issue, status, detail = {}) {
     if (!end
         || end.generation !== record.assignment.generation
         || end.workerContext !== record.assignment.workerContext
-        || !['completed', 'failed', 'deferred'].includes(end.reason)) {
+        || !['completed', 'blocked', 'failed', 'timed-out', 'deferred'].includes(end.reason)) {
       throw new Error('active terminal transition requires exact assignment end identity');
     }
     next.issues[issue].continuationChain.push({
@@ -941,6 +1056,11 @@ export function startCheckActivity(state, issue, kind, startedAt = new Date().to
     throw new Error('check activity kind is invalid');
   }
   if (!validTimestamp(startedAt)) throw new Error('check activity time is invalid');
+  if (record.checkActivity !== null) throw new Error('issue already has an active check obligation');
+  if (['failed', 'timed-out', 'deferred'].includes(record.status)
+      || record.nextAction?.startsWith('await-')) {
+    throw new Error('terminal or awaiting-human issue cannot start a check obligation');
+  }
   const next = structuredClone(state);
   next.issues[issue].checkActivity = { kind, state: 'active', startedAt };
   next.events.push({ type: 'check-activity-started', issue, kind });

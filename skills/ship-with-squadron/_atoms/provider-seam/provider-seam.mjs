@@ -212,7 +212,14 @@ function currentPublicationObservation(entry, state) {
 function validatePublicationResult(entry, observation, result) {
   const defects = [];
   const invocation = result?.invocation;
-  if (!invocation || typeof invocation !== 'object') {
+  if (!exactKeys(result, [
+    'invocation', 'terminal', 'complete', 'status', 'observedAt',
+    'provider', 'repository', 'issue', 'baseBranch', 'headBranch',
+    'baseSha', 'headSha', 'identifier',
+  ])) {
+    defects.push('publication result schema is not exact');
+  }
+  if (!exactKeys(invocation, ['id', 'operation', 'providerKey'])) {
     defects.push('publication invocation identity is absent');
   } else {
     if (!nonEmpty(invocation.id)) defects.push('publication invocation id is absent');
@@ -227,6 +234,9 @@ function validatePublicationResult(entry, observation, result) {
     defects.push('publication result status is invalid');
   }
   if (!validTimestamp(result?.observedAt)) defects.push('publication observation time is invalid');
+  if (DEGRADED_PUBLICATION_STATUSES.has(result?.status) && result?.identifier !== null) {
+    defects.push('degraded publication result must not claim an identifier');
+  }
   if (result?.provider !== entry.provider
       || result?.repository !== entry.repository
       || result?.issue !== entry.issue
@@ -258,12 +268,28 @@ export function reconcilePublication(state, manifest, key, result) {
   const next = structuredClone(state);
   const target = next.publications[index];
   const targetObservation = currentPublicationObservation(target, next);
+  if (target.observations.some((candidate) =>
+    candidate.attempts.some((attempt) => attempt.invocation.id === result.invocation.id))) {
+    throw new Error('publication invocation identity was already consumed');
+  }
   const attempt = {
-    invocationId: result.invocation.id,
+    invocation: {
+      id: result.invocation.id,
+      operation: result.invocation.operation,
+      providerKey: result.invocation.providerKey,
+    },
     status: result.status,
     observedAt: result.observedAt,
     terminal: result.terminal,
     complete: result.complete,
+    provider: result.provider,
+    repository: result.repository,
+    issue: result.issue,
+    baseBranch: result.baseBranch,
+    headBranch: result.headBranch,
+    baseSha: result.baseSha,
+    headSha: result.headSha,
+    identifier: result.identifier,
   };
   if (result.status === 'published' || result.status === 'found-existing') {
     if (!nonEmpty(result.identifier)) throw new Error('confirmed publication requires provider identifier');
@@ -301,13 +327,25 @@ export function recordPublication(state, manifest, key, result) {
   return reconcilePublication(state, manifest, key, result);
 }
 
-export function publicationRecoveryAction(state, key) {
+export function publicationRecoveryAction(state, manifest, key) {
+  if (!manifest
+      || state.manifestDigest !== manifest.digest
+      || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
+    return { action: 'stop-recovery-manifest-mismatch' };
+  }
   const entry = state.publications.find((candidate) => candidate.key === key);
   if (!entry) return { action: 'record-intent-first' };
   const observation = currentPublicationObservation(entry, state);
   if (!observation) return { action: 'record-current-revision-intent', providerKey: entry.key };
   if (observation.state === 'confirmed') {
     return { action: 'use-confirmed-current-publication', identifier: entry.identifier };
+  }
+  if (observation.attempts.length >= manifest.budget.retries) {
+    return {
+      action: 'stop-recovery-retry-budget-exhausted',
+      providerKey: entry.key,
+      previousAttempts: observation.attempts.length,
+    };
   }
   return {
     action: 'reconcile-by-stable-provider-key-before-retry',
@@ -360,7 +398,7 @@ export function normalizeMergeObservation(state, manifest, observation) {
       || observation.headSha !== revision.headSha
       || !nonEmpty(observation.mergeCommit)
       || !validTimestamp(observation.observedAt)
-      || Date.parse(observation.observedAt) < Date.parse(revision.confirmedAt)) {
+      || Date.parse(observation.observedAt) <= Date.parse(revision.confirmedAt)) {
     throw new Error('merge-observation-identity-or-time-mismatch');
   }
   return {

@@ -120,6 +120,7 @@ function state() {
   const shepherdA = accepted('a');
   const shepherdB = accepted('b');
   return {
+    runId: 'run',
     manifestDigest: manifest().digest,
     providerConfigurationDigest: manifest().providerConfigurationDigest,
     revision: 5,
@@ -236,6 +237,7 @@ function revision(issue, baseSha, observedAt) {
       operation: 'observe-change-request-revision',
       providerKey: `pub-${issue}`,
     },
+    observed: true,
     status: 'observed',
     terminal: true,
     complete: true,
@@ -243,8 +245,10 @@ function revision(issue, baseSha, observedAt) {
     repository: 'owner/repo',
     issue,
     changeRequest: `PR-${issue.toUpperCase()}`,
+    publicationKey: `pub-${issue}`,
     baseBranch: 'main',
     baseSha,
+    headBranch: `issue-${issue}`,
     headSha: `head-${issue}`,
     observedAt,
   };
@@ -334,6 +338,14 @@ test('accepts only exact provider/CR/revision/owner-bound real nested Shepherd r
 });
 
 test('expires readiness immediately and queues generation/revision-specific re-Shepherd work', () => {
+  const incompleteRevision = revision('b', 'base-2', '2026-08-30T00:02:01Z');
+  delete incompleteRevision.publicationKey;
+  assert.throws(() => expireReadinessAfterSiblingMerge(
+    state(),
+    manifest(),
+    mergeA,
+    { b: incompleteRevision },
+  ), /current revision observation is incomplete/);
   assert.throws(() => expireReadinessAfterSiblingMerge(
     state(),
     manifest(),

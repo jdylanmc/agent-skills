@@ -32,7 +32,9 @@ by manifest, configuration, issue, source, and branches, plus a separate
 base/head observation for every revision. Reconcile that key before any retry.
 An existing change request is reobserved after revision mutation and must return
 the same provider identifier; stale confirmation is never current and crash
-recovery never creates a duplicate.
+recovery never creates a duplicate. Every persisted provider attempt retains
+the complete normalized invocation and publication identity, and recovery stops
+at the manifest retry ceiling.
 `published` or `found-existing` requires the provider-returned identifier; a
 pushed branch or predicted identifier is not publication.
 

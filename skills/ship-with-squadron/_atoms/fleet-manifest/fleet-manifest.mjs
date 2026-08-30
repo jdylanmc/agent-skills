@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 
-const ISSUE_STATUSES = new Set(['pending', 'completed', 'failed', 'deferred']);
+const ISSUE_STATUSES = new Set([
+  'pending', 'completed', 'blocked', 'failed', 'timed-out', 'deferred',
+]);
 const SATISFACTION = new Set(['human-merge', 'completed']);
 const SAFE_PROVIDER_OPERATIONS = new Set([
   'read-issue',

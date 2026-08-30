@@ -25,6 +25,9 @@ const CI_STATUSES = new Set([
   'cancelled', 'incomplete', 'unsupported-provider',
 ]);
 const ROAST_PRIORITIES = new Set(['Must fix', 'Should fix', 'Consider']);
+const SHEPHERD_READY_DISPOSITIONS = new Set([
+  'mergeable-and-green', 'no-op-mergeable-and-green',
+]);
 
 function nonEmpty(value) {
   return typeof value === 'string' && value.trim() !== '';
@@ -32,6 +35,73 @@ function nonEmpty(value) {
 
 function validTimestamp(value) {
   return nonEmpty(value) && Number.isFinite(Date.parse(value));
+}
+
+function normalizedProvider(value) {
+  return nonEmpty(value) ? value.trim().toLowerCase() : null;
+}
+
+export function persistedShepherdPasses(issueRecord, state, manifest) {
+  const defects = [];
+  const shepherd = issueRecord?.shepherd;
+  const receipt = shepherd?.receipt;
+  const invocation = shepherd?.invocation;
+  const observation = shepherd?.observation;
+  const obligation = shepherd?.setObligation;
+  if (!shepherd || shepherd.accepted !== true || shepherd.ready !== true
+      || shepherd.freshness !== 'fresh' || !SHEPHERD_READY_DISPOSITIONS.has(shepherd.disposition)
+      || shepherd.terminal !== true || shepherd.complete !== true
+      || !Array.isArray(shepherd.defects) || shepherd.defects.length !== 0) {
+    defects.push('Shepherd accepted readiness state is incomplete');
+  }
+  if (!invocation || invocation.skill !== 'shepherd' || !nonEmpty(invocation.id)
+      || invocation.id !== shepherd?.invocationId
+      || invocation.runId !== state?.runId
+      || invocation.issue !== issueRecord?.identity
+      || invocation.changeRequest !== issueRecord?.changeRequest?.identifier
+      || invocation.mode !== 'nested-worker'
+      || invocation.freshContext !== true
+      || invocation.status !== 'returned') {
+    defects.push('Shepherd persisted invocation identity is invalid');
+  }
+  if (!receipt
+      || normalizedProvider(receipt.provider) !== normalizedProvider(manifest?.provider?.name)
+      || receipt.repository !== manifest?.repository?.id
+      || receipt.changeRequest !== issueRecord?.changeRequest?.identifier
+      || receipt.baseBranch !== manifest?.repository?.baseBranch
+      || !nonEmpty(receipt.baseSha)
+      || receipt.headSha !== issueRecord?.headSha
+      || !validTimestamp(receipt.observedAt)
+      || receipt.complete !== true
+      || !['required', 'not-required'].includes(receipt.upToDatePolicy)) {
+    defects.push('Shepherd persisted freshness receipt is invalid');
+  }
+  if (!observation
+      || normalizedProvider(observation.provider) !== normalizedProvider(manifest?.provider?.name)
+      || observation.repository !== manifest?.repository?.id
+      || observation.changeRequest !== issueRecord?.changeRequest?.identifier
+      || observation.baseBranch !== manifest?.repository?.baseBranch
+      || observation.baseSha !== receipt?.baseSha
+      || observation.headSha !== receipt?.headSha
+      || !validTimestamp(observation.observedAt)
+      || Date.parse(observation.observedAt) <= Date.parse(receipt?.observedAt ?? '')
+      || (receipt?.upToDatePolicy === 'required' && observation.containsCurrentBase !== true)) {
+    defects.push('Shepherd persisted post-return observation is invalid');
+  }
+  if (!obligation
+      || obligation.owner !== issueRecord?.identity
+      || obligation.changeRequest !== issueRecord?.changeRequest?.identifier
+      || obligation.baseBranch !== manifest?.repository?.baseBranch
+      || obligation.baseSha !== receipt?.baseSha
+      || obligation.headSha !== receipt?.headSha
+      || obligation.expiresWhen !== 'sibling-merge-into-base'
+      || obligation.reinvocation !== 'invoke-fresh-shepherd'
+      || !Number.isInteger(obligation.generation)
+      || obligation.generation < 1
+      || !validTimestamp(obligation.createdAt)) {
+    defects.push('Shepherd persisted set obligation is invalid');
+  }
+  return { passed: defects.length === 0, defects };
 }
 
 function revisionMatches(evidence, revision) {
@@ -470,9 +540,8 @@ function evaluatePersistedStage(stage, entry, issueRecord, state, manifest, defe
       defects.push('publication:not-confirmed-for-current-revision');
     }
   } else if (stage === 'shepherd') {
-    if (issueRecord.shepherd?.accepted !== true || issueRecord.shepherd?.ready !== true) {
-      defects.push('shepherd:not-ready');
-    }
+    const semantic = persistedShepherdPasses(issueRecord, state, manifest);
+    if (!semantic.passed) defects.push(`shepherd:${semantic.defects.join('|')}`);
   } else if (!simpleStagePasses(stage, entry.evidence)) {
     defects.push(`${stage}:incomplete-or-failed`);
   }

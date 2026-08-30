@@ -1,7 +1,7 @@
 import { validateIssueSetReceipt } from '../fleet-manifest/fleet-manifest.mjs';
 import { normalizeMergeObservation } from '../provider-seam/provider-seam.mjs';
 
-const TERMINAL = new Set(['completed', 'failed', 'deferred']);
+const TERMINAL = new Set(['completed', 'blocked', 'failed', 'timed-out', 'deferred']);
 
 function dependencySatisfied(edge, record, observedMerges) {
   if (edge.satisfiedBy === 'completed') {
@@ -19,7 +19,10 @@ function queryMembershipIsCurrent(manifest, fleetState) {
   try {
     const normalized = validateIssueSetReceipt(fleetState.issueSetObservation, manifest);
     return fleetState.issueSetObservation?.manifestDigest === manifest.digest
-      && normalized.membershipDigest === manifest.issueSet.membershipDigest;
+      && normalized.membershipDigest === manifest.issueSet.membershipDigest
+      && normalized.invocation.id !== manifest.issueSet.receipt.invocation.id
+      && Date.parse(normalized.observedAt) > Date.parse(manifest.issueSet.receipt.observedAt)
+      && Number.isFinite(Date.parse(fleetState.issueSetObservation.reobservedAt));
   } catch {
     return false;
   }
@@ -34,7 +37,10 @@ function sourceIsCurrent(issue, record, manifest) {
     && receipt?.repository === manifest.repository.id
     && receipt?.issue === issue.identity
     && receipt?.revision === issue.sourceRevision
-    && receipt?.manifestDigest === manifest.digest;
+    && receipt?.manifestDigest === manifest.digest
+    && receipt?.invocation?.id !== record.sourceReceipt?.invocation?.id
+    && Date.parse(receipt?.observedAt) > Date.parse(record.sourceReceipt?.observedAt)
+    && Number.isFinite(Date.parse(receipt?.reobservedAt));
 }
 
 export function dispatchBlockReason(fleetState) {
@@ -91,6 +97,18 @@ export function computeFrontier(manifest, fleetState) {
     }
     if (record.status === 'failed') {
       failed.push({ issue: issue.identity, reason: record.statusReason ?? 'issue-failed' });
+      continue;
+    }
+    if (record.status === 'blocked') {
+      blocked.push({
+        issue: issue.identity,
+        reason: record.statusReason ?? 'issue-blocked',
+        blockers: [],
+      });
+      continue;
+    }
+    if (record.status === 'timed-out') {
+      deferred.push({ issue: issue.identity, reason: record.statusReason ?? 'issue-timed-out' });
       continue;
     }
     if (record.status === 'deferred') {
