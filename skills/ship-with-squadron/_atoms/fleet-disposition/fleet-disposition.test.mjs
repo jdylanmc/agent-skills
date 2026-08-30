@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
 import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import { deliveryStagesForManifest } from '../quality-evidence/quality-evidence.mjs';
@@ -29,7 +30,7 @@ const manifest = normalizeFleetManifest({
   dependencies: [],
   concurrency: 2,
   budget: { cost: 10, timeMinutes: 60, retries: 2 },
-  repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
+  repository: { id: 'owner/repo', root: path.resolve('test-fixtures', 'fleet-disposition-repository'), baseBranch: 'main' },
   provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
   validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
   stopConditions: ['cancelled'],
@@ -69,15 +70,15 @@ function readyIssue(identity) {
     completedAt: '2026-08-30T00:05:00Z',
   };
   const blast = {
-    ...common,
-    evidenceComplete: true,
-    invocation: { skill: 'blast-radius', id: `blast-${identity}`, issue: identity },
-    contractRepository: 'jdylanmc/agent-skills',
-    contractPullRequest: 157,
-    contractBranch: 'origin/issue-70-blast-radius-proof',
-    contractBaseRevision: '02ae9f84c782b9e57dfec20cda344fb494e57049',
-    contractRevision: '4a946e4500479e028112b77bdf268c5b7a8aae1f',
-    status: 'completed',
+    subjectChange: 'current candidate diff',
+    suppliedBaseline: 'confirmed fleet base',
+    includedScope: ['current issue'],
+    exclusions: [],
+    repositories: ['owner/repo'],
+    revisions: { baseSha, headSha },
+    environments: ['isolated test runner'],
+    directCallers: ['adapter consumer'],
+    crossBoundaryConsumers: ['provider publication boundary'],
     assertionLadders: [{
       id: 'A1', assertion: 'safe', affectedBoundary: 'adapter', badCase: 'breakage',
       safetyCriticalReason: 'unsafe delivery',
@@ -105,12 +106,9 @@ function readyIssue(identity) {
       prerequisites: [], authorization: 'read-only', cheaperProofInsufficientReason: 'boundary',
       outsideCoverage: 'provider',
     },
-    'next-evidence-action': null,
-    'next-evidence-reason': null,
   };
   const receipt = {
-    provider: 'github', repository: 'owner/repo',
-    changeRequest: changeRequest.identifier, baseBranch: 'main',
+    provider: 'supported-provider',
     baseSha, headSha, observedAt: '2026-08-30T00:09:00Z',
     upToDatePolicy: 'required', complete: true,
   };

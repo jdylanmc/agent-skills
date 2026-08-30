@@ -6,6 +6,7 @@ import { normalizeOrchestrationPayload } from '../../../_base/_molecules/persist
 import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
 import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
+  canonicalFilesystemIdentity,
   mutateFleetState,
   reconcileFrontier,
 } from '../fleet-state/fleet-state.mjs';
@@ -172,10 +173,14 @@ function validateSourceObservation(record, state, manifest, issue) {
 }
 
 function ensureFreshOwnership(state, input) {
+  const requested = canonicalFilesystemIdentity(input.worktree);
   for (const assignment of allAssignments(state)) {
     if (assignment.workerContext === input.workerContext) throw new Error('worker context must be fresh');
     if (assignment.active && assignment.branch === input.branch) throw new Error(`branch already owned: ${input.branch}`);
-    if (assignment.active && assignment.worktree === input.worktree) throw new Error(`worktree already owned: ${input.worktree}`);
+    if (assignment.active
+        && canonicalFilesystemIdentity(assignment.worktree).key === requested.key) {
+      throw new Error(`worktree already owned: ${input.worktree}`);
+    }
   }
 }
 
@@ -206,6 +211,10 @@ export function assignFreshWorker(state, manifest, input) {
       || !nonEmpty(input.baseSha) || !nonEmpty(input.headSha)) {
     throw new Error('assignment requires branch, worktree, workerContext, baseSha, and headSha');
   }
+  const worktreeIdentity = canonicalFilesystemIdentity(input.worktree);
+  if (worktreeIdentity.path !== input.worktree) {
+    throw new Error('assignment worktree must be a normalized canonical filesystem path');
+  }
   ensureFreshOwnership(state, input);
   const packet = validateBoundedPacket(input.packet, state, manifest, issue, input);
   if (!packet.valid) throw new Error(`invalid implementation packet: ${packet.defects.join('; ')}`);
@@ -229,6 +238,7 @@ export function assignFreshWorker(state, manifest, input) {
   next.issues[input.issue].worktree = input.worktree;
   next.issues[input.issue].status = 'active';
   next.issues[input.issue].dependencyState = 'active';
+  next.issues[input.issue].handoffObligation = null;
   next.events.push({ type: 'assignment', issue: input.issue, generation });
   return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }
@@ -587,11 +597,15 @@ export function continueWithFreshWorker(state, manifest, input) {
   if (!nonEmpty(input.workerContext)) {
     throw new Error('continuation requires a fresh worker context');
   }
-  ensureFreshOwnership(state, {
-    workerContext: input.workerContext,
-    branch: `${input.branch}\0continuation`,
-    worktree: `${input.worktree}\0continuation`,
-  });
+  if (allAssignments(state).some((assignment) => assignment.workerContext === input.workerContext)) {
+    throw new Error('worker context must be fresh');
+  }
+  const continuationIdentity = canonicalFilesystemIdentity(input.worktree);
+  const ownedIdentity = canonicalFilesystemIdentity(record.assignment.worktree);
+  if (continuationIdentity.key !== ownedIdentity.key
+      || continuationIdentity.path !== record.assignment.worktree) {
+    throw new Error('continuation worktree identity differs from the owned worktree');
+  }
   const expected = {
     runId: state.runId,
     issue: input.issue,
@@ -662,6 +676,7 @@ export function continueWithFreshWorker(state, manifest, input) {
   };
   next.issues[input.issue].status = 'active';
   next.issues[input.issue].dependencyState = 'active';
+  next.issues[input.issue].handoffObligation = null;
   next.events.push({
     type: 'assignment-continuation',
     issue: input.issue,
@@ -670,6 +685,89 @@ export function continueWithFreshWorker(state, manifest, input) {
     reason: input.reason,
   });
   return next;
+}
+
+export function releaseAfterValidatedHandoff(state, manifest, input) {
+  if (!manifest) throw new Error('confirmed manifest is required for handoff release');
+  assertManifestAuthority(state, manifest);
+  const record = state.issues?.[input.issue];
+  const issue = manifestIssue(manifest, input.issue);
+  if (!record?.assignment?.active || record.status !== 'active') {
+    throw new Error('handoff release requires an active prior assignment');
+  }
+  if (!['stalled', 'exhausted', 'timed-out', 'crashed'].includes(input.reason)) {
+    throw new Error('handoff release reason is not a terminal worker condition');
+  }
+  if (!nonEmpty(input.targetAgent)) {
+    throw new Error('handoff release requires an explicit target agent identity');
+  }
+  const expected = {
+    runId: state.runId,
+    issue: input.issue,
+    priorGeneration: record.assignment.generation,
+    branch: record.assignment.branch,
+    worktree: record.assignment.worktree,
+    sourceAgent: record.assignment.workerContext,
+    targetAgent: input.targetAgent,
+    baseSha: record.assignment.baseSha,
+    headSha: record.assignment.headSha,
+    manifestDigest: manifest.digest,
+    stateRevision: state.revision,
+    acceptanceCriteria: issue.acceptanceCriteria.map((criterion) => criterion.description),
+    sourceRevision: issue.sourceRevision,
+    allowedPaths: JSON.stringify(issue.allowedPaths),
+    taskContract: record.assignment.packet.taskContract,
+  };
+  const handoff = validateContinuationHandoff(input.handoff, input.handoffPayload, expected);
+  if (!handoff.valid) throw new Error(`invalid orchestration handoff: ${handoff.defects.join('; ')}`);
+  const artifact = validateContinuationArtifact(
+    input.handoff,
+    input.handoffPayload,
+    expected,
+  );
+  if (!artifact.valid) {
+    throw new Error(`invalid orchestration handoff artifact: ${artifact.defects.join('; ')}`);
+  }
+
+  const endedAt = input.endedAt ?? new Date().toISOString();
+  if (!Number.isFinite(Date.parse(endedAt))) throw new Error('handoff release time is invalid');
+  const archived = {
+    ...record.assignment,
+    active: false,
+    endReason: input.reason,
+    endedAt,
+    handoff: {
+      path: input.handoff.path,
+      directory: input.handoff.directory,
+      identity: {
+        runId: expected.runId,
+        issue: expected.issue,
+        priorGeneration: expected.priorGeneration,
+        sourceAgent: expected.sourceAgent,
+        targetAgent: expected.targetAgent,
+      },
+      bindingRecord: structuredClone(artifact.bindingRecord),
+      artifactSha256: artifact.digest,
+      bindingsSha256: artifact.bindingsDigest,
+    },
+  };
+  const next = structuredClone(state);
+  next.issues[input.issue].continuationChain.push(archived);
+  next.issues[input.issue].assignment = null;
+  next.issues[input.issue].handoffObligation = null;
+  next.issues[input.issue].status = input.reason === 'timed-out' ? 'timed-out' : 'blocked';
+  next.issues[input.issue].statusReason = input.reason;
+  next.issues[input.issue].terminalDisposition = input.reason === 'timed-out'
+    ? 'timed-out-with-handoff'
+    : 'blocked';
+  next.issues[input.issue].nextAction = input.nextAction ?? 'await-human-direction';
+  next.events.push({
+    type: 'assignment-released-after-handoff',
+    issue: input.issue,
+    generation: record.assignment.generation,
+    reason: input.reason,
+  });
+  return reconcileFrontier(next, manifest, computeFrontier(manifest, next));
 }
 
 export { FORBIDDEN_AUTHORITIES };

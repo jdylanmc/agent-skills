@@ -18,7 +18,7 @@ Persist control state at
 `<repository>/.ship-with-squadron/<run-id>/fleet-state.json`. This path is
 ignored, run-specific, and separate from the best-effort Chronicler log.
 
-Use the fleet state helper to create schema version 3, bind it to
+Use the fleet state helper to create schema version 4, bind it to
 the confirmed manifest and provider-configuration digests, reread it, reconcile
 the frontier, and write with an exact expected revision. Every write validates
 the complete state schema and cross-field invariants before taking an exclusive
@@ -28,10 +28,13 @@ checked component-by-component and rejects symbolic links or reparse
 containment changes. Before any path creation or open, the exact normalized
 path must equal the path derived from the manifest repository root and state
 run ID. State reads use `O_NOFOLLOW` where available and verified
-path/descriptor identity otherwise. Lock acquisition uses an atomic,
-token-owned lock directory. Stale cleanup and release claim inside that exact
-directory and remove only the verified token/inode owner, so a contender's
-replacement lock is never moved or deleted. Writes fsync a sibling pending file,
+path/descriptor identity otherwise. Lock acquisition prepares ownership
+metadata in a private claim directory and atomically renames the complete claim
+into canonical lock presence, so a live writer never exposes an ownerless
+initialization window. Stale ownerless or malformed locks are quarantined only
+after directory identity is claimed and rechecked. Cleanup and release rename
+only the verified directory identity out of the canonical path before removal,
+so a contender's replacement lock is never moved or deleted. Writes fsync a sibling pending file,
 atomically rename it, and fsync the parent directory. Crash-stale locks are
 recovered only when their recorded process is gone.
 
@@ -44,7 +47,9 @@ state retains frontier, blockers, capacity, completions, merges, expiry,
 re-Shepherd queue, budget use, and unresolved human decisions.
 It also persists exact query-membership reobservations, revision-specific
 publication observations, full normalized merge records, and explicit check
-activity.
+activity, including merge-watermark blocking state, plus a persistent
+`handoff-required` obligation while an affected worker still owns its branch
+and worktree.
 
 State issue keys exactly equal the closed manifest set. Assignment packets,
 publication records, readiness receipts, criteria decisions, and merge
@@ -65,8 +70,10 @@ confirmed ceiling. Completed, failed, deferred, blocked, timed-out, and
 per-issue dispositions follow an explicit compatibility matrix; blocked,
 failed, timed-out, or deferred work never satisfies a `completed` dependency.
 `timed-out-with-handoff` additionally requires an archived assignment carrying
-the exact validated handoff identity, artifact digest, and binding record;
-otherwise timeout uses a non-handoff disposition.
+the exact validated handoff identity, artifact digest, and binding record.
+Timeout, crash, stall, or exhaustion without that evidence retains active
+ownership and a blocked handoff obligation instead of using any terminal
+disposition.
 
 Chronicler records operations. This record owns control decisions. Neither is a
 substitute for the other.

@@ -152,11 +152,12 @@ For a repository installation, copy doctrine to `.github/doctrine/` beside
 `.github/skills/`. For a personal installation, copy it to
 `~/.agents/doctrine/` beside `~/.agents/skills/`.
 
-`ship-with-squadron` requires local `run-ci`, `roast`, and
-`orchestration-handoff`, with optional local `shepherd`. Its blast-radius seam
-remains an external required capability until the review-stable blast-radius
-package is merged into this repository. Install the local dependencies together
-with the shared `_base/` directory required by their composition graphs.
+`ship-with-squadron` requires local `run-ci`, `roast`, `blast-radius`, and
+`orchestration-handoff`, with optional local `shepherd`. It consumes the
+checked-in blast-radius report and canonical Shepherd landability receipt
+unchanged, while binding fleet-specific identity in its own persisted state.
+Install the local dependencies together with the shared `_base/` directory
+required by their composition graphs.
 
 ## Sensitive-content safeguard
 

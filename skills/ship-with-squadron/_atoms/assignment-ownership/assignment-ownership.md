@@ -33,7 +33,11 @@ writing. Stale-frontier and capacity races fail.
 
 Use the assignment ownership helper to reject concurrent
 ownership of the same issue, branch, or worktree and reuse of any worker
-context. Record monotonically increasing assignment generations.
+context. Worktree identity is a normalized absolute canonical filesystem
+identity: existing paths use real path and device/inode identity, aliases and
+symbolic links are refused, case is normalized on case-insensitive filesystems,
+and a not-yet-created path is accepted only beneath a safely canonicalized
+existing ancestry. Record monotonically increasing assignment generations.
 
 For stalled, exhausted, timed-out, or crashed workers:
 
@@ -64,3 +68,9 @@ forward; hidden reasoning and prior context do not.
 
 Cancellation or budget exhaustion keeps the active handoff obligation but
 forbids dispatching a continuation.
+Timeout, crash, stall, and exhaustion never release ownership without that
+validated handoff. Until one exists, persist `handoff-required`, retain the
+active assignment and its evidence, and do not claim
+`timed-out-with-handoff`. Terminal release uses the same artifact reread and
+binding validation as continuation; the generic state transition cannot accept
+a caller-shaped handoff record.

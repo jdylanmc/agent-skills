@@ -88,8 +88,6 @@ export function effectiveIssueReadiness(issue, state, manifest) {
     && issue.shepherd?.freshness === 'fresh'
     && issue.shepherd?.receipt?.headSha === issue.headSha
     && issue.shepherd?.receipt?.baseSha === issue.shepherd?.setObligation?.baseSha
-    && issue.shepherd?.receipt?.changeRequest === issue.changeRequest.identifier
-    && issue.shepherd?.receipt?.provider === manifest.provider.name
     && obligationIsCurrent(
       issue.shepherd.setObligation,
       issue,

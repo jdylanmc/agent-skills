@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
 import {
   BASELINE_POLICY,
@@ -45,7 +46,7 @@ function manifest(overrides = {}) {
     exclusions: [],
     concurrency: 2,
     budget: { cost: 10, timeMinutes: 60, retries: 2 },
-    repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
+    repository: { id: 'owner/repo', root: path.resolve('test-fixtures', 'fleet-manifest-repository'), baseBranch: 'main' },
     provider: {
       name: 'GitHub',
       allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'],
@@ -74,6 +75,50 @@ test('normalizes a confirmed closed manifest and provider-bound source receipts'
     result,
     '1',
   ).revision, 'r1');
+});
+
+test('refuses source and query observations unless their provider reads are allow-listed', () => {
+  assert.throws(
+    () => normalizeFleetManifest(manifest({
+      provider: {
+        name: 'github',
+        allowedOperations: ['publish-change-request'],
+      },
+    })),
+    /read-issue must be allow-listed/,
+  );
+  const members = [issue('1', 'r1'), issue('2', 'r2'), issue('3', 'r3')]
+    .map(({ identity, sourceRevision }) => ({ identity, sourceRevision }))
+    .sort((left, right) => left.identity.localeCompare(right.identity));
+  const membership = manifestDigest(members);
+  assert.throws(
+    () => normalizeFleetManifest(manifest({
+      provider: {
+        name: 'github',
+        allowedOperations: ['read-issue', 'publish-change-request'],
+      },
+      issueSet: {
+        kind: 'tracker-query',
+        queryIdentity: 'open-fleet',
+        queryRevision: 'query-v1',
+        membershipDigest: membership,
+        receipt: {
+          invocation: { id: 'read-set', operation: 'read-issue-set' },
+          provider: 'github',
+          repository: 'owner/repo',
+          queryIdentity: 'open-fleet',
+          queryRevision: 'query-v1',
+          membershipDigest: membership,
+          members,
+          status: 'observed',
+          terminal: true,
+          complete: true,
+          observedAt: '2026-08-30T00:00:00Z',
+        },
+      },
+    })),
+    /read-issue-set must be allow-listed/,
+  );
 });
 
 test('seals already-complete eligibility in both manifest status and provider receipt', () => {

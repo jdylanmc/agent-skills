@@ -19,6 +19,7 @@ import {
   assignFreshWorkerPersisted,
   createSchedulerLease,
   continueWithFreshWorker,
+  releaseAfterValidatedHandoff,
   validateContinuationArtifact,
   validateContinuationHandoff,
 } from './assignment-ownership.mjs';
@@ -28,6 +29,8 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SANDBOX = path.join(ROOT, '.test-sandbox', 'ship-with-squadron-handoff');
+const WORKTREE_A = path.join(SANDBOX, 'worktrees', 'a');
+const WORKTREE_B = path.join(SANDBOX, 'worktrees', 'b');
 
 function source(issue, observedAt = '2026-08-30T00:00:00Z') {
   return {
@@ -127,23 +130,23 @@ function assigned() {
   return assignFreshWorker(current, manifest, {
     issue: 'a',
     branch: 'issue-a',
-    worktree: '/work/a',
+    worktree: WORKTREE_A,
     workerContext: 'worker-1',
     baseSha: 'base',
     headSha: 'head',
-    packet: packet('a', 'issue-a', '/work/a'),
+    packet: packet('a', 'issue-a', WORKTREE_A),
     schedulerLease: createSchedulerLease(current, manifest, 'a'),
     startedAt: '2026-08-30T00:02:00Z',
   });
 }
 
 function handoffPayload(target = 'worker-2') {
-  const original = packet('a', 'issue-a', '/work/a');
+  const original = packet('a', 'issue-a', WORKTREE_A);
   const inputs = [
     ['issue', 'a'],
     ['prior_generation', '1'],
     ['branch', 'issue-a'],
-    ['worktree', '/work/a'],
+    ['worktree', WORKTREE_A],
     ['base_sha', 'base'],
     ['head_sha', 'head'],
     ['manifest_digest', manifest.digest],
@@ -248,47 +251,120 @@ test('assigns only pending unowned issues with a complete manifest-bound packet'
   assert.equal(current.issues.a.status, 'active');
   assert.equal(current.issues.a.assignment.generation, 1);
   assert.throws(() => assignFreshWorker(current, manifest, {
-    issue: 'b', branch: 'issue-a', worktree: '/work/b', workerContext: 'worker-2',
-    baseSha: 'base', headSha: 'head', packet: packet('b', 'issue-a', '/work/b'),
+    issue: 'b', branch: 'issue-a', worktree: WORKTREE_B, workerContext: 'worker-2',
+    baseSha: 'base', headSha: 'head', packet: packet('b', 'issue-a', WORKTREE_B),
     schedulerLease: createSchedulerLease(current, manifest, 'b'),
   }), /branch already owned/);
   const fresh = state();
   assert.throws(() => assignFreshWorker(fresh, manifest, {
-    issue: 'a', branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-1',
+    issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-1',
     baseSha: 'base', headSha: 'head',
-    packet: { ...packet('a', 'issue-a', '/work/a'), forbiddenAuthorities: ['merge'] },
+    packet: { ...packet('a', 'issue-a', WORKTREE_A), forbiddenAuthorities: ['merge'] },
     schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
   }), /forbidden authorities/);
   assert.throws(() => assignFreshWorker(fresh, manifest, {
-    issue: 'a', branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-1',
+    issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-1',
     baseSha: 'base', headSha: 'head',
     packet: {
-      ...packet('a', 'issue-a', '/work/a'),
+      ...packet('a', 'issue-a', WORKTREE_A),
       verification: ['run-ci'],
     },
     schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
   }), /exactly match confirmed validation policy/);
   assert.throws(() => assignFreshWorker(fresh, manifest, {
-    issue: 'a', branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-1',
+    issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-1',
     baseSha: 'base', headSha: 'head',
-    packet: { ...packet('a', 'issue-a', '/work/a'), extraAuthority: 'publish-anywhere' },
+    packet: { ...packet('a', 'issue-a', WORKTREE_A), extraAuthority: 'publish-anywhere' },
     schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
   }), /schema is not exact/);
   const stale = state();
   const staleLease = createSchedulerLease(stale, manifest, 'a');
   stale.revision += 1;
   assert.throws(() => assignFreshWorker(stale, manifest, {
-    issue: 'a', branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-1',
-    baseSha: 'base', headSha: 'head', packet: packet('a', 'issue-a', '/work/a'),
+    issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-1',
+    baseSha: 'base', headSha: 'head', packet: packet('a', 'issue-a', WORKTREE_A),
     schedulerLease: staleLease,
   }), /scheduler lease/);
   const mutatedManifest = structuredClone(manifest);
   mutatedManifest.goal = 'retained digest with mutated authority';
   assert.throws(() => assignFreshWorker(fresh, mutatedManifest, {
-    issue: 'a', branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-1',
-    baseSha: 'base', headSha: 'head', packet: packet('a', 'issue-a', '/work/a'),
+    issue: 'a', branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-1',
+    baseSha: 'base', headSha: 'head', packet: packet('a', 'issue-a', WORKTREE_A),
     schedulerLease: createSchedulerLease(fresh, manifest, 'a'),
   }), /manifest digest does not match authority fields/);
+});
+
+test('uses canonical filesystem identity for worktrees and rejects aliases', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  fs.mkdirSync(WORKTREE_A, { recursive: true });
+  const current = state();
+  const dotAlias = `${path.dirname(WORKTREE_A)}${path.sep}.${path.sep}${path.basename(WORKTREE_A)}`;
+  assert.throws(() => assignFreshWorker(current, manifest, {
+    issue: 'a',
+    branch: 'issue-a',
+    worktree: dotAlias,
+    workerContext: 'worker-dot',
+    baseSha: 'base',
+    headSha: 'head',
+    packet: packet('a', 'issue-a', dotAlias),
+    schedulerLease: createSchedulerLease(current, manifest, 'a'),
+  }), /dot segments/);
+
+  const linked = path.join(SANDBOX, 'worktrees', 'linked-a');
+  try {
+    fs.symlinkSync(WORKTREE_A, linked, 'dir');
+  } catch (error) {
+    if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(error.code)) {
+      t.diagnostic('runner cannot create directory symlinks');
+    } else {
+      throw error;
+    }
+  }
+  if (fs.existsSync(linked)) {
+    assert.throws(() => assignFreshWorker(current, manifest, {
+      issue: 'a',
+      branch: 'issue-a',
+      worktree: linked,
+      workerContext: 'worker-link',
+      baseSha: 'base',
+      headSha: 'head',
+      packet: packet('a', 'issue-a', linked),
+      schedulerLease: createSchedulerLease(current, manifest, 'a'),
+    }), /symbolic link/);
+  }
+
+  const caseAlias = path.join(path.dirname(WORKTREE_A), path.basename(WORKTREE_A).toUpperCase());
+  try {
+    const original = fs.statSync(WORKTREE_A);
+    const alternate = fs.statSync(caseAlias);
+    if (original.dev === alternate.dev && original.ino === alternate.ino && caseAlias !== WORKTREE_A) {
+      assert.throws(() => assignFreshWorker(current, manifest, {
+        issue: 'a',
+        branch: 'issue-a',
+        worktree: caseAlias,
+        workerContext: 'worker-case',
+        baseSha: 'base',
+        headSha: 'head',
+        packet: packet('a', 'issue-a', caseAlias),
+        schedulerLease: createSchedulerLease(current, manifest, 'a'),
+      }), /canonical path spelling/);
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  const notYetCreated = path.join(SANDBOX, 'worktrees', 'not-yet-created');
+  assert.doesNotThrow(() => assignFreshWorker(current, manifest, {
+    issue: 'a',
+    branch: 'issue-a',
+    worktree: notYetCreated,
+    workerContext: 'worker-new',
+    baseSha: 'base',
+    headSha: 'head',
+    packet: packet('a', 'issue-a', notYetCreated),
+    schedulerLease: createSchedulerLease(current, manifest, 'a'),
+  }));
 });
 
 test('continues only after rereading actual orchestration-handoff persistence output', (t) => {
@@ -299,15 +375,16 @@ test('continues only after rereading actual orchestration-handoff persistence ou
   const persisted = persistOrchestrationHandoff(payload, {
     now: new Date('2026-08-30T00:02:30Z'),
   });
+
   const continued = continueWithFreshWorker(assigned(), manifest, {
     issue: 'a',
     reason: 'stalled',
     handoff: persisted,
     handoffPayload: payload,
     branch: 'issue-a',
-    worktree: '/work/a',
+    worktree: WORKTREE_A,
     workerContext: 'worker-2',
-    packet: packet('a', 'issue-a', '/work/a'),
+    packet: packet('a', 'issue-a', WORKTREE_A),
     startedAt: '2026-08-30T00:03:00Z',
     endedAt: '2026-08-30T00:02:59Z',
   });
@@ -334,20 +411,20 @@ test('continues only after rereading actual orchestration-handoff persistence ou
     /handoff binding inputs are invalid/,
   );
   assert.equal(validateContinuationArtifact(persisted, payload, {
-    runId: 'run', issue: 'a', priorGeneration: 1, branch: 'issue-a', worktree: '/work/a',
+    runId: 'run', issue: 'a', priorGeneration: 1, branch: 'issue-a', worktree: WORKTREE_A,
     sourceAgent: 'worker-1', targetAgent: 'worker-2', baseSha: 'base', headSha: 'head',
     manifestDigest: manifest.digest, sourceRevision: 'r-a',
     allowedPaths: JSON.stringify(['src/a/**']),
     stateRevision: 0, acceptanceCriteria: ['done'],
-    taskContract: packet('a', 'issue-a', '/work/a').taskContract,
+    taskContract: packet('a', 'issue-a', WORKTREE_A).taskContract,
   }).valid, true);
   const expectedContinuation = {
-    runId: 'run', issue: 'a', priorGeneration: 1, branch: 'issue-a', worktree: '/work/a',
+    runId: 'run', issue: 'a', priorGeneration: 1, branch: 'issue-a', worktree: WORKTREE_A,
     sourceAgent: 'worker-1', targetAgent: 'worker-2', baseSha: 'base', headSha: 'head',
     manifestDigest: manifest.digest, sourceRevision: 'r-a',
     allowedPaths: JSON.stringify(['src/a/**']),
     stateRevision: 0, acceptanceCriteria: ['done'],
-    taskContract: packet('a', 'issue-a', '/work/a').taskContract,
+    taskContract: packet('a', 'issue-a', WORKTREE_A).taskContract,
   };
   assert.equal(
     validateContinuationArtifact(
@@ -376,6 +453,43 @@ test('continues only after rereading actual orchestration-handoff persistence ou
   ).valid, false);
 });
 
+test('releases ownership only through a reread validated orchestration handoff', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  setRuntimeTemp(t);
+  const payload = handoffPayload('fleet-owner');
+  const persisted = persistOrchestrationHandoff(payload, {
+    now: new Date('2026-08-30T00:02:30Z'),
+  });
+  const released = releaseAfterValidatedHandoff(assigned(), manifest, {
+    issue: 'a',
+    reason: 'stalled',
+    targetAgent: 'fleet-owner',
+    handoff: persisted,
+    handoffPayload: payload,
+    endedAt: '2026-08-30T00:02:59Z',
+  });
+  assert.equal(released.issues.a.status, 'blocked');
+  assert.equal(released.issues.a.assignment, null);
+  assert.equal(released.issues.a.handoffObligation, null);
+  assert.equal(released.issues.a.continuationChain.at(-1).endReason, 'stalled');
+  assert.equal(
+    released.issues.a.continuationChain.at(-1).handoff.identity.targetAgent,
+    'fleet-owner',
+  );
+  assert.doesNotThrow(() => assertFleetState(released, manifest));
+
+  const forged = structuredClone(persisted);
+  forged.bytes += 1;
+  assert.throws(() => releaseAfterValidatedHandoff(assigned(), manifest, {
+    issue: 'a',
+    reason: 'timed-out',
+    targetAgent: 'fleet-owner',
+    handoff: forged,
+    handoffPayload: payload,
+  }), /invalid orchestration handoff artifact/);
+});
+
 test('rejects symlink/path escape, stale bindings, and fabricated paths', (t) => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
@@ -391,15 +505,15 @@ test('rejects symlink/path escape, stale bindings, and fabricated paths', (t) =>
     issue: 'a', reason: 'stalled',
     handoff: handoff(outside, content),
     handoffPayload: payload,
-    branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-2',
-    packet: packet('a', 'issue-a', '/work/a'),
+    branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-2',
+    packet: packet('a', 'issue-a', WORKTREE_A),
   }), /runtime-trusted handoff directory/);
   assert.throws(() => continueWithFreshWorker(assigned(), manifest, {
     issue: 'a', reason: 'stalled',
     handoff: handoff(path.join(root, 'missing.md'), content),
     handoffPayload: payload,
-    branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-2',
-    packet: packet('a', 'issue-a', '/work/a'),
+    branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-2',
+    packet: packet('a', 'issue-a', WORKTREE_A),
   }), /artifact/);
   const swap = path.join(root, 'swap.md');
   fs.writeFileSync(swap, content);
@@ -428,8 +542,8 @@ test('fleet stop preserves handoff obligation but dispatches no continuation', (
   assert.throws(() => continueWithFreshWorker(stopped, manifest, {
     issue: 'a', reason: 'stalled', handoff: handoff(file, content),
     handoffPayload: payload,
-    branch: 'issue-a', worktree: '/work/a', workerContext: 'worker-2',
-    packet: packet('a', 'issue-a', '/work/a'),
+    branch: 'issue-a', worktree: WORKTREE_A, workerContext: 'worker-2',
+    packet: packet('a', 'issue-a', WORKTREE_A),
   }), /continuation dispatch is forbidden/);
 });
 
@@ -443,11 +557,11 @@ test('persisted assignment consumes a serialized revision-bound scheduler lease'
   const assignedState = assignFreshWorkerPersisted(file, manifest, {
     issue: 'a',
     branch: 'issue-a',
-    worktree: '/work/a',
+    worktree: WORKTREE_A,
     workerContext: 'worker-persisted',
     baseSha: 'base',
     headSha: 'head',
-    packet: packet('a', 'issue-a', '/work/a'),
+    packet: packet('a', 'issue-a', WORKTREE_A),
     schedulerLease,
     startedAt: '2026-08-30T00:03:00Z',
   }, { now: '2026-08-30T00:03:01Z' });
@@ -456,20 +570,20 @@ test('persisted assignment consumes a serialized revision-bound scheduler lease'
   assert.throws(() => assignFreshWorkerPersisted(file, manifest, {
     issue: 'b',
     branch: 'issue-b',
-    worktree: '/work/b',
+    worktree: WORKTREE_B,
     workerContext: 'worker-without-lease',
     baseSha: 'base',
     headSha: 'head',
-    packet: packet('b', 'issue-b', '/work/b'),
+    packet: packet('b', 'issue-b', WORKTREE_B),
   }), /requires a state-revision-bound scheduler lease/);
   assert.throws(() => assignFreshWorkerPersisted(file, manifest, {
     issue: 'a',
     branch: 'issue-a',
-    worktree: '/work/a',
+    worktree: WORKTREE_A,
     workerContext: 'worker-race-loser',
     baseSha: 'base',
     headSha: 'head',
-    packet: packet('a', 'issue-a', '/work/a'),
+    packet: packet('a', 'issue-a', WORKTREE_A),
     schedulerLease,
   }), /state revision conflict|not in current capacity.dispatch|not pending/);
 });

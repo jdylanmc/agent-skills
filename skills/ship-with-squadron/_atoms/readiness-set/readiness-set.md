@@ -21,9 +21,12 @@ an invocation.
 
 Use the readiness set helper to require:
 
-- exact base SHA, head SHA, observation time, provider state, and up-to-date
-  policy, plus normalized provider, repository, change request, run, issue, and
-  invocation identity;
+- the canonical Landability receipt exactly as Shepherd produced it:
+  observation time, base SHA, head SHA, up-to-date policy, provider status, and
+  completeness;
+- normalized provider, repository, change request, base branch, run, issue,
+  invocation, and generation identity in the surrounding invocation,
+  post-return observation, and set obligation, never fabricated receipt fields;
 - a post-Shepherd reread proving the receipt still matches;
 - `containsCurrentBase: true` under a `required` up-to-date policy;
 - one shared strict set-obligation schema exactly binding owner, provider,
@@ -40,8 +43,10 @@ remains.
 Readiness is snapshot-bound. After an exact merge observation reconciled to a
 recorded publication, persist the merge and invalidate every affected open
 publication before considering any sibling revision receipt. This includes the
-first Shepherd invocation while it is still in flight. Advance and persist a
-merge watermark/generation, mark readiness stale, and accept only a complete
+first Shepherd invocation while it is still in flight. Preserve its active
+assignment and persist a merge-watermark-bound blocked check state until fresh
+revision evidence is acquired. Advance and persist a merge
+watermark/generation, mark readiness stale, and accept only a complete
 provider/repository/change-request/publication/base-branch/base-SHA/head-branch/
 head-SHA revision receipt observed after the triggering merge. Missing or
 malformed revision evidence leaves that sibling blocked with a durable queue
@@ -60,6 +65,9 @@ and SHA-pinned lease rules require a push.
 Expiry uses one explicit persisted representation: accepted nested readiness is
 replaced by an `expired` marker bound to the new generation, while nested and
 issue-level set obligations and no-Shepherd decisions are cleared together.
-The resulting blocked state must still pass the full fleet-state invariants.
+An affected issue with no active assignment becomes blocked. An affected active
+assignment remains active, owned, and persistable with the blocking check state;
+it is archived only through a valid generation-bound completion or handoff.
+The resulting state must still pass the full fleet-state invariants.
 The landed change request retains its review-ready evidence, and its observed
 merge continues to satisfy dependent work while open siblings expire.

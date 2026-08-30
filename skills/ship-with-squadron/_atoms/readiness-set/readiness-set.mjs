@@ -64,8 +64,6 @@ function archiveSuccessfulAssignment(record, completion) {
 
 function expectedFields(expected) {
   return [
-    ['provider', normalizeProvider(expected?.provider)],
-    ['changeRequest', expected?.changeRequest],
     ['baseSha', expected?.baseSha],
     ['headSha', expected?.headSha],
   ];
@@ -87,19 +85,28 @@ export function acceptShepherdReturn(input, expected = {}) {
     if (invocation.status !== 'returned') defects.push('Shepherd invocation did not return');
   }
   if (!isTerminalDisposition(input?.result?.disposition)) defects.push('Shepherd returned no terminal disposition');
-  if (input?.result?.terminal !== true || input?.result?.complete !== true) {
-    defects.push('Shepherd result is not complete and terminal');
+  if (!input?.result || typeof input.result !== 'object'
+      || !['disposition', 'reason', 'defects', 'receipt'].every((field) =>
+        Object.hasOwn(input.result, field))
+      || !Array.isArray(input.result.defects)) {
+    defects.push('Shepherd result does not match the canonical report shape');
+  } else if (input.result.defects.length > 0) {
+    defects.push('Shepherd result reports unresolved defects');
   }
   const receipt = validateFreshnessReceipt(input?.result?.receipt);
   defects.push(...receipt.defects);
+  if (!input?.result?.receipt
+      || !Object.hasOwn(input.result.receipt, 'observedAt')
+      || JSON.stringify(Object.keys(input.result.receipt).sort())
+        !== JSON.stringify([
+          'baseSha', 'complete', 'headSha', 'observedAt', 'provider', 'upToDatePolicy',
+        ])) {
+    defects.push('Shepherd freshness receipt is not the canonical landability receipt');
+  }
   const normalizedReceiptProvider = normalizeProvider(input?.result?.receipt?.provider);
   for (const [field, value] of expectedFields(expected)) {
-    const actual = field === 'provider' ? normalizedReceiptProvider : input?.result?.receipt?.[field];
+    const actual = input?.result?.receipt?.[field];
     if (!value || actual !== value) defects.push(`Shepherd receipt ${field} does not match`);
-  }
-  if (input?.result?.receipt?.repository !== expected.repository
-      || input?.result?.receipt?.baseBranch !== expected.baseBranch) {
-    defects.push('Shepherd receipt repository/base branch does not match');
   }
   const freshness = receipt.valid
     ? compareObservation(input.result.receipt, input.observation)
@@ -118,7 +125,7 @@ export function acceptShepherdReturn(input, expected = {}) {
   if (policy === 'required' && input?.observation?.containsCurrentBase !== true) {
     defects.push('strict up-to-date policy is not proven satisfied');
   }
-  if (normalizedReceiptProvider === null || normalizedReceiptProvider.includes('unobserved')
+  if (normalizedReceiptProvider !== 'supported-provider'
       || String(input?.result?.disposition ?? '').includes('provider-tool')) {
     defects.push('provider state is degraded or unobserved');
   }
@@ -147,8 +154,8 @@ export function acceptShepherdReturn(input, expected = {}) {
     invocationId: invocation?.id ?? null,
     invocation: invocation ? structuredClone(invocation) : null,
     observation: input?.observation ? structuredClone(input.observation) : null,
-    terminal: input?.result?.terminal === true,
-    complete: input?.result?.complete === true,
+    terminal: isTerminalDisposition(input?.result?.disposition),
+    complete: receipt.valid && input?.result?.defects?.length === 0,
   };
 }
 
@@ -333,12 +340,21 @@ export function expireReadinessAfterSiblingMerge(
     } else {
       record.shepherd = null;
     }
-    record.status = 'blocked';
-    record.dependencyState = 'blocked';
+    const preservesActiveOwnership = record.status === 'active' && record.assignment?.active === true;
+    record.status = preservesActiveOwnership ? 'active' : 'blocked';
+    record.dependencyState = preservesActiveOwnership ? 'active' : 'blocked';
     record.pipeline = [];
     record.shepherdDecision = null;
     record.setObligation = null;
-    record.checkActivity = null;
+    record.checkActivity = preservesActiveOwnership
+      ? {
+        kind: 'shepherd-check',
+        state: 'blocked',
+        startedAt: record.checkActivity?.startedAt ?? now,
+        generation,
+        blocker: 'sibling-merge-watermark',
+      }
+      : null;
     record.readinessGeneration = generation;
     record.readinessWatermark = {
       generation,
@@ -346,7 +362,7 @@ export function expireReadinessAfterSiblingMerge(
       triggeringPublicationKey: mergeObservation.publicationKey,
       triggeringMergeCommit: mergeObservation.mergeCommit,
     };
-    record.terminalDisposition = 'blocked';
+    record.terminalDisposition = preservesActiveOwnership ? null : 'blocked';
     record.nextAction = 'acquire-current-change-request-revision';
     const expiry = {
       issue: record.identity,
@@ -404,6 +420,10 @@ export function expireReadinessAfterSiblingMerge(
       record.baseSha = revision.baseSha;
       record.headSha = revision.headSha;
       record.changeRequest = null;
+      if (record.checkActivity?.state === 'blocked'
+          && record.checkActivity.generation === target.generation) {
+        record.checkActivity = null;
+      }
       record.nextAction = manifest.shepherdIntent === 'yes'
         ? 'consume-fresh-re-shepherd-receipt'
         : 'rerun-quality-and-provider-observation';
@@ -467,6 +487,10 @@ export function recordReadinessRevisionObservation(
   record.baseSha = revision.baseSha;
   record.headSha = revision.headSha;
   record.changeRequest = null;
+  if (record.checkActivity?.state === 'blocked'
+      && record.checkActivity.generation === queue.generation) {
+    record.checkActivity = null;
+  }
   record.nextAction = manifest.shepherdIntent === 'yes'
     ? 'consume-fresh-re-shepherd-receipt'
     : 'rerun-quality-and-provider-observation';
@@ -485,7 +509,14 @@ export function recordReadinessRevisionObservation(
   return next;
 }
 
-export function consumeReShepherdQueue(state, manifest, issueIdentity, accepted, revalidation) {
+export function consumeReShepherdQueue(
+  state,
+  manifest,
+  issueIdentity,
+  accepted,
+  revalidation,
+  assignmentCompletion = null,
+) {
   assertFleetManifest(manifest);
   if (state.manifestDigest !== manifest.digest
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
@@ -499,7 +530,6 @@ export function consumeReShepherdQueue(state, manifest, issueIdentity, accepted,
   if (!accepted?.accepted || !accepted.ready
       || accepted.receipt?.baseSha !== queue.baseSha
       || accepted.receipt?.headSha !== queue.headSha
-      || accepted.receipt?.changeRequest !== queue.changeRequest
       || accepted.setObligation?.generation !== queue.generation
       || !validTimestamp(accepted.receipt?.observedAt)
       || Date.parse(accepted.receipt.observedAt) <= Date.parse(queue.revisionObservation.observedAt)
@@ -539,6 +569,7 @@ export function consumeReShepherdQueue(state, manifest, issueIdentity, accepted,
     throw new Error(`fresh Shepherd prerequisite revalidation is incomplete: ${semantic.defects.join('; ')}`);
   }
   const next = structuredClone(state);
+  archiveSuccessfulAssignment(next.issues[issueIdentity], assignmentCompletion);
   next.issues[issueIdentity].pipeline = structuredClone(revalidation.pipeline);
   next.issues[issueIdentity].shepherd = structuredClone(accepted);
   next.issues[issueIdentity].setObligation = structuredClone(accepted.setObligation);
@@ -560,7 +591,14 @@ export function consumeReShepherdQueue(state, manifest, issueIdentity, accepted,
   return next;
 }
 
-export function consumeNoShepherdRevalidation(state, manifest, issueIdentity, revalidation, obligation) {
+export function consumeNoShepherdRevalidation(
+  state,
+  manifest,
+  issueIdentity,
+  revalidation,
+  obligation,
+  assignmentCompletion = null,
+) {
   assertFleetManifest(manifest);
   if (manifest.shepherdIntent !== 'no') throw new Error('no-Shepherd revalidation requires manifest intent no');
   if (state.manifestDigest !== manifest.digest
@@ -583,8 +621,13 @@ export function consumeNoShepherdRevalidation(state, manifest, issueIdentity, re
       || revalidation.pipeline.at(-1)?.stage !== 'publication'
       || !validTimestamp(revalidation?.completedAt)
       || Date.parse(revalidation.completedAt) <= Date.parse(queue.revisionObservation.observedAt)
-      || revalidation.pipeline.some((entry) =>
-        entry.evidence?.baseSha !== queue.baseSha || entry.evidence?.headSha !== queue.headSha)) {
+      || revalidation.pipeline.some((entry) => {
+        const evidenceRevision = entry.stage === 'blast-radius-proof'
+          ? entry.evidence?.revisions
+          : entry.evidence;
+        return evidenceRevision?.baseSha !== queue.baseSha
+          || evidenceRevision?.headSha !== queue.headSha;
+      })) {
     throw new Error('no-Shepherd revalidation evidence is incomplete or stale');
   }
   const expected = {
@@ -617,6 +660,7 @@ export function consumeNoShepherdRevalidation(state, manifest, issueIdentity, re
   }
   const next = structuredClone(state);
   const record = next.issues[issueIdentity];
+  archiveSuccessfulAssignment(record, assignmentCompletion);
   record.baseSha = queue.baseSha;
   record.headSha = queue.headSha;
   record.pipeline = structuredClone(revalidation.pipeline);

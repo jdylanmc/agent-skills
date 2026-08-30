@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
 import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
@@ -15,6 +16,7 @@ import {
 
 const revision = { baseSha: 'base', headSha: 'head' };
 const identity = { runId: 'run', issue: '1' };
+const REPOSITORY_ROOT = path.resolve('test-fixtures', 'quality-evidence-repository');
 
 function manifest(shepherdIntent = 'yes', humanDecisions = []) {
   return normalizeFleetManifest({
@@ -38,7 +40,7 @@ function manifest(shepherdIntent = 'yes', humanDecisions = []) {
     dependencies: [],
     concurrency: 1,
     budget: { cost: 10, timeMinutes: 60, retries: 2 },
-    repository: { id: 'owner/repo', root: '/repo', baseBranch: 'main' },
+    repository: { id: 'owner/repo', root: REPOSITORY_ROOT, baseBranch: 'main' },
     provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
     validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
     stopConditions: ['cancelled'],
@@ -77,18 +79,15 @@ function roast(overrides = {}) {
 
 function blast(overrides = {}) {
   return {
-    invocation: { skill: 'blast-radius', id: 'blast-1', runId: 'run', issue: '1' },
-    contractRepository: 'jdylanmc/agent-skills',
-    contractPullRequest: 157,
-    contractBranch: 'origin/issue-70-blast-radius-proof',
-    contractBaseRevision: '02ae9f84c782b9e57dfec20cda344fb494e57049',
-    contractRevision: '4a946e4500479e028112b77bdf268c5b7a8aae1f',
-    status: 'completed',
-    terminal: true,
-    complete: true,
-    evidenceComplete: true,
-    completedAt: '2026-08-30T00:12:00Z',
-    ...revision,
+    subjectChange: 'current candidate diff',
+    suppliedBaseline: 'confirmed fleet base',
+    includedScope: ['current issue'],
+    exclusions: [],
+    repositories: ['owner/repo'],
+    revisions: { ...revision },
+    environments: ['isolated test runner'],
+    directCallers: ['adapter consumer'],
+    crossBoundaryConsumers: ['provider publication boundary'],
     assertionLadders: [{
       id: 'A1',
       assertion: 'consumer remains compatible',
@@ -135,8 +134,6 @@ function blast(overrides = {}) {
       cheaperProofInsufficientReason: 'unit check does not cross adapter boundary',
       outsideCoverage: 'live provider behavior',
     },
-    'next-evidence-action': null,
-    'next-evidence-reason': null,
     ...overrides,
   };
 }
@@ -179,20 +176,20 @@ test('interprets canonical Roast Priority: Must fix and rejects caller-shaped se
   assert.equal(adaptRoastEvidence(roast({ evidenceComplete: false }), revision, identity).complete, false);
 });
 
-test('requires nonempty exact Pull Request 157 ladders, classifications, proof, and stopping evidence', () => {
-  assert.equal(adaptBlastRadiusEvidence(blast(), revision, identity).readiness, 'satisfied');
+test('consumes the checked-in local blast-radius report unchanged and validates its semantics', () => {
+  const report = blast();
+  const adapted = adaptBlastRadiusEvidence(report, revision, identity);
+  assert.equal(adapted.readiness, 'satisfied');
+  assert.equal(adapted.receipt, report);
   assert.equal(adaptBlastRadiusEvidence(blast({ assertionLadders: [] }), revision, identity).readiness, 'invalid');
-  assert.equal(adaptBlastRadiusEvidence(blast({ evidenceComplete: false }), revision, identity).readiness, 'invalid');
+  assert.equal(adaptBlastRadiusEvidence(blast({ revisions: { baseSha: 'base', headSha: 'stale' } }), revision, identity).readiness, 'invalid');
   assert.equal(adaptBlastRadiusEvidence(blast({
     'regression-proof-status': 'selected',
     'regression-proof': null,
   }), revision, identity).readiness, 'invalid');
   assert.equal(adaptBlastRadiusEvidence(blast({
-    contractPullRequest: 156,
-  }), revision, identity).readiness, 'invalid');
-  assert.equal(adaptBlastRadiusEvidence(blast({
-    contractRevision: 'stale-contract',
-  }), revision, identity).readiness, 'invalid');
+    invocation: { skill: 'blast-radius', id: 'synthetic-wrapper' },
+  }), revision, identity).readiness, 'satisfied');
   const allNotAttempted = blast();
   allNotAttempted.assertionLadders[0].rungs = allNotAttempted.assertionLadders[0].rungs.map(
     (rung) => ({
