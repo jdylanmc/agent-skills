@@ -408,20 +408,27 @@ test('create collisions and symbolic-link targets fail closed', (t) => {
 test('path replacement before the mutating write is caught as stale state', (t) => {
   const root = workspace(t);
   const prepared = prepareDoctrineChange(input(root));
+  const manifestPath = path.join(root, 'doctrine', 'manifest.md');
+  const displacedManifestPath = `${manifestPath}.approved`;
+  const manifestBytes = fs.readFileSync(manifestPath);
+  t.after(() => fs.rmSync(displacedManifestPath, { force: true }));
   const result = applyDoctrineChange(
     { repositoryRoot: root, prepared, approval: approval(prepared) },
     {
       beforeWrite: () => {
-        const manifestPath = path.join(root, 'doctrine', 'manifest.md');
-        const bytes = fs.readFileSync(manifestPath);
-        fs.unlinkSync(manifestPath);
-        fs.writeFileSync(manifestPath, bytes);
+        fs.renameSync(manifestPath, displacedManifestPath);
+        fs.writeFileSync(manifestPath, manifestBytes);
       },
     },
   );
   assert.equal(result.status, 'blocked');
   assert.equal(result.code, 'stale-state');
   assert.deepEqual(result.changedPaths, []);
+  assert.deepEqual(fs.readFileSync(manifestPath), manifestBytes);
+  assert.deepEqual(fs.readFileSync(displacedManifestPath), manifestBytes);
+  assert.equal(fs.readFileSync(path.join(root, 'doctrine', 'existing.doctrine.md'), 'utf8'), EXISTING);
+  assert.equal(fs.readFileSync(path.join(root, 'NOTICE.md'), 'utf8'), 'Existing notices.\n');
+  assert.equal(fs.existsSync(path.join(root, 'doctrine', 'decisions.doctrine.md')), false);
 });
 
 test('symlinked doctrine directory and repository/doctrine ancestor replacement races are refused', (t) => {
@@ -549,7 +556,12 @@ test('hard stops preserve NOTICE-doctrine-manifest safety ordering without claim
       });
     `);
     const child = spawnSync(process.execPath, [runnerPath, payloadPath], { encoding: 'utf8' });
-    assert.equal(child.signal, 'SIGKILL', `${name}: ${child.stderr}`);
+    if (process.platform === 'win32') {
+      assert.equal(child.signal, null, `${name}: ${child.stderr}`);
+      assert.ok(Number.isInteger(child.status) && child.status !== 0, `${name}: ${child.stderr}`);
+    } else {
+      assert.equal(child.signal, 'SIGKILL', `${name}: ${child.stderr}`);
+    }
     const notice = fs.readFileSync(path.join(root, 'NOTICE.md'), 'utf8');
     const doctrine = fs.readFileSync(path.join(root, 'doctrine', 'existing.doctrine.md'), 'utf8');
     const manifestText = fs.readFileSync(path.join(root, 'doctrine', 'manifest.md'), 'utf8');
