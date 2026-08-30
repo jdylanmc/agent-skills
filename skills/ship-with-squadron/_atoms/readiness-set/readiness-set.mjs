@@ -4,6 +4,12 @@ import {
   normalizeUpToDatePolicy,
   validateFreshnessReceipt,
 } from '../../../_base/_atoms/landability/landability.mjs';
+import {
+  persistedPipelinePasses,
+  persistedPublicationPipelinePasses,
+} from '../quality-evidence/quality-evidence.mjs';
+import { normalizeMergeObservation } from '../provider-seam/provider-seam.mjs';
+import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.mjs';
 
 const GREEN = new Set(['mergeable-and-green', 'no-op-mergeable-and-green']);
 
@@ -115,6 +121,10 @@ export function recordShepherdNotRequired(state, manifest, issueIdentity, obliga
   }
   const record = state.issues?.[issueIdentity];
   if (!record?.changeRequest) throw new Error('Shepherd-not-required requires confirmed publication');
+  const semantic = persistedPublicationPipelinePasses(record, state, manifest);
+  if (!semantic.passed) {
+    throw new Error(`Shepherd-not-required requires passing current evidence: ${semantic.defects.join('; ')}`);
+  }
   const expected = {
     issue: issueIdentity,
     changeRequest: record.changeRequest.identifier,
@@ -145,12 +155,24 @@ export function recordShepherdNotRequired(state, manifest, issueIdentity, obliga
   return next;
 }
 
-function currentRevision(revisions, issue) {
+function currentRevision(revisions, issue, record, publication, mergeObservation) {
   const revision = revisions?.[issue];
   if (!revision
+      || revision?.invocation?.operation !== 'observe-change-request-revision'
+      || !nonEmpty(revision?.invocation?.id)
+      || revision.invocation.providerKey !== publication.key
+      || revision.status !== 'observed'
+      || revision.terminal !== true
+      || revision.complete !== true
+      || normalizeProvider(revision.provider) !== normalizeProvider(publication.provider)
+      || revision.repository !== publication.repository
+      || revision.issue !== record.identity
+      || revision.changeRequest !== publication.identifier
+      || revision.baseBranch !== publication.baseBranch
       || !nonEmpty(revision.baseSha)
       || !nonEmpty(revision.headSha)
-      || !validTimestamp(revision.observedAt)) {
+      || !validTimestamp(revision.observedAt)
+      || Date.parse(revision.observedAt) <= Date.parse(mergeObservation.observedAt)) {
     throw new Error(`current revision observation is incomplete for ${issue}`);
   }
   return revision;
@@ -167,6 +189,7 @@ export function expireReadinessAfterSiblingMerge(
       || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('readiness expiry state is not bound to the confirmed manifest');
   }
+  mergeObservation = normalizeMergeObservation(state, manifest, mergeObservation);
   if (mergeObservation?.observed !== true
       || mergeObservation.provider !== manifest.provider.name
       || mergeObservation.repository !== manifest.repository.id
@@ -177,36 +200,52 @@ export function expireReadinessAfterSiblingMerge(
     throw new Error('readiness expiry requires an exact reconciled human merge observation');
   }
   const publication = state.publications?.find((entry) =>
-    entry.state === 'confirmed'
-    && entry.key === mergeObservation.publicationKey
+    entry.key === mergeObservation.publicationKey
     && entry.provider === mergeObservation.provider
     && entry.repository === mergeObservation.repository
     && entry.issue === mergeObservation.issue
     && entry.identifier === mergeObservation.changeRequest
     && entry.baseBranch === mergeObservation.baseBranch
     && entry.headBranch === mergeObservation.headBranch
-    && entry.headSha === mergeObservation.headSha);
+    && entry.observations?.some((observation) =>
+      observation.state === 'confirmed'
+      && observation.baseSha === mergeObservation.baseSha
+      && observation.headSha === mergeObservation.headSha));
   if (!publication) {
     throw new Error('readiness expiry merge is not reconciled to recorded publication');
   }
-  const next = structuredClone(state);
-  if (!next.observedHumanMerges.some((entry) =>
+  const duplicate = state.observedHumanMerges.some((entry) =>
     entry.publicationKey === mergeObservation.publicationKey
-    && entry.mergeCommit === mergeObservation.mergeCommit)) {
-    next.observedHumanMerges.push(mergeObservation);
-  }
+    && entry.mergeCommit === mergeObservation.mergeCommit);
+  if (duplicate) return structuredClone(state);
+  const next = structuredClone(state);
+  next.observedHumanMerges.push(structuredClone(mergeObservation));
   for (const record of Object.values(next.issues)) {
-    if (!record.changeRequest || record.changeRequest.identifier === mergeObservation.changeRequest) continue;
-    if (record.changeRequest.baseBranch !== mergeObservation.baseBranch) continue;
+    const existingQueue = next.reShepherdQueue.find((entry) => entry.issue === record.identity);
+    const recordChangeRequest = record.changeRequest?.identifier ?? existingQueue?.changeRequest;
+    const recordPublicationKey = record.changeRequest?.publicationKey ?? existingQueue?.publicationKey;
+    if (!recordChangeRequest || recordChangeRequest === mergeObservation.changeRequest) continue;
+    const recordPublication = next.publications.find((entry) =>
+      entry.key === recordPublicationKey && entry.identifier === recordChangeRequest);
+    if (!recordPublication || recordPublication.baseBranch !== mergeObservation.baseBranch) continue;
     if (next.observedHumanMerges.some((entry) =>
       entry.issue === record.identity
-      && entry.changeRequest === record.changeRequest.identifier)) continue;
-    const existingQueue = next.reShepherdQueue.find((entry) => entry.issue === record.identity);
+      && entry.changeRequest === recordChangeRequest)) continue;
     const wasReady = record.shepherd?.ready === true
       || record.shepherdDecision?.state === 'not-required'
       || Boolean(existingQueue);
     if (!wasReady) continue;
-    const revision = currentRevision(revisions, record.identity);
+    const siblingPublication = next.publications.find((entry) =>
+      entry.key === recordPublicationKey
+      && entry.identifier === recordChangeRequest);
+    if (!siblingPublication) throw new Error(`published sibling ${record.identity} has no stable publication`);
+    const revision = currentRevision(
+      revisions,
+      record.identity,
+      record,
+      siblingPublication,
+      mergeObservation,
+    );
     if (record.baseSha === revision.baseSha
         && record.headSha === revision.headSha
         && record.shepherd?.receipt?.baseSha === revision.baseSha) continue;
@@ -215,22 +254,29 @@ export function expireReadinessAfterSiblingMerge(
       ?? record.setObligation?.generation
       ?? 0;
     const generation = priorGeneration + 1;
+    const changeRequest = recordChangeRequest;
+    const publicationKey = recordPublicationKey;
     if (record.shepherd) {
       record.shepherd.ready = false;
       record.shepherd.freshness = 'stale';
       record.shepherd.accepted = false;
     }
+    record.baseSha = revision.baseSha;
+    record.headSha = revision.headSha;
+    record.pipeline = [];
+    record.changeRequest = null;
+    if (manifest.shepherdIntent === 'no') {
+      record.shepherdDecision = null;
+      record.setObligation = null;
+    }
     record.terminalDisposition = 'blocked';
     record.nextAction = manifest.shepherdIntent === 'yes'
       ? 'consume-fresh-re-shepherd-receipt'
       : 'rerun-quality-and-provider-observation';
-    if (manifest.shepherdIntent === 'yes' && record.pipeline.at(-1)?.stage === 'shepherd') {
-      record.pipeline.pop();
-    }
     const expiry = {
       issue: record.identity,
-      changeRequest: record.changeRequest.identifier,
-      publicationKey: record.changeRequest.publicationKey,
+      changeRequest,
+      publicationKey,
       reason: `sibling-merge:${mergeObservation.changeRequest}`,
       oldBaseSha: record.shepherd?.receipt?.baseSha ?? record.setObligation?.baseSha ?? null,
       currentBaseSha: revision.baseSha,
@@ -238,39 +284,75 @@ export function expireReadinessAfterSiblingMerge(
       generation,
       expiredAt: now,
       sourceStateRevision: state.revision,
+      triggeringPublicationKey: mergeObservation.publicationKey,
+      triggeringMergeCommit: mergeObservation.mergeCommit,
+      revisionObservation: structuredClone(revision),
     };
     next.expiredReadinessClaims.push(expiry);
     next.reShepherdQueue = next.reShepherdQueue.filter((entry) => entry.issue !== record.identity);
     next.reShepherdQueue.push({
       issue: record.identity,
-      changeRequest: record.changeRequest.identifier,
-      publicationKey: record.changeRequest.publicationKey,
+      changeRequest,
+      publicationKey,
       reason: expiry.reason,
       generation,
       baseSha: revision.baseSha,
       headSha: revision.headSha,
       sourceStateRevision: state.revision,
+      triggeringPublicationKey: mergeObservation.publicationKey,
+      triggeringMergeCommit: mergeObservation.mergeCommit,
+      revisionObservation: structuredClone(revision),
       queuedAt: now,
       action: manifest.shepherdIntent === 'yes'
         ? 'invoke-fresh-shepherd'
         : 'rerun-quality-and-provider-observation',
     });
   }
-  if (next.reShepherdQueue.length > 0) next.fleetDisposition = 'blocked';
+  next.fleetDisposition = deriveFleetDisposition(next, manifest);
   return next;
 }
 
-export function consumeReShepherdQueue(state, issueIdentity, accepted) {
+export function consumeReShepherdQueue(state, manifest, issueIdentity, accepted, revalidation) {
+  if (state.manifestDigest !== manifest.digest
+      || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
+    throw new Error('re-Shepherd state is not bound to the confirmed manifest');
+  }
   const queue = state.reShepherdQueue.find((entry) => entry.issue === issueIdentity);
   if (!queue) throw new Error(`no re-Shepherd obligation for ${issueIdentity}`);
   if (!accepted?.accepted || !accepted.ready
       || accepted.receipt?.baseSha !== queue.baseSha
       || accepted.receipt?.headSha !== queue.headSha
       || accepted.receipt?.changeRequest !== queue.changeRequest
-      || accepted.setObligation?.generation !== queue.generation) {
+      || accepted.setObligation?.generation !== queue.generation
+      || !validTimestamp(accepted.receipt?.observedAt)
+      || Date.parse(accepted.receipt.observedAt) <= Date.parse(queue.revisionObservation.observedAt)) {
     throw new Error('fresh accepted Shepherd receipt does not satisfy queued generation and revisions');
   }
+  const publication = state.publications.find((entry) =>
+    entry.key === queue.publicationKey
+    && entry.identifier === queue.changeRequest
+    && entry.observations?.some((observation) =>
+      observation.state === 'confirmed'
+      && observation.baseSha === queue.baseSha
+      && observation.headSha === queue.headSha));
+  if (!publication || state.issues[issueIdentity].changeRequest?.identifier !== queue.changeRequest) {
+    throw new Error('fresh Shepherd receipt requires current revision publication reconciliation');
+  }
+  const candidate = {
+    ...state.issues[issueIdentity],
+    pipeline: revalidation?.pipeline ?? [],
+  };
+  const semantic = persistedPublicationPipelinePasses(candidate, state, manifest);
+  if (!semantic.passed
+      || revalidation?.status !== 'completed'
+      || revalidation?.terminal !== true
+      || revalidation?.complete !== true
+      || !validTimestamp(revalidation?.completedAt)
+      || Date.parse(revalidation.completedAt) <= Date.parse(queue.revisionObservation.observedAt)) {
+    throw new Error(`fresh Shepherd prerequisite revalidation is incomplete: ${semantic.defects.join('; ')}`);
+  }
   const next = structuredClone(state);
+  next.issues[issueIdentity].pipeline = structuredClone(revalidation.pipeline);
   next.issues[issueIdentity].shepherd = structuredClone(accepted);
   next.issues[issueIdentity].setObligation = structuredClone(accepted.setObligation);
   next.issues[issueIdentity].pipeline.push({
@@ -285,6 +367,7 @@ export function consumeReShepherdQueue(state, issueIdentity, accepted) {
     issue: issueIdentity,
     generation: queue.generation,
   });
+  next.fleetDisposition = deriveFleetDisposition(next, manifest);
   return next;
 }
 
@@ -308,6 +391,8 @@ export function consumeNoShepherdRevalidation(state, manifest, issueIdentity, re
       || !Array.isArray(revalidation?.pipeline)
       || revalidation.pipeline.length === 0
       || revalidation.pipeline.at(-1)?.stage !== 'publication'
+      || !validTimestamp(revalidation?.completedAt)
+      || Date.parse(revalidation.completedAt) <= Date.parse(queue.revisionObservation.observedAt)
       || revalidation.pipeline.some((entry) =>
         entry.evidence?.baseSha !== queue.baseSha || entry.evidence?.headSha !== queue.headSha)) {
     throw new Error('no-Shepherd revalidation evidence is incomplete or stale');
@@ -326,6 +411,16 @@ export function consumeNoShepherdRevalidation(state, manifest, issueIdentity, re
     'rerun-quality-and-provider-observation',
   );
   if (defects.length) throw new Error(`invalid no-Shepherd set obligation: ${defects.join('; ')}`);
+  const candidateRecord = {
+    ...state.issues[issueIdentity],
+    baseSha: queue.baseSha,
+    headSha: queue.headSha,
+    pipeline: revalidation.pipeline,
+  };
+  const semantic = persistedPipelinePasses(candidateRecord, state, manifest);
+  if (!semantic.passed) {
+    throw new Error(`no-Shepherd revalidation does not semantically pass: ${semantic.defects.join('; ')}`);
+  }
   const next = structuredClone(state);
   const record = next.issues[issueIdentity];
   record.baseSha = queue.baseSha;
@@ -347,5 +442,6 @@ export function consumeNoShepherdRevalidation(state, manifest, issueIdentity, re
     issue: issueIdentity,
     generation: queue.generation,
   });
+  next.fleetDisposition = deriveFleetDisposition(next, manifest);
   return next;
 }

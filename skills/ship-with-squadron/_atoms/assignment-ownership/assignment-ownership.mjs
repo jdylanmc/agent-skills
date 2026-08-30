@@ -1,12 +1,14 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
+import {
+  loadFleetState,
+  persistFleetState,
+  reconcileFrontier,
+} from '../fleet-state/fleet-state.mjs';
 
-const HANDOFF_FIELDS = [
-  'run_identity', 'source_agent', 'target_agent', 'task_contract', 'inputs',
-  'constraints', 'assumptions', 'artifacts_and_references',
-  'acceptance_criteria', 'open_questions',
-];
 const BRIEF_SECTIONS = ['GOAL', 'SCOPE', 'CONTEXT', 'ACCEPTANCE', 'VERIFY', 'TIMEBOX', 'FORBIDDEN', 'REPORT', 'STANDING'];
 const FORBIDDEN_AUTHORITIES = Object.freeze([
   'merge',
@@ -24,6 +26,18 @@ function nonEmpty(value) {
 
 function same(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+  }
+  return value;
+}
+
+function digest(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 }
 
 function escapeRegExp(value) {
@@ -123,6 +137,11 @@ export function assignFreshWorker(state, manifest, input) {
   if (record.terminalDisposition !== null) {
     throw new Error(`terminal issue cannot be reassigned: ${input.issue}`);
   }
+  const frontier = computeFrontier(manifest, state);
+  const expectedLease = createSchedulerLease(state, manifest, input.issue, frontier);
+  if (!same(input.schedulerLease, expectedLease)) {
+    throw new Error('assignment scheduler lease is stale, forged, or not dispatchable');
+  }
   if (!validateSourceObservation(record, state, manifest, issue)) {
     throw new Error(`source revision is not reobserved for ${input.issue}`);
   }
@@ -154,108 +173,220 @@ export function assignFreshWorker(state, manifest, input) {
   next.issues[input.issue].status = 'active';
   next.issues[input.issue].dependencyState = 'active';
   next.events.push({ type: 'assignment', issue: input.issue, generation });
-  return next;
+  return reconcileFrontier(next, computeFrontier(manifest, next));
 }
 
-export function validateContinuationHandoff(handoff, expected = null) {
+export function createSchedulerLease(state, manifest, issue, frontier = computeFrontier(manifest, state)) {
+  const dispatch = frontier.capacity.dispatch.map((entry) => entry.issue);
+  if (!dispatch.includes(issue)) throw new Error(`issue is not in current capacity.dispatch: ${issue}`);
+  return {
+    schemaVersion: 1,
+    manifestDigest: manifest.digest,
+    providerConfigurationDigest: manifest.providerConfigurationDigest,
+    stateRevision: state.revision,
+    issue,
+    concurrency: manifest.concurrency,
+    activeCount: frontier.capacity.active,
+    dispatchDigest: digest({
+      stateRevision: state.revision,
+      dispatch,
+      ready: frontier.ready,
+      blocked: frontier.blocked,
+      observedHumanMerges: state.observedHumanMerges,
+      issueSetObservation: state.issueSetObservation,
+    }),
+  };
+}
+
+export function assignFreshWorkerPersisted(file, manifest, input, options = {}) {
+  const state = loadFleetState(file, manifest);
+  const schedulerLease = createSchedulerLease(state, manifest, input.issue);
+  const assigned = assignFreshWorker(state, manifest, { ...input, schedulerLease });
+  return persistFleetState(file, assigned, schedulerLease.stateRevision, manifest, options);
+}
+
+const HANDOFF_RESULT_KEYS = [
+  'path', 'directory', 'name', 'bytes', 'headings', 'redactions',
+  'suggested_skills_included',
+];
+const REQUIRED_HANDOFF_INPUTS = [
+  ['issue', 'issue'],
+  ['prior_generation', 'priorGeneration'],
+  ['branch', 'branch'],
+  ['worktree', 'worktree'],
+  ['base_sha', 'baseSha'],
+  ['head_sha', 'headSha'],
+  ['manifest_digest', 'manifestDigest'],
+  ['state_revision', 'stateRevision'],
+];
+
+function exactObjectKeys(value, expected) {
+  return value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && same(Object.keys(value).sort(), [...expected].sort());
+}
+
+function payloadBinding(payload, name) {
+  return payload?.inputs?.find((entry) => entry?.name === name);
+}
+
+export function validateContinuationHandoff(handoff, payload, expected = null) {
   const defects = [];
-  if (handoff?.invocation_skill !== 'orchestration-handoff') defects.push('invocation_skill must be orchestration-handoff');
-  if (handoff?.persistence_status !== 'created') defects.push('persistence_status must be created');
-  if (handoff?.schema_version !== 1) defects.push('schema_version must be 1');
-  for (const field of HANDOFF_FIELDS) {
-    if (!(field in (handoff ?? {}))) defects.push(`${field} is absent`);
+  if (!exactObjectKeys(handoff, HANDOFF_RESULT_KEYS)) {
+    defects.push('handoff result does not match the persisted orchestration result contract');
   }
-  if (!nonEmpty(handoff?.path)) defects.push('path is absent');
-  if (!nonEmpty(handoff?.artifact_sha256) || !/^[a-f0-9]{64}$/.test(handoff.artifact_sha256)) {
-    defects.push('artifact_sha256 is absent or invalid');
+  if (!nonEmpty(handoff?.path) || !nonEmpty(handoff?.directory) || !nonEmpty(handoff?.name)) {
+    defects.push('handoff result path, directory, or name is absent');
   }
-  if (!nonEmpty(handoff?.fresh_consolidated_brief)) {
-    defects.push('fresh_consolidated_brief is absent');
-  } else {
-    for (const section of BRIEF_SECTIONS) {
-      if (!new RegExp(`(^|\\n)${section}:`, 'm').test(handoff.fresh_consolidated_brief)) {
-        defects.push(`brief section ${section} is absent`);
-      }
+  if (!Number.isInteger(handoff?.bytes) || handoff.bytes < 1) defects.push('handoff result bytes are invalid');
+  if (!Array.isArray(handoff?.headings)
+      || !Array.isArray(handoff?.redactions)
+      || typeof handoff?.suggested_skills_included !== 'boolean') {
+    defects.push('handoff result metadata is malformed');
+  }
+  if (path.dirname(handoff?.path ?? '') !== handoff?.directory
+      || path.basename(handoff?.path ?? '') !== handoff?.name) {
+    defects.push('handoff result directory/name do not bind the returned path');
+  }
+  if (payload?.schema_version !== 1) defects.push('orchestration payload schema_version must be 1');
+  if (expected && payload?.run_identity?.run_id !== expected.runId) defects.push('payload run identity does not match');
+  if (expected && payload?.source_agent?.id !== expected.sourceAgent) defects.push('payload source agent does not match');
+  if (expected && payload?.target_agent?.id !== expected.targetAgent) defects.push('payload target agent does not match');
+  for (const field of [
+    'task_contract', 'inputs', 'constraints', 'assumptions',
+    'artifacts_and_references', 'acceptance_criteria', 'open_questions',
+  ]) {
+    if (!(field in (payload ?? {}))) defects.push(`payload ${field} is absent`);
+  }
+  if (!Array.isArray(payload?.acceptance_criteria)
+      || payload.acceptance_criteria.length === 0
+      || payload.acceptance_criteria.some((entry) => !nonEmpty(entry))) {
+    defects.push('payload acceptance criteria are incomplete');
+  }
+  for (const section of BRIEF_SECTIONS) {
+    const field = {
+      GOAL: 'goal', SCOPE: 'scope', CONTEXT: 'context', VERIFY: 'verify',
+      TIMEBOX: 'timebox', FORBIDDEN: 'forbidden', REPORT: 'report', STANDING: 'standing',
+    }[section];
+    if (field && !nonEmpty(payload?.task_contract?.[field])) {
+      defects.push(`payload brief section ${section} is absent`);
     }
   }
   if (expected) {
-    if (!handoff.bindings || typeof handoff.bindings !== 'object') {
-      defects.push('handoff bindings are absent');
-    } else {
-      for (const [field, value] of Object.entries(expected)) {
-        if (handoff.bindings[field] !== value) defects.push(`handoff binding ${field} does not match`);
+    for (const [inputName, expectedField] of REQUIRED_HANDOFF_INPUTS) {
+      const bindings = payload.inputs.filter((entry) => entry?.name === inputName);
+      const binding = bindings[0];
+      if (bindings.length !== 1
+          || !binding
+          || String(binding.value) !== String(expected[expectedField])
+          || !nonEmpty(binding.source)) {
+        defects.push(`payload binding ${inputName} does not match`);
       }
+    }
+    if (!same(payload.acceptance_criteria, expected.acceptanceCriteria)) {
+      defects.push('payload acceptance criteria do not match the confirmed issue');
     }
   }
   return { valid: defects.length === 0, defects };
 }
 
-function realFileWithinRoot(file, allowedRoot) {
-  if (!path.isAbsolute(file) || !path.isAbsolute(allowedRoot)) {
-    return { valid: false, defects: ['artifact path and allowed root must be absolute'] };
+function trustedHandoffRoot() {
+  const tempRoot = fs.realpathSync(os.tmpdir());
+  const root = path.join(tempRoot, 'handoffs');
+  const rootStat = fs.lstatSync(root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error('trusted handoff run directory must be a real non-symlink directory');
   }
-  let rootReal;
-  let fileReal;
+  const rootReal = fs.realpathSync(root);
+  if (rootReal !== root) throw new Error('trusted handoff run directory resolved through a link');
+  return rootReal;
+}
+
+function safeReadReturnedArtifact(handoff, options = {}) {
+  if (!path.isAbsolute(handoff.path) || !path.isAbsolute(handoff.directory)) {
+    throw new Error('artifact path and returned directory must be absolute');
+  }
+  const trusted = trustedHandoffRoot();
+  if (handoff.directory !== trusted || path.dirname(handoff.path) !== trusted) {
+    throw new Error('handoff artifact escapes the runtime-trusted handoff directory');
+  }
+  if (path.basename(handoff.path) !== handoff.name || handoff.path !== path.join(trusted, handoff.name)) {
+    throw new Error('handoff artifact path is not the exact returned direct child');
+  }
+  if (!Number.isInteger(fs.constants.O_NOFOLLOW) || fs.constants.O_NOFOLLOW === 0) {
+    throw new Error('runtime cannot establish O_NOFOLLOW handoff containment');
+  }
+  const flags = fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW;
+  const handle = fs.openSync(handoff.path, flags);
   try {
-    const rootStat = fs.lstatSync(allowedRoot);
-    const fileStat = fs.lstatSync(file);
-    if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
-      return { valid: false, defects: ['allowed handoff root must be a real directory'] };
+    const before = fs.fstatSync(handle, { bigint: true });
+    if (!before.isFile()) throw new Error('handoff artifact descriptor is not a regular file');
+    options.afterOpen?.();
+    const content = fs.readFileSync(handle);
+    const after = fs.fstatSync(handle, { bigint: true });
+    const pathStat = fs.lstatSync(handoff.path, { bigint: true });
+    if (pathStat.isSymbolicLink() || !pathStat.isFile()
+        || before.dev !== after.dev || before.ino !== after.ino
+        || before.size !== after.size || before.mtimeNs !== after.mtimeNs
+        || before.ctimeNs !== after.ctimeNs
+        || after.dev !== pathStat.dev || after.ino !== pathStat.ino
+        || after.size !== pathStat.size || after.mtimeNs !== pathStat.mtimeNs
+        || after.ctimeNs !== pathStat.ctimeNs) {
+      throw new Error('handoff artifact changed while being verified');
     }
-    if (!fileStat.isFile() || fileStat.isSymbolicLink()) {
-      return { valid: false, defects: ['handoff artifact must be a regular non-symlink file'] };
-    }
-    rootReal = fs.realpathSync(allowedRoot);
-    fileReal = fs.realpathSync(file);
+    return content;
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
+export function validateContinuationArtifact(handoff, payload, expected = null, options = {}) {
+  const result = validateContinuationHandoff(handoff, payload, expected);
+  if (!result.valid) return result;
+  let bytes;
+  try {
+    bytes = safeReadReturnedArtifact(handoff, options);
   } catch (error) {
     return { valid: false, defects: [`artifact reread failed: ${error.code ?? error.message}`] };
   }
-  if (fileReal !== rootReal && !fileReal.startsWith(`${rootReal}${path.sep}`)) {
-    return { valid: false, defects: ['handoff artifact escapes the allowed root'] };
-  }
-  return { valid: true, defects: [], fileReal };
-}
-
-function bindingPatterns(expected) {
-  return [
-    ['runId', `- run_id: ${expected.runId}`],
-    ['issue', `- issue: ${expected.issue}`],
-    ['priorGeneration', `- prior_generation: ${expected.priorGeneration}`],
-    ['branch', `- branch: ${expected.branch}`],
-    ['worktree', `- worktree: ${expected.worktree}`],
-    ['baseSha', `- base_sha: ${expected.baseSha}`],
-    ['headSha', `- head_sha: ${expected.headSha}`],
-    ['sourceAgent', `- id: ${expected.sourceAgent}`],
-    ['targetAgent', `- id: ${expected.targetAgent}`],
-  ];
-}
-
-export function validateContinuationArtifact(file, handoff, allowedRoot, expected = null) {
-  if (handoff?.path !== file) return { valid: false, defects: ['artifact path does not match handoff path'] };
-  const safe = realFileWithinRoot(file, allowedRoot);
-  if (!safe.valid) return safe;
-  let content;
-  try {
-    content = fs.readFileSync(safe.fileReal, 'utf8');
-  } catch (error) {
-    return { valid: false, defects: [`artifact reread failed: ${error.code ?? error.message}`] };
-  }
-  const digest = crypto.createHash('sha256').update(content).digest('hex');
+  const content = bytes.toString('utf8');
+  const artifactDigest = crypto.createHash('sha256').update(bytes).digest('hex');
   const defects = [];
-  if (digest !== handoff.artifact_sha256) defects.push('artifact SHA-256 does not match reread content');
+  if (bytes.length !== handoff.bytes) defects.push('artifact byte count does not match returned metadata');
+  const headings = content.split('\n').filter((line) => line.startsWith('## ')).map((line) => line.slice(3));
+  if (!same(headings, handoff.headings)) defects.push('artifact headings do not match returned metadata');
   for (const section of BRIEF_SECTIONS) {
     if (!new RegExp(`(^|\\n)(?:#+\\s+)?${section}(?:\\s*:)?\\s*$`, 'm').test(content)) {
       defects.push(`artifact section ${section} is absent`);
     }
   }
   if (expected) {
-    for (const [field, text] of bindingPatterns(expected)) {
-      if (!new RegExp(`(^|\\n)${escapeRegExp(text)}\\s*$`, 'm').test(content)) {
-        defects.push(`artifact binding ${field} is absent`);
+    for (const [inputName, expectedField] of REQUIRED_HANDOFF_INPUTS) {
+      const binding = payloadBinding(payload, inputName);
+      const rendered = `- ${inputName}: ${binding.value} (source: ${binding.source})`;
+      if (!new RegExp(`(^|\\n)${escapeRegExp(rendered)}\\s*$`, 'm').test(content)) {
+        defects.push(`artifact binding ${inputName} is absent`);
+      }
+    }
+    for (const id of [expected.sourceAgent, expected.targetAgent]) {
+      if (!new RegExp(`(^|\\n)- id: ${escapeRegExp(id)}\\s*$`, 'm').test(content)) {
+        defects.push(`artifact agent binding ${id} is absent`);
       }
     }
   }
-  return { valid: defects.length === 0, defects, digest, content };
+  return {
+    valid: defects.length === 0,
+    defects,
+    digest: artifactDigest,
+    bindingsDigest: digest({
+      runId: expected?.runId,
+      sourceAgent: expected?.sourceAgent,
+      targetAgent: expected?.targetAgent,
+      inputs: REQUIRED_HANDOFF_INPUTS.map(([name]) => payloadBinding(payload, name)),
+    }),
+    content,
+  };
 }
 
 export function continueWithFreshWorker(state, manifest, input) {
@@ -275,8 +406,8 @@ export function continueWithFreshWorker(state, manifest, input) {
   if (input.branch !== record.assignment.branch || input.worktree !== record.assignment.worktree) {
     throw new Error('continuation must retain the owned branch and worktree');
   }
-  if (!nonEmpty(input.workerContext) || !nonEmpty(input.allowedHandoffRoot)) {
-    throw new Error('continuation requires a fresh worker context and allowed handoff root');
+  if (!nonEmpty(input.workerContext)) {
+    throw new Error('continuation requires a fresh worker context');
   }
   ensureFreshOwnership(state, {
     workerContext: input.workerContext,
@@ -293,13 +424,15 @@ export function continueWithFreshWorker(state, manifest, input) {
     targetAgent: input.workerContext,
     baseSha: record.assignment.baseSha,
     headSha: record.assignment.headSha,
+    manifestDigest: manifest.digest,
+    stateRevision: state.revision,
+    acceptanceCriteria: issue.acceptanceCriteria.map((criterion) => criterion.description),
   };
-  const handoff = validateContinuationHandoff(input.handoff, expected);
+  const handoff = validateContinuationHandoff(input.handoff, input.handoffPayload, expected);
   if (!handoff.valid) throw new Error(`invalid orchestration handoff: ${handoff.defects.join('; ')}`);
   const artifact = validateContinuationArtifact(
-    input.handoff.path,
     input.handoff,
-    input.allowedHandoffRoot,
+    input.handoffPayload,
     expected,
   );
   if (!artifact.valid) throw new Error(`invalid orchestration handoff artifact: ${artifact.defects.join('; ')}`);
@@ -314,7 +447,9 @@ export function continueWithFreshWorker(state, manifest, input) {
     endedAt: input.endedAt ?? new Date().toISOString(),
     handoff: {
       path: input.handoff.path,
+      directory: input.handoff.directory,
       artifactSha256: artifact.digest,
+      bindingsSha256: artifact.bindingsDigest,
     },
   };
   next.issues[input.issue].continuationChain.push(prior);

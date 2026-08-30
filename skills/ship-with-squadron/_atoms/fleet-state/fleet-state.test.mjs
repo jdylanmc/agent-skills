@@ -176,4 +176,40 @@ test('uses at-ceiling budget semantics, stops dispatch, and preserves cancellati
     () => transitionIssue(initial, '1', 'pending'),
     /validated handoff replacement/,
   );
+  assert.throws(
+    () => transitionIssue(initial, '1', 'failed', {
+      terminalDisposition: 'blocked',
+    }),
+    /contradicts status failed/,
+  );
+});
+
+test('state invariants rederive semantic evidence and enforce active capacity', () => {
+  const forgedCapacity = createFleetState(manifest, 'run-4');
+  forgedCapacity.activeCapacity = 1;
+  assert.throws(() => assertFleetState(forgedCapacity, manifest), /active owner count violates/);
+
+  const failedCi = createFleetState(manifest, 'run-5');
+  const record = failedCi.issues['1'];
+  record.baseSha = 'base';
+  record.headSha = 'head';
+  const common = {
+    baseSha: 'base', headSha: 'head', complete: true, terminal: true,
+    completedAt: '2026-08-30T00:02:00Z',
+  };
+  record.pipeline = [
+    { stage: 'implementation', evidence: { ...common, status: 'completed' } },
+    { stage: 'diff-reconciliation', evidence: { ...common, verdict: 'reconciled' } },
+    {
+      stage: 'run-ci',
+      evidence: {
+        ...common,
+        invocation: { skill: 'run-ci', id: 'ci-failed', runId: 'run-5', issue: '1' },
+        status: 'failed',
+        evidenceComplete: true,
+        steps: [{ name: 'tests', status: 'failed' }],
+      },
+    },
+  ];
+  assert.throws(() => assertFleetState(failedCi, manifest), /forged run-ci evidence/);
 });

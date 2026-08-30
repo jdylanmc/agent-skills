@@ -1,16 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { validateSourceRevisionReceipt } from '../fleet-manifest/fleet-manifest.mjs';
+import {
+  validateIssueSetReceipt,
+  validateSourceRevisionReceipt,
+} from '../fleet-manifest/fleet-manifest.mjs';
 import {
   adaptBlastRadiusEvidence,
   adaptCiEvidence,
   adaptRoastEvidence,
   deliveryStagesForManifest,
+  persistedPipelinePasses,
 } from '../quality-evidence/quality-evidence.mjs';
-import { publicationKey } from '../provider-seam/provider-seam.mjs';
+import {
+  normalizeMergeObservation,
+  publicationKey,
+} from '../provider-seam/provider-seam.mjs';
+import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.mjs';
 
-export const FLEET_STATE_SCHEMA_VERSION = 1;
+export const FLEET_STATE_SCHEMA_VERSION = 2;
 const ISSUE_STATUSES = new Set(['pending', 'active', 'completed', 'failed', 'deferred']);
 const ISSUE_DISPOSITIONS = new Set([
   'ready-for-human-merge',
@@ -31,6 +39,13 @@ const TERMINAL_TRANSITIONS = new Map([
 const PUBLICATION_STATES = new Set(['intent-recorded', 'retryable-degraded', 'confirmed']);
 const DEPENDENCY_STATES = new Set(['unclassified', 'ready', 'blocked', 'active']);
 const HANDOFF_REASONS = new Set(['stalled', 'exhausted', 'timed-out', 'crashed']);
+const DISPOSITIONS_BY_STATUS = Object.freeze({
+  pending: new Set([null, 'blocked', 'not-reached']),
+  active: new Set([null]),
+  completed: new Set(['ready-for-human-merge', 'blocked', 'already-complete']),
+  failed: new Set(['failed']),
+  deferred: new Set(['deferred', 'timed-out-with-handoff']),
+});
 const FORBIDDEN_AUTHORITIES = [
   'merge', 'approve', 'enable-auto-merge', 'accept-risk', 'force-push',
   'close-tracker-work', 'select-adjacent-work',
@@ -119,10 +134,9 @@ function assertPublication(entry, manifest, state) {
   }
   exactKeys(entry, [
     'manifestDigest', 'providerConfigurationDigest', 'provider', 'repository',
-    'issue', 'sourceRevision', 'headBranch', 'baseBranch', 'baseSha', 'headSha',
-    'key', 'state', 'attempts', 'identifier', 'intentAt', 'confirmedAt',
+    'issue', 'sourceRevision', 'headBranch', 'baseBranch',
+    'key', 'identifier', 'observations',
   ], `publication ${entry.key}`);
-  if (!PUBLICATION_STATES.has(entry.state)) throw new Error(`publication ${entry.key} has invalid state`);
   if (entry.manifestDigest !== manifest.digest
       || entry.providerConfigurationDigest !== manifest.providerConfigurationDigest
       || entry.provider !== manifest.provider.name
@@ -132,24 +146,55 @@ function assertPublication(entry, manifest, state) {
   }
   const issue = state.issues[entry.issue];
   if (!issue) throw new Error(`publication ${entry.key} names an unknown issue`);
-  if (!nonEmpty(entry.headBranch) || !nonEmpty(entry.headSha) || !validTimestamp(entry.intentAt)) {
+  if (!nonEmpty(entry.headBranch)) {
     throw new Error(`publication ${entry.key} has incomplete identity`);
   }
   if (entry.key !== publicationKey(entry)) throw new Error(`publication ${entry.key} has forged stable key`);
-  if (!Array.isArray(entry.attempts)) throw new Error(`publication ${entry.key} attempts are invalid`);
-  for (const attempt of entry.attempts) {
-    if (!nonEmpty(attempt?.invocationId)
-        || !nonEmpty(attempt?.status)
-        || !validTimestamp(attempt?.observedAt)) {
-      throw new Error(`publication ${entry.key} contains malformed attempt evidence`);
+  if (!Array.isArray(entry.observations) || entry.observations.length === 0) {
+    throw new Error(`publication ${entry.key} observations are absent`);
+  }
+  const revisions = new Set();
+  let confirmed = 0;
+  for (const observation of entry.observations) {
+    exactKeys(observation, [
+      'baseSha', 'headSha', 'state', 'attempts', 'intentAt', 'confirmedAt',
+    ], `publication ${entry.key} observation`);
+    if (!nonEmpty(observation.baseSha)
+        || !nonEmpty(observation.headSha)
+        || !PUBLICATION_STATES.has(observation.state)
+        || !validTimestamp(observation.intentAt)
+        || !Array.isArray(observation.attempts)) {
+      throw new Error(`publication ${entry.key} has malformed revision observation`);
+    }
+    const revisionKey = `${observation.baseSha}\0${observation.headSha}`;
+    if (revisions.has(revisionKey)) throw new Error(`publication ${entry.key} duplicates a revision observation`);
+    revisions.add(revisionKey);
+    for (const attempt of observation.attempts) {
+      if (!nonEmpty(attempt?.invocationId)
+          || !nonEmpty(attempt?.status)
+          || !validTimestamp(attempt?.observedAt)
+          || attempt.terminal !== true
+          || attempt.complete !== true) {
+        throw new Error(`publication ${entry.key} contains malformed attempt evidence`);
+      }
+    }
+    if (observation.state === 'confirmed') {
+      confirmed += 1;
+      if (!nonEmpty(entry.identifier) || !validTimestamp(observation.confirmedAt)) {
+        throw new Error(`publication ${entry.key} has confirmation without provider identity`);
+      }
+      const confirmationAttempt = observation.attempts.at(-1);
+      if (!confirmationAttempt
+          || !['published', 'found-existing'].includes(confirmationAttempt.status)
+          || confirmationAttempt.observedAt !== observation.confirmedAt) {
+        throw new Error(`publication ${entry.key} lacks a complete provider confirmation attempt`);
+      }
+    } else if (observation.confirmedAt !== null) {
+      throw new Error(`publication ${entry.key} forges revision confirmation`);
     }
   }
-  if (entry.state === 'confirmed') {
-    if (!nonEmpty(entry.identifier) || !validTimestamp(entry.confirmedAt)) {
-      throw new Error(`publication ${entry.key} is not confirmed by provider identity`);
-    }
-  } else if (entry.identifier !== null || entry.confirmedAt !== null) {
-    throw new Error(`publication ${entry.key} forges confirmation fields`);
+  if (confirmed === 0 && entry.identifier !== null) {
+    throw new Error(`publication ${entry.key} has an identifier without confirmed observation`);
   }
 }
 
@@ -207,15 +252,27 @@ function assertPipeline(record, manifest, state) {
       throw new Error(`${record.identity} pipeline evidence is stale`);
     }
     const identity = { runId: state.runId, issue: record.identity };
-    if (entry.stage === 'run-ci' && !adaptCiEvidence(entry.evidence, record, identity).valid) {
+    if (entry.stage === 'run-ci' && !adaptCiEvidence(entry.evidence, record, identity).passed) {
       throw new Error(`${record.identity} contains forged run-ci evidence`);
     }
-    if (entry.stage === 'roast' && !adaptRoastEvidence(entry.evidence, record, identity).valid) {
+    if (entry.stage === 'roast' && !adaptRoastEvidence(entry.evidence, record, identity).complete) {
       throw new Error(`${record.identity} contains forged Roast evidence`);
     }
     if (entry.stage === 'blast-radius-proof'
-        && !adaptBlastRadiusEvidence(entry.evidence, record, identity).valid) {
+        && adaptBlastRadiusEvidence(entry.evidence, record, identity).readiness !== 'satisfied') {
       throw new Error(`${record.identity} contains forged blast-radius evidence`);
+    }
+    if (['implementation', 'diff-reconciliation', 'bounded-remediation'].includes(entry.stage)
+        && (entry.evidence.complete !== true
+          || entry.evidence.terminal !== true
+          || !validTimestamp(entry.evidence.completedAt)
+          || (entry.stage === 'implementation' && entry.evidence.status !== 'completed')
+          || (entry.stage === 'diff-reconciliation' && entry.evidence.verdict !== 'reconciled')
+          || (entry.stage === 'bounded-remediation'
+            && (entry.evidence.status !== 'completed'
+              || !Array.isArray(entry.evidence.unresolvedDefects)
+              || entry.evidence.unresolvedDefects.length !== 0)))) {
+      throw new Error(`${record.identity} ${entry.stage} evidence is incomplete`);
     }
     if (entry.stage === 'criterion-verdict') {
       const verdicts = entry.evidence.verdicts;
@@ -238,14 +295,20 @@ function assertPipeline(record, manifest, state) {
           }
         } else if (verdict.verdict === 'descoped-by-human') {
           const receipt = verdict.decisionReceipt;
-          if (!receipt
-              || receipt.criterionId !== verdict.id
-              || receipt.manifestDigest !== manifest.digest
-              || receipt.sourceRevision !== record.sourceRevision
-              || receipt.decision !== 'descoped'
-              || receipt.actorType !== 'human'
-              || !nonEmpty(receipt.decisionId)
-              || !validTimestamp(receipt.decidedAt)) {
+          const decision = manifest.humanDecisions.find((entry) => entry.id === receipt?.decisionId);
+          if (!decision || !nonEmpty(receipt.actor)
+              || !same(receipt, {
+                decisionId: decision.id,
+                actor: decision.actor,
+                actorType: 'human',
+                issue: decision.issue,
+                criterionId: decision.criterionId,
+                manifestDigest: decision.manifestDigest,
+                sourceRevision: decision.sourceRevision,
+                decision: decision.decision,
+                decisionText: decision.decisionText,
+                decidedAt: decision.decidedAt,
+              })) {
             throw new Error(`${record.identity} criterion ${verdict.id} lacks a valid human decision receipt`);
           }
         } else {
@@ -254,14 +317,35 @@ function assertPipeline(record, manifest, state) {
       }
     }
     if (entry.stage === 'publication') {
+      const publication = state.publications.find((candidate) =>
+        candidate.key === record.changeRequest?.publicationKey
+        && candidate.identifier === record.changeRequest?.identifier);
+      const observation = publication?.observations.find((candidate) =>
+        candidate.state === 'confirmed'
+        && candidate.baseSha === record.baseSha
+        && candidate.headSha === record.headSha);
       if (!record.changeRequest
+          || !observation
           || entry.evidence.changeRequest !== record.changeRequest.identifier
-          || entry.evidence.publicationKey !== record.changeRequest.publicationKey) {
+          || entry.evidence.publicationKey !== record.changeRequest.publicationKey
+          || entry.evidence.status !== 'confirmed'
+          || entry.evidence.terminal !== true
+          || entry.evidence.complete !== true
+          || entry.evidence.provider !== manifest.provider.name
+          || entry.evidence.repository !== manifest.repository.id
+          || entry.evidence.issue !== record.identity
+          || entry.evidence.observedAt !== observation.confirmedAt) {
         throw new Error(`${record.identity} publication stage is not reconciled`);
       }
     }
     if (entry.stage === 'shepherd' && record.shepherd?.accepted !== true) {
       throw new Error(`${record.identity} Shepherd stage lacks an accepted receipt`);
+    }
+  }
+  if (record.pipeline.length === stages.length) {
+    const semantic = persistedPipelinePasses(record, state, manifest);
+    if (!semantic.passed) {
+      throw new Error(`${record.identity} pipeline does not semantically pass: ${semantic.defects.join('; ')}`);
     }
   }
 }
@@ -276,6 +360,7 @@ function assertIssueRecord(record, issue, manifest, state) {
     'branch', 'worktree', 'baseSha', 'headSha', 'status', 'statusReason', 'implementationStatus',
     'qualityEvidence', 'pipeline', 'changeRequest', 'shepherd',
     'shepherdDecision', 'setObligation', 'terminalDisposition', 'nextAction',
+    'checkActivity',
   ], `fleet state issue ${issue.identity}`);
   if (record.identity !== issue.identity) throw new Error(`identity mismatch for ${issue.identity}`);
   if (record.sourceRevision !== issue.sourceRevision) {
@@ -342,20 +427,25 @@ function assertIssueRecord(record, issue, manifest, state) {
   if (record.terminalDisposition !== null && !ISSUE_DISPOSITIONS.has(record.terminalDisposition)) {
     throw new Error(`${issue.identity} has invalid terminal disposition`);
   }
-  if (record.status === 'completed' && record.terminalDisposition === null) {
-    throw new Error(`${issue.identity} completed without terminal disposition`);
+  if (!DISPOSITIONS_BY_STATUS[record.status].has(record.terminalDisposition)) {
+    throw new Error(`${issue.identity} status and terminal disposition are contradictory`);
   }
-  if (record.status === 'failed' && record.terminalDisposition !== 'failed') {
-    throw new Error(`${issue.identity} failed status must carry failed disposition`);
-  }
-  if (record.status === 'deferred' && record.terminalDisposition !== 'deferred') {
-    throw new Error(`${issue.identity} deferred status must carry deferred disposition`);
+  if (record.checkActivity !== null) {
+    if (!record.checkActivity
+        || !['quality-check', 'publication-observation', 'shepherd-check'].includes(record.checkActivity.kind)
+        || record.checkActivity.state !== 'active'
+        || !validTimestamp(record.checkActivity.startedAt)) {
+      throw new Error(`${issue.identity} check activity is malformed`);
+    }
   }
   if (record.changeRequest !== null) {
     const publication = state.publications.find((entry) =>
-      entry.state === 'confirmed'
-      && entry.issue === issue.identity
-      && entry.identifier === record.changeRequest.identifier);
+      entry.issue === issue.identity
+      && entry.identifier === record.changeRequest.identifier
+      && entry.observations.some((observation) =>
+        observation.state === 'confirmed'
+        && observation.baseSha === record.baseSha
+        && observation.headSha === record.headSha));
     if (!publication
         || record.changeRequest.provider !== manifest.provider.name
         || record.changeRequest.repository !== manifest.repository.id
@@ -419,6 +509,7 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
     shepherd: null,
     shepherdDecision: null,
     setObligation: null,
+    checkActivity: null,
     terminalDisposition: issue.status === 'completed'
       ? 'already-complete'
       : issue.status === 'failed'
@@ -447,6 +538,7 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
     expiredReadinessClaims: [],
     reShepherdQueue: [],
     publications: [],
+    issueSetObservation: null,
     budgetUse: { cost: 0, timeMinutes: 0, retries: 0 },
     control: {
       cancelled: false,
@@ -467,7 +559,7 @@ export function assertFleetState(state, manifest) {
     'providerConfigurationDigest', 'createdAt', 'updatedAt', 'issues',
     'readyFrontier', 'blockedSet', 'activeCapacity', 'completedWork',
     'observedHumanMerges', 'expiredReadinessClaims', 'reShepherdQueue',
-    'publications', 'budgetUse', 'control', 'unresolvedHumanDecisions',
+    'publications', 'issueSetObservation', 'budgetUse', 'control', 'unresolvedHumanDecisions',
     'fleetDisposition', 'events',
   ], 'fleet state');
   if (state.manifestDigest !== manifest.digest) throw new Error('fleet state manifest digest mismatch');
@@ -516,6 +608,16 @@ export function assertFleetState(state, manifest) {
   if (new Set(publicationKeys).size !== publicationKeys.length) {
     throw new Error('fleet state contains duplicate publication keys');
   }
+  const publicationIssues = state.publications.map((entry) => entry.issue);
+  if (new Set(publicationIssues).size !== publicationIssues.length) {
+    throw new Error('fleet state contains duplicate logical publications for an issue');
+  }
+  const publicationIdentifiers = state.publications
+    .map((entry) => entry.identifier)
+    .filter((identifier) => identifier !== null);
+  if (new Set(publicationIdentifiers).size !== publicationIdentifiers.length) {
+    throw new Error('fleet state contains duplicate provider publication identifiers');
+  }
   for (const issue of manifest.issues) assertIssueRecord(state.issues[issue.identity], issue, manifest, state);
 
   const active = assignmentList(state).filter((assignment) => assignment.active);
@@ -530,22 +632,61 @@ export function assertFleetState(state, manifest) {
   if (active.length !== Object.values(state.issues).filter((issue) => issue.status === 'active').length) {
     throw new Error('active owner count is inconsistent with issue status');
   }
+  if (active.length !== state.activeCapacity || active.length > manifest.concurrency) {
+    throw new Error('active owner count violates persisted capacity or manifest concurrency');
+  }
   for (const merge of state.observedHumanMerges) {
-    const publication = state.publications.find((entry) =>
-      entry.state === 'confirmed'
-      && entry.issue === merge.issue
-      && entry.identifier === merge.changeRequest);
-    if (!publication) throw new Error('observed merge is not reconciled to a confirmed publication');
+    normalizeMergeObservation(state, manifest, merge);
+    const issue = state.issues[merge.issue];
+    if (issue.status !== 'completed'
+        || !['ready-for-human-merge', 'already-complete'].includes(issue.terminalDisposition)) {
+      throw new Error('observed merge contradicts the issue terminal transition matrix');
+    }
+  }
+  for (const field of ['publicationKey', 'mergeCommit']) {
+    const values = state.observedHumanMerges.map((entry) => entry[field]);
+    if (new Set(values).size !== values.length) throw new Error('observed merge records are not unique');
+  }
+  const invocationIds = state.observedHumanMerges.map((entry) => entry.invocation.id);
+  if (new Set(invocationIds).size !== invocationIds.length) {
+    throw new Error('observed merge invocation identities are not unique');
+  }
+  if (manifest.issueSet.kind === 'tracker-query' && state.issueSetObservation !== null) {
+    validateIssueSetReceipt(state.issueSetObservation, manifest);
+    if (state.issueSetObservation.manifestDigest !== manifest.digest
+        || !validTimestamp(state.issueSetObservation.reobservedAt)) {
+      throw new Error('issue-set observation is not bound to the confirmed manifest');
+    }
+  } else if (manifest.issueSet.kind === 'explicit' && state.issueSetObservation !== null) {
+    throw new Error('explicit issue sets must not forge query observations');
   }
   for (const queued of state.reShepherdQueue) {
     const issue = state.issues[queued.issue];
-    if (!issue?.changeRequest
-        || queued.changeRequest !== issue.changeRequest.identifier
+    const publication = state.publications.find((entry) =>
+      entry.key === queued.publicationKey && entry.identifier === queued.changeRequest);
+    if (!issue
+        || !publication
         || !Number.isInteger(queued.generation)
         || queued.generation < 1
         || !nonEmpty(queued.baseSha)
-        || !nonEmpty(queued.headSha)) {
+        || !nonEmpty(queued.headSha)
+        || !nonEmpty(queued.triggeringPublicationKey)
+        || !nonEmpty(queued.triggeringMergeCommit)
+        || queued.revisionObservation?.status !== 'observed'
+        || queued.revisionObservation?.terminal !== true
+        || queued.revisionObservation?.complete !== true
+        || queued.revisionObservation?.issue !== queued.issue
+        || queued.revisionObservation?.changeRequest !== queued.changeRequest
+        || queued.revisionObservation?.baseSha !== queued.baseSha
+        || queued.revisionObservation?.headSha !== queued.headSha
+        || !validTimestamp(queued.revisionObservation?.observedAt)) {
       throw new Error('re-Shepherd queue entry is incomplete or forged');
+    }
+  }
+  if (state.fleetDisposition !== null) {
+    const derived = deriveFleetDisposition(state, manifest);
+    if (state.fleetDisposition !== derived) {
+      throw new Error(`persisted fleet disposition contradicts semantic state: ${state.fleetDisposition} != ${derived}`);
     }
   }
   return state;
@@ -684,6 +825,7 @@ export function recordSourceRevisionObservation(state, manifest, issue, receipt,
     throw new Error('source reobservation state is not bound to the confirmed manifest');
   }
   const normalized = validateSourceRevisionReceipt(receipt, manifest, issue);
+  if (!validTimestamp(now)) throw new Error('source reobservation time is invalid');
   const record = state.issues?.[issue];
   if (!record) throw new Error(`unknown issue: ${issue}`);
   if (record.status !== 'pending' || record.assignment !== null) {
@@ -699,6 +841,39 @@ export function recordSourceRevisionObservation(state, manifest, issue, receipt,
     reobservedAt: now,
   };
   next.events.push({ type: 'source-reobserved', issue, revision: normalized.revision });
+  return next;
+}
+
+export function recordIssueSetObservation(
+  state,
+  manifest,
+  receipt,
+  now = new Date().toISOString(),
+) {
+  if (manifest.issueSet.kind !== 'tracker-query') {
+    throw new Error('issue-set reobservation is only required for tracker-query manifests');
+  }
+  if (state.manifestDigest !== manifest.digest
+      || state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
+    throw new Error('issue-set reobservation state is not bound to the confirmed manifest');
+  }
+  const normalized = validateIssueSetReceipt(receipt, manifest);
+  if (!validTimestamp(now)) throw new Error('issue-set reobservation time is invalid');
+  if (Date.parse(normalized.observedAt) < Date.parse(manifest.issueSet.receipt.observedAt)) {
+    throw new Error('issue-set reobservation predates the confirmed query receipt');
+  }
+  const next = structuredClone(state);
+  next.issueSetObservation = {
+    ...normalized,
+    manifestDigest: manifest.digest,
+    reobservedAt: now,
+  };
+  next.events.push({
+    type: 'issue-set-reobserved',
+    queryIdentity: normalized.queryIdentity,
+    queryRevision: normalized.queryRevision,
+    membershipDigest: normalized.membershipDigest,
+  });
   return next;
 }
 
@@ -724,6 +899,9 @@ export function transitionIssue(state, issue, status, detail = {}) {
   }
   if (!ISSUE_DISPOSITIONS.has(detail.terminalDisposition)) {
     throw new Error('terminal transition requires a valid issue disposition');
+  }
+  if (!DISPOSITIONS_BY_STATUS[status].has(detail.terminalDisposition)) {
+    throw new Error(`terminal transition contradicts status ${status}`);
   }
   const next = structuredClone(state);
   if (record.status === 'active') {
@@ -753,6 +931,28 @@ export function transitionIssue(state, issue, status, detail = {}) {
     to: status,
     reason: detail.reason ?? null,
   });
+  return next;
+}
+
+export function startCheckActivity(state, issue, kind, startedAt = new Date().toISOString()) {
+  const record = state.issues?.[issue];
+  if (!record) throw new Error(`unknown issue: ${issue}`);
+  if (!['quality-check', 'publication-observation', 'shepherd-check'].includes(kind)) {
+    throw new Error('check activity kind is invalid');
+  }
+  if (!validTimestamp(startedAt)) throw new Error('check activity time is invalid');
+  const next = structuredClone(state);
+  next.issues[issue].checkActivity = { kind, state: 'active', startedAt };
+  next.events.push({ type: 'check-activity-started', issue, kind });
+  return next;
+}
+
+export function finishCheckActivity(state, issue) {
+  const record = state.issues?.[issue];
+  if (!record?.checkActivity) throw new Error(`no explicit check activity for ${issue}`);
+  const next = structuredClone(state);
+  next.issues[issue].checkActivity = null;
+  next.events.push({ type: 'check-activity-finished', issue, kind: record.checkActivity.kind });
   return next;
 }
 

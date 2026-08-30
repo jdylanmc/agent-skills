@@ -2,7 +2,12 @@ import crypto from 'node:crypto';
 
 const ISSUE_STATUSES = new Set(['pending', 'completed', 'failed', 'deferred']);
 const SATISFACTION = new Set(['human-merge', 'completed']);
-const SAFE_PROVIDER_OPERATIONS = new Set(['read-issue', 'publish-change-request', 'observe-merge']);
+const SAFE_PROVIDER_OPERATIONS = new Set([
+  'read-issue',
+  'read-issue-set',
+  'publish-change-request',
+  'observe-merge',
+]);
 const BASELINE_POLICY = Object.freeze(['run-ci', 'roast', 'blast-radius-proof']);
 const SOURCE_STATUS = 'observed';
 
@@ -33,6 +38,11 @@ function stable(value) {
     return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
   }
   return value;
+}
+
+function assertOnlyKeys(value, allowed, field) {
+  const unknown = Object.keys(value ?? {}).filter((key) => !allowed.has(key));
+  if (unknown.length) throw new Error(`${field} has unknown fields: ${unknown.sort().join(', ')}`);
 }
 
 export function manifestDigest(manifest) {
@@ -124,25 +134,141 @@ export function validateSourceRevisionReceipt(receipt, manifest, issueIdentity) 
   }, `${issue.identity}.sourceReceipt`);
 }
 
-function normalizeHumanDecisions(input) {
+function membershipDigest(issues) {
+  return manifestDigest(issues
+    .map(({ identity, sourceRevision }) => ({ identity, sourceRevision }))
+    .sort((left, right) => left.identity.localeCompare(right.identity)));
+}
+
+function normalizeIssueSetReceipt(receipt, expected, field) {
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) {
+    throw new Error(`${field} is required`);
+  }
+  const invocation = receipt.invocation;
+  if (!invocation || typeof invocation !== 'object' || Array.isArray(invocation)) {
+    throw new Error(`${field}.invocation is required`);
+  }
+  assertOnlyKeys(receipt, new Set([
+    'invocation', 'provider', 'repository', 'queryIdentity', 'queryRevision',
+    'membershipDigest', 'members', 'status', 'terminal', 'complete', 'observedAt',
+    'manifestDigest', 'reobservedAt',
+  ]), field);
+  assertOnlyKeys(invocation, new Set(['id', 'operation']), `${field}.invocation`);
+  const members = receipt.members;
+  if (!Array.isArray(members) || members.length === 0) {
+    throw new Error(`${field}.members must be a non-empty array`);
+  }
+  const normalizedMembers = members.map((member, index) => ({
+    identity: nonEmpty(member?.identity, `${field}.members[${index}].identity`),
+    sourceRevision: nonEmpty(
+      member?.sourceRevision,
+      `${field}.members[${index}].sourceRevision`,
+    ),
+  }));
+  const identities = normalizedMembers.map((member) => member.identity);
+  if (new Set(identities).size !== identities.length) {
+    throw new Error(`${field}.members contains duplicate issue identities`);
+  }
+  const normalized = {
+    invocation: {
+      id: nonEmpty(invocation.id, `${field}.invocation.id`),
+      operation: nonEmpty(invocation.operation, `${field}.invocation.operation`),
+    },
+    provider: nonEmpty(receipt.provider, `${field}.provider`).toLowerCase(),
+    repository: nonEmpty(receipt.repository, `${field}.repository`),
+    queryIdentity: nonEmpty(receipt.queryIdentity, `${field}.queryIdentity`),
+    queryRevision: nonEmpty(receipt.queryRevision, `${field}.queryRevision`),
+    membershipDigest: nonEmpty(receipt.membershipDigest, `${field}.membershipDigest`),
+    members: normalizedMembers.sort((left, right) => left.identity.localeCompare(right.identity)),
+    status: nonEmpty(receipt.status, `${field}.status`),
+    terminal: receipt.terminal === true,
+    complete: receipt.complete === true,
+    observedAt: timestamp(receipt.observedAt, `${field}.observedAt`),
+  };
+  if (normalized.invocation.operation !== 'read-issue-set') {
+    throw new Error(`${field}.invocation.operation must be read-issue-set`);
+  }
+  if (normalized.status !== 'observed' || !normalized.terminal || !normalized.complete) {
+    throw new Error(`${field} must be a complete terminal observed provider receipt`);
+  }
+  for (const key of ['provider', 'repository', 'queryIdentity', 'queryRevision', 'membershipDigest']) {
+    if (normalized[key] !== expected[key]) {
+      throw new Error(`${field}.${key} does not match the confirmed manifest`);
+    }
+  }
+  if (manifestDigest(normalized.members) !== expected.membershipDigest
+      || JSON.stringify(normalized.members) !== JSON.stringify(expected.members)) {
+    throw new Error(`${field}.members does not match the confirmed closed membership`);
+  }
+  return normalized;
+}
+
+function normalizeHumanDecisions(input, issues, manifestBindingDigest) {
   if (!Object.hasOwn(input, 'humanDecisions') || !Array.isArray(input.humanDecisions)) {
     throw new Error('humanDecisions must be explicitly declared as an array');
   }
   const ids = new Set();
+  const issueMap = new Map(issues.map((issue) => [issue.identity, issue]));
   return input.humanDecisions.map((decision, index) => {
     if (!decision || typeof decision !== 'object' || Array.isArray(decision)) {
       throw new Error(`humanDecisions[${index}] must be an object`);
     }
+    assertOnlyKeys(decision, new Set([
+      'id', 'actor', 'issue', 'criterionId', 'sourceRevision', 'decision',
+      'decisionText', 'decidedAt',
+    ]), `humanDecisions[${index}]`);
     const id = nonEmpty(decision.id, `humanDecisions[${index}].id`);
     if (ids.has(id)) throw new Error(`duplicate human decision id: ${id}`);
     ids.add(id);
+    const issue = nonEmpty(decision.issue, `humanDecisions[${index}].issue`);
+    const criterionId = nonEmpty(
+      decision.criterionId,
+      `humanDecisions[${index}].criterionId`,
+    );
+    const manifestIssue = issueMap.get(issue);
+    if (!manifestIssue) throw new Error(`human decision ${id} names unknown issue ${issue}`);
+    if (!manifestIssue.acceptanceCriteria.some((criterion) => criterion.id === criterionId)) {
+      throw new Error(`human decision ${id} names unknown criterion ${criterionId}`);
+    }
+    const sourceRevision = nonEmpty(
+      decision.sourceRevision,
+      `humanDecisions[${index}].sourceRevision`,
+    );
+    if (sourceRevision !== manifestIssue.sourceRevision) {
+      throw new Error(`human decision ${id} source revision does not match issue`);
+    }
+    if (decision.decision !== 'descoped') {
+      throw new Error(`human decision ${id} must record decision descoped`);
+    }
     return {
       id,
-      decision: nonEmpty(decision.decision, `humanDecisions[${index}].decision`),
-      decidedAt: timestamp(decision.decidedAt, `humanDecisions[${index}].decidedAt`),
       actor: nonEmpty(decision.actor, `humanDecisions[${index}].actor`),
+      issue,
+      criterionId,
+      ...(manifestBindingDigest === null ? {} : { manifestDigest: manifestBindingDigest }),
+      sourceRevision,
+      decision: 'descoped',
+      decisionText: nonEmpty(
+        decision.decisionText,
+        `humanDecisions[${index}].decisionText`,
+      ),
+      decidedAt: timestamp(decision.decidedAt, `humanDecisions[${index}].decidedAt`),
     };
   });
+}
+
+export function validateIssueSetReceipt(receipt, manifest) {
+  if (manifest.issueSet.kind !== 'tracker-query') {
+    throw new Error('issue-set receipt is only valid for a tracker-query manifest');
+  }
+  return normalizeIssueSetReceipt(receipt, {
+    provider: manifest.provider.name,
+    repository: manifest.repository.id,
+    queryIdentity: manifest.issueSet.queryIdentity,
+    queryRevision: manifest.issueSet.queryRevision,
+    membershipDigest: manifest.issueSet.membershipDigest,
+    members: manifest.issueSet.members,
+  }, 'issueSet.receipt');
 }
 
 export function normalizeFleetManifest(input = {}) {
@@ -155,8 +281,6 @@ export function normalizeFleetManifest(input = {}) {
   }
   const acceptedScope = explicitStringArray(input, 'acceptedScope');
   const exclusions = explicitStringArray(input, 'exclusions');
-  const humanDecisions = normalizeHumanDecisions(input);
-
   const repository = input.repository;
   if (!repository || typeof repository !== 'object' || Array.isArray(repository)) {
     throw new Error('repository configuration is required');
@@ -212,6 +336,57 @@ export function normalizeFleetManifest(input = {}) {
       order: index,
     };
   });
+
+  const members = issues
+    .map(({ identity, sourceRevision }) => ({ identity, sourceRevision }))
+    .sort((left, right) => left.identity.localeCompare(right.identity));
+  const expectedMembershipDigest = membershipDigest(issues);
+  let issueSet;
+  if (input.issueSet === undefined || input.issueSet?.kind === 'explicit') {
+    if (input.issueSet !== undefined) {
+      assertOnlyKeys(input.issueSet, new Set(['kind', 'membershipDigest', 'members']), 'issueSet');
+      if (input.issueSet.membershipDigest !== undefined
+          && input.issueSet.membershipDigest !== expectedMembershipDigest) {
+        throw new Error('explicit issueSet.membershipDigest does not match the supplied issues');
+      }
+      if (input.issueSet.members !== undefined
+          && JSON.stringify([...input.issueSet.members].sort((left, right) =>
+            String(left.identity).localeCompare(String(right.identity)))) !== JSON.stringify(members)) {
+        throw new Error('explicit issueSet.members does not match the supplied issues');
+      }
+    }
+    issueSet = {
+      kind: 'explicit',
+      membershipDigest: expectedMembershipDigest,
+      members,
+    };
+  } else if (input.issueSet?.kind === 'tracker-query') {
+    assertOnlyKeys(input.issueSet, new Set([
+      'kind', 'queryIdentity', 'queryRevision', 'membershipDigest', 'receipt',
+    ]), 'issueSet');
+    const queryIdentity = nonEmpty(input.issueSet.queryIdentity, 'issueSet.queryIdentity');
+    const queryRevision = nonEmpty(input.issueSet.queryRevision, 'issueSet.queryRevision');
+    if (input.issueSet.membershipDigest !== expectedMembershipDigest) {
+      throw new Error('issueSet.membershipDigest does not match the supplied closed issue set');
+    }
+    issueSet = {
+      kind: 'tracker-query',
+      queryIdentity,
+      queryRevision,
+      membershipDigest: expectedMembershipDigest,
+      members,
+      receipt: normalizeIssueSetReceipt(input.issueSet.receipt, {
+        provider: providerName,
+        repository: normalizedRepository.id,
+        queryIdentity,
+        queryRevision,
+        membershipDigest: expectedMembershipDigest,
+        members,
+      }, 'issueSet.receipt'),
+    };
+  } else {
+    throw new Error('issueSet.kind must be explicit or tracker-query');
+  }
 
   if (!Array.isArray(input.dependencies)) throw new Error('dependencies must be an array');
   const edgeKeys = new Set();
@@ -279,7 +454,29 @@ export function normalizeFleetManifest(input = {}) {
   }
   const stopConditions = explicitStringArray(input, 'stopConditions', { nonEmptyArray: true });
   const humanBoundaries = explicitStringArray(input, 'humanBoundaries', { nonEmptyArray: true });
+  const humanDecisionCores = normalizeHumanDecisions(input, issues, null);
 
+  const confirmationBindingDigest = manifestDigest({
+    goal,
+    acceptedScope,
+    issues,
+    dependencies,
+    exclusions,
+    concurrency,
+    budget,
+    repository: normalizedRepository,
+    provider: normalizedProvider,
+    validationPolicy: [...new Set(validationPolicy)],
+    stopConditions,
+    shepherdIntent: input.shepherdIntent,
+    humanBoundaries,
+    issueSet,
+    humanDecisionCores,
+  });
+  const humanDecisions = humanDecisionCores.map((decision) => ({
+    ...decision,
+    manifestDigest: confirmationBindingDigest,
+  }));
   const manifest = {
     schemaVersion: 1,
     goal,
@@ -301,6 +498,8 @@ export function normalizeFleetManifest(input = {}) {
     shepherdIntent: input.shepherdIntent,
     humanBoundaries,
     humanDecisions,
+    confirmationBindingDigest,
+    issueSet,
     confirmation: 'confirmed',
     closedSet: true,
   };

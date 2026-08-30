@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   BASELINE_POLICY,
+  manifestDigest,
   normalizeFleetManifest,
   validateSourceRevisionReceipt,
 } from './fleet-manifest.mjs';
@@ -114,4 +115,74 @@ test('rejects stale source receipts and malformed closed dependency graphs', () 
   assert.throws(() => normalizeFleetManifest(manifest({
     provider: { name: 'github', allowedOperations: ['merge'] },
   })), /outside fleet authority/);
+});
+
+test('binds tracker-query membership provenance and rejects membership/source drift', () => {
+  const members = [
+    { identity: '1', sourceRevision: 'r1' },
+    { identity: '2', sourceRevision: 'r2' },
+    { identity: '3', sourceRevision: 'r3' },
+  ];
+  const digest = manifestDigest(members);
+  const issueSet = {
+    kind: 'tracker-query',
+    queryIdentity: 'saved:ready-fleet',
+    queryRevision: 'q-17',
+    membershipDigest: digest,
+    receipt: {
+      invocation: { id: 'query-1', operation: 'read-issue-set' },
+      provider: 'github',
+      repository: 'owner/repo',
+      queryIdentity: 'saved:ready-fleet',
+      queryRevision: 'q-17',
+      membershipDigest: digest,
+      members,
+      status: 'observed',
+      terminal: true,
+      complete: true,
+      observedAt: '2026-08-30T00:00:00Z',
+    },
+  };
+  const result = normalizeFleetManifest(manifest({
+    issueSet,
+    provider: {
+      name: 'github',
+      allowedOperations: ['read-issue', 'read-issue-set', 'publish-change-request', 'observe-merge'],
+    },
+  }));
+  assert.equal(result.issueSet.kind, 'tracker-query');
+  assert.equal(result.issueSet.membershipDigest, digest);
+  assert.throws(() => normalizeFleetManifest(manifest({
+    issueSet: {
+      ...issueSet,
+      receipt: {
+        ...issueSet.receipt,
+        members: [...members, { identity: '4', sourceRevision: 'r4' }],
+      },
+    },
+    provider: {
+      name: 'github',
+      allowedOperations: ['read-issue', 'read-issue-set', 'publish-change-request', 'observe-merge'],
+    },
+  })), /members does not match/);
+});
+
+test('human descoping records require an actual actor and exact issue/criterion binding', () => {
+  const decision = {
+    id: 'HD-1',
+    actor: 'human@example.test',
+    issue: '1',
+    criterionId: '1-C1',
+    sourceRevision: 'r1',
+    decision: 'descoped',
+    decisionText: 'Confirmed removal from this delivery.',
+    decidedAt: '2026-08-30T00:00:01Z',
+  };
+  const result = normalizeFleetManifest(manifest({ humanDecisions: [decision] }));
+  assert.equal(result.humanDecisions[0].actor, decision.actor);
+  assert.equal(result.humanDecisions[0].manifestDigest, result.confirmationBindingDigest);
+  assert.throws(
+    () => normalizeFleetManifest(manifest({ humanDecisions: [{ ...decision, actor: '' }] })),
+    /actor must be a non-empty string/,
+  );
 });

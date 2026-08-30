@@ -74,7 +74,7 @@ test('pins full delivery order and forbidden authority', () => {
     'shepherd',
   ]);
   assert.deepEqual(PROVIDER_OPERATIONS, [
-    'read-issue', 'publish-change-request', 'observe-merge',
+    'read-issue', 'read-issue-set', 'publish-change-request', 'observe-merge',
   ]);
   assert.deepEqual(FORBIDDEN_PROVIDER_OPERATIONS, [
     'merge', 'approve', 'enable-auto-merge', 'accept-risk',

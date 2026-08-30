@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
+import { persistedPrePublicationPasses } from '../quality-evidence/quality-evidence.mjs';
 
 export const PROVIDER_OPERATIONS = Object.freeze([
   'read-issue',
+  'read-issue-set',
   'publish-change-request',
   'observe-merge',
 ]);
@@ -42,6 +44,13 @@ function stable(value) {
 
 function digest(value) {
   return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+}
+
+function exactKeys(value, expected) {
+  return value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
 }
 
 export function authorizeProviderOperation(state, manifest, operation) {
@@ -105,8 +114,9 @@ function normalizedPublicationIdentity(state, manifest, request) {
   if (!nonEmpty(issue.headSha) || !nonEmpty(issue.baseSha)) {
     throw new Error('publication requires exact current base and head revisions');
   }
-  if (issue.pipeline?.at(-1)?.stage !== 'criterion-verdict') {
-    throw new Error('publication requires the complete pre-publication quality pipeline');
+  const quality = persistedPrePublicationPasses(issue, state, manifest);
+  if (!quality.passed) {
+    throw new Error(`publication requires passing pre-publication quality: ${quality.defects.join('; ')}`);
   }
   return {
     manifestDigest: manifest.digest,
@@ -128,10 +138,41 @@ export function beginPublication(state, manifest, request, now = new Date().toIS
   const key = publicationKey(identity);
   const existing = state.publications.find((entry) => entry.key === key);
   if (existing) {
-    return {
-      state,
+    const current = existing.observations.find((observation) =>
+      observation.baseSha === identity.baseSha && observation.headSha === identity.headSha);
+    if (current) {
+      return {
+        state,
+        key,
+        action: current.state === 'confirmed'
+          ? 'already-confirmed-current-revision'
+          : 'reconcile-before-retry',
+      };
+    }
+    const next = structuredClone(state);
+    const target = next.publications.find((entry) => entry.key === key);
+    target.observations.push({
+      baseSha: identity.baseSha,
+      headSha: identity.headSha,
+      state: 'intent-recorded',
+      attempts: [],
+      intentAt: now,
+      confirmedAt: null,
+    });
+    next.issues[request.issue].changeRequest = null;
+    next.events.push({
+      type: 'publication-revision-intent',
+      issue: request.issue,
       key,
-      action: existing.state === 'confirmed' ? 'already-confirmed' : 'reconcile-before-retry',
+      baseSha: identity.baseSha,
+      headSha: identity.headSha,
+    });
+    return {
+      state: next,
+      key,
+      action: existing.identifier
+        ? 'reobserve-existing-publication'
+        : 'reconcile-before-retry',
     };
   }
   if (state.publications.some((entry) => entry.issue === request.issue)) {
@@ -139,19 +180,36 @@ export function beginPublication(state, manifest, request, now = new Date().toIS
   }
   const next = structuredClone(state);
   next.publications.push({
-    ...identity,
+    manifestDigest: identity.manifestDigest,
+    providerConfigurationDigest: identity.providerConfigurationDigest,
+    provider: identity.provider,
+    repository: identity.repository,
+    issue: identity.issue,
+    sourceRevision: identity.sourceRevision,
+    headBranch: identity.headBranch,
+    baseBranch: identity.baseBranch,
     key,
-    state: 'intent-recorded',
-    attempts: [],
     identifier: null,
-    intentAt: now,
-    confirmedAt: null,
+    observations: [{
+      baseSha: identity.baseSha,
+      headSha: identity.headSha,
+      state: 'intent-recorded',
+      attempts: [],
+      intentAt: now,
+      confirmedAt: null,
+    }],
   });
   next.events.push({ type: 'publication-intent', issue: request.issue, key });
   return { state: next, key, action: 'call-provider-with-stable-key' };
 }
 
-function validatePublicationResult(entry, result) {
+function currentPublicationObservation(entry, state) {
+  const issue = state.issues[entry.issue];
+  return entry.observations.find((observation) =>
+    observation.baseSha === issue.baseSha && observation.headSha === issue.headSha);
+}
+
+function validatePublicationResult(entry, observation, result) {
   const defects = [];
   const invocation = result?.invocation;
   if (!invocation || typeof invocation !== 'object') {
@@ -164,13 +222,18 @@ function validatePublicationResult(entry, result) {
   if (result?.terminal !== true || result?.complete !== true) {
     defects.push('publication result is not complete and terminal');
   }
+  if (!['published', 'found-existing'].includes(result?.status)
+      && !DEGRADED_PUBLICATION_STATUSES.has(result?.status)) {
+    defects.push('publication result status is invalid');
+  }
   if (!validTimestamp(result?.observedAt)) defects.push('publication observation time is invalid');
   if (result?.provider !== entry.provider
       || result?.repository !== entry.repository
       || result?.issue !== entry.issue
       || result?.baseBranch !== entry.baseBranch
       || result?.headBranch !== entry.headBranch
-      || result?.headSha !== entry.headSha) {
+      || result?.baseSha !== observation.baseSha
+      || result?.headSha !== observation.headSha) {
     defects.push('publication result identity does not match the persisted intent');
   }
   return defects;
@@ -182,34 +245,44 @@ export function reconcilePublication(state, manifest, key, result) {
   const index = state.publications.findIndex((entry) => entry.key === key);
   if (index < 0) throw new Error('publication result has no persisted intent');
   const entry = state.publications[index];
-  if (entry.state === 'confirmed') {
-    if (result?.identifier && result.identifier !== entry.identifier) {
+  const observation = currentPublicationObservation(entry, state);
+  if (!observation) throw new Error('publication result has no current revision intent');
+  const defects = validatePublicationResult(entry, observation, result);
+  if (defects.length) throw new Error(`invalid publication result: ${defects.join('; ')}`);
+  if (observation.state === 'confirmed') {
+    if (result?.identifier !== entry.identifier) {
       throw new Error('confirmed publication cannot be rebound to another identifier');
     }
     return state;
   }
-  const defects = validatePublicationResult(entry, result);
-  if (defects.length) throw new Error(`invalid publication result: ${defects.join('; ')}`);
   const next = structuredClone(state);
   const target = next.publications[index];
+  const targetObservation = currentPublicationObservation(target, next);
   const attempt = {
     invocationId: result.invocation.id,
     status: result.status,
     observedAt: result.observedAt,
+    terminal: result.terminal,
+    complete: result.complete,
   };
   if (result.status === 'published' || result.status === 'found-existing') {
     if (!nonEmpty(result.identifier)) throw new Error('confirmed publication requires provider identifier');
-    target.state = 'confirmed';
-    target.identifier = result.identifier.trim();
-    target.confirmedAt = result.observedAt;
-    target.attempts.push(attempt);
+    const identifier = result.identifier.trim();
+    if (target.identifier !== null && target.identifier !== identifier) {
+      throw new Error('provider result does not converge to the stable publication identifier');
+    }
+    target.identifier = identifier;
+    targetObservation.state = 'confirmed';
+    targetObservation.confirmedAt = result.observedAt;
+    targetObservation.attempts.push(attempt);
     next.issues[target.issue].changeRequest = {
       identifier: target.identifier,
       provider: target.provider,
       repository: target.repository,
       baseBranch: target.baseBranch,
       headBranch: target.headBranch,
-      headSha: target.headSha,
+      baseSha: targetObservation.baseSha,
+      headSha: targetObservation.headSha,
       publicationKey: target.key,
     };
     next.events.push({ type: 'publication-confirmed', issue: target.issue, key, identifier: target.identifier });
@@ -218,8 +291,8 @@ export function reconcilePublication(state, manifest, key, result) {
   if (!DEGRADED_PUBLICATION_STATUSES.has(result.status)) {
     throw new Error(`publication result status is invalid: ${result.status}`);
   }
-  target.state = 'retryable-degraded';
-  target.attempts.push(attempt);
+  targetObservation.state = 'retryable-degraded';
+  targetObservation.attempts.push(attempt);
   next.events.push({ type: 'publication-degraded', issue: target.issue, key, status: result.status });
   return next;
 }
@@ -231,60 +304,94 @@ export function recordPublication(state, manifest, key, result) {
 export function publicationRecoveryAction(state, key) {
   const entry = state.publications.find((candidate) => candidate.key === key);
   if (!entry) return { action: 'record-intent-first' };
-  if (entry.state === 'confirmed') {
-    return { action: 'use-confirmed-publication', identifier: entry.identifier };
+  const observation = currentPublicationObservation(entry, state);
+  if (!observation) return { action: 'record-current-revision-intent', providerKey: entry.key };
+  if (observation.state === 'confirmed') {
+    return { action: 'use-confirmed-current-publication', identifier: entry.identifier };
   }
   return {
     action: 'reconcile-by-stable-provider-key-before-retry',
     providerKey: entry.key,
-    previousAttempts: entry.attempts.length,
+    previousAttempts: observation.attempts.length,
   };
 }
 
-export function observeHumanMerge(state, manifest, observation) {
+export function normalizeMergeObservation(state, manifest, observation) {
+  if (!exactKeys(observation, [
+    'invocation', 'observed', 'status', 'terminal', 'complete', 'merged',
+    'provider', 'repository', 'issue', 'changeRequest', 'publicationKey',
+    'baseBranch', 'baseSha', 'headBranch', 'headSha', 'mergeCommit', 'observedAt',
+  ])) {
+    throw new Error('merge-observation-schema-is-not-exact');
+  }
   const authorization = authorizeProviderOperation(state, manifest, 'observe-merge');
-  if (!authorization.authorized) return { observed: false, reason: authorization.reason };
+  if (!authorization.authorized) throw new Error(authorization.reason);
   const publication = state.publications.find((entry) =>
-    entry.state === 'confirmed'
-    && entry.issue === observation?.issue
+    entry.issue === observation?.issue
     && entry.identifier === observation?.changeRequest);
-  if (!publication) return { observed: false, reason: 'merge-observation-has-no-recorded-publication' };
+  if (!publication) throw new Error('merge-observation-has-no-recorded-publication');
+  const revision = publication.observations.find((entry) =>
+    entry.state === 'confirmed'
+    && entry.baseSha === observation?.baseSha
+    && entry.headSha === observation?.headSha
+    && validTimestamp(entry.confirmedAt));
+  if (!revision) throw new Error('merge-observation-has-no-confirmed-publication-revision');
   const invocation = observation?.invocation;
-  if (!invocation
+  if (!exactKeys(invocation, ['id', 'operation', 'providerKey'])
       || !nonEmpty(invocation.id)
       || invocation.operation !== 'observe-merge'
       || invocation.providerKey !== publication.key) {
-    return { observed: false, reason: 'merge-observation-invocation-identity-invalid' };
+    throw new Error('merge-observation-invocation-identity-invalid');
   }
   if (observation.status !== 'observed'
       || observation.terminal !== true
       || observation.complete !== true
       || observation.merged !== true) {
-    return { observed: false, reason: 'human-merge-not-proven' };
+    throw new Error('human-merge-not-proven');
   }
   if (observation.provider !== publication.provider
       || observation.repository !== publication.repository
       || observation.issue !== publication.issue
       || observation.changeRequest !== publication.identifier
+      || observation.publicationKey !== publication.key
       || observation.baseBranch !== publication.baseBranch
       || observation.headBranch !== publication.headBranch
-      || observation.headSha !== publication.headSha
+      || observation.baseSha !== revision.baseSha
+      || observation.headSha !== revision.headSha
       || !nonEmpty(observation.mergeCommit)
       || !validTimestamp(observation.observedAt)
-      || Date.parse(observation.observedAt) < Date.parse(publication.confirmedAt)) {
-    return { observed: false, reason: 'merge-observation-identity-or-time-mismatch' };
+      || Date.parse(observation.observedAt) < Date.parse(revision.confirmedAt)) {
+    throw new Error('merge-observation-identity-or-time-mismatch');
   }
   return {
+    invocation: {
+      id: invocation.id,
+      operation: 'observe-merge',
+      providerKey: publication.key,
+    },
     observed: true,
+    status: 'observed',
+    terminal: true,
+    complete: true,
+    merged: true,
     provider: publication.provider,
     repository: publication.repository,
     issue: publication.issue,
     changeRequest: publication.identifier,
     publicationKey: publication.key,
     baseBranch: publication.baseBranch,
+    baseSha: revision.baseSha,
     headBranch: publication.headBranch,
-    headSha: publication.headSha,
+    headSha: revision.headSha,
     mergeCommit: observation.mergeCommit,
     observedAt: observation.observedAt,
   };
+}
+
+export function observeHumanMerge(state, manifest, observation) {
+  try {
+    return normalizeMergeObservation(state, manifest, observation);
+  } catch (error) {
+    return { observed: false, reason: error.message };
+  }
 }

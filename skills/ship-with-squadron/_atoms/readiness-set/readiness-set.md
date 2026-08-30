@@ -35,10 +35,15 @@ revision-bound set obligation and dispatch no Shepherd.
 
 Readiness is snapshot-bound. After an exact merge observation reconciled to a
 recorded publication, expire every affected still-open ready claim and fleet
-disposition immediately, mark it stale, reread current base/head, and queue one
-generation/revision-specific fresh Shepherd invocation when required. With
+disposition immediately, mark it stale, and accept only a complete
+provider-bound change-request revision receipt observed after the triggering
+merge. Clear stale quality/publication evidence and queue one
+merge/revision-generation-specific revalidation plus fresh Shepherd invocation
+when required. With
 Shepherd intent `no`, queue fresh complete quality/provider revalidation
 instead. A later sibling merge updates an already queued obligation. Consume it
-only with fresh evidence matching that exact generation and revision. Do not
+only after the stable change request is confirmed for current base/head and
+fresh semantic quality evidence matches that exact generation and revision.
+Duplicate merge redelivery is idempotent. Do not
 force-push merely because the base moved; Shepherd decides whether its trigger
 and SHA-pinned lease rules require a push.

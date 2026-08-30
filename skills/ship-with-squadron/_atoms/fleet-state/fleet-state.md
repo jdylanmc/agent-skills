@@ -18,7 +18,7 @@ Persist control state at
 `<repository>/.ship-with-squadron/<run-id>/fleet-state.json`. This path is
 ignored, run-specific, and separate from the best-effort Chronicler log.
 
-Use the fleet state helper to create schema version 1, bind it to
+Use the fleet state helper to create schema version 2, bind it to
 the confirmed manifest and provider-configuration digests, reread it, reconcile
 the frontier, and write with an exact expected revision. Every write validates
 the complete state schema and cross-field invariants before taking an exclusive
@@ -34,6 +34,9 @@ branch/worktree, base/head, implementation and quality evidence, change
 request, Shepherd receipt, set obligation, disposition, and next action. Fleet
 state retains frontier, blockers, capacity, completions, merges, expiry,
 re-Shepherd queue, budget use, and unresolved human decisions.
+It also persists exact query-membership reobservations, revision-specific
+publication observations, full normalized merge records, and explicit check
+activity.
 
 State issue keys exactly equal the closed manifest set. Assignment packets,
 publication records, readiness receipts, criteria decisions, and merge
@@ -43,6 +46,10 @@ assignment, and there is no general `active -> pending` transition. Budget
 consumption is monotonic; reaching cost, time, or retry limits records
 `budget-exhausted`. Cancellation marks pending issues `not-reached` and active
 issues as requiring validated handoffs before their processes are released.
+The active assignment count must equal persisted capacity and never exceed the
+confirmed ceiling. Completed, failed, deferred, blocked, timed-out, and
+per-issue dispositions follow an explicit compatibility matrix; blocked,
+failed, timed-out, or deferred work never satisfies a `completed` dependency.
 
 Chronicler records operations. This record owns control decisions. Neither is a
 substitute for the other.
