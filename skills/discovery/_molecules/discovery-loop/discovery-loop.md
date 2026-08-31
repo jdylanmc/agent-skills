@@ -25,7 +25,11 @@ Run the read-only discovery cycle body.
 3. Identify what the evidence now proves, what it contradicts, and what it
    still cannot answer.
 4. Run [Frontier ledger](../../_atoms/frontier-ledger/frontier-ledger.md) to
-   classify the frontier and choose the next workflow.
+   classify the frontier and choose the next workflow. Experiential uncertainty
+   emits `needs-product-design`; direct specification readiness carries typed
+   `product-design: not-applicable` rationale code
+   `discovery-frontier-ready-for-spec`; every other frontier carries
+   `product-design: unresolved` and its exact typed frontier rationale.
 5. Continue another read-only cycle only when more evidence can be gathered in
    the current scope and the next step is not better owned by another skill.
 6. Return the discovery packet. The packet may propose a tracker update, but it
@@ -37,6 +41,7 @@ Run the read-only discovery cycle body.
 | --- | --- |
 | `interrogate` | One pointed question or assumption blocks the rest of discovery. |
 | `domain-mapping` | Vocabulary, actors, systems, boundaries, states, events, or relationships are unclear. |
+| `product-design` | The aligned frontier is `needs-product-design`; Discovery persists and rereads the aligned foundation before handing off the newly persisted locator/revision. Product design owns the experiential decision and Discovery does not absorb it. |
 | `spec` | Behavior and proof obligations are settled enough to specify. |
 | `ticket-breakdown` | Requirements and ownership are settled enough to split work. |
 | `implementation` | Discovery found no remaining product or domain uncertainty relevant to the requested change. |
@@ -47,4 +52,4 @@ Run the read-only discovery cycle body.
   writes occur here.
 - No persistent discovery state. If state must be recorded, propose one exact
   tracker update and return it to the root skill for approval-gated handling.
-- No absorption of `interrogate`, `domain-mapping`, or `spec`.
+- No absorption of `interrogate`, `domain-mapping`, `product-design`, or `spec`.

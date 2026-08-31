@@ -15,6 +15,7 @@ const UNITS = [
   'spec/_molecules/product-specification/product-specification.md',
   'spec/_atoms/approval-state/approval-state.md',
   'spec/_atoms/discovery-source/discovery-source.md',
+  'spec/_atoms/product-design-evidence/product-design-evidence.md',
   'spec/_atoms/product-requirements/product-requirements.md',
   'spec/_atoms/spec-outcome/spec-outcome.md',
   'spec/_atoms/spec-pair/spec-pair.md',
@@ -517,4 +518,17 @@ test('the held-path section names recorded, suppressed, and the recorder togethe
   assert.match(skill, /`recorded`/, 'the skill held-path step must name the recorded findings');
   assert.match(skill, /`suppressed`/, 'the skill held-path step must name the suppressed findings');
   assert.match(skill, /Chronicler/, 'the skill held-path step must name the recorder');
+});
+
+test('required product-design evidence maps observable contract records into requirements and excludes implementation', () => {
+  const atom = flat('skills/spec/_atoms/product-requirements/product-requirements.md');
+  const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
+  for (const term of ['feature', 'flow', 'observable state', 'decision', 'accessibility expectation', 'alternative', 'open question']) {
+    assert.match(atom, new RegExp(term, 'i'));
+    assert.match(molecule, new RegExp(term, 'i'));
+  }
+  assert.match(atom, /supporting full-document detail/);
+  assert.match(atom, /observable acceptance criterion/);
+  assert.match(atom, /stable contract IDs.*traceability/i);
+  assert.match(atom, /Prototype package scripts, dependencies, HTML, CSS, JavaScript, Storybook/i);
 });

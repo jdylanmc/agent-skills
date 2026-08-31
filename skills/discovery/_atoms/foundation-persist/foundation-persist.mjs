@@ -109,7 +109,19 @@ export class FoundationPersistError extends Error {
 }
 
 export const STATE_VERSION = 1;
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+export const FRONTIER_ROUTES = Object.freeze({
+  ready: Object.freeze({ applicability: 'not-applicable', rationaleCode: 'discovery-frontier-ready-for-spec' }),
+  'needs-product-design': Object.freeze({ applicability: 'required', rationaleCode: 'discovery-frontier-requires-product-design' }),
+  'needs-interrogate': Object.freeze({ applicability: 'unresolved', rationaleCode: 'discovery-frontier-needs-interrogate' }),
+  'needs-domain-mapping': Object.freeze({ applicability: 'unresolved', rationaleCode: 'discovery-frontier-needs-domain-mapping' }),
+  'needs-proof-of-concept': Object.freeze({ applicability: 'unresolved', rationaleCode: 'discovery-frontier-needs-proof-of-concept' }),
+  'needs-research': Object.freeze({ applicability: 'unresolved', rationaleCode: 'discovery-frontier-needs-research' }),
+  'needs-uri-seed': Object.freeze({ applicability: 'unresolved', rationaleCode: 'discovery-frontier-needs-uri-seed' }),
+  'needs-more-evidence': Object.freeze({ applicability: 'unresolved', rationaleCode: 'discovery-frontier-needs-more-evidence' }),
+  blocked: Object.freeze({ applicability: 'unresolved', rationaleCode: 'discovery-frontier-blocked' }),
+  stop: Object.freeze({ applicability: 'unresolved', rationaleCode: 'discovery-frontier-stopped' }),
+});
 
 /**
  * The nine durable sets the retention guarantee protects. Frontier is the
@@ -129,7 +141,7 @@ export const DURABLE_SETS = Object.freeze([
 ]);
 
 /** Every distinct field a rehydrated Discovery state exposes (AC5). */
-export const FOUNDATION_FIELDS = Object.freeze([...DURABLE_SETS, 'frontier', 'nextAction']);
+export const FOUNDATION_FIELDS = Object.freeze([...DURABLE_SETS, 'frontier', 'frontierRoute', 'nextAction']);
 
 /** The fields whose prior entries must be retained across a write. */
 export const RETAINED_FIELDS = Object.freeze([...DURABLE_SETS, 'frontier']);
@@ -239,6 +251,7 @@ const INTAKE_FIELDS = Object.freeze([
   'timestamp',
   ...DURABLE_SETS,
   'frontier',
+  'frontierRoute',
   'nextAction',
   'resolved',
 ]);
@@ -298,11 +311,13 @@ export function alignedPayloadDigestOf(payload) {
     subject: { id: payload.subject.id, slug: payload.subject.slug },
     nextAction: payload.nextAction,
     frontier: payload.frontier,
+    frontierRoute: payload.frontierRoute,
     resolved: (payload.resolved ?? []).map((item) => ({ field: item.field, entry: item.entry, resolution: item.resolution })),
   };
   for (const field of DURABLE_SETS) {
     canonical[field] = payload[field];
   }
+
   return createHash('sha256').update(canonicalize(canonical), 'utf8').digest('hex');
 }
 
@@ -310,11 +325,30 @@ function assertSingleLine(value, label) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new FoundationPersistError('invalid-input', `${label} must be non-empty text`);
   }
+
   if (/[\n\r]/.test(value)) {
     throw new FoundationPersistError('invalid-input', `${label} must be a single line`);
   }
   assertNoControlChars(value, label);
   return value;
+}
+
+function assertFrontierRoute(value) {
+  if (!isPlainObject(value)) {
+    throw new FoundationPersistError('invalid-input', 'frontierRoute must be a structured object');
+  }
+  const keys = Object.keys(value).sort();
+  if (JSON.stringify(keys) !== JSON.stringify(['applicability', 'rationaleCode', 'route'])) {
+    throw new FoundationPersistError('invalid-input', 'frontierRoute must contain exactly route, applicability, and rationaleCode');
+  }
+  const route = assertSingleLine(value.route, 'frontierRoute.route');
+  const expected = FRONTIER_ROUTES[route];
+  if (!expected
+    || value.applicability !== expected.applicability
+    || value.rationaleCode !== expected.rationaleCode) {
+    throw new FoundationPersistError('invalid-input', 'frontierRoute route, applicability, and rationaleCode must be an exact supported tuple');
+  }
+  return { route, ...expected };
 }
 
 /**
@@ -465,6 +499,7 @@ export function renderFoundation(foundation) {
     }
   }
 
+  lines.push('', '## Frontier Route', '', canonicalize(foundation.frontierRoute));
   lines.push('', '## Next Action', '', foundation.nextAction);
 
   lines.push('', '## Resolved', '');
@@ -541,6 +576,7 @@ function splitSections(body) {
 /** The complete, exact set of `## ` section headings a foundation must carry. */
 const REQUIRED_SECTION_TITLES = Object.freeze([
   ...LIST_SECTIONS.map((field) => SECTION_TITLES[field]),
+  'Frontier Route',
   'Next Action',
   'Resolved',
   'History',
@@ -662,7 +698,7 @@ export function parseFoundation(bytes) {
   assertNoRogueHeadings(allLines);
 
   const { schema, subjectId, slug, alignment } = readHeader(allLines);
-  if (schema !== String(SCHEMA_VERSION)) {
+  if (!['1', String(SCHEMA_VERSION)].includes(schema)) {
     throw new FoundationPersistError('unsupported-schema', `foundation schema ${schema} is not supported; this build reads schema ${SCHEMA_VERSION}`);
   }
   if (!subjectId || !slug) {
@@ -672,12 +708,15 @@ export function parseFoundation(bytes) {
   assertNoControlChars(slug, 'foundation subject slug');
 
   const sections = splitSections(normalized);
+  const requiredTitles = schema === '1'
+    ? REQUIRED_SECTION_TITLES.filter((title) => title !== 'Frontier Route')
+    : REQUIRED_SECTION_TITLES;
   for (const title of sections.keys()) {
-    if (!REQUIRED_SECTION_TITLES.includes(title)) {
+    if (!requiredTitles.includes(title)) {
       throw new FoundationPersistError('invalid-input', `foundation contains an unknown section: ${title}`);
     }
   }
-  for (const title of REQUIRED_SECTION_TITLES) {
+  for (const title of requiredTitles) {
     if (!sections.has(title)) {
       throw new FoundationPersistError('invalid-input', `foundation is missing the ${title} section`);
     }
@@ -692,6 +731,24 @@ export function parseFoundation(bytes) {
 
   for (const field of LIST_SECTIONS) {
     foundation[field] = listFrom(sections.get(SECTION_TITLES[field]), SECTION_TITLES[field]);
+  }
+
+  foundation.frontierRoute = null;
+  if (schema !== '1') {
+    const frontierRouteLines = sections.get('Frontier Route').filter((line) => line !== '');
+    if (frontierRouteLines.length !== 1) {
+      throw new FoundationPersistError('invalid-input', 'foundation Frontier Route must be one canonical JSON line');
+    }
+    let frontierRoute;
+    try {
+      frontierRoute = JSON.parse(frontierRouteLines[0]);
+    } catch {
+      throw new FoundationPersistError('invalid-input', 'foundation Frontier Route must be parseable JSON');
+    }
+    foundation.frontierRoute = assertFrontierRoute(frontierRoute);
+    if (frontierRouteLines[0] !== canonicalize(foundation.frontierRoute)) {
+      throw new FoundationPersistError('invalid-input', 'foundation Frontier Route must use canonical structured bytes');
+    }
   }
 
   const nextActionLines = sections.get('Next Action');
@@ -921,6 +978,7 @@ function normalizeIntake(intake) {
     foundation[field] = assertStringList(intake[field], field);
   }
   foundation.frontier = assertStringList(intake.frontier, 'frontier');
+  foundation.frontierRoute = assertFrontierRoute(intake.frontierRoute);
   foundation.nextAction = assertFreeTextLine(intake.nextAction, 'nextAction');
 
   const digest = alignedPayloadDigestOf(foundation);

@@ -2,8 +2,8 @@
 name: product-specification
 description: Convert one confirmed Discovery source into a stable product-intent model, persist its authoritative nano and supporting full Product Requirements Documents beneath docs/agent/specs, and validate the reread pair.
 level: molecule
-includes: ["_base/_atoms/contradiction-check/contradiction-check.md","spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
-composes: ["_base/_atoms/contradiction-check/contradiction-check.md","spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
+includes: ["_base/_atoms/contradiction-check/contradiction-check.md","spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-design-evidence/product-design-evidence.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
+composes: ["_base/_atoms/contradiction-check/contradiction-check.md","spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-design-evidence/product-design-evidence.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
 used-by: ["spec/SKILL.md"]
 allowed-tools: ["edit","execute"]
 ---
@@ -28,9 +28,10 @@ resolve approval state -> resolve source with state-dependent freshness
 1. [Contradiction check](../../../_base/_atoms/contradiction-check/contradiction-check.md)
 2. [Approval state](../../_atoms/approval-state/approval-state.md)
 3. [Discovery source](../../_atoms/discovery-source/discovery-source.md)
-4. [Product requirements](../../_atoms/product-requirements/product-requirements.md)
-5. [Specification pair](../../_atoms/spec-pair/spec-pair.md)
-6. [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md)
+4. [Product-design evidence](../../_atoms/product-design-evidence/product-design-evidence.md)
+5. [Product requirements](../../_atoms/product-requirements/product-requirements.md)
+6. [Specification pair](../../_atoms/spec-pair/spec-pair.md)
+7. [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md)
 
 ## Operation
 
@@ -45,7 +46,14 @@ resolve approval state -> resolve source with state-dependent freshness
    When revisions match, the source is fresh. When revisions differ, the outcome
    depends on approval state: a draft refuses with `stale`; an approved
    specification is `held`.
-3. **On `held`, check contradiction, then route through the deterministic
+3. Run [Product-design evidence](../../_atoms/product-design-evidence/product-design-evidence.md).
+   Revalidate the primary exact-revision Discovery packet and authoritative
+   frontier route. If it routed `needs-product-design`, reject
+   `not-applicable` and require the exact `approved` validator result for the
+   same subject/revision. A `ready` route may use only the typed
+   `discovery-frontier-ready-for-spec` non-applicability code. Never infer either
+   branch from absence or free prose.
+4. **On `held`, check contradiction, then route through the deterministic
    resolver.** The approved specification stands and nothing was re-derived or
    written. Run
    [Contradiction check](../../../_base/_atoms/contradiction-check/contradiction-check.md)
@@ -70,9 +78,15 @@ resolve approval state -> resolve source with state-dependent freshness
    path.
 4. Run
    [Product requirements](../../_atoms/product-requirements/product-requirements.md).
-   Formalize only what the source supports. Preserve facts, claims, decisions,
-   assumptions, contradictions, and open questions as different categories.
-   A missing product decision remains a question.
+   Formalize only what the source and normalized product-design evidence
+   support. When product design is required, map every validated contract
+   feature, flow, observable state, decision, accessibility expectation,
+   alternative, and open question into intention, `[INTENT]`/`[AC-###]`
+   supporting detail, acceptance criteria, or an explicitly preserved open
+   question, with stable-ID traceability. Exclude prototype implementation
+   choices. Preserve facts, claims, decisions, assumptions, contradictions,
+   and open questions as different categories. A missing product decision
+   remains a question.
 5. Run [Specification pair](../../_atoms/spec-pair/spec-pair.md). Assign one
    stable specification identity and acceptance-criteria identities, render the
    nano and full documents from the same model, write them as siblings beneath

@@ -25,18 +25,47 @@ Own the recursive discovery control loop.
 
 1. Run [Discovery loop](../discovery-loop/discovery-loop.md) to produce the
    current discovery packet and frontier.
-2. If the frontier is `needs-interrogate`, route the blocking questions to
-   `interrogate`, then incorporate the answers as source claims, decisions, or
-   unanswered questions according to their evidence.
-3. If the frontier is `needs-domain-mapping`, route the blocking vocabulary or
+2. Record the classified route in the packet, but do not dispatch it yet.
+   Classification never bypasses human alignment, durable persistence, or
+   reread.
+3. Offer and run [Alignment check](../../_atoms/alignment-check/alignment-check.md).
+   The goal is shared understanding with the human. A handoff cannot be written
+   until the human verifies or corrects the discovery state, and no downstream
+   route can be dispatched first.
+4. Persist the aligned durable foundation with
+   [Foundation persist](../../_atoms/foundation-persist/foundation-persist.md),
+   passing `expectedPriorRevision` from invocation-start rehydration (or `null`
+   for a genuine first cycle). It writes exactly
+   `docs/agent/discovery/<slug>.md`, refuses durable regression, appends one
+   history line, then reread and verify its newly returned locator and
+   revision. A stale write is `concurrent-modification`; a failed persist or
+   reread stops as `handoff-incomplete`, including
+   `post-commit-verification-failed` after the rename commit point.
+5. Convert the same verified understanding into
+   [Persist bounded handoff](../../../_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md),
+   persist it, and read back the exact reported path. The durable foundation is
+   repository-backed grounding; the bounded handoff is ephemeral continuation,
+   and neither replaces the other. Compact the reread handoff into the
+   continuation focus; never compact memory or unverified bytes. Carry exactly
+   one `discovery-foundation: <locator>@<revision>` line using the newly
+   persisted values. A failed handoff persist or reread is
+   `handoff-incomplete`.
+6. Route from that reread aligned state:
+   - If the frontier is `needs-interrogate`, route the blocking questions to
+     `interrogate`, then incorporate the answers as evidence.
+   - If the frontier is `needs-product-design`, hand exactly one aligned
+     subject, the **newly persisted** foundation locator/revision, and
+     `product-design: required` to `product-design`. Product design owns the
+     experiential decision; Discovery does not absorb it.
+   - If the frontier is `needs-domain-mapping`, route the blocking vocabulary or
    relationship uncertainty to `domain-mapping`, then incorporate the returned
    map as domain evidence.
-4. If the frontier is `needs-proof-of-concept`, route the scoped prototype
+7. If the frontier is `needs-proof-of-concept`, route the scoped prototype
    question to `proof-of-concept`, then incorporate the findings as prototype
    evidence, including what worked, what failed, edge cases, gaps, cleanup
    status, and human feedback. Discovery owns alignment, handoff, compaction,
    and next-cycle selection after the proof of concept returns.
-5. If the frontier is `needs-research`, route the blocking external-knowledge
+8. If the frontier is `needs-research`, route the blocking external-knowledge
    question to [Research thread](../research-thread/research-thread.md),
    one question per thread. Incorporate a valid report as **source claims with
    citations**, never as confirmed facts, and carry its conflicts and limits
@@ -46,7 +75,7 @@ Own the recursive discovery control loop.
    that and leaves the question open. Discovery does not proceed as though an
    external question were answered when nothing answered it.
 
-6. If the frontier is `needs-uri-seed`, route each not-yet-attempted
+9. If the frontier is `needs-uri-seed`, route each not-yet-attempted
    human-supplied URI or path to
    [URI seed](../../_atoms/uri-seed/uri-seed.md), one seed at a time.
    Incorporate an accepted body as **source claims tagged `origin: seed`**, each
@@ -69,47 +98,7 @@ Own the recursive discovery control loop.
    follows no link the seed did not name; an off-origin redirect is surfaced for
    optional human approval, not chased.
 
-7. Offer and run [Alignment check](../../_atoms/alignment-check/alignment-check.md).
-   The goal is shared understanding with the human. A handoff cannot be written
-   until the human verifies or corrects the discovery state.
-8. Convert only verified shared understanding into two artifacts. First, persist
-   the durable foundation for the subject with
-   [Foundation persist](../../_atoms/foundation-persist/foundation-persist.md).
-   It writes exactly `docs/agent/discovery/<slug>.md`, refuses to drop any
-   previously recorded durable entry, appends one history line, and rereads the
-   file to verify the write. Pass `expectedPriorRevision` — the revision this run
-   rehydrated (or `null` for a genuine first cycle) — so a stale cycle that
-   rehydrated an older revision is refused as `concurrent-modification` rather
-   than silently overwriting a newer one. A failed persist stops the cycle as
-   `handoff-incomplete`; the cycle does not proceed to compaction with an
-   unverified foundation. The `rename` is the commit point: a failure before it
-   leaves the prior authority untouched, while a failure after it is reported as
-   `post-commit-verification-failed`, meaning the destination is already replaced
-   — treat that as `handoff-incomplete` too, but do not assume the prior bytes
-   survived. Record the returned foundation locator and revision — the next
-   invocation's rehydration compares against them.
-9. Then convert the same verified understanding into the payload for
-   [Persist bounded handoff](../../../_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md).
-   Two artifacts exist for two jobs: the durable foundation is the repository-
-   backed grounding a later run rehydrates from, and the bounded handoff is the
-   ephemeral operating-system-temporary continuation a fresh agent reads within
-   the same delivery. Neither replaces the other.
-10. Persist the handoff and read back the exact reported path. Treat a failed
-    read-back as `handoff-incomplete` and stop.
-11. Compact the reread handoff into the continuation focus: the smallest set of
-    aligned facts, decisions, open questions, frontier state, and next action
-    needed to begin the next discovery pass without rereading the whole prior
-    conversation. The continuation focus retains the exact foundation locator
-    and revision as one canonical line in `artifacts_and_references`:
-
-    ```text
-    discovery-foundation: <locator>@<revision>
-    ```
-
-    That is exactly the line `foundation-rehydrate`'s `renderContinuation`
-    produces and `parseContinuation` recovers, and it is what the next
-    invocation's rehydration compares against. Emit exactly one such line.
-12. Use that compacted handoff-derived focus, not memory, to choose and **begin**
+10. Use that compacted handoff-derived focus, not memory, to choose and **begin**
     the next cycle:
     - continue discovery;
     - run another interrogation;
@@ -117,15 +106,19 @@ Own the recursive discovery control loop.
     - run a proof of concept;
     - run another research thread;
     - investigate another URI seed;
-    - hand off to specification or ticket breakdown.
+    - hand off to product design when experiential uncertainty remains;
+    - hand off directly to specification only with typed
+      `product-design: not-applicable` rationale code
+      `discovery-frontier-ready-for-spec`;
+    - hand off to ticket breakdown.
 
 ## Continuation
 
 **The loop continues by default.** A completed cycle is not a resting state, and
 finishing one is not a reason to return to the operator.
 
-Cycle *n* ends by starting cycle *n+1*: classify the frontier, route, align,
-persist, read back, compact, and go again. The operator asked for discovery, not
+Cycle *n* ends by starting cycle *n+1*: classify the frontier, align, persist,
+read back, compact, route, and go again. The operator asked for discovery, not
 for one cycle of it.
 
 Stop only for one of these, and name which:
@@ -134,7 +127,7 @@ Stop only for one of these, and name which:
 | --- | --- |
 | `alignment` | The alignment check is being offered. This is a pause inside a cycle, not the end of one. |
 | `clarifying-question` | A question only the human can answer blocks the next cycle. Ask it and wait. |
-| `ready` | The discovery subject is settled enough to hand to the next workflow. |
+| `ready` | The discovery subject is settled enough to hand to the next workflow, including explicit product-design applicability. |
 | `blocked` | Progress needs authority, access, or a decision owner that is unavailable. |
 | `stop` | The request is out of scope or unsafe to pursue. |
 | `interrupted` | The operator interrupted, or a declared budget or cycle limit was reached. |
@@ -161,8 +154,8 @@ Map aligned discovery state into the bounded handoff payload:
 | `artifacts_and_references` | Evidence sources, prior handoffs, maps, interrogation packets, and the persisted foundation as one canonical `discovery-foundation: <locator>@<revision>` line. |
 | `what_worked` | Evidence routes and questions that advanced understanding. |
 | `what_did_not_work` | Missing sources, contradictions, and dead ends. |
-| `next_steps` | The next cycle selected from the reread handoff. |
-| `suggested_skills` | `interrogate`, `domain-mapping`, `proof-of-concept`, `discovery`, or the next downstream skill when exact and useful. |
+| `next_steps` | The next cycle selected from the reread handoff, including exact product-design applicability and reason. |
+| `suggested_skills` | `interrogate`, `domain-mapping`, `proof-of-concept`, `product-design`, `spec`, `discovery`, or the next downstream skill when exact and useful. |
 
 Research findings enter `artifacts_and_references` as cited sources and
 `current_progress` as source claims, never as settled facts. A URI seed's
@@ -203,5 +196,9 @@ claims.
 - The controller routes to `proof-of-concept` when prototype evidence is the
   next cheapest answer; it does not absorb that skill's job or treat prototype
   code as product code.
+- The controller routes aligned experiential uncertainty to `product-design`.
+  It routes ready/no-design-needed work to `spec` only with typed
+  `product-design: not-applicable` rationale code
+  `discovery-frontier-ready-for-spec`.
 - Tracker mutation remains outside this molecule in the root skill's
   approval-gated tracker update gate.

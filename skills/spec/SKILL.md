@@ -109,6 +109,20 @@ The intake must also carry:
 - decisions, assumptions, contradictions, and unresolved questions;
 - scope and exclusions.
 
+Every intake must pass and revalidate the primary exact-revision Discovery
+packet carrying its authoritative frontier route, then explicitly record
+whether product design is `required` or `not-applicable` with the matching
+typed rationale code. Free prose is invalid. When Discovery routed
+`needs-product-design`, `not-applicable` fails and the mechanically composed
+product-design evidence atom requires the product-design validator's `approved`
+result for the same Discovery subject/revision; absence is not
+non-applicability. That result includes stable concept/walkthrough identities,
+exact interaction-contract and artifact-set digests, change-request identity,
+and verified merge revision. The
+contract's observable behavior may inform requirements. Prototype HTML, CSS,
+JavaScript, Storybook configuration, component structure, dependencies, data
+models, and architecture never do.
+
 Raw conversation, a summary reconstructed from memory, an inaccessible source,
 or an unconfirmed source is refused. A source whose current revision differs
 from its confirmed revision is refused when the specification is a draft; when
@@ -213,6 +227,9 @@ branch.
   supplies approval.
 - Never let full-document detail become product authority without changing and
   re-approving the nano document.
+- An approved product-design interaction contract is evidence about the exact
+  experience, not production design-system, UI implementation, or architecture
+  authority.
 
 ## Permissions
 

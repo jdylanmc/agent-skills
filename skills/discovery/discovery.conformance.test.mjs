@@ -140,6 +140,30 @@ test('discovery routes bounded prototype questions to proof-of-concept', () => {
   assert.match(frontier, /small bounded prototype is the cheapest way/);
 });
 
+test('experiential uncertainty routes product-design while direct spec records non-applicability', () => {
+  const entry = flat(ENTRY);
+  const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+  const loop = flat('discovery/_molecules/discovery-loop/discovery-loop.md');
+  const frontier = flat('discovery/_atoms/frontier-ledger/frontier-ledger.md');
+
+  assert.match(frontier, /`needs-product-design` \| Product behavior and scope are aligned, but experiential uncertainty/);
+  assert.match(frontier, /remaining uncertainty is what the experience should be rather than whether a technical approach works/);
+  assert.match(controller, /frontier is `needs-product-design`/);
+  assert.match(controller, /hand exactly one aligned subject/);
+  assert.match(controller, /product-design: required/);
+  assert.match(controller, /product-design: not-applicable/);
+  assert.match(loop, /Experiential uncertainty emits `needs-product-design`/);
+  assert.match(entry, /typed `not-applicable` rationale code/);
+  assert.match(loop, /\| `product-design` \|/);
+  assert.match(loop, /Discovery does not absorb it/);
+  const align = controller.indexOf('Offer and run [Alignment check]');
+  const persist = controller.indexOf('Persist the aligned durable foundation', align);
+  const reread = controller.indexOf('reread and verify its newly returned locator and revision', persist);
+  const route = controller.indexOf('If the frontier is `needs-product-design`', reread);
+  assert.ok(align >= 0 && persist > align && reread > persist && route > reread);
+  assert.match(controller, /newly persisted.*foundation locator\/revision/s);
+});
+
 test('discovery explicitly refuses neighboring jobs', () => {
   const entry = flat(ENTRY);
 
@@ -583,6 +607,11 @@ async function seedFoundation(root, overrides = {}) {
     scope: ['In scope.'],
     exclusions: ['Excluded.'],
     frontier: ['ready'],
+    frontierRoute: {
+      route: 'ready',
+      applicability: 'not-applicable',
+      rationaleCode: 'discovery-frontier-ready-for-spec',
+    },
     nextAction: 'Hand to specification.',
     resolved: [],
     ...overrides,
@@ -665,7 +694,7 @@ test('AC5: cold-start rehydration reads real bytes and returns the complete pers
 
   assert.equal(result.status, REHYDRATED);
   assert.equal(result.mode, MODES.coldStart);
-  assert.equal(FOUNDATION_FIELDS.length, 11);
+  assert.equal(FOUNDATION_FIELDS.length, 12);
   for (const field of FOUNDATION_FIELDS) {
     assert.ok(Object.prototype.hasOwnProperty.call(result, field), `${field} must be a distinct field`);
   }
@@ -848,7 +877,9 @@ test('F9/F10: the documented persist codes match the source, and no injected IO 
       alignment: 'verified', cycle: 'c-0001', timestamp: '2026-08-29T01:00:00Z',
       confirmedFacts: ['A confirmed fact.'], evidenceReferences: [], decisions: [], constraints: [],
       assumptions: [], contradictions: [], openQuestions: [], scope: ['In scope.'], exclusions: ['Excluded.'],
-      frontier: ['ready'], nextAction: 'Go.', resolved: [],
+      frontier: ['ready'],
+      frontierRoute: { route: 'ready', applicability: 'not-applicable', rationaleCode: 'discovery-frontier-ready-for-spec' },
+      nextAction: 'Go.', resolved: [],
     };
     return { ...payload, expectedPriorRevision: null, alignedPayloadDigest: alignedPayloadDigestOf(payload) };
   }
@@ -931,7 +962,9 @@ test('F9/R3: a post-commit reread failure is post-commit-verification-failed, na
     alignment: 'verified', cycle: 'c-0001', timestamp: '2026-08-29T01:00:00Z',
     confirmedFacts: ['A confirmed fact.'], evidenceReferences: [], decisions: [], constraints: [],
     assumptions: [], contradictions: [], openQuestions: [], scope: ['In scope.'], exclusions: ['Excluded.'],
-    frontier: ['ready'], nextAction: 'Go.', resolved: [],
+    frontier: ['ready'],
+    frontierRoute: { route: 'ready', applicability: 'not-applicable', rationaleCode: 'discovery-frontier-ready-for-spec' },
+    nextAction: 'Go.', resolved: [],
   };
   let thrown = null;
   try {
@@ -987,7 +1020,9 @@ test('F3: the alignment gate is bound by a payload digest, not a caller token', 
     alignment: 'verified', cycle: 'c-0001', timestamp: '2026-08-29T01:00:00Z',
     confirmedFacts: ['A confirmed fact.'], evidenceReferences: [], decisions: [], constraints: [],
     assumptions: [], contradictions: [], openQuestions: [], scope: ['In scope.'], exclusions: ['Excluded.'],
-    frontier: ['ready'], nextAction: 'Go.', resolved: [],
+    frontier: ['ready'],
+    frontierRoute: { route: 'ready', applicability: 'not-applicable', rationaleCode: 'discovery-frontier-ready-for-spec' },
+    nextAction: 'Go.', resolved: [],
   };
   const digest = alignedPayloadDigestOf(payload);
   // Handing in aligned bytes that differ from the digest shown to the human is unbound.
@@ -1010,7 +1045,9 @@ test('F3: persisting a different subject over an existing foundation is refused'
     confirmedFacts: ['A confirmed fact.'], evidenceReferences: ['docs/evidence.md'], decisions: ['A decision.'],
     constraints: ['A constraint.'], assumptions: ['An assumption.'], contradictions: ['A contradiction.'],
     openQuestions: ['An open question.'], scope: ['In scope.'], exclusions: ['Excluded.'],
-    frontier: ['ready'], nextAction: 'Hand to specification.', resolved: [],
+    frontier: ['ready'],
+    frontierRoute: { route: 'ready', applicability: 'not-applicable', rationaleCode: 'discovery-frontier-ready-for-spec' },
+    nextAction: 'Hand to specification.', resolved: [],
   };
   let mismatch = null;
   try {
@@ -1048,7 +1085,9 @@ test('F6: a concurrent modification of the destination is refused, not overwritt
     confirmedFacts: ['A confirmed fact.'], evidenceReferences: ['docs/evidence.md'], decisions: ['A decision.'],
     constraints: ['A constraint.'], assumptions: ['An assumption.'], contradictions: ['A contradiction.'],
     openQuestions: ['An open question.'], scope: ['In scope.'], exclusions: ['Excluded.'],
-    frontier: ['ready'], nextAction: 'Hand to specification.', resolved: [],
+    frontier: ['ready'],
+    frontierRoute: { route: 'ready', applicability: 'not-applicable', rationaleCode: 'discovery-frontier-ready-for-spec' },
+    nextAction: 'Hand to specification.', resolved: [],
   };
   let refused = null;
   try {
@@ -1067,7 +1106,9 @@ test('AC7: the persist atom names its reread as write verification, and refuses 
     alignment: 'verified', cycle: 'c-0001', timestamp: '2026-08-29T01:00:00Z',
     confirmedFacts: ['A confirmed fact.'], evidenceReferences: [], decisions: [], constraints: [],
     assumptions: [], contradictions: [], openQuestions: [], scope: ['In scope.'], exclusions: ['Excluded.'],
-    frontier: ['ready'], nextAction: 'Go.', resolved: [],
+    frontier: ['ready'],
+    frontierRoute: { route: 'ready', applicability: 'not-applicable', rationaleCode: 'discovery-frontier-ready-for-spec' },
+    nextAction: 'Go.', resolved: [],
   };
   const first = persistFoundation({ ...base, expectedPriorRevision: null, alignedPayloadDigest: alignedPayloadDigestOf(base) });
   assert.equal(first.writeVerified, true);
@@ -1152,6 +1193,11 @@ test('the lifecycle builds every cycle after the first only from prior rehydrati
       scope: state?.scope ?? ['In scope.'],
       exclusions: state?.exclusions ?? ['Excluded.'],
       frontier: state?.frontier ?? ['needs-more-evidence: read discovery-source'],
+      frontierRoute: state?.frontierRoute ?? {
+        route: 'needs-product-design',
+        applicability: 'required',
+        rationaleCode: 'discovery-frontier-requires-product-design',
+      },
       nextAction: state?.nextAction ?? 'Read the discovery-source contract.',
       resolved: state?.resolved ?? [],
       expectedPriorRevision: state?.continuation?.revision ?? null,

@@ -52,11 +52,12 @@ The check refuses the links it can see; it does not prove the path stays safe.
 
 ## Schema version
 
-The artifact records a schema line, `- Schema: 1`, beside `- Subject:`. On parse
+The artifact records a schema line, `- Schema: 2`, beside `- Subject:`. On parse
 a missing or unknown schema is refused with `unsupported-schema` rather than
-being read as the current shape. A future migration bumps the schema and teaches
-the parser the older shapes; until then, reading anything other than schema `1`
-is a refusal, not a silent best-effort parse.
+being read as the current shape. Legacy schema `1` remains rehydratable with
+`frontierRoute: null`, but cannot route to specification until a newly aligned
+cycle supplies and persists the structured route. Any other schema is refused,
+not silently interpreted.
 
 ## Alignment and the payload binding
 
@@ -78,7 +79,7 @@ Be precise about what the binding proves. It proves the persisted payload is
 byte-for-byte the payload that was digested. It does **not** prove a human
 understood or approved that payload — alignment is a human act this atom cannot
 witness. The digest covers the subject, the nine durable sets, the frontier, the
-next action, and the resolved list, in a canonical serialization that does not
+structured `frontierRoute`, the next action, and the resolved list, in a canonical serialization that does not
 depend on JSON key order. It deliberately **excludes** `cycle`, `timestamp`, and
 `history`, because the write appends those and they cannot be known at alignment
 time. So the digest proves the aligned content, and proves nothing about the
@@ -197,7 +198,7 @@ The write is failure-atomic:
 
 1. The new bytes are staged to a sibling temporary file in the same directory.
 2. The staged file is reread and **re-parsed**; the recovered foundation is
-   deep-compared to the intended one (all eleven fields, subject, alignment,
+   deep-compared to the intended one (all twelve fields, subject, alignment,
    resolved, and history). A byte mismatch or a structural mismatch is
    `verification-failed`. This is the layer that catches an injection class a
    blacklist misses.
@@ -274,10 +275,17 @@ The JSON file is a version `1` intake record: `repositoryRoot`, `subject`
 (`id`, `slug`), the aligned `alignment` result, the `alignedPayloadDigest`, the
 `expectedPriorRevision` (the revision the cycle rehydrated, or `null` for a
 genuine first cycle), a `cycle` identifier, a canonical UTC `timestamp`, the
-nine durable sets, the current `frontier` and `nextAction`, and a `resolved`
+nine durable sets, the current `frontier`, structured `frontierRoute`, and
+`nextAction`, and a `resolved`
 list of `{field, entry, resolution}` records. Exit `0` prints one JSON object on
 standard output with the persisted `locator`, `revision`, subject identity, and
 the write-verification record. Any failure prints one
+
+`frontierRoute` is required in schema 2 for every declared frontier. It records
+exactly `{route, applicability, rationaleCode}`: `required` for
+`needs-product-design`, `not-applicable` for `ready`, and `unresolved` for
+every other frontier state. The validator accepts only the exact tuple assigned
+to that route and the renderer persists its canonical JSON bytes.
 `{"error": {"code", "message"}}` object on standard error with exit `1` and
 leaves nothing partial.
 
