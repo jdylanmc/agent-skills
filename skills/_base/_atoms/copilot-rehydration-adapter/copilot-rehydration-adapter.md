@@ -17,6 +17,11 @@ Translate `preCompact`, `preToolUse`, `postToolUse`, `agentStop`, and
 `sessionStart(source=resume)` payloads without leaking Copilot field names into
 the provider-neutral state machine.
 
+On resume, first correlate any unassigned Chronicle run using the hook-observed
+session identifier, then arm it in the same state transaction. Surface
+persisted ambiguity as blocking context so `preToolUse` continues to deny
+material work.
+
 For `postToolUse`, translate either documented result shape:
 `toolResult.resultType/textResultForLlm` or
 `tool_result.result_type/text_result_for_llm`. Only a successful model-facing

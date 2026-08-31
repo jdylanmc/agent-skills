@@ -8,7 +8,7 @@ import {
   correlateSession,
   expectedRead,
   noteEnforcement,
-  readState,
+  resumeSession,
   STATES,
 } from '../rehydration-state/rehydration-state.mjs';
 
@@ -76,19 +76,17 @@ export function preCompact(repositoryRoot, payload) {
 
 export function sessionStart(repositoryRoot, payload) {
   if (payload.source !== 'resume') return {};
-  const state = readState(repositoryRoot, sessionId(payload));
-  if (state?.status === STATES.degraded) {
-    return {
-      additionalContext: `Compaction rehydration is blocked: ${state.degradedReason}. Stop material work.`,
-    };
-  }
-  if (!state || state.stack.length === 0) return {};
-  const result = arm({
+  const result = resumeSession({
     repositoryRoot,
     sessionId: sessionId(payload),
-    trigger: 'resume',
     timestamp: payload.timestamp,
   });
+  if (result.status === STATES.degraded) {
+    return {
+      additionalContext: `Compaction rehydration is blocked: ${result.reason}. Stop material work.`,
+    };
+  }
+  if (result.status === 'inactive') return {};
   return {
     additionalContext: `An active skill run resumed and requires canonical rehydration before material work. Next read: ${result.files[0]}`,
   };

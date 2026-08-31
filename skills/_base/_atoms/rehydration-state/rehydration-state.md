@@ -32,6 +32,8 @@ one unambiguous root run. Entries assigned to other sessions are excluded.
 Compatible unassigned entries may be atomically claimed into reused state, and
 empty terminal state may be safely replaced. Ambiguity persists a session-keyed
 degraded marker. Correlation stores no prompt, transcript, or arbitrary output.
+Resume performs correlation and arming under the same state lock. Repeated
+resume notifications preserve an already armed generation and its next read.
 
 An armed generation permits one exact full-file read at a time from its
 canonical read set. A successful provider observation advances that set only

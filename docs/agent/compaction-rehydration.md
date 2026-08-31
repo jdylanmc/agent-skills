@@ -29,7 +29,10 @@ context compaction.
    persisted degradation. It then yields rather than approach the runtime's
    eight-consecutive-block guard. Re-entry with `stop_hook_active` always
    allows without consuming a degraded state's one block.
-6. `sessionStart` with `source: resume` re-arms persisted active runs.
+6. `sessionStart` with `source: resume` atomically correlates an unassigned
+   pending run using the hook-observed session identifier before arming it.
+   Persisted ambiguity is surfaced as blocking context, and repeated resume
+   notifications preserve an already armed generation.
 
 Repeated compactions create new generations. A stale generation, wrong run or
 skill identity, missing or moved file, changed digest, partial read, and forged

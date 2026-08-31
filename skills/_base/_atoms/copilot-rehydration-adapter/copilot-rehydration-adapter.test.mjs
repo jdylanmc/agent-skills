@@ -227,6 +227,85 @@ test('resume arms active persisted runs and rehydration does not register recurs
   assert.equal(readState(root, 'session-1').stack.length, before);
 });
 
+test('resume atomically claims an uncorrelated pending run and gates material work', () => {
+  const root = fixture('resume-pending');
+  registerRun({
+    repositoryRoot: root,
+    runId: 'pending-resume',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+
+  const resumed = sessionStart(root, {
+    sessionId: 'resumed-session',
+    source: 'resume',
+    timestamp: Date.now(),
+  });
+  assert.match(resumed.additionalContext, /requires canonical rehydration/);
+  assert.equal(readState(root, 'resumed-session').status, STATES.required);
+  const denied = preToolUse(root, {
+    sessionId: 'resumed-session',
+    cwd: root,
+    toolName: 'bash',
+    toolArgs: { command: 'git status' },
+  });
+  assert.equal(denied.permissionDecision, 'deny');
+});
+
+test('ambiguous pending roots on resume persist and surface a material-work block', () => {
+  const root = fixture('resume-ambiguous');
+  for (const runId of ['pending-a', 'pending-b']) {
+    registerRun({
+      repositoryRoot: root,
+      runId,
+      rootSkill: 'root',
+      skill: 'root',
+      logPath: path.join(root, '.skill-log', 'root.jsonl'),
+      phase: 'before',
+    });
+  }
+
+  const resumed = sessionStart(root, {
+    sessionId: 'ambiguous-resume-session',
+    source: 'resume',
+    timestamp: Date.now(),
+  });
+  assert.match(resumed.additionalContext, /ambiguous-active-runs/);
+  assert.equal(
+    readState(root, 'ambiguous-resume-session').degradedReason,
+    'ambiguous-active-runs',
+  );
+  const denied = preToolUse(root, {
+    sessionId: 'ambiguous-resume-session',
+    cwd: root,
+    toolName: 'bash',
+    toolArgs: { command: 'git status' },
+  });
+  assert.equal(denied.permissionDecision, 'deny');
+  assert.match(denied.permissionDecisionReason, /ambiguous-active-runs/);
+});
+
+test('repeated resume preserves the armed generation and remaining read', () => {
+  const root = fixture('resume-repeat');
+  sessionStart(root, {
+    sessionId: 'session-1',
+    source: 'resume',
+    timestamp: Date.now(),
+  });
+  const first = readState(root, 'session-1');
+  const repeated = sessionStart(root, {
+    sessionId: 'session-1',
+    source: 'resume',
+    timestamp: Date.now() + 1,
+  });
+  const second = readState(root, 'session-1');
+  assert.match(repeated.additionalContext, new RegExp(first.latch.remaining[0].path));
+  assert.equal(second.generation, first.generation);
+  assert.deepEqual(second.latch.remaining, first.latch.remaining);
+});
+
 test('agentStop fallback is bounded and all enforcement dispositions are distinct', () => {
   const root = fixture('stop');
   preCompact(root, { sessionId: 'session-1', trigger: 'manual', timestamp: Date.now() });

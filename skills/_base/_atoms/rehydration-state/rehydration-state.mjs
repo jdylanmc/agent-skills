@@ -400,8 +400,7 @@ export function updateCheckpoint(input) {
   });
 }
 
-export function arm(input) {
-  return withStateLock(input.repositoryRoot, () => {
+function armUnlocked(input) {
   const state = readStateUnlocked(input.repositoryRoot, input.sessionId);
   if (!state || state.stack.length === 0) return { status: 'inactive' };
   if (state.status === STATES.degraded) {
@@ -423,81 +422,106 @@ export function arm(input) {
   state.updatedAt = new Date().toISOString();
   writeStateUnlocked(input.repositoryRoot, state);
   return { status: state.status, generation: state.generation, files: files.map((file) => file.path) };
+}
+
+export function arm(input) {
+  return withStateLock(input.repositoryRoot, () => {
+    return armUnlocked(input);
   });
+}
+
+function correlateSessionUnlocked(root, sessionId) {
+  requireIdentifier(sessionId, 'sessionId');
+  const pending = readPending(root);
+  const existing = readStateUnlocked(root, sessionId);
+  const unclaimed = pending.filter((frame) => !frame.sessionId);
+  const rootKey = (frame) => `${frame.runId}:${frame.rootSkill}:${frame.logPath}`;
+  const terminal = existing && existing.stack.length === 0 && !existing.latch;
+  if (existing?.status === STATES.degraded && !terminal) {
+    return { status: STATES.degraded, reason: existing.degradedReason };
+  }
+
+  let candidates = unclaimed;
+  if (existing && !terminal && existing.stack.length > 0) {
+    const compatibleRoot = rootKey(existing.stack[0]);
+    candidates = unclaimed.filter((frame) => rootKey(frame) === compatibleRoot);
+  }
+
+  if (candidates.length === 0) {
+    if (existing?.status === STATES.degraded) {
+      return { status: STATES.degraded, reason: existing.degradedReason };
+    }
+    return { status: existing ? 'correlated' : 'none' };
+  }
+
+  const roots = new Set(candidates.map(rootKey));
+  if (roots.size !== 1) {
+    const state = {
+      schema: STATE_SCHEMA,
+      sessionId,
+      generation: existing?.generation ?? 0,
+      status: STATES.degraded,
+      stack: existing?.stack ?? [],
+      degradedReason: 'ambiguous-active-runs',
+      degradedAgentStopBlocks: 0,
+      updatedAt: new Date().toISOString(),
+    };
+    writeStateUnlocked(root, state);
+    return { status: STATES.degraded, reason: state.degradedReason };
+  }
+
+  const claimed = candidates.map(({ sessionId: _ignored, ...frame }) => frame);
+  let state;
+  if (!existing || terminal) {
+    state = {
+      schema: STATE_SCHEMA,
+      sessionId,
+      generation: existing?.generation ?? 0,
+      status: STATES.active,
+      stack: claimed,
+      updatedAt: new Date().toISOString(),
+    };
+  } else {
+    const existingKeys = new Set(existing.stack.map((frame) => `${frame.runId}:${frame.skill}`));
+    const additions = claimed.filter((frame) => !existingKeys.has(`${frame.runId}:${frame.skill}`));
+    if (existing.stack.length + additions.length > MAX_FRAMES) {
+      fail('bounded-state-exceeded', 'active stack is full');
+    }
+    existing.stack.push(...additions);
+    existing.status = existing.latch ? STATES.required : STATES.active;
+    delete existing.degradedReason;
+    existing.updatedAt = new Date().toISOString();
+    state = existing;
+  }
+  writeStateUnlocked(root, state);
+  const candidateKeys = new Set(candidates.map((frame) => `${frame.runId}:${frame.skill}:${frame.logPath}`));
+  writePending(root, pending.map((frame) =>
+    !frame.sessionId && candidateKeys.has(`${frame.runId}:${frame.skill}:${frame.logPath}`)
+      ? { ...frame, sessionId }
+      : frame));
+  return { status: 'correlated' };
 }
 
 export function correlateSession(repositoryRoot, sessionId) {
   const root = canonicalRoot(repositoryRoot);
-  requireIdentifier(sessionId, 'sessionId');
+  return withStateLock(root, () => correlateSessionUnlocked(root, sessionId));
+}
+
+export function resumeSession(input) {
+  const root = canonicalRoot(input.repositoryRoot);
   return withStateLock(root, () => {
-    const pending = readPending(root);
-    const existing = readStateUnlocked(root, sessionId);
-    const unclaimed = pending.filter((frame) => !frame.sessionId);
-    const rootKey = (frame) => `${frame.runId}:${frame.rootSkill}:${frame.logPath}`;
-    const terminal = existing && existing.stack.length === 0 && !existing.latch;
-    if (existing?.status === STATES.degraded && !terminal) {
-      return { status: STATES.degraded, reason: existing.degradedReason };
-    }
-
-    let candidates = unclaimed;
-    if (existing && !terminal && existing.stack.length > 0) {
-      const compatibleRoot = rootKey(existing.stack[0]);
-      candidates = unclaimed.filter((frame) => rootKey(frame) === compatibleRoot);
-    }
-
-    if (candidates.length === 0) {
-      if (existing?.status === STATES.degraded) {
-        return { status: STATES.degraded, reason: existing.degradedReason };
-      }
-      return { status: existing ? 'correlated' : 'none' };
-    }
-
-    const roots = new Set(candidates.map(rootKey));
-    if (roots.size !== 1) {
-      const state = {
-        schema: STATE_SCHEMA,
-        sessionId,
-        generation: existing?.generation ?? 0,
-        status: STATES.degraded,
-        stack: existing?.stack ?? [],
-        degradedReason: 'ambiguous-active-runs',
-        degradedAgentStopBlocks: 0,
-        updatedAt: new Date().toISOString(),
+    const correlation = correlateSessionUnlocked(root, input.sessionId);
+    if (correlation.status === STATES.degraded) return correlation;
+    const state = readStateUnlocked(root, input.sessionId);
+    if (!state || state.stack.length === 0) return { status: 'inactive' };
+    if (state.status === STATES.required && state.latch) {
+      return {
+        status: state.status,
+        generation: state.generation,
+        files: state.latch.remaining.map((file) => file.path),
       };
-      writeStateUnlocked(root, state);
-      return { status: STATES.degraded, reason: state.degradedReason };
     }
-
-    const claimed = candidates.map(({ sessionId: _ignored, ...frame }) => frame);
-    let state;
-    if (!existing || terminal) {
-      state = {
-        schema: STATE_SCHEMA,
-        sessionId,
-        generation: existing?.generation ?? 0,
-        status: STATES.active,
-        stack: claimed,
-        updatedAt: new Date().toISOString(),
-      };
-    } else {
-      const existingKeys = new Set(existing.stack.map((frame) => `${frame.runId}:${frame.skill}`));
-      const additions = claimed.filter((frame) => !existingKeys.has(`${frame.runId}:${frame.skill}`));
-      if (existing.stack.length + additions.length > MAX_FRAMES) {
-        fail('bounded-state-exceeded', 'active stack is full');
-      }
-      existing.stack.push(...additions);
-      existing.status = existing.latch ? STATES.required : STATES.active;
-      delete existing.degradedReason;
-      existing.updatedAt = new Date().toISOString();
-      state = existing;
-    }
-    writeStateUnlocked(root, state);
-    const candidateKeys = new Set(candidates.map((frame) => `${frame.runId}:${frame.skill}:${frame.logPath}`));
-    writePending(root, pending.map((frame) =>
-      !frame.sessionId && candidateKeys.has(`${frame.runId}:${frame.skill}:${frame.logPath}`)
-        ? { ...frame, sessionId }
-        : frame));
-    return { status: 'correlated' };
+    return armUnlocked({ ...input, repositoryRoot: root, trigger: 'resume' });
   });
 }
 
