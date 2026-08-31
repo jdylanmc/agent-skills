@@ -45,6 +45,20 @@ function fixture(name) {
   return root;
 }
 
+function pendingFixture(name) {
+  const root = fixture(name);
+  fs.rmSync(path.join(root, '.skill-log', 'rehydration'), { recursive: true, force: true });
+  registerRun({
+    repositoryRoot: root,
+    runId: 'run-pending',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+  return root;
+}
+
 function payload(root, toolName, toolArgs) {
   return { sessionId: 'session-1', cwd: root, toolName, toolArgs, timestamp: Date.now() };
 }
@@ -69,6 +83,49 @@ test('preToolUse denies material work and permits only the exact full canonical 
   assert.equal(preToolUse(root, payload(root, 'view', {
     path: path.join(root, 'skills', 'root', 'SKILL.md'),
   })).permissionDecision, 'allow');
+});
+
+test('malformed pending correlation persists a fail-closed session marker', () => {
+  for (const [name, corrupt] of [
+    ['invalid-json', (target) => fs.writeFileSync(target, '{')],
+    ['invalid-frame', (target) => fs.writeFileSync(target, '[{"runId":"run-pending"}]\n')],
+  ]) {
+    const root = pendingFixture(`pending-${name}`);
+    const target = path.join(root, '.skill-log', 'rehydration', 'pending.json');
+    corrupt(target);
+
+    assert.deepEqual(
+      preCompact(root, { sessionId: 'session-new', trigger: 'auto', timestamp: Date.now() }),
+      { status: STATES.degraded, reason: 'pending-registry-invalid' },
+    );
+    const denied = preToolUse(root, {
+      sessionId: 'session-new',
+      cwd: root,
+      toolName: 'bash',
+      toolArgs: { command: 'git status' },
+    });
+    assert.equal(denied.permissionDecision, 'deny');
+    assert.match(denied.permissionDecisionReason, /pending-registry-invalid/);
+  }
+});
+
+test('pending corruption invalidates an existing latch without reopening material work', () => {
+  const root = fixture('pending-existing-latch');
+  preCompact(root, { sessionId: 'session-1', trigger: 'auto', timestamp: Date.now() });
+  fs.writeFileSync(path.join(root, '.skill-log', 'rehydration', 'pending.json'), '{');
+
+  assert.deepEqual(
+    preCompact(root, { sessionId: 'session-1', trigger: 'auto', timestamp: Date.now() }),
+    { status: STATES.degraded, reason: 'pending-registry-invalid' },
+  );
+  for (const [toolName, toolArgs] of [
+    ['view', { path: path.join(root, 'skills', 'root', 'SKILL.md') }],
+    ['bash', { command: 'git status' }],
+  ]) {
+    const denied = preToolUse(root, payload(root, toolName, toolArgs));
+    assert.equal(denied.permissionDecision, 'deny');
+    assert.match(denied.permissionDecisionReason, /pending-registry-invalid/);
+  }
 });
 
 test('large canonical reads receive the exact full-read recovery hint', () => {

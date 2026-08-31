@@ -16,6 +16,7 @@ import {
   MAX_AGENT_STOP_BLOCKS,
   readState,
   registerRun,
+  statePath,
   STATES,
 } from './rehydration-state.mjs';
 
@@ -132,11 +133,62 @@ test('the final active run ending mid-rehydration cannot impersonate successful 
 test('a run starting during recovery cannot disable the armed latch', () => {
   const root = repo('nested-before');
   register(root);
-  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  const armed = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
   register(root, 'nested', 'run-2');
   const state = readState(root, 'session-1');
   assert.equal(state.status, STATES.required);
-  assert.ok(state.latch.remaining.length > 0);
+  assert.deepEqual(state.latch.remaining.map((file) => file.path), [
+    ...armed.files,
+    'skills/nested/SKILL.md',
+  ]);
+});
+
+test('malformed persisted status, generation, and latch state fails closed', () => {
+  const cases = [
+    ['unknown status', (state) => { state.status = 'active-ish'; }],
+    ['transient status', (state) => { state.status = STATES.compacting; }],
+    ['negative generation', (state) => { state.generation = -1; }],
+    ['fractional generation', (state) => { state.generation = 1.5; }],
+    ['latch generation mismatch', (state) => { state.latch.generation += 1; }],
+    ['missing latch', (state) => { delete state.latch; }],
+    ['empty latch', (state) => { state.latch.remaining = []; }],
+    ['latch outside required state', (state) => { state.status = STATES.active; }],
+    ['removed latch disguised as active', (state) => {
+      delete state.latch;
+      state.status = STATES.active;
+    }],
+    ['removed latch disguised as rehydrated', (state) => {
+      delete state.latch;
+      state.status = STATES.rehydrated;
+    }],
+    ['armed generation marked complete', (state) => {
+      state.lastCompletedGeneration = state.generation;
+    }],
+    ['lifecycle generation mismatch', (state) => {
+      state.lifecycle.generation += 1;
+    }],
+    ['malformed latch counter', (state) => { state.latch.agentStopBlocks = -1; }],
+    ['malformed latch flag', (state) => { state.latch.enforcementRecorded = 'false'; }],
+    ['unsafe unread path', (state) => { state.latch.remaining[0].path = '../outside'; }],
+    ['unbound unread identity', (state) => { state.latch.remaining[0].runId = 'other-run'; }],
+    ['wrong persisted session', (state) => { state.sessionId = 'other-session'; }],
+  ];
+
+  for (const [name, mutate] of cases) {
+    const root = repo(`malformed-${name.replaceAll(' ', '-')}`);
+    register(root);
+    arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+    const target = statePath(root, 'session-1');
+    const state = JSON.parse(fs.readFileSync(target, 'utf8'));
+    mutate(state);
+    fs.writeFileSync(target, `${JSON.stringify(state)}\n`);
+
+    assert.throws(
+      () => expectedRead(root, 'session-1'),
+      (error) => error?.code === 'invalid-state',
+      name,
+    );
+  }
 });
 
 test('a later registration cannot clear a mid-rehydration degraded marker', () => {
@@ -160,6 +212,39 @@ test('a later registration cannot clear a mid-rehydration degraded marker', () =
     sessionId: 'session-1',
     trigger: 'auto',
   }).status, STATES.degraded);
+});
+
+test('resume correlation cannot replace a terminal degraded marker', () => {
+  const root = repo('degraded-correlation');
+  register(root);
+  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    runId: 'run-1',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'after',
+  });
+  registerRun({
+    repositoryRoot: root,
+    runId: 'run-2',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+
+  assert.deepEqual(correlateSession(root, 'session-1'), {
+    status: STATES.degraded,
+    reason: 'all-runs-ended-during-rehydration',
+  });
+  const state = readState(root, 'session-1');
+  assert.equal(state.status, STATES.degraded);
+  assert.equal(state.degradedReason, 'all-runs-ended-during-rehydration');
+  assert.equal(agentStopFallback(root, 'session-1', false).decision, 'block');
+  assert.equal(agentStopFallback(root, 'session-1', false).decision, 'allow');
 });
 
 test('a complete exact read sequence clears once and returns a bounded checkpoint', () => {
@@ -462,8 +547,12 @@ test('concurrent subprocess registrations serialize without losing frames', asyn
       '--eval',
       `import {registerRun} from ${JSON.stringify(moduleUrl)}; registerRun(${JSON.stringify(input)});`,
     ]);
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
     child.on('error', reject);
-    child.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`child exited ${code}`)));
+    child.on('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error(`child exited ${code}: ${stderr.trim()}`)));
   }));
   await Promise.all(children);
   assert.equal(readState(root, 'session-1').stack.length, 8);

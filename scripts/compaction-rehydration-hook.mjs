@@ -12,7 +12,10 @@ import {
   sessionStart,
 } from '../skills/_base/_atoms/copilot-rehydration-adapter/copilot-rehydration-adapter.mjs';
 import { emitEvent } from '../skills/_base/_molecules/chronicler/chronicler.mjs';
-import { readState } from '../skills/_base/_atoms/rehydration-state/rehydration-state.mjs';
+import {
+  appendLifecycleRecord,
+  readState,
+} from '../skills/_base/_atoms/rehydration-state/rehydration-state.mjs';
 
 const handlers = { agentStop, postToolUse, preCompact, preToolUse, sessionStart };
 
@@ -28,33 +31,63 @@ function repositoryRoot(cwd) {
   }
 }
 
-function record(root, sessionId, event, phase, outcome) {
+function hasLifecycleRecord(logPath, runId, operation, phase) {
+  let text;
+  try {
+    text = fs.readFileSync(logPath, 'utf8');
+  } catch {
+    return false;
+  }
+  return text.split('\n').some((line) => {
+    if (!line.trim()) return false;
+    try {
+      const event = JSON.parse(line);
+      return event.run_id === runId &&
+        event.operation === operation &&
+        event.phase === phase;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function record(root, sessionId, event, phase, outcome, generation) {
   let state;
   try {
     state = readState(root, sessionId);
   } catch {
     return;
   }
-  if (!state) return;
-  for (const frame of state.stack) {
-    try {
-      emitEvent({
-        skill: frame.skill,
-        event,
-        phase,
-        summary: `${event} ${outcome}`,
-        operation: `rehydration-${state.generation}`,
-        outcome,
-      }, {
-        run_id: frame.runId,
-        root_skill: frame.rootSkill,
-        log_path: path.join(root, frame.logPath),
-        harness: 'copilot-cli',
-        session_id: sessionId,
+  const owner = state?.lifecycle?.owner;
+  if (!owner || state.lifecycle.generation !== generation) return;
+  const operation = `rehydration-${generation}`;
+  const logPath = path.join(root, owner.logPath);
+  const append = () => emitEvent({
+    skill: owner.skill,
+    event,
+    phase,
+    summary: `${event} ${outcome}`,
+    operation,
+    outcome,
+  }, {
+    run_id: owner.runId,
+    root_skill: owner.rootSkill,
+    log_path: logPath,
+    harness: 'copilot-cli',
+    session_id: sessionId,
+  });
+  try {
+    if (phase === 'observation') {
+      append();
+    } else {
+      appendLifecycleRecord(root, sessionId, generation, phase, {
+        hasRecord: (candidatePhase) =>
+          hasLifecycleRecord(logPath, owner.runId, operation, candidatePhase),
+        append,
       });
-    } catch {
-      // Hook enforcement never depends on best-effort Chronicle recording.
     }
+  } catch {
+    // Hook enforcement never depends on best-effort Chronicle recording.
   }
 }
 
@@ -69,16 +102,17 @@ export function run(kind, input, streams = process) {
     const sid = input.sessionId ?? input.session_id;
     const before = kind === 'preCompact' ? 'compaction' : kind === 'postToolUse' ? 'rehydration' : null;
     const result = handler(root, input);
+    const generation = result._rehydrationGeneration ?? result.generation;
     if (before === 'compaction' && result.status && result.status !== 'inactive') {
-      record(root, sid, before, kind === 'preCompact' ? 'before' : 'after', result.status);
+      record(root, sid, before, kind === 'preCompact' ? 'before' : 'after', result.status, generation);
     } else if (kind === 'postToolUse' && result._rehydrationStatus) {
-      record(root, sid, 'rehydration', 'after', result._rehydrationStatus);
+      record(root, sid, 'rehydration', 'after', result._rehydrationStatus, generation);
     } else if (kind === 'preToolUse' && result._recordEnforcement) {
-      record(root, sid, 'rehydration-gate', 'observation', 'enforced');
+      record(root, sid, 'rehydration-gate', 'observation', 'enforced', generation);
     } else if (kind === 'agentStop' && result.degraded) {
-      record(root, sid, 'rehydration', 'after', 'degraded');
+      record(root, sid, 'rehydration', 'after', 'degraded', generation);
     } else if (kind === 'sessionStart' && result.additionalContext) {
-      record(root, sid, 'rehydration', 'before', 'resume-armed');
+      record(root, sid, 'rehydration', 'before', 'resume-armed', generation);
     }
     streams.stdout.write(`${JSON.stringify(result)}\n`);
     return 0;

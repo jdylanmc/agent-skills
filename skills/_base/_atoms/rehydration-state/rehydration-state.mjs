@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const STATE_SCHEMA = 1;
+export const STATE_SCHEMA = 2;
 export const MAX_FRAMES = 16;
 export const MAX_FILES = 64;
 export const MAX_RELATIVE_PATH_BYTES = 300;
@@ -21,6 +21,13 @@ export const STATES = Object.freeze({
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
+const PERSISTED_STATES = new Set([
+  STATES.active,
+  STATES.required,
+  STATES.rehydrated,
+  STATES.degraded,
+]);
+const LATCH_TRIGGERS = new Set(['manual', 'auto', 'resume']);
 
 export class RehydrationError extends Error {
   constructor(code, message) {
@@ -144,12 +151,133 @@ export function statePath(repositoryRoot, sessionId) {
   return path.join(root, '.skill-log', 'rehydration', `${digest(sessionId)}.json`);
 }
 
-function validateState(state) {
+function validStoredIdentifier(value) {
+  return typeof value === 'string' && IDENTIFIER.test(value);
+}
+
+function validStoredTimestamp(value) {
+  if (typeof value !== 'string') return false;
+  try {
+    return new Date(value).toISOString() === value;
+  } catch {
+    return false;
+  }
+}
+
+function validStoredRelativePath(value) {
+  return typeof value === 'string' &&
+    value.length > 0 &&
+    Buffer.byteLength(value, 'utf8') <= MAX_RELATIVE_PATH_BYTES &&
+    !value.includes('\\') &&
+    !path.posix.isAbsolute(value) &&
+    value !== '.' &&
+    !value.startsWith('../') &&
+    path.posix.normalize(value) === value;
+}
+
+function validateStoredFile(file, withOwner = false) {
+  if (!file || typeof file !== 'object' || Array.isArray(file) ||
+      !validStoredRelativePath(file.path) ||
+      !SHA256.test(file.digest) ||
+      !Number.isSafeInteger(file.bytes) ||
+      file.bytes < 0 ||
+      (withOwner && (!validStoredIdentifier(file.runId) ||
+        !validStoredIdentifier(file.skill)))) {
+    fail('invalid-state', 'canonical file identity is invalid');
+  }
+}
+
+function validateCheckpoint(checkpoint) {
+  if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint) ||
+      !validStoredIdentifier(checkpoint.event) ||
+      !validStoredIdentifier(checkpoint.phase) ||
+      (checkpoint.operation !== undefined && !validStoredIdentifier(checkpoint.operation)) ||
+      (checkpoint.outcome !== undefined && !validStoredIdentifier(checkpoint.outcome))) {
+    fail('invalid-state', 'frame checkpoint is invalid');
+  }
+}
+
+function validateStoredFrame(frame) {
+  if (!frame || typeof frame !== 'object' || Array.isArray(frame) ||
+      !validStoredIdentifier(frame.runId) ||
+      !validStoredIdentifier(frame.rootSkill) ||
+      !validStoredIdentifier(frame.skill) ||
+      !validStoredRelativePath(frame.logPath)) {
+    fail('invalid-state', 'active frame identity is invalid');
+  }
+  if (!Array.isArray(frame.files) || frame.files.length === 0 || frame.files.length > MAX_FILES) {
+    fail('invalid-state', 'frame canonical read set is invalid');
+  }
+  for (const file of frame.files) validateStoredFile(file);
+  validateCheckpoint(frame.checkpoint);
+}
+
+function sameOwnedFile(left, right) {
+  return left.path === right.path &&
+    left.digest === right.digest &&
+    left.bytes === right.bytes &&
+    left.runId === right.runId &&
+    left.skill === right.skill;
+}
+
+function lifecycleReceipt(generation, frame) {
+  if (!frame) return undefined;
+  return {
+    generation,
+    beforeRecorded: false,
+    afterRecorded: false,
+    owner: {
+      runId: frame.runId,
+      rootSkill: frame.rootSkill,
+      skill: frame.skill,
+      logPath: frame.logPath,
+    },
+  };
+}
+
+function validateState(state, expectedSessionId) {
   if (!state || state.schema !== STATE_SCHEMA || !Array.isArray(state.stack)) {
     fail('invalid-state', 'rehydration state is malformed or unsupported');
   }
-  requireIdentifier(state.sessionId, 'sessionId');
-  if (state.degradedReason !== undefined) requireIdentifier(state.degradedReason, 'degradedReason');
+  if (!validStoredIdentifier(state.sessionId) ||
+      (expectedSessionId !== undefined && state.sessionId !== expectedSessionId)) {
+    fail('invalid-state', 'persisted session identity is invalid');
+  }
+  if (!Number.isSafeInteger(state.generation) || state.generation < 0) {
+    fail('invalid-state', 'rehydration generation is invalid');
+  }
+  if (!PERSISTED_STATES.has(state.status)) {
+    fail('invalid-state', 'rehydration status is invalid');
+  }
+  if (!validStoredTimestamp(state.updatedAt)) {
+    fail('invalid-state', 'rehydration update timestamp is invalid');
+  }
+  if (state.lastCompletedGeneration !== undefined &&
+      (!Number.isSafeInteger(state.lastCompletedGeneration) ||
+       state.lastCompletedGeneration < 0 ||
+       state.lastCompletedGeneration > state.generation)) {
+    fail('invalid-state', 'completed generation is invalid');
+  }
+  if (state.lifecycle !== undefined &&
+      (!state.lifecycle || typeof state.lifecycle !== 'object' ||
+       Array.isArray(state.lifecycle) ||
+       !Number.isSafeInteger(state.lifecycle.generation) ||
+       state.lifecycle.generation !== state.generation ||
+       typeof state.lifecycle.beforeRecorded !== 'boolean' ||
+       typeof state.lifecycle.afterRecorded !== 'boolean' ||
+       !state.lifecycle.owner ||
+       typeof state.lifecycle.owner !== 'object' ||
+       Array.isArray(state.lifecycle.owner) ||
+       !validStoredIdentifier(state.lifecycle.owner.runId) ||
+       !validStoredIdentifier(state.lifecycle.owner.rootSkill) ||
+       !validStoredIdentifier(state.lifecycle.owner.skill) ||
+       !validStoredRelativePath(state.lifecycle.owner.logPath) ||
+       (state.lifecycle.afterRecorded && !state.lifecycle.beforeRecorded))) {
+    fail('invalid-state', 'rehydration lifecycle receipt is invalid');
+  }
+  if (state.degradedReason !== undefined && !validStoredIdentifier(state.degradedReason)) {
+    fail('invalid-state', 'degraded reason is invalid');
+  }
   if (state.degradedAgentStopBlocks !== undefined &&
       (!Number.isSafeInteger(state.degradedAgentStopBlocks) ||
        state.degradedAgentStopBlocks < 0 ||
@@ -157,19 +285,60 @@ function validateState(state) {
     fail('invalid-state', 'degraded agent-stop counter is invalid');
   }
   if (state.stack.length > MAX_FRAMES) fail('invalid-state', 'active stack exceeds its bound');
-  for (const frame of state.stack) {
-    requireIdentifier(frame.runId, 'runId');
-    requireIdentifier(frame.rootSkill, 'rootSkill');
-    requireIdentifier(frame.skill, 'skill');
-    if (!Array.isArray(frame.files) || frame.files.length === 0 || frame.files.length > MAX_FILES) {
-      fail('invalid-state', 'frame canonical read set is invalid');
+  for (const frame of state.stack) validateStoredFrame(frame);
+
+  if (state.status === STATES.active && state.stack.length === 0) {
+    fail('invalid-state', 'active state has no active run');
+  }
+  if ((state.status === STATES.active || state.status === STATES.rehydrated) &&
+      state.generation > 0 &&
+      state.lastCompletedGeneration !== state.generation) {
+    fail('invalid-state', 'non-required state has an uncompleted generation');
+  }
+  if (state.status === STATES.degraded) {
+    if (state.latch !== undefined || state.degradedReason === undefined) {
+      fail('invalid-state', 'degraded state is inconsistent');
     }
-    for (const file of frame.files) {
-      if (typeof file.path !== 'string' || Buffer.byteLength(file.path) > MAX_RELATIVE_PATH_BYTES ||
-          !SHA256.test(file.digest) || !Number.isSafeInteger(file.bytes) || file.bytes < 0) {
-        fail('invalid-state', 'frame canonical file identity is invalid');
+  } else if (state.degradedReason !== undefined || state.degradedAgentStopBlocks !== undefined) {
+    fail('invalid-state', 'non-degraded state carries degraded fields');
+  }
+
+  if (state.status === STATES.required) {
+    if (!state.latch || typeof state.latch !== 'object' || Array.isArray(state.latch) ||
+        state.stack.length === 0 ||
+        !Number.isSafeInteger(state.latch.generation) ||
+        state.latch.generation !== state.generation ||
+        state.generation < 1 ||
+        !LATCH_TRIGGERS.has(state.latch.trigger) ||
+        !validStoredTimestamp(state.latch.armedAt) ||
+        !Array.isArray(state.latch.remaining) ||
+        state.latch.remaining.length === 0 ||
+        !Number.isSafeInteger(state.latch.agentStopBlocks) ||
+        state.latch.agentStopBlocks < 0 ||
+        state.latch.agentStopBlocks > MAX_AGENT_STOP_BLOCKS ||
+        typeof state.latch.enforcementRecorded !== 'boolean' ||
+        state.lifecycle === undefined) {
+      fail('invalid-state', 'rehydration latch is invalid');
+    }
+    if (state.lastCompletedGeneration !== undefined &&
+        state.lastCompletedGeneration >= state.generation) {
+      fail('invalid-state', 'armed generation is already marked complete');
+    }
+    const canonicalSequence = state.stack.flatMap((frame) =>
+      frame.files.map((file) => ({ ...file, runId: frame.runId, skill: frame.skill })));
+    if (state.latch.remaining.length > canonicalSequence.length) {
+      fail('invalid-state', 'rehydration latch exceeds the canonical read set');
+    }
+    const offset = canonicalSequence.length - state.latch.remaining.length;
+    for (let index = 0; index < state.latch.remaining.length; index += 1) {
+      const file = state.latch.remaining[index];
+      validateStoredFile(file, true);
+      if (!sameOwnedFile(file, canonicalSequence[offset + index])) {
+        fail('invalid-state', 'rehydration latch is not the canonical unread suffix');
       }
     }
+  } else if (state.latch !== undefined) {
+    fail('invalid-state', 'rehydration latch exists outside required state');
   }
   return state;
 }
@@ -194,7 +363,7 @@ function readStateUnlocked(repositoryRoot, sessionId) {
   if (!fs.existsSync(target)) return null;
   const stat = fs.lstatSync(target);
   if (!stat.isFile() || stat.isSymbolicLink()) fail('invalid-state', 'state path is unsafe');
-  return validateState(JSON.parse(fs.readFileSync(target, 'utf8')));
+  return validateState(JSON.parse(fs.readFileSync(target, 'utf8')), sessionId);
 }
 
 export function readState(repositoryRoot, sessionId) {
@@ -271,8 +440,18 @@ function pendingPath(root) {
 function readPending(root) {
   const target = pendingPath(root);
   if (!fs.existsSync(target)) return [];
+  const stat = fs.lstatSync(target);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    fail('invalid-state', 'pending run registry path is unsafe');
+  }
   const value = JSON.parse(fs.readFileSync(target, 'utf8'));
   if (!Array.isArray(value) || value.length > MAX_PENDING_RUNS) fail('invalid-state', 'pending run registry is invalid');
+  for (const frame of value) {
+    validateStoredFrame(frame);
+    if (frame.sessionId !== undefined && !validStoredIdentifier(frame.sessionId)) {
+      fail('invalid-state', 'pending run session identity is invalid');
+    }
+  }
   return value;
 }
 
@@ -291,14 +470,22 @@ function mutateRegistration(root, sessionId, input, preparedFrame) {
   if (input.phase === 'before') {
     if (!state.stack.some((frame) => `${frame.runId}:${frame.skill}` === key)) {
       if (state.stack.length >= MAX_FRAMES) fail('bounded-state-exceeded', 'active stack is full');
-      state.stack.push(preparedFrame ?? {
+      const frame = preparedFrame ?? {
           runId: requireIdentifier(input.runId, 'runId'),
           rootSkill: requireIdentifier(input.rootSkill, 'rootSkill'),
           skill: requireIdentifier(input.skill, 'skill'),
           logPath: relativePath(root, path.resolve(input.logPath)),
           files: buildCanonicalManifest(root, input.skill),
           checkpoint: { event: 'run', phase: 'before' },
-        });
+        };
+      state.stack.push(frame);
+      if (state.latch) {
+        state.latch.remaining.push(...frame.files.map((file) => ({
+          ...file,
+          runId: frame.runId,
+          skill: frame.skill,
+        })));
+      }
     }
     if (state.status !== STATES.degraded) {
       state.status = state.latch ? STATES.required : STATES.active;
@@ -408,6 +595,7 @@ function armUnlocked(input) {
   }
   state.generation += 1;
   state.status = STATES.compacting;
+  state.lifecycle = lifecycleReceipt(state.generation, state.stack[0]);
   const files = state.stack.flatMap((frame) =>
     frame.files.map((file) => ({ ...file, skill: frame.skill, runId: frame.runId })));
   state.latch = {
@@ -432,12 +620,47 @@ export function arm(input) {
 
 function correlateSessionUnlocked(root, sessionId) {
   requireIdentifier(sessionId, 'sessionId');
-  const pending = readPending(root);
   const existing = readStateUnlocked(root, sessionId);
+  let pending;
+  try {
+    pending = readPending(root);
+  } catch {
+    if (existing?.status === STATES.degraded) {
+      return {
+        status: STATES.degraded,
+        reason: existing.degradedReason,
+      };
+    }
+    if (existing?.latch) {
+      return degradeUnlocked(root, existing, 'pending-registry-invalid');
+    }
+    const state = {
+      schema: STATE_SCHEMA,
+      sessionId,
+      generation: existing?.generation ?? 0,
+      ...(existing?.lastCompletedGeneration !== undefined
+        ? { lastCompletedGeneration: existing.lastCompletedGeneration }
+        : {}),
+      status: STATES.degraded,
+      stack: existing?.stack ?? [],
+      ...(existing?.lifecycle
+        ? { lifecycle: existing.lifecycle }
+        : lifecycleReceipt(existing?.generation ?? 0, existing?.stack?.[0])
+          ? { lifecycle: lifecycleReceipt(existing?.generation ?? 0, existing.stack[0]) }
+          : {}),
+      degradedReason: 'pending-registry-invalid',
+      degradedAgentStopBlocks: 0,
+      updatedAt: new Date().toISOString(),
+    };
+    writeStateUnlocked(root, state);
+    return { status: STATES.degraded, reason: state.degradedReason };
+  }
   const unclaimed = pending.filter((frame) => !frame.sessionId);
   const rootKey = (frame) => `${frame.runId}:${frame.rootSkill}:${frame.logPath}`;
-  const terminal = existing && existing.stack.length === 0 && !existing.latch;
-  if (existing?.status === STATES.degraded && !terminal) {
+  const terminal = existing?.status === STATES.rehydrated &&
+    existing.stack.length === 0 &&
+    !existing.latch;
+  if (existing?.status === STATES.degraded) {
     return { status: STATES.degraded, reason: existing.degradedReason };
   }
 
@@ -462,6 +685,11 @@ function correlateSessionUnlocked(root, sessionId) {
       generation: existing?.generation ?? 0,
       status: STATES.degraded,
       stack: existing?.stack ?? [],
+      ...(existing?.lifecycle
+        ? { lifecycle: existing.lifecycle }
+        : lifecycleReceipt(existing?.generation ?? 0, existing?.stack?.[0])
+          ? { lifecycle: lifecycleReceipt(existing?.generation ?? 0, existing.stack[0]) }
+          : {}),
       degradedReason: 'ambiguous-active-runs',
       degradedAgentStopBlocks: 0,
       updatedAt: new Date().toISOString(),
@@ -477,6 +705,9 @@ function correlateSessionUnlocked(root, sessionId) {
       schema: STATE_SCHEMA,
       sessionId,
       generation: existing?.generation ?? 0,
+      ...(existing?.lastCompletedGeneration !== undefined
+        ? { lastCompletedGeneration: existing.lastCompletedGeneration }
+        : {}),
       status: STATES.active,
       stack: claimed,
       updatedAt: new Date().toISOString(),
@@ -488,6 +719,10 @@ function correlateSessionUnlocked(root, sessionId) {
       fail('bounded-state-exceeded', 'active stack is full');
     }
     existing.stack.push(...additions);
+    if (existing.latch) {
+      existing.latch.remaining.push(...additions.flatMap((frame) =>
+        frame.files.map((file) => ({ ...file, runId: frame.runId, skill: frame.skill }))));
+    }
     existing.status = existing.latch ? STATES.required : STATES.active;
     delete existing.degradedReason;
     existing.updatedAt = new Date().toISOString();
@@ -541,6 +776,42 @@ export function noteEnforcement(repositoryRoot, sessionId) {
   state.latch.enforcementRecorded = true;
   writeStateUnlocked(repositoryRoot, state);
   return true;
+  });
+}
+
+export function appendLifecycleRecord(repositoryRoot, sessionId, generation, phase, callbacks) {
+  if (!callbacks || typeof callbacks.hasRecord !== 'function' ||
+      typeof callbacks.append !== 'function') {
+    fail('invalid-input', 'lifecycle recording callbacks are required');
+  }
+  return withStateLock(repositoryRoot, () => {
+    const state = readStateUnlocked(repositoryRoot, sessionId);
+    if (!state?.lifecycle || state.lifecycle.generation !== generation) return false;
+    if (phase !== 'before' && phase !== 'after') {
+      fail('invalid-input', 'lifecycle phase must be before or after');
+    }
+
+    const phaseRecorded = callbacks.hasRecord(phase);
+    const beforeRecorded = phase === 'before'
+      ? phaseRecorded
+      : callbacks.hasRecord('before');
+    if (phase === 'after' && !beforeRecorded) return false;
+
+    if (phaseRecorded) {
+      state.lifecycle.beforeRecorded ||= phase === 'before' || beforeRecorded;
+      state.lifecycle.afterRecorded ||= phase === 'after';
+      state.updatedAt = new Date().toISOString();
+      writeStateUnlocked(repositoryRoot, state);
+      return false;
+    }
+    if (phase === 'before' && state.lifecycle.afterRecorded) return false;
+
+    callbacks.append();
+    state.lifecycle.beforeRecorded ||= phase === 'before' || beforeRecorded;
+    state.lifecycle.afterRecorded ||= phase === 'after';
+    state.updatedAt = new Date().toISOString();
+    writeStateUnlocked(repositoryRoot, state);
+    return true;
   });
 }
 

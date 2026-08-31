@@ -13,7 +13,9 @@ context compaction.
    pending run. Entries assigned to another session are never candidates.
    Compatible unassigned runs are atomically added to reused session state;
    terminal state may be safely replaced. Ambiguity persists a session-keyed
-   degraded marker rather than silently staying inactive.
+   degraded marker rather than silently staying inactive. Malformed or unsafe
+   pending correlation state does the same before `preCompact` returns, so a
+   later tool gate denies instead of treating the session as inactive.
 2. `preCompact` synchronously arms a new bounded generation.
 3. While armed, local command `preToolUse` permits only the next exact,
    full-file canonical `view` read. Other material tool operations are denied.
@@ -34,10 +36,26 @@ context compaction.
    Persisted ambiguity is surfaced as blocking context, and repeated resume
    notifications preserve an already armed generation.
 
+The provider-neutral state keeps one bounded lifecycle emission receipt per
+generation, retains that generation's immutable root-run Chronicle owner, and
+reconciles the receipt with the log before retrying. A failed append remains
+retryable, a completed append is not duplicated after an interrupted receipt
+update, and an outcome is never appended without its recorded start. Repeated
+resume, final-frame degradation, or degraded stop notifications therefore
+cannot append duplicate or out-of-order records for the same rehydration
+operation.
+
 Repeated compactions create new generations. A stale generation, wrong run or
 skill identity, missing or moved file, changed digest, partial read, and forged
 model acknowledgement cannot clear the latch. Rehydration is a read, not a
 skill invocation, so it cannot recursively create a run.
+
+Persisted state is validated before any gate decision. Status and generation
+must agree with the completion marker; an armed latch must match that
+generation and the exact unread suffix of the bounded canonical read sequence.
+A newly registered nested skill is added to an already armed sequence. Invalid,
+missing, contradictory, session-mismatched, or path-escaping state makes the
+local command fail non-zero instead of being treated as inactive.
 
 A lifecycle `run/after` event never silently satisfies canonical-read
 obligations. If an active run ends while rehydration is armed, state becomes

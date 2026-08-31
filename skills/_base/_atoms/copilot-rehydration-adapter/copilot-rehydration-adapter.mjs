@@ -8,6 +8,7 @@ import {
   correlateSession,
   expectedRead,
   noteEnforcement,
+  readState,
   resumeSession,
   STATES,
 } from '../rehydration-state/rehydration-state.mjs';
@@ -22,6 +23,14 @@ export const REPOSITORY_HOOK_DISPOSITION = 'hook-enforced-but-disableable';
 
 function sessionId(payload) {
   return payload.sessionId ?? payload.session_id;
+}
+
+function withGeneration(output, repositoryRoot, payload, generation) {
+  const value = generation ?? readState(repositoryRoot, sessionId(payload))?.generation;
+  if (Number.isSafeInteger(value)) {
+    Object.defineProperty(output, '_rehydrationGeneration', { value });
+  }
+  return output;
 }
 
 function absoluteToolPath(payload) {
@@ -65,13 +74,16 @@ function modelResultEvidence(payload) {
 
 export function preCompact(repositoryRoot, payload) {
   const correlation = correlateSession(repositoryRoot, sessionId(payload));
-  if (correlation.status === STATES.degraded) return correlation;
-  return arm({
+  if (correlation.status === STATES.degraded) {
+    return withGeneration(correlation, repositoryRoot, payload, correlation.generation);
+  }
+  const result = arm({
     repositoryRoot,
     sessionId: sessionId(payload),
     trigger: payload.trigger,
     timestamp: payload.timestamp,
   });
+  return withGeneration(result, repositoryRoot, payload, result.generation);
 }
 
 export function sessionStart(repositoryRoot, payload) {
@@ -82,14 +94,14 @@ export function sessionStart(repositoryRoot, payload) {
     timestamp: payload.timestamp,
   });
   if (result.status === STATES.degraded) {
-    return {
+    return withGeneration({
       additionalContext: `Compaction rehydration is blocked: ${result.reason}. Stop material work.`,
-    };
+    }, repositoryRoot, payload, result.generation);
   }
   if (result.status === 'inactive') return {};
-  return {
+  return withGeneration({
     additionalContext: `An active skill run resumed and requires canonical rehydration before material work. Next read: ${result.files[0]}`,
-  };
+  }, repositoryRoot, payload, result.generation);
 }
 
 export function preToolUse(repositoryRoot, payload) {
@@ -117,7 +129,7 @@ export function preToolUse(repositoryRoot, payload) {
       `Compaction rehydration is armed. Only the exact full canonical read is allowed: ${expected.file.path}.${largeFileHint}`,
   };
   Object.defineProperty(output, '_recordEnforcement', { value: firstEnforcement });
-  return output;
+  return withGeneration(output, repositoryRoot, payload, expected.generation);
 }
 
 export function postToolUse(repositoryRoot, payload) {
@@ -143,12 +155,12 @@ export function postToolUse(repositoryRoot, payload) {
   if (result.status === STATES.rehydrated) {
     const output = { additionalContext: result.checkpoint };
     Object.defineProperty(output, '_rehydrationStatus', { value: STATES.rehydrated });
-    return output;
+    return withGeneration(output, repositoryRoot, payload, expected.generation);
   }
   if (result.status === STATES.degraded) {
     const output = { additionalContext: `Compaction rehydration degraded: ${result.reason}. Stop material work.` };
     Object.defineProperty(output, '_rehydrationStatus', { value: STATES.degraded });
-    return output;
+    return withGeneration(output, repositoryRoot, payload, expected.generation);
   }
   return {
     additionalContext: `Canonical rehydration read accepted. Read next: ${result.next.path}`,
@@ -156,11 +168,12 @@ export function postToolUse(repositoryRoot, payload) {
 }
 
 export function agentStop(repositoryRoot, payload) {
-  return agentStopFallback(
+  const generation = readState(repositoryRoot, sessionId(payload))?.generation;
+  return withGeneration(agentStopFallback(
     repositoryRoot,
     sessionId(payload),
     payload.stop_hook_active === true,
-  );
+  ), repositoryRoot, payload, generation);
 }
 
 export function classifyDisposition({ policy = false, gate = false, warning = false } = {}) {
