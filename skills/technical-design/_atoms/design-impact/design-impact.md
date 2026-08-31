@@ -13,19 +13,20 @@ Make `no-design-required` explicit and reproducible.
 
 ## Impact Questions
 
-Answer each with `true` or `false`, plus exact evidence:
+Answer each with `true` or `false`, plus exact evidence, using these stable
+identifiers:
 
-- introduces or changes a component, ownership boundary, trust boundary, data
+- `boundaries`: introduces or changes a component, ownership boundary, trust boundary, data
   boundary, or process boundary;
-- introduces or changes an interface, schema, protocol, command, event, or
+- `interfaces`: introduces or changes an interface, schema, protocol, command, event, or
   externally observed contract;
-- introduces or changes persisted state, state transitions, invariants,
+- `state`: introduces or changes persisted state, state transitions, invariants,
   concurrency, ordering, or consistency;
-- introduces or changes failure, retry, recovery, degradation, or idempotency
+- `failure-behavior`: introduces or changes failure, retry, recovery, degradation, or idempotency
   behavior;
-- introduces or changes compatibility, migration, dependency, or versioning;
-- requires an engineering choice among multiple implementations;
-- changes security, privacy, observability, operations, rollout, rollback, or
+- `compatibility-migration`: introduces or changes compatibility, migration, dependency, or versioning;
+- `implementation-choice`: requires an engineering choice among multiple implementations;
+- `cross-cutting-behavior`: changes security, privacy, observability, operations, rollout, rollback, or
   verification behavior.
 
 `designRequired` is the Boolean OR of all answers. The resolver computes the

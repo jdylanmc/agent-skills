@@ -38,7 +38,7 @@ intake -> impact -> approaches -> document and ADRs -> NFR proposals -> resolve
    each deterministic question and either opens the design path or permits the
    explicit no-design-required path.
 3. If design is required, run Approach analysis. Every consequential decision
-   gets common decision criteria, at least two viable approaches, evidence for
+   gets common decision criteria, at least two distinct viable approaches, evidence for
    each comparison, one selected approach or an unresolved decision, and the
    reason every rejected viable alternative lost.
 4. Run Design document. Produce one design document and applicable ADRs. Every
@@ -48,11 +48,16 @@ intake -> impact -> approaches -> document and ADRs -> NFR proposals -> resolve
 5. Run Non-functional requirement proposals. A design may propose shared
    requirements beneath `docs/agent/nfr/`, but each file is visibly
    non-authoritative and this workflow cannot approve it.
-6. Reread every written artifact. Run the NFR validator and then the
+6. Record engineering approval only when it binds the exact design identity
+   and revision. Record separately approved NFR bindings only when they bind
+   the proposal identity, revision, and source-design identity. Accept both
+   only from independently observable human approval evidence. Design approval
+   never approves an NFR, and the proposal remains unchanged.
+7. Reread every written artifact. Run the NFR validator and then the
    engineering-design resolver. The resolver cross-checks impact, approaches,
    claim citations, traceability, applicability coverage, ADR dispositions,
-   unresolved items, and NFR authority.
-7. Return the resolved packet. Do not dispatch downstream work.
+   unresolved items, engineering approval, and NFR authority.
+8. Return the resolved packet. Do not dispatch downstream work.
 
 ## Resolution Order
 

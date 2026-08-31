@@ -49,6 +49,9 @@ Only a separate human-owned approval process may produce an authoritative NFR
 record. Design approval is not NFR approval. Co-location in one change request
 is not NFR approval. A downstream consumer accepts an NFR only when its
 authority is `approved` and separate approval evidence is present.
+That evidence binds the proposal identity, revision, and source-design
+identity; approval of an older or foreign proposal is not approval of the
+current one.
 
 Any proposal keeps technical-design at `needs-decision` until that external
 approval is observed or the proposal is withdrawn by a human-owned decision.

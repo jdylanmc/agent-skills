@@ -53,6 +53,10 @@ Write exactly one design document. Do not produce nano and full versions.
 Create separate ADRs only for decisions that pass the ADR test; link them from
 the design instead of duplicating their full rationale.
 
+Bind the persisted document by design identity, revision, path, and content
+digest. Reread the persisted bytes and record successful integrity verification;
+an in-memory draft or stale approval cannot satisfy completion.
+
 Before persistence, check accuracy against the evidence ledger, terminology,
 identifiers, qualifiers, prerequisites, recovery behavior, applicability
 dispositions, and unsupported claims. Reread persisted bytes before reporting a

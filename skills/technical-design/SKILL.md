@@ -103,6 +103,8 @@ Return:
 - specification, functional-requirement, design, ADR, and non-functional
   requirement identities and revisions;
 - approval and evidence bindings;
+- engineering approval and separately approved NFR bindings, each with
+  independently observable human approval evidence;
 - the deterministic validation report;
 - unresolved decisions and evidence gaps;
 - downstream handoff eligibility;

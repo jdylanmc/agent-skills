@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export class EngineeringDesignError extends Error {
@@ -17,6 +18,15 @@ export const DESIGN_STATUSES = [
   'needs-evidence',
   'no-design-required',
   'complete',
+];
+export const IMPACT_AREAS = [
+  'boundaries',
+  'interfaces',
+  'state',
+  'failure-behavior',
+  'compatibility-migration',
+  'implementation-choice',
+  'cross-cutting-behavior',
 ];
 export const APPLICABILITY_AREAS = [
   'interfaces',
@@ -68,6 +78,12 @@ function finding(code, subject, detail) {
   return { code, severity: 'high', subject, detail };
 }
 
+function textArray(value, field) {
+  const entries = array(value, field);
+  for (const [index, entry] of entries.entries()) text(entry, `${field} ${index + 1}`);
+  return entries;
+}
+
 function uniqueIds(entries, field, findings) {
   const result = new Set();
   for (const [index, entry] of entries.entries()) {
@@ -79,24 +95,83 @@ function uniqueIds(entries, field, findings) {
   return result;
 }
 
+function digestFunctionalRequirements(requirements) {
+  const canonical = requirements.map(({ id, text: requirementText }) => ({
+    id,
+    text: requirementText,
+  }));
+  return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
 export function resolveEngineeringDesign(input = {}) {
   object(input, 'input');
   const findings = [];
   const specification = object(input.specification, 'specification');
-  const approval = object(specification.approval, 'specification.approval');
-  const approved = approval.state === 'approved'
-    && typeof approval.evidence === 'string'
-    && approval.evidence.trim() !== '';
+  const approval = specification.approval === undefined
+    ? { state: 'absent' }
+    : object(specification.approval, 'specification.approval');
+  const specificationId = token(specification.id, 'specification.id');
+  const specificationRevision = token(specification.revision, 'specification.revision');
+  const specificationDigest = token(specification.contentDigest, 'specification.contentDigest');
+  const design = object(input.design, 'design');
+  const designId = token(design.id, 'design.id');
+  const designRevision = token(design.revision, 'design.revision');
+  const designDocument = object(design.document, 'design.document');
+  const designDocumentPath = text(designDocument.path, 'design.document.path');
+  const designDocumentDigest = token(designDocument.contentDigest, 'design.document.contentDigest');
+  if (designDocument.rereadVerified !== true) {
+    findings.push(finding(
+      'design-document-not-verified',
+      designDocumentPath,
+      'the persisted design document must be reread and integrity-verified',
+    ));
+  }
+  const designApproval = input.designApproval === undefined
+    ? { state: 'absent' }
+    : object(input.designApproval, 'designApproval');
+  const designApproved = designApproval.state === 'approved'
+    && typeof designApproval.evidence === 'string'
+    && designApproval.evidence.trim() !== ''
+    && designApproval.designId === designId
+    && designApproval.designRevision === designRevision
+    && designApproval.contentDigest === designDocumentDigest;
   const functionalRequirements = array(input.functionalRequirements, 'functionalRequirements');
   const requirementIds = uniqueIds(functionalRequirements, 'requirement', findings);
   for (const requirement of functionalRequirements) text(requirement.text, `requirement ${requirement.id}.text`);
+  const functionalRequirementsDigest = digestFunctionalRequirements(functionalRequirements);
+  const approved = approval.state === 'approved'
+    && typeof approval.evidence === 'string'
+    && approval.evidence.trim() !== ''
+    && approval.specificationId === specificationId
+    && approval.specificationRevision === specificationRevision
+    && approval.contentDigest === specificationDigest
+    && approval.functionalRequirementsDigest === functionalRequirementsDigest;
 
   const impact = object(input.impact, 'impact');
   const impactSignals = object(impact.signals, 'impact.signals');
-  const signalValues = Object.values(impactSignals);
-  if (!signalValues.length || signalValues.some((value) => typeof value !== 'boolean')) {
-    throw new EngineeringDesignError('invalid_input', 'impact.signals must contain boolean values');
+  const signalKeys = Object.keys(impactSignals);
+  if (signalKeys.length !== IMPACT_AREAS.length
+      || IMPACT_AREAS.some((area) => !signalKeys.includes(area))) {
+    throw new EngineeringDesignError(
+      'invalid_input',
+      `impact.signals must contain exactly: ${IMPACT_AREAS.join(', ')}`,
+    );
   }
+  const signalValues = IMPACT_AREAS.map((area) => {
+    const signal = object(impactSignals[area], `impact.signals.${area}`);
+    if (typeof signal.value !== 'boolean') {
+      throw new EngineeringDesignError('invalid_input', `impact.signals.${area}.value must be boolean`);
+    }
+    const citations = array(signal.citations, `impact.signals.${area}.citations`);
+    if (citations.length === 0
+        || citations.some((citation) => typeof citation !== 'string' || citation.trim() === '')) {
+      throw new EngineeringDesignError(
+        'invalid_input',
+        `impact.signals.${area}.citations must contain evidence`,
+      );
+    }
+    return signal.value;
+  });
   const designRequired = signalValues.some(Boolean);
   if (impact.designRequired !== designRequired) {
     findings.push(finding('impact-disagreement', 'impact', 'designRequired must equal whether any impact signal is true'));
@@ -125,7 +200,7 @@ export function resolveEngineeringDesign(input = {}) {
       findings.push(finding('duplicate-traceability-row', requirement, 'each functional requirement has exactly one traceability row'));
     }
     traced.add(requirement);
-    const sections = array(row.designSections ?? [], `traceability ${requirement}.designSections`);
+    const sections = textArray(row.designSections ?? [], `traceability ${requirement}.designSections`);
     if (disposition === 'design' && sections.length === 0) {
       findings.push(finding('requirement-without-design', requirement, 'a design disposition must map every functional requirement to a design section'));
     }
@@ -143,33 +218,99 @@ export function resolveEngineeringDesign(input = {}) {
   const decisions = array(input.decisions ?? [], 'decisions');
   const decisionIds = uniqueIds(decisions, 'decision', findings);
   let unresolvedDecision = false;
+  let evidenceGap = false;
   for (const decision of decisions) {
     if (typeof decision.consequential !== 'boolean') {
       throw new EngineeringDesignError('invalid_input', `decision ${decision.id}.consequential must be boolean`);
     }
+    if (typeof decision.adrRequired !== 'boolean') {
+      throw new EngineeringDesignError('invalid_input', `decision ${decision.id}.adrRequired must be boolean`);
+    }
     const approaches = array(decision.approaches ?? [], `decision ${decision.id}.approaches`);
+    const approachIds = uniqueIds(approaches, `decision-${decision.id}-approach`, findings);
+    const criteria = array(decision.criteria ?? [], `decision ${decision.id}.criteria`);
+    const criterionIds = uniqueIds(criteria, `decision-${decision.id}-criterion`, findings);
+    for (const criterion of criteria) text(criterion.text, `decision ${decision.id} criterion ${criterion.id}.text`);
+    if (decision.consequential && criteria.length === 0) {
+      findings.push(finding('missing-decision-criteria', decision.id, 'a consequential decision requires common comparison criteria'));
+    }
     const viable = approaches.filter((approach) => approach?.viable === true);
-    if (decision.consequential && viable.length < 2) {
+    if (decision.consequential && new Set(viable.map((approach) => approach.id)).size < 2) {
       findings.push(finding('insufficient-viable-approaches', decision.id, 'a consequential decision requires at least two viable approaches'));
     }
-    if (decision.consequential && approaches.some((approach) => !Array.isArray(approach?.citations) || approach.citations.length === 0)) {
-      findings.push(finding('uncited-approach', decision.id, 'every compared approach needs evidence citations'));
+    for (const approach of approaches) {
+      const citations = textArray(approach.citations ?? [], `decision ${decision.id} approach ${approach.id}.citations`);
+      if (decision.consequential && citations.length === 0) {
+        evidenceGap = true;
+        findings.push(finding('uncited-approach', decision.id, 'every compared approach needs evidence citations'));
+      }
+      const evaluations = array(
+        approach.evaluations ?? [],
+        `decision ${decision.id} approach ${approach.id}.evaluations`,
+      );
+      const evaluatedCriteria = new Set();
+      for (const evaluation of evaluations) {
+        object(evaluation, `decision ${decision.id} approach ${approach.id} evaluation`);
+        const criterion = token(
+          evaluation.criterion,
+          `decision ${decision.id} approach ${approach.id} evaluation.criterion`,
+        );
+        if (evaluatedCriteria.has(criterion)) {
+          findings.push(finding('duplicate-criterion-evaluation', approach.id, `criterion ${criterion} is evaluated more than once`));
+        }
+        evaluatedCriteria.add(criterion);
+        text(evaluation.assessment, `decision ${decision.id} approach ${approach.id} evaluation.assessment`);
+        const evaluationCitations = textArray(
+          evaluation.citations ?? [],
+          `decision ${decision.id} approach ${approach.id} evaluation.citations`,
+        );
+        if (evaluationCitations.length === 0) {
+          evidenceGap = true;
+          findings.push(finding(
+            'uncited-criterion-evaluation',
+            approach.id,
+            `criterion ${criterion} evaluation requires evidence`,
+          ));
+        }
+      }
+      if (decision.consequential
+          && (evaluatedCriteria.size !== criterionIds.size
+            || [...criterionIds].some((criterion) => !evaluatedCriteria.has(criterion)))) {
+        findings.push(finding(
+          'incomplete-criterion-evaluation',
+          approach.id,
+          'every approach must evaluate every common decision criterion exactly once',
+        ));
+      }
     }
     if (decision.selected === null || decision.selected === undefined) {
       unresolvedDecision = true;
     } else if (!approaches.some((approach) => approach.id === decision.selected && approach.viable === true)) {
       findings.push(finding('invalid-selection', decision.id, 'the selected approach must be one of the viable approaches'));
     }
-    if (decision.adrRequired === true && (!decision.adr || decision.adr.status === 'buried')) {
-      findings.push(finding('missing-adr-disposition', decision.id, 'an ADR-worthy decision must name an ADR path or an explicit proposed ADR'));
+    for (const approach of viable) {
+      if (approach.id !== decision.selected
+          && (typeof approach.rejectedBecause !== 'string' || approach.rejectedBecause.trim() === '')) {
+        findings.push(finding('missing-rejection-rationale', approach.id, 'each rejected viable approach requires rationale'));
+      }
+    }
+    if (decision.adrRequired === true) {
+      const adr = decision.adr;
+      if (!adr || !['existing', 'proposed', 'unresolved-placement'].includes(adr.status)) {
+        findings.push(finding('missing-adr-disposition', decision.id, 'an ADR-worthy decision requires a recognized ADR disposition'));
+      } else if (['existing', 'proposed'].includes(adr.status)
+          && (typeof adr.path !== 'string' || adr.path.trim() === '')) {
+        findings.push(finding('missing-adr-path', decision.id, 'an existing or proposed ADR requires its repository path'));
+      } else if (adr.status === 'unresolved-placement') {
+        unresolvedDecision = true;
+      }
     }
   }
 
   const claims = array(input.materialClaims ?? [], 'materialClaims');
   uniqueIds(claims, 'claim', findings);
-  let evidenceGap = false;
   for (const claim of claims) {
-    const citations = array(claim.citations ?? [], `claim ${claim.id}.citations`);
+    const citations = textArray(claim.citations ?? [], `claim ${claim.id}.citations`);
     if (citations.length === 0) {
       evidenceGap = true;
       findings.push(finding('uncited-material-claim', claim.id, 'every material design claim requires repository or Discovery evidence'));
@@ -183,7 +324,8 @@ export function resolveEngineeringDesign(input = {}) {
       findings.push(finding('missing-applicability-disposition', area, 'the design must address the area or cite why it is not applicable'));
       continue;
     }
-    if (!Array.isArray(entry.citations) || entry.citations.length === 0) {
+    const citations = textArray(entry.citations ?? [], `applicability ${area}.citations`);
+    if (citations.length === 0) {
       evidenceGap = true;
       findings.push(finding('uncited-applicability-disposition', area, 'the applicability disposition requires evidence'));
     }
@@ -191,15 +333,64 @@ export function resolveEngineeringDesign(input = {}) {
 
   const nfrs = array(input.nfrs ?? [], 'nfrs');
   uniqueIds(nfrs, 'nfr', findings);
+  const approvedNfrs = array(input.approvedNfrs ?? [], 'approvedNfrs');
+  const approvedNfrIds = uniqueIds(approvedNfrs, 'approved-nfr', findings);
+  const approvedNfrById = new Map();
+  for (const approvedNfr of approvedNfrs) {
+    approvedNfrById.set(approvedNfr.id, approvedNfr);
+    if (approvedNfr.authority !== 'approved'
+        || approvedNfr.approval?.state !== 'approved'
+        || typeof approvedNfr.approval?.evidence !== 'string'
+        || approvedNfr.approval.evidence.trim() === ''
+        || approvedNfr.approval.nfrId !== approvedNfr.id
+        || approvedNfr.approval.nfrRevision !== approvedNfr.revision
+        || approvedNfr.approval.sourceDesign !== approvedNfr.sourceDesign) {
+      findings.push(finding(
+        'invalid-approved-nfr-evidence',
+        approvedNfr.id,
+        'an approved NFR binding requires approved authority and separate human approval evidence',
+      ));
+    }
+  }
   let pendingNfrApproval = false;
   for (const nfr of nfrs) {
+    const revision = token(nfr.revision, `nfr ${nfr.id}.revision`);
+    const sourceDesign = text(nfr.sourceDesign, `nfr ${nfr.id}.sourceDesign`);
+    if (sourceDesign !== `${designId}@${designRevision}`) {
+      findings.push(finding(
+        'foreign-nfr-source-design',
+        nfr.id,
+        'an NFR proposal must bind the current design identity and revision',
+      ));
+    }
     if (nfr.authority !== 'proposed') {
       findings.push(finding('invalid-nfr-authority', nfr.id, 'technical-design may emit only proposed non-functional requirements'));
     }
     if (nfr.approval?.state !== 'pending') {
       findings.push(finding('invalid-nfr-approval', nfr.id, 'technical-design cannot approve a proposed non-functional requirement'));
     }
-    pendingNfrApproval = true;
+    const approvedNfr = approvedNfrById.get(nfr.id);
+    if (!approvedNfr
+        || approvedNfr.revision !== revision
+        || approvedNfr.sourceDesign !== sourceDesign) {
+      pendingNfrApproval = true;
+      if (approvedNfr) {
+        findings.push(finding(
+          'stale-approved-nfr',
+          nfr.id,
+          'approved NFR evidence must bind the proposal revision and source design',
+        ));
+      }
+    }
+  }
+  for (const id of approvedNfrIds) {
+    if (!nfrs.some((nfr) => nfr.id === id)) {
+      findings.push(finding(
+        'orphan-approved-nfr',
+        id,
+        'approved NFR evidence must bind a proposal emitted by this design',
+      ));
+    }
   }
 
   if (disposition === 'no-design-required' && (decisions.length || claims.length || nfrs.length)) {
@@ -207,12 +398,14 @@ export function resolveEngineeringDesign(input = {}) {
   }
 
   const blocked = findings.some((entry) => ![
+    'uncited-approach',
+    'uncited-criterion-evaluation',
     'uncited-material-claim',
     'uncited-applicability-disposition',
   ].includes(entry.code));
   let status;
   if (blocked) status = 'blocked';
-  else if (!approved || unresolvedDecision || pendingNfrApproval) status = 'needs-decision';
+  else if (!approved || !designApproved || unresolvedDecision || pendingNfrApproval) status = 'needs-decision';
   else if (evidenceGap || array(input.evidenceGaps ?? [], 'evidenceGaps').length) status = 'needs-evidence';
   else if (disposition === 'no-design-required') status = 'no-design-required';
   else status = 'complete';
@@ -220,9 +413,26 @@ export function resolveEngineeringDesign(input = {}) {
   return {
     status,
     specification: {
-      id: token(specification.id, 'specification.id'),
-      revision: token(specification.revision, 'specification.revision'),
+      id: specificationId,
+      revision: specificationRevision,
+      contentDigest: specificationDigest,
+      functionalRequirementsDigest,
       approved,
+    },
+    designApproval: {
+      approved: designApproved,
+      designId,
+      designRevision,
+      contentDigest: designDocumentDigest,
+    },
+    design: {
+      id: designId,
+      revision: designRevision,
+      document: {
+        path: designDocumentPath,
+        contentDigest: designDocumentDigest,
+        rereadVerified: designDocument.rereadVerified === true,
+      },
     },
     disposition,
     impact: { designRequired, signals: impactSignals },
@@ -233,7 +443,9 @@ export function resolveEngineeringDesign(input = {}) {
       proposedNfrs: nfrs.length,
     },
     downstream: {
-      eligible: ['complete', 'no-design-required'].includes(status) && nfrs.length === 0,
+      eligible: ['complete', 'no-design-required'].includes(status)
+        && designApproved
+        && !pendingNfrApproval,
       requires: ['settled-design', 'approved-functional-requirements', 'separately-approved-nfrs-only'],
     },
     findings,

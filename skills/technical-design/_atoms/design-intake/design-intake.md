@@ -14,8 +14,9 @@ Bind the authority before making an engineering choice.
 ## Required Input
 
 - one nano Product Requirements Document with a stable specification identity,
-  revision, intention, functional-requirement identifiers, and approval
-  evidence;
+  revision, content digest, intention, functional-requirement identifiers, and
+  approval evidence bound to that identity, revision, content digest, and exact
+  functional-requirement inventory digest;
 - its linked full document as supporting context;
 - exact locators and revisions for relevant Discovery, repository, research,
   proof-of-concept, doctrine, and existing-ADR evidence.
@@ -27,7 +28,8 @@ is not approval evidence. When approval cannot be verified, return
 ## Authority Rules
 
 1. Capture every functional requirement identifier and exact text.
-2. Record the specification revision or content digest.
+2. Record the specification revision and content digest, plus a deterministic
+   digest of the exact functional-requirement identifier-and-text inventory.
 3. Treat nano content as functional authority and full content as context.
 4. If the layers conflict, report the conflict and stop. The full document
    never overrides the nano document.

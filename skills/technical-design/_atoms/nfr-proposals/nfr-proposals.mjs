@@ -44,8 +44,11 @@ export function validateNfrProposals(input = {}) {
     if (proposal.approval?.state !== 'pending' || proposal.approval?.evidence) {
       findings.push({ code: 'self-approval', severity: 'high', subject: id });
     }
-    const thresholdKnown = typeof proposal.threshold === 'string' && proposal.threshold.trim() !== '';
-    const thresholdUnknown = proposal.threshold === null && proposal.thresholdStatus === 'threshold-unknown';
+    const thresholdKnown = typeof proposal.threshold === 'string'
+      && proposal.threshold.trim() !== ''
+      && proposal.thresholdStatus === 'known';
+    const thresholdUnknown = proposal.threshold === null
+      && proposal.thresholdStatus === 'threshold-unknown';
     if (thresholdKnown === thresholdUnknown) {
       findings.push({ code: 'threshold-shape', severity: 'high', subject: id });
     }

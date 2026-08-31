@@ -22,8 +22,9 @@ Make consequential choices visible before they become implementation.
 3. Describe at least two **viable** approaches. Viable means the approach can
    satisfy the immutable functional requirements; a straw option does not
    count.
-4. Evaluate every approach against the same criteria. Cite evidence for each
-   material comparison.
+4. Give every criterion a stable identity. Evaluate every approach against the
+   same criteria, evaluating every criterion exactly once. Cite evidence for
+   each material comparison.
 5. Select one approach and explain why each rejected viable approach lost. If
    evidence or human-owned architectural direction is missing, select none and
    return an unresolved decision.

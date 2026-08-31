@@ -120,7 +120,7 @@ test('the status vocabulary matches the deterministic resolver', () => {
 
 test('handoff sequences settled design and separately approved NFRs into downstream design and planning', () => {
   const entry = flat(ENTRY);
-  assert.match(entry, /approved functional specification .* -> technical-design .* -> separately approved shared NFRs, when proposed .* -> qa-design \+ requirements-breakdown/);
+  assert.match(entry, /approved functional specification\s*-> technical-design\s*-> separately approved shared NFRs, when proposed\s*-> qa-design \+ requirements-breakdown/);
   assert.match(entry, /only shared non-functional requirements whose authority is `approved`/);
   assert.match(entry, /does not create tickets/);
 });
