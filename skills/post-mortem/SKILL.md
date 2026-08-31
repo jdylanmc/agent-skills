@@ -99,13 +99,21 @@ authority.
 | --- | --- | --- | --- |
 | The visible session | What is in front of the agent right now | What was said and done in this interaction | `U`, `A`, `T`, `S`, `R`, `M` |
 | An identified harness session log | Raw runtime observation, read through one adapter into a neutral bounded ledger | Occurrence: turns, tool calls and failures, subagents, skill invocations, compaction, shutdown | `E` |
-| A selected Skill Run Log | Curated records a skill chose to write | Intent and outcome as the skill understood them | `L1:12` |
+| A selected Skill Run Log | Curated records a skill chose to write, including compaction latch, gate, acknowledgement, and degraded outcomes when the hook recorded them | Intent and outcome as the skill understood them | `L1:12` |
 
 Every source is optional except the visible session, and every source declares
 its own completeness. Caps compound and the most restrictive wins. A claim cites
 the anchors of the source that actually supports it: occurrence from the raw
 log, intent from the run log. One event seen in two sources is one event, cited
 twice, and never corroboration of itself.
+
+For a compacted run, distinguish `armed`, `enforced`, `acknowledged`,
+`degraded`, and `unobserved` instead of collapsing them into one compaction.
+Runtime `session.compaction_start` and `session.compaction_complete` prove that
+compaction occurred. Chronicle hook events prove only the lifecycle steps they
+name. A timeout or disabled hook may leave runtime compaction evidence with no
+hook evidence; that is `unobserved`, not successful rehydration and not proof of
+bypass intent.
 
 **Identity before evidence, and failure is closed.** A Skill Run Log is admitted
 only when the operator names it. A harness session log is admitted when the

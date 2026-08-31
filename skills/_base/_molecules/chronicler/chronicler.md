@@ -2,8 +2,8 @@
 name: chronicler
 description: Keep one bounded running log of skill operations across a long-running session, and replay it on demand. Composes the chronicle append and chronicle replay atoms.
 level: molecule
-includes: ["_base/_atoms/chronicle-append/chronicle-append.md","_base/_atoms/chronicle-replay/chronicle-replay.md","_base/_molecules/chronicler/chronicler.mjs"]
-composes: ["_base/_atoms/chronicle-append/chronicle-append.md","_base/_atoms/chronicle-replay/chronicle-replay.md"]
+includes: ["_base/_atoms/chronicle-append/chronicle-append.md","_base/_atoms/chronicle-replay/chronicle-replay.md","_base/_molecules/compaction-rehydration/compaction-rehydration.md","_base/_molecules/chronicler/chronicler.mjs"]
+composes: ["_base/_atoms/chronicle-append/chronicle-append.md","_base/_atoms/chronicle-replay/chronicle-replay.md","_base/_molecules/compaction-rehydration/compaction-rehydration.md"]
 ["changelog/SKILL.md", "cmux-orchestrate/SKILL.md", "create-skill/SKILL.md", "discovery/SKILL.md", "domain-mapping/SKILL.md", "handoff/SKILL.md", "interrogate/SKILL.md", "next-step-selection/SKILL.md", "optimize-prompt/SKILL.md", "orchestration-handoff/SKILL.md", "prompt-coach/SKILL.md", "proof-of-concept/SKILL.md", "roast/SKILL.md", "run-ci/SKILL.md", "sanity-check/SKILL.md", "shepherd/SKILL.md", "ship/SKILL.md", "skill-coach/SKILL.md"]
 c61b153 (Add changelog skill)
 allowed-tools: ["execute"]
@@ -26,6 +26,7 @@ its evidence incomplete, and continues delivering.
 
 1. [Chronicle append](../../_atoms/chronicle-append/chronicle-append.md)
 2. [Chronicle replay](../../_atoms/chronicle-replay/chronicle-replay.md)
+3. [Compaction rehydration](../compaction-rehydration/compaction-rehydration.md)
 
 ## Required Files
 
@@ -112,6 +113,7 @@ not instrumentation.
 | --- | --- |
 | Appending one bounded event, its fields, bounds, and log-target safety | [chronicle-append](../../_atoms/chronicle-append/chronicle-append.md) |
 | Replaying one selected log and reporting defects | [chronicle-replay](../../_atoms/chronicle-replay/chronicle-replay.md) |
+| Active-run registration and post-compaction canonical rereads | [compaction-rehydration](../compaction-rehydration/compaction-rehydration.md) |
 | Run context, propagation to nested participants, and what is worth recording | This molecule |
 | Shared validation, bounds, and the persisted envelope | `chronicler.mjs` |
 

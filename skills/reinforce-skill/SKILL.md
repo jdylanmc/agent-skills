@@ -25,6 +25,12 @@ mutates a working, reviewed package, so it carries a heavier ceremony and a
 model does not route to it on its own — a person invokes it, or `post-mortem`
 invokes it after a human has approved the recommendation it disposes.
 
+When a reinforcement run survives context compaction, its inherited
+Chronicler run identity and canonical package digests participate in the shared
+compaction-rehydration latch. Rehydration resumes this run; it never counts as a
+second invocation, a second report admission, or authority to repeat a
+mutation.
+
 ## Two Ways In, One Job
 
 The change arrives from exactly one of two places, and both end up in the same

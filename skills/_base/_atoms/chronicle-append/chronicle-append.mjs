@@ -8,6 +8,8 @@
  */
 
 import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { emitEvent, ChronicleError } from '../../_molecules/chronicler/chronicler.mjs';
@@ -107,6 +109,35 @@ export function run(argv, streams = process) {
 
   try {
     emitEvent(parsed.input, parsed.context);
+    if (parsed.context.harness === 'copilot-cli' && parsed.context.session_id) {
+      const logDirectory = path.dirname(parsed.context.log_path);
+      if (path.basename(logDirectory) !== '.skill-log') {
+        streams.stderr.write('rehydration_tracking_failed: invalid-log-root: log is not directly below .skill-log\n');
+      } else {
+        const repositoryRoot = path.dirname(logDirectory);
+        const tracker = path.join(repositoryRoot, 'scripts', 'compaction-rehydration-register.mjs');
+        const result = spawnSync(process.execPath, [tracker], {
+          input: JSON.stringify({
+            repositoryRoot,
+            sessionId: parsed.context.session_id,
+            runId: parsed.context.run_id,
+            rootSkill: parsed.context.root_skill,
+            skill: parsed.input.skill,
+            logPath: parsed.context.log_path,
+            event: parsed.input.event,
+            phase: parsed.input.phase,
+            operation: parsed.input.operation,
+            outcome: parsed.input.outcome,
+          }),
+          encoding: 'utf8',
+          timeout: 3000,
+        });
+        if (result.status !== 0) {
+          const reason = result.error?.message ?? result.stderr.trim() ?? `exit ${result.status}`;
+          streams.stderr.write(`rehydration_tracking_failed: ${reason}\n`);
+        }
+      }
+    }
     streams.stdout.write(`${JSON.stringify({ recorded: true })}\n`);
     return 0;
   } catch (error) {

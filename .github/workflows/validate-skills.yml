@@ -54,9 +54,12 @@ jobs:
           scripts/validate-skill-graph.test.mjs
           scripts/derive-skill-graph.test.mjs
           scripts/workflow-registration.test.mjs
+          scripts/compaction-rehydration-hook.test.mjs
           skills/_base/_atoms/artifact-classify/artifact-classify.test.mjs
           skills/_base/_atoms/chronicle-append/chronicle-append.test.mjs
           skills/_base/_atoms/chronicle-replay/chronicle-replay.test.mjs
+          skills/_base/_atoms/rehydration-state/rehydration-state.test.mjs
+          skills/_base/_atoms/copilot-rehydration-adapter/copilot-rehydration-adapter.test.mjs
           skills/_base/_atoms/contradiction-check/contradiction-check.test.mjs
           skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.test.mjs
           skills/_base/_atoms/doctrine-evaluate/doctrine-evaluate.adversarial.test.mjs
