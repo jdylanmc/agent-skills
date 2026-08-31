@@ -52,8 +52,11 @@ intake -> impact -> approaches -> document and ADRs -> NFR proposals -> resolve
    requirements beneath `docs/agent/nfr/`, but each file is visibly
    non-authoritative and this workflow cannot approve it.
 6. Fetch and verify approval against the provider-backed remote default branch,
-   a boundary this skill cannot merge into. Engineering approval requires the
-   exact design bytes plus their embedded design identity and revision.
+   a boundary this skill cannot merge into. The invoking verifier supplies the
+   canonical repository URL outside the design packet; without that trusted
+   identity, approval remains unavailable. The fixed `origin` remote must match
+   it before any published evidence is accepted. Engineering approval requires
+   the exact design bytes plus their embedded design identity and revision.
    Specification approval requires the local and published nano bytes to match,
    then parses the published identity, revision, and acceptance criteria to bind
    the immutable functional-requirement inventory. Separately approved NFRs
@@ -64,11 +67,12 @@ intake -> impact -> approaches -> document and ADRs -> NFR proposals -> resolve
 7. Reread every written artifact. Run the NFR validator and then the
    engineering-design resolver with the bounded repository root. The resolver
    reproduces design, ADR, and NFR proposal digests from regular, non-symbolic
-   repository files, verifies approval observations against the remote default
-   branch, requires the persisted canonical design inventory to equal the
-   validated packet, then cross-checks impact, approaches, claim citations,
-   traceability, applicability coverage, ADR dispositions, unresolved items,
-   engineering approval, and NFR authority.
+   repository files, verifies approval observations against the trusted
+   repository identity and remote default branch, reads approved artifacts from
+   the verified immutable commit, requires the persisted canonical design
+   inventory to equal the validated packet, then cross-checks impact,
+   approaches, claim citations, traceability, applicability coverage, ADR
+   dispositions, unresolved items, engineering approval, and NFR authority.
 8. Return the resolved packet. Do not dispatch downstream work.
 
 ## Resolution Order

@@ -128,7 +128,6 @@ function approval(artifactPath, contentDigest, overrides = {}) {
     state: 'approved',
     boundary: 'git-default-branch',
     remote: 'origin',
-    repositoryUrl,
     defaultBranch: 'main',
     defaultBranchRef: 'origin/main',
     artifactPath,
@@ -165,7 +164,10 @@ function fakeGit({ args }) {
 }
 
 function resolveEngineeringDesign(packet) {
-  return resolveEngineeringDesignRaw(packet, { runGit: fakeGit });
+  return resolveEngineeringDesignRaw(packet, {
+    approvalAuthority: { repositoryUrl },
+    runGit: fakeGit,
+  });
 }
 
 function nfrProposal(overrides = {}) {
@@ -589,6 +591,7 @@ test('approval evidence must reproduce against the remote default branch', () =>
 test('approval refuses an observation whose remote was not freshly fetched', () => {
   const packet = design();
   const result = resolveEngineeringDesignRaw(packet, {
+    approvalAuthority: { repositoryUrl },
     runGit: ({ args }) => args[0] === 'fetch'
       ? { status: 'error', stderr: 'offline' }
       : fakeGit({ args }),
@@ -604,6 +607,7 @@ test('approval authority is fixed to the repository origin remote', () => {
   packet.designApproval.remote = 'caller-selected';
   packet.designApproval.defaultBranchRef = 'caller-selected/main';
   const result = resolveEngineeringDesignRaw(packet, {
+    approvalAuthority: { repositoryUrl },
     runGit: ({ args }) => {
       if (args[0] === 'fetch') return { status: 'ok', stdout: Buffer.from('') };
       if (args[0] === 'remote') return { status: 'ok', stdout: Buffer.from('https://attacker.invalid/repository.git\n') };
@@ -627,6 +631,7 @@ test('approval authority is fixed to the repository origin remote', () => {
 test('approval refuses an origin URL that does not match the recorded repository identity', () => {
   const packet = design();
   const result = resolveEngineeringDesignRaw(packet, {
+    approvalAuthority: { repositoryUrl },
     runGit: ({ args }) => {
       if (args[0] === 'remote' && args[1] === 'get-url') {
         return { status: 'ok', stdout: Buffer.from('https://attacker.invalid/repository.git\n') };
@@ -644,6 +649,7 @@ test('approval reads artifact bytes from the verified immutable commit', () => {
   const packet = design();
   const shown = [];
   const result = resolveEngineeringDesignRaw(packet, {
+    approvalAuthority: { repositoryUrl },
     runGit: ({ args }) => {
       if (args[0] === 'show') shown.push(args[1]);
       return fakeGit({ args });
@@ -652,6 +658,35 @@ test('approval reads artifact bytes from the verified immutable commit', () => {
   assert.equal(result.status, 'complete');
   assert.ok(shown.length > 0);
   assert.ok(shown.every((target) => target.startsWith(`${publishedCommit}:`)));
+});
+
+test('approval authority cannot be supplied by the design packet', () => {
+  const attackerUrl = 'https://attacker.invalid/repository.git';
+  const packet = design();
+  packet.approvalAuthority = { repositoryUrl: attackerUrl };
+  packet.specification.approval.repositoryUrl = attackerUrl;
+  packet.designApproval.repositoryUrl = attackerUrl;
+  const result = resolveEngineeringDesignRaw(packet, {
+    approvalAuthority: { repositoryUrl },
+    runGit: ({ args }) => {
+      if (args[0] === 'remote' && args[1] === 'get-url') {
+        return { status: 'ok', stdout: Buffer.from(`${attackerUrl}\n`) };
+      }
+      return fakeGit({ args });
+    },
+  });
+  assert.equal(result.status, 'needs-decision');
+  assert.equal(result.specification.approved, false);
+  assert.equal(result.designApproval.approved, false);
+  assert.equal(result.downstream.eligible, false);
+});
+
+test('approval is unavailable without verifier-owned repository authority', () => {
+  const result = resolveEngineeringDesignRaw(design(), { runGit: fakeGit });
+  assert.equal(result.status, 'needs-decision');
+  assert.equal(result.specification.approved, false);
+  assert.equal(result.designApproval.approved, false);
+  assert.equal(result.downstream.eligible, false);
 });
 
 test('specification approval ignores fenced acceptance-criteria decoys', () => {

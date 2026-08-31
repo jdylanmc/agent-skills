@@ -286,12 +286,11 @@ function metadataValue(bytes, label) {
   return matches.length === 1 ? matches[0] : null;
 }
 
-function verifiedApproval(repositoryRoot, approval, field, expected, runGit) {
+function verifiedApproval(repositoryRoot, approval, field, expected, authority, runGit) {
   if (approval.state !== 'approved') return false;
   if (approval.boundary !== 'git-default-branch'
       || approval.remote !== APPROVAL_REMOTE
-      || typeof approval.repositoryUrl !== 'string'
-      || approval.repositoryUrl.trim() === ''
+      || !authority
       || typeof approval.defaultBranch !== 'string'
       || approval.defaultBranchRef !== `${APPROVAL_REMOTE}/${approval.defaultBranch}`
       || approval.artifactPath !== expected.artifactPath
@@ -335,7 +334,7 @@ function verifiedApproval(repositoryRoot, approval, field, expected, runGit) {
       recordMatch = false;
     }
   }
-  return remoteUrl === approval.repositoryUrl
+  return remoteUrl === authority.repositoryUrl
     && remoteHeadRef === `refs/heads/${approval.defaultBranch}`
     && remoteHeadCommit?.toLowerCase() === approval.publishedCommit
     && publishedCommit === approval.publishedCommit
@@ -349,6 +348,13 @@ export function resolveEngineeringDesign(input = {}, options = {}) {
   object(input, 'input');
   const repositoryRoot = text(input.repositoryRoot, 'repositoryRoot');
   const runGit = options.runGit ?? (({ repositoryRoot: root, args }) => defaultGitRunner(root, args));
+  let approvalAuthority = null;
+  if (options.approvalAuthority !== undefined) {
+    const authority = object(options.approvalAuthority, 'options.approvalAuthority');
+    approvalAuthority = {
+      repositoryUrl: text(authority.repositoryUrl, 'options.approvalAuthority.repositoryUrl'),
+    };
+  }
   const findings = [];
   const specification = object(input.specification, 'specification');
   const approval = specification.approval === undefined
@@ -426,7 +432,7 @@ export function resolveEngineeringDesign(input = {}, options = {}) {
     artifactPath: specificationPath,
     contentDigest: specificationDigest,
     functionalRequirements,
-  }, runGit);
+  }, approvalAuthority, runGit);
   const designApproved = verifiedApproval(repositoryRoot, designApproval, 'designApproval', {
     artifactPath: designDocumentPath,
     contentDigest: designDocumentDigest,
@@ -434,7 +440,7 @@ export function resolveEngineeringDesign(input = {}, options = {}) {
       'Design ID': designId,
       Revision: designRevision,
     },
-  }, runGit);
+  }, approvalAuthority, runGit);
   if (persistedSpecification.contentDigest !== specificationDigest) {
     findings.push(finding(
       'specification-not-verified',
@@ -695,6 +701,7 @@ export function resolveEngineeringDesign(input = {}, options = {}) {
               proposalDigest: proposal?.contentDigest,
             },
           },
+          approvalAuthority,
           runGit,
         )) {
       findings.push(finding(
@@ -846,7 +853,14 @@ function run(argv, streams = process) {
     return EXIT_ACCEPTED;
   }
   try {
-    const result = resolveEngineeringDesign(JSON.parse(fs.readFileSync(0, 'utf8')));
+    const repositoryUrlIndex = argv.indexOf('--trusted-repository-url');
+    const approvalAuthority = repositoryUrlIndex === -1
+      ? undefined
+      : { repositoryUrl: argv[repositoryUrlIndex + 1] };
+    const result = resolveEngineeringDesign(
+      JSON.parse(fs.readFileSync(0, 'utf8')),
+      { approvalAuthority },
+    );
     streams.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return exitCodeFor(result);
   } catch (error) {
