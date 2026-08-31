@@ -87,18 +87,19 @@ test('a nested run ending during recovery preserves the root latch', () => {
     phase: 'after',
   });
 
-  test('a run starting during recovery cannot disable the armed latch', () => {
-    const root = repo('nested-before');
-    register(root);
-    arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
-    register(root, 'nested', 'run-2');
-    const state = readState(root, 'session-1');
-    assert.equal(state.status, STATES.required);
-    assert.ok(state.latch.remaining.length > 0);
-  });
   const state = readState(root, 'session-1');
   assert.equal(state.status, STATES.required);
   assert.ok(state.latch.remaining.every((file) => file.skill === 'root'));
+});
+
+test('a run starting during recovery cannot disable the armed latch', () => {
+  const root = repo('nested-before');
+  register(root);
+  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  register(root, 'nested', 'run-2');
+  const state = readState(root, 'session-1');
+  assert.equal(state.status, STATES.required);
+  assert.ok(state.latch.remaining.length > 0);
 });
 
 test('a complete exact read sequence clears once and returns a bounded checkpoint', () => {
