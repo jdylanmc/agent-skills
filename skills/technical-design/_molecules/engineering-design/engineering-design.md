@@ -44,7 +44,10 @@ intake -> impact -> approaches -> document and ADRs -> NFR proposals -> resolve
 4. Run Design document. Produce one design document and applicable ADRs. Every
    material claim carries an exact citation. Every functional requirement maps
    to one or more design sections, or to an explicit no-impact statement with
-   evidence.
+   evidence. Embed the resolver's canonical design-inventory block in that same
+   document so the persisted artifact, rather than a detached caller packet, is
+   the home of record for decisions, claims, traceability, applicability, NFR
+   references, and evidence gaps.
 5. Run Non-functional requirement proposals. A design may propose shared
    requirements beneath `docs/agent/nfr/`, but each file is visibly
    non-authoritative and this workflow cannot approve it.
@@ -62,9 +65,10 @@ intake -> impact -> approaches -> document and ADRs -> NFR proposals -> resolve
    engineering-design resolver with the bounded repository root. The resolver
    reproduces design, ADR, and NFR proposal digests from regular, non-symbolic
    repository files, verifies approval observations against the remote default
-   branch, then cross-checks impact, approaches, claim citations, traceability,
-   applicability coverage, ADR dispositions, unresolved items, engineering
-   approval, and NFR authority.
+   branch, requires the persisted canonical design inventory to equal the
+   validated packet, then cross-checks impact, approaches, claim citations,
+   traceability, applicability coverage, ADR dispositions, unresolved items,
+   engineering approval, and NFR authority.
 8. Return the resolved packet. Do not dispatch downstream work.
 
 ## Resolution Order

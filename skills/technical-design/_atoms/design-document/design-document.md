@@ -57,6 +57,14 @@ Bind the persisted document by design identity, revision, path, and content
 digest. Reread the persisted bytes and record successful integrity verification;
 an in-memory draft or stale approval cannot satisfy completion.
 
+Embed one canonical `technical-design-manifest` block in the document. It
+contains the exact functional-requirement inventory, impact assessment,
+disposition, traceability, decisions, material claims, applicability
+dispositions, proposed-NFR inventory, and evidence gaps validated by the
+resolver. Missing, duplicate, malformed, or mismatched manifests block
+completion; a detached caller packet cannot substitute for persisted design
+content.
+
 Before persistence, check accuracy against the evidence ledger, terminology,
 identifiers, qualifiers, prerequisites, recovery behavior, applicability
 dispositions, and unsupported claims. Reread persisted bytes before reporting a

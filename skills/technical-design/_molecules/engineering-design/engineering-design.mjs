@@ -52,6 +52,8 @@ export const EXIT_REFUSED = 1;
 export const EXIT_FINDINGS = 2;
 
 const TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const MANIFEST_START = '<!-- technical-design-manifest:start -->';
+const MANIFEST_END = '<!-- technical-design-manifest:end -->';
 
 function object(value, field) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -108,6 +110,50 @@ function digestFunctionalRequirements(requirements) {
     text: requirementText,
   }));
   return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+export function designInventory(input) {
+  return {
+    functionalRequirements: input.functionalRequirements,
+    impact: input.impact,
+    disposition: input.disposition,
+    traceability: input.traceability,
+    decisions: input.decisions ?? [],
+    materialClaims: input.materialClaims ?? [],
+    applicability: input.applicability,
+    nfrs: input.nfrs ?? [],
+    evidenceGaps: input.evidenceGaps ?? [],
+  };
+}
+
+export function renderDesignDocument(input) {
+  return [
+    `# ${input.design.id}`,
+    '',
+    `- Design ID: ${input.design.id}`,
+    `- Revision: ${input.design.revision}`,
+    '',
+    MANIFEST_START,
+    JSON.stringify(designInventory(input), null, 2),
+    MANIFEST_END,
+    '',
+  ].join('\n');
+}
+
+function persistedDesignInventory(bytes) {
+  const textValue = bytes.toString('utf8');
+  const starts = textValue.split(MANIFEST_START).length - 1;
+  const ends = textValue.split(MANIFEST_END).length - 1;
+  if (starts !== 1 || ends !== 1) return null;
+  const start = textValue.indexOf(MANIFEST_START) + MANIFEST_START.length;
+  const end = textValue.indexOf(MANIFEST_END, start);
+  if (end < start) return null;
+  try {
+    const value = JSON.parse(textValue.slice(start, end).trim());
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 function persistedFile(repositoryRoot, relativePath, field, allowedPrefix = null) {
@@ -660,6 +706,15 @@ export function resolveEngineeringDesign(input = {}, options = {}) {
 
   if (disposition === 'no-design-required' && (decisions.length || claims.length || nfrs.length)) {
     findings.push(finding('no-design-output-present', 'disposition', 'no-design-required cannot carry design decisions, material claims, or NFR proposals'));
+  }
+  const persistedInventory = persistedDesignInventory(persistedDesignDocument.bytes);
+  if (!persistedInventory
+      || JSON.stringify(persistedInventory) !== JSON.stringify(designInventory(input))) {
+    findings.push(finding(
+      'design-document-inventory-mismatch',
+      designDocumentPath,
+      'the persisted design document must contain the canonical validated design inventory',
+    ));
   }
 
   const blocked = findings.some((entry) => ![

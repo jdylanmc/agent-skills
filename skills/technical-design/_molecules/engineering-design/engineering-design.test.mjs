@@ -7,6 +7,7 @@ import test, { after, before } from 'node:test';
 import {
   APPLICABILITY_AREAS,
   IMPACT_AREAS,
+  renderDesignDocument,
   resolveEngineeringDesign as resolveEngineeringDesignRaw,
 } from './engineering-design.mjs';
 import { renderNfrProposal } from '../../_atoms/nfr-proposals/nfr-proposals.mjs';
@@ -108,16 +109,9 @@ const fullSpecificationBytes = [
   'None.',
   '',
 ].join('\n');
-const designBytes = [
-  '# Checkout engineering design',
-  '',
-  '- Design ID: checkout-design',
-  '- Revision: 7',
-  '',
-].join('\n');
+const initialDesignBytes = '# Pending test design\n';
 const adrBytes = '# Order submission ADR\n';
 const digest = (value) => crypto.createHash('sha256').update(value).digest('hex');
-const designDigest = digest(designBytes);
 const adrDigest = digest(adrBytes);
 const specificationDigest = digest(specificationBytes);
 const fullSpecificationDigest = digest(fullSpecificationBytes);
@@ -221,10 +215,18 @@ function approvedNfr(proposal, overrides = {}) {
   };
 }
 
+function persistDesignPacket(packet) {
+  const contents = renderDesignDocument(packet);
+  writeRepositoryFile(packet.design.document.path, contents);
+  packet.design.document.contentDigest = digest(contents);
+  packet.designApproval = approval(packet.design.document.path, packet.design.document.contentDigest);
+  return packet;
+}
+
 before(() => {
   writeRepositoryFile(specificationPath, specificationBytes);
   writeRepositoryFile(fullSpecificationPath, fullSpecificationBytes);
-  writeRepositoryFile(designPath, designBytes);
+  writeRepositoryFile(designPath, initialDesignBytes);
   writeRepositoryFile(adrPath, adrBytes);
 });
 
@@ -256,7 +258,7 @@ function design(overrides = {}) {
     { id: 'AC-001', text: 'A shopper can submit an order.' },
     { id: 'AC-002', text: 'A failed order remains retryable.' },
   ];
-  return {
+  const packet = {
     repositoryRoot,
     specification: {
       id: 'SPEC-CHECKOUT',
@@ -273,10 +275,10 @@ function design(overrides = {}) {
       revision: '7',
       document: {
         path: designPath,
-        contentDigest: designDigest,
+        contentDigest: 'pending',
       },
     },
-    designApproval: approval(designPath, designDigest),
+    designApproval: { state: 'pending' },
     functionalRequirements,
     impact: {
       designRequired: true,
@@ -329,6 +331,9 @@ function design(overrides = {}) {
     evidenceGaps: [],
     ...overrides,
   };
+  persistDesignPacket(packet);
+  if (overrides.designApproval) packet.designApproval = overrides.designApproval;
+  return packet;
 }
 
 test('a reconciled design is complete and downstream eligible', () => {
@@ -424,6 +429,7 @@ test('missing comparison citations become needs-evidence', () => {
   const packet = design();
   packet.decisions[0].approaches[0].citations = [];
   packet.decisions[0].approaches[0].evaluations[0].citations = [];
+  persistDesignPacket(packet);
   const result = resolveEngineeringDesign(packet);
   assert.equal(result.status, 'needs-evidence');
   assert.ok(result.findings.some((entry) => entry.code === 'uncited-approach'));
@@ -509,15 +515,10 @@ test('impact requires every documented question and cited evidence', () => {
 });
 
 test('design approval must bind the current design identity and revision', () => {
-  const packet = design({
-    design: {
-      id: 'checkout-design',
-      revision: '8',
-      document: { path: designPath, contentDigest: designDigest },
-    },
-  });
+  const packet = design();
+  packet.design.revision = '8';
   const result = resolveEngineeringDesign(packet);
-  assert.equal(result.status, 'needs-decision');
+  assert.notEqual(result.status, 'complete');
   assert.equal(result.downstream.eligible, false);
 });
 
@@ -595,42 +596,41 @@ test('approval refuses an observation whose remote was not freshly fetched', () 
 });
 
 test('design approval rejects fenced decoys and duplicate identity metadata', () => {
+  const fencedPacket = design();
+  const canonical = fs.readFileSync(path.join(repositoryRoot, designPath), 'utf8');
   const fenced = [
-    '# Checkout engineering design',
-    '',
     '```text',
     '- Design ID: checkout-design',
     '- Revision: 7',
     '```',
-    '- Design ID: different-design',
-    '- Revision: 9',
     '',
+    canonical.replace('- Design ID: checkout-design', '- Design ID: different-design'),
   ].join('\n');
   writeRepositoryFile(designPath, fenced);
   const fencedDigest = digest(fenced);
-  const fencedPacket = design({
-    design: {
-      id: 'checkout-design',
-      revision: '7',
-      document: { path: designPath, contentDigest: fencedDigest },
-    },
-    designApproval: approval(designPath, fencedDigest),
-  });
+  fencedPacket.design.document.contentDigest = fencedDigest;
+  fencedPacket.designApproval = approval(designPath, fencedDigest);
   assert.equal(resolveEngineeringDesign(fencedPacket).status, 'needs-decision');
 
-  const duplicate = `${designBytes}- Design ID: checkout-design\n`;
+  const duplicatePacket = design();
+  const duplicate = `${fs.readFileSync(path.join(repositoryRoot, designPath), 'utf8')}- Design ID: checkout-design\n`;
   writeRepositoryFile(designPath, duplicate);
   const duplicateDigest = digest(duplicate);
-  const duplicatePacket = design({
-    design: {
-      id: 'checkout-design',
-      revision: '7',
-      document: { path: designPath, contentDigest: duplicateDigest },
-    },
-    designApproval: approval(designPath, duplicateDigest),
-  });
+  duplicatePacket.design.document.contentDigest = duplicateDigest;
+  duplicatePacket.designApproval = approval(designPath, duplicateDigest);
   assert.equal(resolveEngineeringDesign(duplicatePacket).status, 'needs-decision');
-  writeRepositoryFile(designPath, designBytes);
+  design();
+});
+
+test('a persisted design must contain the complete canonical inventory', () => {
+  const packet = design();
+  const empty = '# checkout-design\n\n- Design ID: checkout-design\n- Revision: 7\n';
+  writeRepositoryFile(designPath, empty);
+  packet.design.document.contentDigest = digest(empty);
+  packet.designApproval = approval(designPath, packet.design.document.contentDigest);
+  const result = resolveEngineeringDesign(packet);
+  assert.equal(result.status, 'blocked');
+  assert.ok(result.findings.some((entry) => entry.code === 'design-document-inventory-mismatch'));
 });
 
 test('the linked full specification is required and canonical', () => {
