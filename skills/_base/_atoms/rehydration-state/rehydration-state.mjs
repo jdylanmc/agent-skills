@@ -389,33 +389,58 @@ function sleep(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
+function removeLock(lock, expectedToken, expectedIno) {
+  try {
+    if (expectedIno !== undefined && fs.statSync(lock).ino !== expectedIno) return false;
+    if (expectedToken !== undefined) {
+      const owner = JSON.parse(fs.readFileSync(path.join(lock, 'owner.json'), 'utf8'));
+      if (owner.token !== expectedToken) return false;
+    }
+    const removed = `${lock}.removed-${process.pid}-${crypto.randomUUID()}`;
+    fs.renameSync(lock, removed);
+    fs.rmSync(removed, { recursive: true, force: true });
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 function withStateLock(repositoryRoot, operation) {
   const directory = ensureSafeStateDirectory(repositoryRoot);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const lock = path.join(directory, '.lock');
   const deadline = Date.now() + LOCK_WAIT_MS;
+  const token = crypto.randomUUID();
   while (true) {
     try {
       fs.mkdirSync(lock, { mode: 0o700 });
-      fs.writeFileSync(path.join(lock, 'owner.json'), JSON.stringify({ pid: process.pid }), { mode: 0o600 });
+      fs.writeFileSync(
+        path.join(lock, 'owner.json'),
+        JSON.stringify({ pid: process.pid, token }),
+        { mode: 0o600 },
+      );
       break;
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
       try {
         let ownerAlive = false;
         let ownerKnown = false;
+        let ownerToken;
+        const observed = fs.statSync(lock);
         try {
           const owner = JSON.parse(fs.readFileSync(path.join(lock, 'owner.json'), 'utf8'));
           if (Number.isSafeInteger(owner.pid) && owner.pid > 0) {
             ownerKnown = true;
+            ownerToken = owner.token;
             process.kill(owner.pid, 0);
             ownerAlive = true;
           }
         } catch (ownerError) {
           if (ownerError.code === 'EPERM') ownerAlive = true;
         }
-        if (!ownerAlive && (ownerKnown || Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS)) {
-          fs.rmSync(lock, { recursive: true, force: true });
+        if (!ownerAlive && (ownerKnown || Date.now() - observed.mtimeMs > LOCK_STALE_MS)) {
+          removeLock(lock, ownerToken, observed.ino);
           continue;
         }
       } catch (inspectError) {
@@ -429,7 +454,7 @@ function withStateLock(repositoryRoot, operation) {
   try {
     return operation();
   } finally {
-    fs.rmSync(lock, { recursive: true, force: true });
+    removeLock(lock, token);
   }
 }
 
