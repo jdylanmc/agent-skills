@@ -633,6 +633,50 @@ test('a persisted design must contain the complete canonical inventory', () => {
   assert.ok(result.findings.some((entry) => entry.code === 'design-document-inventory-mismatch'));
 });
 
+test('the persisted design inventory binds its source specification', () => {
+  const packet = design();
+  packet.specification.fullContentDigest = 'different-full-digest';
+  const result = resolveEngineeringDesign(packet);
+  assert.equal(result.status, 'blocked');
+  assert.ok(result.findings.some((entry) => entry.code === 'design-document-inventory-mismatch'));
+});
+
+test('design metadata parsing respects Markdown fence marker and length', () => {
+  const packet = design();
+  const canonical = fs.readFileSync(path.join(repositoryRoot, designPath), 'utf8');
+  const mixedFence = [
+    '````text',
+    '- Design ID: checkout-design',
+    '- Revision: 7',
+    '~~~',
+    '- Design ID: checkout-design',
+    '```',
+    '````',
+    canonical.replace('- Design ID: checkout-design', '- Design ID: different-design'),
+  ].join('\n');
+  writeRepositoryFile(designPath, mixedFence);
+  packet.design.document.contentDigest = digest(mixedFence);
+  packet.designApproval = approval(designPath, packet.design.document.contentDigest);
+  assert.equal(resolveEngineeringDesign(packet).status, 'needs-decision');
+
+  const unterminatedPacket = design();
+  const unterminated = [
+    '```text',
+    '- Design ID: checkout-design',
+    '- Revision: 7',
+    fs.readFileSync(path.join(repositoryRoot, designPath), 'utf8')
+      .replace('- Design ID: checkout-design', '- Design ID: different-design'),
+  ].join('\n');
+  writeRepositoryFile(designPath, unterminated);
+  unterminatedPacket.design.document.contentDigest = digest(unterminated);
+  unterminatedPacket.designApproval = approval(
+    designPath,
+    unterminatedPacket.design.document.contentDigest,
+  );
+  assert.equal(resolveEngineeringDesign(unterminatedPacket).status, 'needs-decision');
+  design();
+});
+
 test('the linked full specification is required and canonical', () => {
   const missing = design();
   missing.specification.fullPath = `docs/agent/specs/${specificationSlug}-missing.full.md`;

@@ -114,6 +114,20 @@ function digestFunctionalRequirements(requirements) {
 
 export function designInventory(input) {
   return {
+    design: {
+      id: input.design.id,
+      revision: input.design.revision,
+    },
+    specification: {
+      id: input.specification.id,
+      revision: input.specification.revision,
+      source: input.specification.source,
+      path: input.specification.path,
+      fullPath: input.specification.fullPath,
+      contentDigest: input.specification.contentDigest,
+      fullContentDigest: input.specification.fullContentDigest,
+      functionalRequirementsDigest: digestFunctionalRequirements(input.functionalRequirements),
+    },
     functionalRequirements: input.functionalRequirements,
     impact: input.impact,
     disposition: input.disposition,
@@ -222,14 +236,23 @@ function requirementsFromNano(bytes) {
 function metadataValue(bytes, label) {
   const prefix = `- ${label}:`;
   const matches = [];
-  let fenced = false;
+  let fence = null;
   for (const line of bytes.toString('utf8').split(/\r?\n/)) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      fenced = !fenced;
+    const delimiter = line.match(/^\s*(`{3,}|~{3,})/);
+    if (delimiter && !fence) {
+      fence = { marker: delimiter[1][0], length: delimiter[1].length };
       continue;
     }
-    if (!fenced && line.startsWith(prefix)) matches.push(line.slice(prefix.length).trim());
+    if (delimiter
+        && fence
+        && delimiter[1][0] === fence.marker
+        && delimiter[1].length >= fence.length) {
+      fence = null;
+      continue;
+    }
+    if (!fence && line.startsWith(prefix)) matches.push(line.slice(prefix.length).trim());
   }
+  if (fence) return null;
   return matches.length === 1 ? matches[0] : null;
 }
 

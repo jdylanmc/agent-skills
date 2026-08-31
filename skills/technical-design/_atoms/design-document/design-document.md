@@ -61,9 +61,11 @@ Embed one canonical `technical-design-manifest` block in the document. It
 contains the exact functional-requirement inventory, impact assessment,
 disposition, traceability, decisions, material claims, applicability
 dispositions, proposed-NFR inventory, and evidence gaps validated by the
-resolver. Missing, duplicate, malformed, or mismatched manifests block
-completion; a detached caller packet cannot substitute for persisted design
-content.
+resolver, plus the design identity and the complete source-specification
+identity, revision, source, nano/full paths, nano/full digests, and functional
+requirement digest. Missing, duplicate, malformed, or mismatched manifests
+block completion; a detached caller packet cannot substitute for persisted
+design content.
 
 Before persistence, check accuracy against the evidence ledger, terminology,
 identifiers, qualifiers, prerequisites, recovery behavior, applicability
