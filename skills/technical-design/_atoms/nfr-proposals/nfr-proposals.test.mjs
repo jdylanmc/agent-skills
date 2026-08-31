@@ -6,6 +6,7 @@ import { validateNfrProposals } from './nfr-proposals.mjs';
 function proposal(overrides = {}) {
   return {
     id: 'NFR-cache-lag',
+    path: 'docs/agent/nfr/NFR-cache-lag.md',
     revision: '1',
     authority: 'proposed',
     approval: { state: 'pending' },
@@ -17,6 +18,7 @@ function proposal(overrides = {}) {
     scope: 'catalog cache',
     verificationIntent: 'measure write-to-read visibility',
     sourceDesign: 'catalog-design@2',
+    downstreamAuthorityWarning: 'not-authority-until-separately-approved',
     ...overrides,
   };
 }
@@ -50,4 +52,19 @@ test('a proposal cannot omit both threshold forms or declare both', () => {
   assert.equal(missing.status, 'invalid');
   assert.equal(both.status, 'invalid');
   assert.equal(missing.findings[0].code, 'threshold-shape');
+});
+
+test('a proposal must stay in the shared registry and carry the authority warning', () => {
+  const outside = validateNfrProposals({
+    proposals: [proposal({ path: 'docs/designs/NFR-cache-lag.md' })],
+  });
+  const escaped = validateNfrProposals({
+    proposals: [proposal({ path: 'docs/agent/nfr/../../outside.md' })],
+  });
+  const unmarked = validateNfrProposals({
+    proposals: [proposal({ downstreamAuthorityWarning: 'looks approved' })],
+  });
+  assert.deepEqual(outside.findings.map((entry) => entry.code), ['invalid-proposal-path']);
+  assert.deepEqual(escaped.findings.map((entry) => entry.code), ['invalid-proposal-path']);
+  assert.deepEqual(unmarked.findings.map((entry) => entry.code), ['missing-authority-warning']);
 });

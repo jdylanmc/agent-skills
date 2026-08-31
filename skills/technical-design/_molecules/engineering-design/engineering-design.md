@@ -48,15 +48,23 @@ intake -> impact -> approaches -> document and ADRs -> NFR proposals -> resolve
 5. Run Non-functional requirement proposals. A design may propose shared
    requirements beneath `docs/agent/nfr/`, but each file is visibly
    non-authoritative and this workflow cannot approve it.
-6. Record engineering approval only when it binds the exact design identity
-   and revision. Record separately approved NFR bindings only when they bind
-   the proposal identity, revision, and source-design identity. Accept both
-   only from independently observable human approval evidence. Design approval
-   never approves an NFR, and the proposal remains unchanged.
+6. Fetch and verify approval against the provider-backed remote default branch,
+   a boundary this skill cannot merge into. Engineering approval requires the
+   exact design bytes plus their embedded design identity and revision.
+   Specification approval requires the local and published nano bytes to match,
+   then parses the published identity, revision, and acceptance criteria to bind
+   the immutable functional-requirement inventory. Separately approved NFRs
+   require a distinct approval receipt beneath `docs/agent/nfr/approvals/`
+   whose published bytes bind the proposal identity, revision, source design,
+   and digest. Publishing the proposal itself is never approval. Design
+   approval never approves an NFR, and the proposal remains unchanged.
 7. Reread every written artifact. Run the NFR validator and then the
-   engineering-design resolver. The resolver cross-checks impact, approaches,
-   claim citations, traceability, applicability coverage, ADR dispositions,
-   unresolved items, engineering approval, and NFR authority.
+   engineering-design resolver with the bounded repository root. The resolver
+   reproduces design, ADR, and NFR proposal digests from regular, non-symbolic
+   repository files, verifies approval observations against the remote default
+   branch, then cross-checks impact, approaches, claim citations, traceability,
+   applicability coverage, ADR dispositions, unresolved items, engineering
+   approval, and NFR authority.
 8. Return the resolved packet. Do not dispatch downstream work.
 
 ## Resolution Order

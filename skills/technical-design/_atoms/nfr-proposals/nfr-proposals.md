@@ -30,8 +30,13 @@ Write one file per proposal beneath `docs/agent/nfr/`. Each proposal contains:
 - scope and applicability;
 - verification intent;
 - the source design identity and revision;
-- an explicit warning that Quality Assurance design and requirements breakdown
-  must not treat the proposal as authority.
+- `downstreamAuthorityWarning: not-authority-until-separately-approved`, the
+  stable warning that Quality Assurance design and requirements breakdown must
+  not treat the proposal as authority.
+
+Render the proposal through the validator's canonical Markdown form. Final
+design resolution rereads that file, reproduces its digest, and rejects any
+inventory whose fields differ from the persisted bytes.
 
 Run:
 
@@ -50,7 +55,9 @@ record. Design approval is not NFR approval. Co-location in one change request
 is not NFR approval. A downstream consumer accepts an NFR only when its
 authority is `approved` and separate approval evidence is present.
 That evidence binds the proposal identity, revision, and source-design
-identity; approval of an older or foreign proposal is not approval of the
+identity and exact proposal digest. It is a distinct provider-backed receipt
+beneath `docs/agent/nfr/approvals/`; the proposed file itself can never serve as
+its receipt. Approval of an older or foreign proposal is not approval of the
 current one.
 
 Any proposal keeps technical-design at `needs-decision` until that external

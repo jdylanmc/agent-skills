@@ -57,8 +57,8 @@ confusion with an Architecture Decision Record (ADR).
 
 - one approved `<spec>.nano.md`, with stable specification and functional
   requirement identifiers and verifiable approval evidence;
-- its linked `<spec>.full.md`, as supporting context that cannot override the
-  nano authority;
+- its linked `<spec>.full.md`, with its own reread content digest, as supporting
+  context that cannot override the nano authority;
 - cited Discovery evidence and any relevant domain maps, research, or
   proof-of-concept findings;
 - repository architecture, conventions, doctrine, and existing ADRs.
@@ -102,7 +102,8 @@ Return:
   `needs-evidence`, or `blocked`;
 - specification, functional-requirement, design, ADR, and non-functional
   requirement identities and revisions;
-- approval and evidence bindings;
+- approval observations verified against exact artifact bytes on the
+  provider-backed remote default branch;
 - engineering approval and separately approved NFR bindings, each with
   independently observable human approval evidence;
 - the deterministic validation report;
