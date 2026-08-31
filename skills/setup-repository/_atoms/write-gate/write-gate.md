@@ -89,10 +89,13 @@ Every unsafe target returns `unsafe-target` and writes nothing at all.
 
 Containment and links are resolved with real filesystem calls on the existing
 ancestors, not by comparing strings. The final write is performed through a
-capability-selected safe open. On POSIX the gate uses a single atomic
-`fs.openSync` with `O_NOFOLLOW | O_CREAT | O_EXCL | O_WRONLY` (or
-`O_NOFOLLOW | O_TRUNC | O_WRONLY` when overwriting), so a symbolic link at
-the final component fails at the open call itself. On Windows `O_NOFOLLOW`
+capability-selected safe open. Every opened read, write, and rollback
+descriptor must identify a regular file with `nlink === 1`; an existing hard
+link is refused before truncation. On POSIX the gate uses
+`O_NOFOLLOW | O_CREAT | O_EXCL | O_WRONLY` for create, or opens an overwrite
+with `O_NOFOLLOW | O_RDWR`, verifies the descriptor, and then truncates through
+`ftruncateSync`, so a symbolic link at the final component fails at the open
+call itself. On Windows `O_NOFOLLOW`
 does not exist, so the gate uses **check-open-verify**: `lstatSync` the
 target and refuse a symbolic link or reparse point, `openSync` with
 `O_RDWR` (plus `O_CREAT | O_EXCL` for a fresh create), then `fstatSync`
@@ -156,7 +159,13 @@ existed at preview time but has vanished, or did not exist and has appeared,
 is `stale-preview` at commit time as well. The approved prior content hash
 is re-verified **once more, immediately before truncation**, so a target that
 changed between the earlier disk check and the truncating open is caught
-before any bytes are lost.
+before any bytes are lost. That final check also confirms the target's pinned
+`(dev, ino)` identity. The mutating open does not truncate on open: it opens
+with read/write access and `O_NOFOLLOW` where available, verifies by `fstat`
+that the descriptor is a single-link regular file with that exact identity,
+and verifies the approved prior bytes through that same descriptor before
+calling `ftruncate`. A same-byte replacement inode is therefore stale even
+though its content hash still matches.
 
 ## Staged Commit, Readback, and Rollback
 
@@ -173,6 +182,9 @@ A failure — mkdir, open, write, close, or readback — returns an allowed
 status (`unsafe-target`, `stale-preview`, or `blocked`) and rolls back in
 **reverse order** every commit that succeeded before it: newly created
 files are removed and overwritten files are restored to their snapshot.
+Overwrite restoration is identity-bound to the inode that the commit
+actually mutated, so rollback refuses rather than overwriting a concurrent
+replacement at the same name.
 Every rollback step is verified — a newly created file must be gone, and an
 overwritten file must hash back to its prior snapshot AND (on platforms
 that expose file modes) be restored to its prior permission bits. The
@@ -184,6 +196,21 @@ is named in `rollbackRemaining` in the returned result so the operator
 sees exactly what remains on disk. The atom never throws a filesystem
 failure to its caller and never reports a bare `written: false` while
 undisclosed changes remain on disk.
+
+For a create, the commit retains its descriptor until success or rollback.
+Rollback compares the descriptor and pathname identities and requires
+`nlink === 1` before unlinking. It then checks through the still-open
+descriptor that the link count reached zero. If another hard-link alias
+exists before removal, or appears in the check-to-unlink window, the target
+is reported in `rollbackRemaining` as hard-link or alias residue. The gate
+does not search the broader filesystem for alias names.
+
+This rollback guarantee covers failures caught by the running process. A hard
+termination cannot execute rollback and may leave a prefix of the
+preview-ordered writes on disk. Callers with commit-indicator semantics must
+therefore order artifacts so every prefix is safe; the gate preserves and binds
+the caller's artifact order in the preview identity. No `configured` result is
+returned until every ordered entry has been freshly reread and verified.
 
 Every readback is a fresh open — on POSIX using `O_NOFOLLOW | O_RDONLY`,
 on Windows using the check-open-verify sequence described above — so the
@@ -241,7 +268,8 @@ executable.
   rather than asserting the write succeeded.
 - A filesystem failure never propagates as an exception. Every failure returns
   an allowed status and rolls back the partial commit; anything that could not
-  be rolled back is named in `rollbackRemaining`.
+  be rolled back is named in `rollbackRemaining`. Hard process termination is
+  outside this caught-failure guarantee and is not claimed to roll back.
 - A shape-invalid preview payload is refused as `stale-preview` (unknown
   fields, non-string content, malformed sha256, or duplicate normalized target
   paths); a caller-supplied `absolutePath` is one of the unknown fields the

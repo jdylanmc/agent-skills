@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["execute"]
 includes: ["_base/_atoms/contradiction-check/contradiction-check.mjs"]
 composes: []
-used-by: ["spec/_molecules/product-specification/product-specification.md"]
+used-by: ["draft-doctrine/_molecules/doctrine-authoring/doctrine-authoring.md","spec/_molecules/product-specification/product-specification.md"]
 ---
 
 # Contradiction Check
