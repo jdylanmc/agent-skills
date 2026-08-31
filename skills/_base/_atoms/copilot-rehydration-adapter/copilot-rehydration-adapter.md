@@ -17,6 +17,12 @@ Translate `preCompact`, `preToolUse`, `postToolUse`, `agentStop`, and
 `sessionStart(source=resume)` payloads without leaking Copilot field names into
 the provider-neutral state machine.
 
+For `postToolUse`, translate either documented result shape:
+`toolResult.resultType/textResultForLlm` or
+`tool_result.result_type/text_result_for_llm`. Only a successful model-facing
+result whose exact UTF-8 bytes match the armed canonical digest may acknowledge
+a read; the state machine separately verifies the current disk identity.
+
 The repository hook disposition is
 `hook-enforced-but-disableable`. Repository, user, and plugin hooks may be
 disabled. Only an administrator-installed policy hook whose command and state

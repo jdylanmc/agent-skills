@@ -534,6 +534,23 @@ export function acknowledgeRead(input) {
       (input.skill !== undefined && input.skill !== expected.skill)) {
     return degradeUnlocked(root, state, 'wrong-identity');
   }
+  if (!input.resultEvidence || typeof input.resultEvidence !== 'object' ||
+      Array.isArray(input.resultEvidence)) {
+    return degradeUnlocked(root, state, 'tool-result-malformed');
+  }
+  if (input.resultEvidence.status === 'not-success') {
+    return degradeUnlocked(root, state, 'tool-result-not-success');
+  }
+  if (input.resultEvidence.status !== 'success' ||
+      !Number.isSafeInteger(input.resultEvidence.bytes) ||
+      input.resultEvidence.bytes < 0 ||
+      !SHA256.test(input.resultEvidence.digest)) {
+    return degradeUnlocked(root, state, 'tool-result-malformed');
+  }
+  if (input.resultEvidence.bytes !== expected.bytes ||
+      input.resultEvidence.digest !== expected.digest) {
+    return degradeUnlocked(root, state, 'tool-result-content-mismatch');
+  }
   let current;
   try {
     current = readCanonicalFile(root, expected.path);

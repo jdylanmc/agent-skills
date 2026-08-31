@@ -104,6 +104,29 @@ test('hook entry point returns a deny decision for non-canonical work', () => {
   assert.equal(JSON.parse(io.output()).permissionDecision, 'deny');
 });
 
+test('hook entry point requires exact successful model-facing result bytes', () => {
+  fixture();
+  const relativePath = 'skills/root/SKILL.md';
+  run('preCompact', {
+    sessionId: 'session-1',
+    cwd: ROOT,
+    trigger: 'auto',
+    timestamp: Date.now(),
+  }, streams());
+  const io = streams();
+  assert.equal(run('postToolUse', {
+    sessionId: 'session-1',
+    cwd: ROOT,
+    toolName: 'view',
+    toolArgs: { path: path.join(ROOT, relativePath) },
+    toolResult: {
+      resultType: 'success',
+      textResultForLlm: fs.readFileSync(path.join(ROOT, relativePath), 'utf8'),
+    },
+  }, io), 0);
+  assert.match(JSON.parse(io.output()).additionalContext, /compaction-rehydration-checkpoint/);
+});
+
 test('unknown events and preToolUse crashes return fail-closed exit codes', () => {
   fixture();
   assert.equal(run('unknown', { cwd: ROOT }, streams()), 1);

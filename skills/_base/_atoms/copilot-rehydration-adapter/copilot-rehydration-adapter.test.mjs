@@ -49,6 +49,13 @@ function payload(root, toolName, toolArgs) {
   return { sessionId: 'session-1', cwd: root, toolName, toolArgs, timestamp: Date.now() };
 }
 
+function successfulResult(root, relativePath, snakeCase = false) {
+  const text = fs.readFileSync(path.join(root, relativePath), 'utf8');
+  return snakeCase
+    ? { tool_result: { result_type: 'success', text_result_for_llm: text } }
+    : { toolResult: { resultType: 'success', textResultForLlm: text } };
+}
+
 test.after(() => fs.rmSync(ROOT, { recursive: true, force: true }));
 
 test('preToolUse denies material work and permits only the exact full canonical read', () => {
@@ -89,14 +96,119 @@ test('large canonical reads receive the exact full-read recovery hint', () => {
 
 test('postToolUse observes the read; a forged acknowledgement does not clear the latch', () => {
   const root = fixture('ack');
+  const relativePath = 'skills/root/SKILL.md';
   preCompact(root, { sessionId: 'session-1', trigger: 'auto', timestamp: Date.now() });
   assert.deepEqual(postToolUse(root, payload(root, 'bash', { command: 'echo acknowledged' })), {});
   assert.equal(readState(root, 'session-1').status, STATES.required);
-  const accepted = postToolUse(root, payload(root, 'view', {
-    path: path.join(root, 'skills', 'root', 'SKILL.md'),
-  }));
+  const accepted = postToolUse(root, {
+    ...payload(root, 'view', { path: path.join(root, relativePath) }),
+    ...successfulResult(root, relativePath),
+  });
   assert.match(accepted.additionalContext, /compaction-rehydration-checkpoint/);
   assert.equal(readState(root, 'session-1').status, STATES.rehydrated);
+});
+
+test('postToolUse accepts the documented snake_case successful result', () => {
+  const root = fixture('snake-case');
+  const relativePath = 'skills/root/SKILL.md';
+  preCompact(root, { sessionId: 'session-1', trigger: 'auto', timestamp: Date.now() });
+  const accepted = postToolUse(root, {
+    ...payload(root, 'view', { path: path.join(root, relativePath) }),
+    ...successfulResult(root, relativePath, true),
+  });
+  assert.match(accepted.additionalContext, /compaction-rehydration-checkpoint/);
+  assert.equal(readState(root, 'session-1').status, STATES.rehydrated);
+});
+
+test('postToolUse ignores a non-full read even when its result contains canonical content', () => {
+  const root = fixture('partial-result');
+  const relativePath = 'skills/root/SKILL.md';
+  preCompact(root, { sessionId: 'session-1', trigger: 'auto', timestamp: Date.now() });
+  const result = postToolUse(root, {
+    ...payload(root, 'view', {
+      path: path.join(root, relativePath),
+      view_range: [1, 2],
+    }),
+    ...successfulResult(root, relativePath),
+  });
+  assert.deepEqual(result, {});
+  assert.equal(readState(root, 'session-1').status, STATES.required);
+});
+
+test('restore race cannot acknowledge content that was shown to the model', () => {
+  const root = fixture('restore-race');
+  const relativePath = 'skills/root/SKILL.md';
+  const absolutePath = path.join(root, relativePath);
+  const canonical = fs.readFileSync(absolutePath, 'utf8');
+  preCompact(root, { sessionId: 'session-1', trigger: 'auto', timestamp: Date.now() });
+  fs.writeFileSync(absolutePath, `${canonical}\nconcurrent content B\n`);
+  const contentShownToModel = fs.readFileSync(absolutePath, 'utf8');
+  fs.writeFileSync(absolutePath, canonical);
+  const result = postToolUse(root, {
+    ...payload(root, 'view', { path: path.join(root, relativePath) }),
+    toolResult: {
+      resultType: 'success',
+      textResultForLlm: contentShownToModel,
+    },
+  });
+  assert.match(result.additionalContext, /tool-result-content-mismatch/);
+  assert.doesNotMatch(result.additionalContext, /compaction-rehydration-checkpoint/);
+  assert.equal(readState(root, 'session-1').degradedReason, 'tool-result-content-mismatch');
+});
+
+test('missing, malformed, and unsuccessful tool results never clear the latch', () => {
+  const cases = [
+    ['missing', {}, 'tool-result-malformed'],
+    ['missing-type', { toolResult: {} }, 'tool-result-malformed'],
+    ['malformed', { toolResult: { resultType: 'success' } }, 'tool-result-malformed'],
+    ['unsuccessful', {
+      toolResult: { resultType: 'failure', textResultForLlm: 'failed' },
+    }, 'tool-result-not-success'],
+  ];
+  for (const [name, toolResult, reason] of cases) {
+    const root = fixture(`result-${name}`);
+    const relativePath = 'skills/root/SKILL.md';
+    preCompact(root, { sessionId: 'session-1', trigger: 'auto', timestamp: Date.now() });
+    const result = postToolUse(root, {
+      ...payload(root, 'view', { path: path.join(root, relativePath) }),
+      ...toolResult,
+    });
+    assert.match(result.additionalContext, new RegExp(reason));
+    assert.doesNotMatch(result.additionalContext, /compaction-rehydration-checkpoint/);
+    assert.equal(readState(root, 'session-1').degradedReason, reason);
+  }
+});
+
+test('large exact full result acknowledges only with the full-read request and bytes', () => {
+  const root = fixture('large-result');
+  const relativePath = 'skills/root/SKILL.md';
+  fs.appendFileSync(path.join(root, relativePath), 'x'.repeat(21_000));
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-large-result',
+    runId: 'run-large-result',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+  preCompact(root, {
+    sessionId: 'session-large-result',
+    trigger: 'auto',
+    timestamp: Date.now(),
+  });
+  const result = postToolUse(root, {
+    sessionId: 'session-large-result',
+    cwd: root,
+    toolName: 'view',
+    toolArgs: {
+      path: path.join(root, relativePath),
+      forceReadLargeFiles: true,
+    },
+    ...successfulResult(root, relativePath),
+  });
+  assert.match(result.additionalContext, /compaction-rehydration-checkpoint/);
+  assert.equal(readState(root, 'session-large-result').status, STATES.rehydrated);
 });
 
 test('resume arms active persisted runs and rehydration does not register recursively', () => {
@@ -108,9 +220,10 @@ test('resume arms active persisted runs and rehydration does not register recurs
     timestamp: Date.now(),
   });
   assert.match(result.additionalContext, /requires canonical rehydration/);
-  postToolUse(root, payload(root, 'view', {
-    path: path.join(root, 'skills', 'root', 'SKILL.md'),
-  }));
+  postToolUse(root, {
+    ...payload(root, 'view', { path: path.join(root, 'skills', 'root', 'SKILL.md') }),
+    ...successfulResult(root, 'skills/root/SKILL.md'),
+  });
   assert.equal(readState(root, 'session-1').stack.length, before);
 });
 

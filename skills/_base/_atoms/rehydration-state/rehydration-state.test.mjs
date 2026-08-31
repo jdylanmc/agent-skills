@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -58,6 +59,15 @@ function register(root, skill = 'root', runId = 'run-1') {
     logPath: path.join(root, '.skill-log', 'root.jsonl'),
     phase: 'before',
   });
+}
+
+function resultEvidence(root, relativePath) {
+  const bytes = fs.readFileSync(path.join(root, relativePath));
+  return {
+    status: 'success',
+    bytes: bytes.length,
+    digest: crypto.createHash('sha256').update(bytes).digest('hex'),
+  };
 }
 
 test.after(() => fs.rmSync(ROOT, { recursive: true, force: true }));
@@ -163,6 +173,7 @@ test('a complete exact read sequence clears once and returns a bounded checkpoin
       sessionId: 'session-1',
       generation: armed.generation,
       relativePath,
+      resultEvidence: resultEvidence(root, relativePath),
     });
   }
   assert.equal(result.status, STATES.rehydrated);
@@ -172,6 +183,7 @@ test('a complete exact read sequence clears once and returns a bounded checkpoin
     sessionId: 'session-1',
     generation: armed.generation,
     relativePath: armed.files.at(-1),
+    resultEvidence: resultEvidence(root, armed.files.at(-1)),
   }).status, 'inactive');
 });
 
@@ -187,6 +199,7 @@ test('repeated compaction replaces the latch with a fresh generation', () => {
     sessionId: 'session-1',
     generation: first.generation,
     relativePath: first.files[0],
+    resultEvidence: resultEvidence(root, first.files[0]),
   });
   assert.equal(stale.reason, 'stale-packet');
   assert.equal(readState(root, 'session-1').status, STATES.required);
@@ -201,18 +214,71 @@ test('wrong path identity and digest drift degrade explicitly', () => {
     sessionId: 'session-1',
     generation: wrongArmed.generation,
     relativePath: 'skills/nested/SKILL.md',
+    resultEvidence: resultEvidence(wrong, wrongArmed.files[0]),
   }).reason, 'wrong-identity');
 
   const drift = repo('drift');
   register(drift);
   const driftArmed = arm({ repositoryRoot: drift, sessionId: 'session-1', trigger: 'auto' });
+  const delivered = resultEvidence(drift, driftArmed.files[0]);
   fs.appendFileSync(path.join(drift, driftArmed.files[0]), '\ndrift\n');
   assert.equal(acknowledgeRead({
     repositoryRoot: drift,
     sessionId: 'session-1',
     generation: driftArmed.generation,
     relativePath: driftArmed.files[0],
+    resultEvidence: delivered,
   }).reason, 'digest-drift');
+});
+
+test('model-facing result evidence must be successful, well-formed, and canonical', () => {
+  const malformed = repo('evidence-malformed');
+  register(malformed);
+  const malformedArmed = arm({
+    repositoryRoot: malformed,
+    sessionId: 'session-1',
+    trigger: 'auto',
+  });
+  assert.equal(acknowledgeRead({
+    repositoryRoot: malformed,
+    sessionId: 'session-1',
+    generation: malformedArmed.generation,
+    relativePath: malformedArmed.files[0],
+  }).reason, 'tool-result-malformed');
+
+  const unsuccessful = repo('evidence-unsuccessful');
+  register(unsuccessful);
+  const unsuccessfulArmed = arm({
+    repositoryRoot: unsuccessful,
+    sessionId: 'session-1',
+    trigger: 'auto',
+  });
+  assert.equal(acknowledgeRead({
+    repositoryRoot: unsuccessful,
+    sessionId: 'session-1',
+    generation: unsuccessfulArmed.generation,
+    relativePath: unsuccessfulArmed.files[0],
+    resultEvidence: { status: 'not-success' },
+  }).reason, 'tool-result-not-success');
+
+  const mismatch = repo('evidence-mismatch');
+  register(mismatch);
+  const mismatchArmed = arm({
+    repositoryRoot: mismatch,
+    sessionId: 'session-1',
+    trigger: 'auto',
+  });
+  assert.equal(acknowledgeRead({
+    repositoryRoot: mismatch,
+    sessionId: 'session-1',
+    generation: mismatchArmed.generation,
+    relativePath: mismatchArmed.files[0],
+    resultEvidence: {
+      status: 'success',
+      bytes: 1,
+      digest: crypto.createHash('sha256').update('B').digest('hex'),
+    },
+  }).reason, 'tool-result-content-mismatch');
 });
 
 test('wrong run, skill, and session identities never acknowledge the packet', () => {
@@ -224,6 +290,7 @@ test('wrong run, skill, and session identities never acknowledge the packet', ()
     sessionId: 'other-session',
     generation: armed.generation,
     relativePath: armed.files[0],
+    resultEvidence: resultEvidence(root, armed.files[0]),
   }).status, 'inactive');
   assert.equal(acknowledgeRead({
     repositoryRoot: root,
@@ -232,6 +299,7 @@ test('wrong run, skill, and session identities never acknowledge the packet', ()
     relativePath: armed.files[0],
     runId: 'forged-run',
     skill: 'root',
+    resultEvidence: resultEvidence(root, armed.files[0]),
   }).reason, 'wrong-identity');
 });
 
@@ -254,6 +322,7 @@ test('correlation reuses empty completed state for a later pending run', () => {
       sessionId: 'session-1',
       generation: armed.generation,
       relativePath,
+      resultEvidence: resultEvidence(root, relativePath),
     });
   }
   registerRun({
@@ -421,6 +490,7 @@ test('oversized final checkpoint degrades before the latch can be silently clear
       sessionId: 'session-1',
       generation: armed.generation,
       relativePath,
+      resultEvidence: resultEvidence(root, relativePath),
     });
   }
   assert.equal(result.status, STATES.degraded);

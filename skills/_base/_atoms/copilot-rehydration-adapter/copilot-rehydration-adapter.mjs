@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import path from 'node:path';
 
 import {
@@ -36,6 +37,30 @@ function isFullView(payload, expected) {
   if (!args || typeof args !== 'object' || Array.isArray(args) || args.view_range !== undefined) return false;
   if (expected.bytes > 20_000 && args.forceReadLargeFiles !== true) return false;
   return true;
+}
+
+function modelResultEvidence(payload) {
+  const result = Object.hasOwn(payload, 'toolResult')
+    ? payload.toolResult
+    : payload.tool_result;
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return { status: 'malformed' };
+  }
+  const resultType = Object.hasOwn(result, 'resultType')
+    ? result.resultType
+    : result.result_type;
+  const text = Object.hasOwn(result, 'textResultForLlm')
+    ? result.textResultForLlm
+    : result.text_result_for_llm;
+  if (typeof resultType !== 'string') return { status: 'malformed' };
+  if (resultType !== 'success') return { status: 'not-success' };
+  if (typeof text !== 'string') return { status: 'malformed' };
+  const bytes = Buffer.from(text, 'utf8');
+  return {
+    status: 'success',
+    bytes: bytes.length,
+    digest: crypto.createHash('sha256').update(bytes).digest('hex'),
+  };
 }
 
 export function preCompact(repositoryRoot, payload) {
@@ -100,6 +125,11 @@ export function preToolUse(repositoryRoot, payload) {
 export function postToolUse(repositoryRoot, payload) {
   const expected = expectedRead(repositoryRoot, sessionId(payload));
   if (expected.status === 'inactive') return {};
+  if (expected.status === STATES.degraded) {
+    return {
+      additionalContext: `Compaction rehydration degraded: ${expected.reason}. Stop material work.`,
+    };
+  }
   const absolute = absoluteToolPath(payload);
   const canonical = path.join(repositoryRoot, expected.file.path);
   if (absolute !== canonical || !isFullView(payload, expected.file)) return {};
@@ -110,6 +140,7 @@ export function postToolUse(repositoryRoot, payload) {
     relativePath: expected.file.path,
     runId: expected.file.runId,
     skill: expected.file.skill,
+    resultEvidence: modelResultEvidence(payload),
   });
   if (result.status === STATES.rehydrated) {
     const output = { additionalContext: result.checkpoint };

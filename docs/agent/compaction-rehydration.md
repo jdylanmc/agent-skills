@@ -17,9 +17,14 @@ context compaction.
 2. `preCompact` synchronously arms a new bounded generation.
 3. While armed, local command `preToolUse` permits only the next exact,
    full-file canonical `view` read. Other material tool operations are denied.
-4. Successful `postToolUse` observations re-read the file from disk and compare
-   its path and digest. The final match clears the latch once and returns the
-   bounded run checkpoint through `additionalContext`.
+4. `postToolUse` accepts both documented Copilot payload shapes and binds the
+   acknowledgement to the successful model-facing tool-result bytes. Their
+   byte count and SHA-256 digest must match the armed canonical identity, and a
+   fresh disk read must still have that identity. Missing, malformed,
+   unsuccessful, or mismatched result evidence degrades with a bounded reason;
+   it never clears the latch or returns a successful checkpoint. The final
+   exact match clears the latch once and returns the bounded run checkpoint
+   through `additionalContext`.
 5. `agentStop` may force one recovery turn for either an armed latch or
    persisted degradation. It then yields rather than approach the runtime's
    eight-consecutive-block guard. Re-entry with `stop_hook_active` always
