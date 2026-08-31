@@ -42,7 +42,11 @@ copied into a compacted summary are not acknowledgements.
 An active run ending while a generation is armed degrades explicitly; lifecycle
 registration cannot silently satisfy the final read obligation or declare
 successful rehydration. The reason distinguishes one ended frame from all runs
-ending, and remains visible to provider gates and stop handling.
+ending, and remains visible to provider gates and stop handling. The first
+non-reentrant stop attempt in degraded state blocks once with that persisted
+reason; later attempts allow, staying below the runtime's consecutive-block
+ceiling. A `stop_hook_active` re-entry always allows and does not consume the
+one bounded block.
 
 State is stored below the repository's ignored `.skill-log/rehydration/`
 directory with owner-only permissions, atomic replacement, and a bounded

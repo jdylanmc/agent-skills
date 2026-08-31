@@ -20,8 +20,10 @@ context compaction.
 4. Successful `postToolUse` observations re-read the file from disk and compare
    its path and digest. The final match clears the latch once and returns the
    bounded run checkpoint through `additionalContext`.
-5. `agentStop` may force one recovery turn. It then yields rather than approach
-   the runtime's eight-consecutive-block guard.
+5. `agentStop` may force one recovery turn for either an armed latch or
+   persisted degradation. It then yields rather than approach the runtime's
+   eight-consecutive-block guard. Re-entry with `stop_hook_active` always
+   allows without consuming a degraded state's one block.
 6. `sessionStart` with `source: resume` re-arms persisted active runs.
 
 Repeated compactions create new generations. A stale generation, wrong run or
@@ -34,6 +36,14 @@ obligations. If an active run ends while rehydration is armed, state becomes
 deterministically degraded (`active-run-ended-during-rehydration` or
 `all-runs-ended-during-rehydration`). `preToolUse` then refuses material work,
 while `agentStop` and resumed sessions surface the persisted reason.
+
+Chronicle event append and rehydration lifecycle registration are separate
+outcomes. Chronicle remains best effort, but a non-timeout failure to register
+`run/before` or `run/after` returns non-zero after stating that the event was
+recorded and registration was not. This makes a missing tracker, helper crash,
+or explicit non-zero result visible instead of silently leaving `preCompact`
+inactive. An actual registration timeout is explicitly reported and remains
+fail-open.
 
 ## Stored data
 

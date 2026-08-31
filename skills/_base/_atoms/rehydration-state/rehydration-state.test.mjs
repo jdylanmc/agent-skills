@@ -115,7 +115,8 @@ test('the final active run ending mid-rehydration cannot impersonate successful 
   assert.equal(state.status, STATES.degraded);
   assert.equal(state.degradedReason, 'all-runs-ended-during-rehydration');
   assert.equal(state.stack.length, 0);
-  assert.equal(agentStopFallback(root, 'session-1', false).degraded, true);
+  assert.equal(agentStopFallback(root, 'session-1', false).decision, 'block');
+  assert.equal(agentStopFallback(root, 'session-1', false).decision, 'allow');
 });
 
 test('a run starting during recovery cannot disable the armed latch', () => {
@@ -317,7 +318,11 @@ test('ambiguous correlation persists a session-keyed degraded marker', () => {
   assert.equal(result.status, STATES.degraded);
   assert.equal(readState(root, 'session-ambiguous').degradedReason, 'ambiguous-active-runs');
   assert.equal(expectedRead(root, 'session-ambiguous').status, STATES.degraded);
-  assert.equal(agentStopFallback(root, 'session-ambiguous', false).degraded, true);
+  const firstStop = agentStopFallback(root, 'session-ambiguous', false);
+  assert.equal(firstStop.decision, 'block');
+  assert.match(firstStop.reason, /ambiguous-active-runs/);
+  assert.equal(readState(root, 'session-ambiguous').degradedAgentStopBlocks, 1);
+  assert.equal(agentStopFallback(root, 'session-ambiguous', false).decision, 'allow');
 });
 
 test('agent stop forces one turn then yields below the eight-block ceiling', () => {
@@ -329,6 +334,27 @@ test('agent stop forces one turn then yields below the eight-block ceiling', () 
   const second = agentStopFallback(root, 'session-1', true);
   assert.equal(second.decision, 'allow');
   assert.equal(second.degraded, true);
+});
+
+test('degraded stop handling preserves active-hook re-entry safety without consuming its one block', () => {
+  const root = repo('degraded-stop-reentry');
+  for (const runId of ['run-a', 'run-b']) {
+    registerRun({
+      repositoryRoot: root,
+      runId,
+      rootSkill: 'root',
+      skill: 'root',
+      logPath: path.join(root, '.skill-log', 'root.jsonl'),
+      phase: 'before',
+    });
+  }
+  correlateSession(root, 'session-degraded');
+
+  assert.equal(agentStopFallback(root, 'session-degraded', true).decision, 'allow');
+  assert.equal(readState(root, 'session-degraded').degradedAgentStopBlocks, 0);
+  assert.equal(agentStopFallback(root, 'session-degraded', false).decision, 'block');
+  assert.equal(agentStopFallback(root, 'session-degraded', true).decision, 'allow');
+  assert.equal(agentStopFallback(root, 'session-degraded', false).decision, 'allow');
 });
 
 test('canonical manifests are bounded and reject symlinked instructions', () => {

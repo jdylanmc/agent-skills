@@ -149,6 +149,13 @@ function validateState(state) {
     fail('invalid-state', 'rehydration state is malformed or unsupported');
   }
   requireIdentifier(state.sessionId, 'sessionId');
+  if (state.degradedReason !== undefined) requireIdentifier(state.degradedReason, 'degradedReason');
+  if (state.degradedAgentStopBlocks !== undefined &&
+      (!Number.isSafeInteger(state.degradedAgentStopBlocks) ||
+       state.degradedAgentStopBlocks < 0 ||
+       state.degradedAgentStopBlocks > MAX_AGENT_STOP_BLOCKS)) {
+    fail('invalid-state', 'degraded agent-stop counter is invalid');
+  }
   if (state.stack.length > MAX_FRAMES) fail('invalid-state', 'active stack exceeds its bound');
   for (const frame of state.stack) {
     requireIdentifier(frame.runId, 'runId');
@@ -306,6 +313,7 @@ function mutateRegistration(root, sessionId, input, preparedFrame) {
         state.degradedReason = state.stack.length === 0
           ? 'all-runs-ended-during-rehydration'
           : 'active-run-ended-during-rehydration';
+        state.degradedAgentStopBlocks = 0;
         state.latch = undefined;
       }
     }
@@ -453,6 +461,7 @@ export function correlateSession(repositoryRoot, sessionId) {
         status: STATES.degraded,
         stack: existing?.stack ?? [],
         degradedReason: 'ambiguous-active-runs',
+        degradedAgentStopBlocks: 0,
         updatedAt: new Date().toISOString(),
       };
       writeStateUnlocked(root, state);
@@ -560,6 +569,7 @@ function degrade(root, state, reason) {
 function degradeUnlocked(root, state, reason) {
   state.status = STATES.degraded;
   state.degradedReason = reason;
+  state.degradedAgentStopBlocks = 0;
   state.latch = undefined;
   state.updatedAt = new Date().toISOString();
   writeStateUnlocked(root, state);
@@ -570,12 +580,29 @@ export function agentStopFallback(repositoryRoot, sessionId, stopHookActive) {
   return withStateLock(repositoryRoot, () => {
   const state = readStateUnlocked(repositoryRoot, sessionId);
   if (state?.status === STATES.degraded) {
+    if (stopHookActive) {
+      return { decision: 'allow', degraded: true, reason: state.degradedReason };
+    }
+    const blocks = state.degradedAgentStopBlocks ?? 0;
+    if (blocks < MAX_AGENT_STOP_BLOCKS) {
+      state.degradedAgentStopBlocks = blocks + 1;
+      state.updatedAt = new Date().toISOString();
+      writeStateUnlocked(repositoryRoot, state);
+      return {
+        decision: 'block',
+        degraded: true,
+        reason:
+          `Compaction rehydration is degraded (${state.degradedReason}). ` +
+          'Stop material work and report this persisted failure before ending.',
+      };
+    }
     return { decision: 'allow', degraded: true, reason: state.degradedReason };
   }
   if (!state?.latch || state.status !== STATES.required) return { decision: 'allow' };
   if (stopHookActive || state.latch.agentStopBlocks >= MAX_AGENT_STOP_BLOCKS) {
     state.status = STATES.degraded;
     state.degradedReason = 'agent-stop-ceiling-avoided';
+    state.degradedAgentStopBlocks = MAX_AGENT_STOP_BLOCKS;
     state.latch = undefined;
     writeStateUnlocked(repositoryRoot, state);
     return { decision: 'allow', degraded: true };

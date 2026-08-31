@@ -163,8 +163,13 @@ test('ambiguous preCompact persists a marker surfaced by tool and stop hooks', (
     sessionId: 'ambiguous-session',
     stop_hook_active: false,
   });
+  assert.equal(stopped.decision, 'block');
   assert.equal(stopped.degraded, true);
-  assert.equal(stopped.reason, 'ambiguous-active-runs');
+  assert.match(stopped.reason, /ambiguous-active-runs/);
+  assert.equal(agentStop(root, {
+    sessionId: 'ambiguous-session',
+    stop_hook_active: false,
+  }).decision, 'allow');
 });
 
 test('hook configuration states the local gate and timeout without a fictional postCompact hook', () => {
