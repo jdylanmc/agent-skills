@@ -59,7 +59,8 @@ can act as the authority boundary for everything a later stage edits.
 
 Present the numbered acceptance criteria, the trimmed approach, every
 `enabling` entry with its justification, the exclusions, and the shepherd
-intent. Then require an explicit confirmation covering exactly that content.
+intent, and a finite global continuation ceiling with its packet binding.
+Then require an explicit confirmation covering exactly that content.
 
 | Alignment state | Meaning |
 | --- | --- |
@@ -82,8 +83,8 @@ Return the issue identity and readiness verdict, the numbered acceptance
 criteria, the shepherd intent as received, the approach with the laziness
 verdict and every applied reduction, the exhaustive change ledger with each
 entry's classification and identifier, excluded findings worth raising as their
-own issues, the alignment state with the packet identifier, and anything still
-unsettled.
+own issues, the confirmed global continuation ceiling, the alignment state with
+the packet identifier, and anything still unsettled.
 
 ## Boundaries
 

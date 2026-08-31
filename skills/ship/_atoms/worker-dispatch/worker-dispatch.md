@@ -84,11 +84,13 @@ that would make it the author of part of the change it is about to judge. A
 prior worker's report is evidence for the fresh worker, never hidden context the
 run assumes survived.
 
-Remediation dispatches are **bounded to five attempts**. Record `0/5` before the
-first one. Each returned attempt consumes one slot even when it fails to change
-the candidate. When attempt five fails to clear the defect, the run hands back
-rather than dispatching again; a loop that retries indefinitely converts a
-defect into a budget.
+Remediation dispatches are **bounded to five attempts per worker context**.
+Record `0/5` before the first one. Each returned attempt consumes one slot even
+when it fails to change the candidate. Attempt five never becomes attempt six.
+If an in-scope implementation blocker remains, the delivery cycle may transfer
+the same branch and worktree through a verified `orchestration-handoff` to one
+fresh owner with a new `0/5` budget, bounded by the configured global
+continuation ceiling and measurable-progress rule.
 
 ## A Worker's Report Is A Claim
 
