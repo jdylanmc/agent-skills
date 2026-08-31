@@ -361,9 +361,6 @@ export function captureIsolatedGitWorktreeIdentity(repositoryRoot, worktree, bra
   if (!registered || registered.bare) {
     throw new Error('assignment worktree is not a registered isolated Git worktree');
   }
-  if (registered.path !== candidate.path || candidate.path !== worktree) {
-    throw new Error('assignment worktree must use the exact registered canonical path');
-  }
   if (registered.branch !== expectedBranch) {
     throw new Error(`assignment worktree is not checked out on ${expectedBranch}`);
   }
