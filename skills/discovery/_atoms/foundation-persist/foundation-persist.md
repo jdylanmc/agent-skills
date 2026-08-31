@@ -1,6 +1,6 @@
 ---
 name: foundation-persist
-description: Persist one human-aligned Discovery foundation for a subject beneath docs/agent/discovery/, binding the aligned payload by digest, never overwriting or laundering durable evidence, staging the write atomically, then rereading and re-parsing it to verify the write and return its new revision.
+description: Persist one Discovery foundation beneath docs/agent/discovery/, binding human-aligned findings and post-alignment domain/frontier derivations by digest, retaining durable evidence, then rereading and re-parsing the atomic write.
 level: atom
 allowed-tools: ["execute"]
 includes: ["discovery/_atoms/foundation-persist/foundation-persist.mjs"]
@@ -14,9 +14,9 @@ Persist the aligned Discovery foundation for one subject as a durable
 repository artifact, so a later run can ground itself on the exact shared
 understanding a human agreed to rather than on conversation memory.
 
-From the caller's view this is one operation: hand in the aligned foundation and
-its payload digest, and receive back the persisted locator and its new revision,
-or a named refusal that wrote nothing.
+From the caller's view this is one operation: hand in the aligned findings, the
+domain model and frontier derived from them, and their binding receipts, then
+receive the persisted locator and revision or a named refusal.
 
 ## Required Files
 
@@ -52,11 +52,12 @@ The check refuses the links it can see; it does not prove the path stays safe.
 
 ## Schema version
 
-The artifact records a schema line, `- Schema: 1`, beside `- Subject:`. On parse
-a missing or unknown schema is refused with `unsupported-schema` rather than
-being read as the current shape. A future migration bumps the schema and teaches
-the parser the older shapes; until then, reading anything other than schema `1`
-is a refusal, not a silent best-effort parse.
+The artifact records `- Schema: 2` beside `- Subject:`. Schema 2 requires every
+aligned-claims, risk, and domain-model section. The parser also reads genuine
+schema 1 foundations from before issue #156, treating only those newly
+introduced fields as empty. A missing or unknown schema is refused with
+`unsupported-schema`; deleting a required schema 2 section is `invalid-input`,
+not a silent downgrade.
 
 ## Alignment and the payload binding
 
@@ -67,29 +68,35 @@ artifact records `alignment: confirmed` — the exact token
 `not-aligned` are refused with `unaligned`. Rereading is never approval;
 alignment stays human-owned.
 
-The alignment gate is bound, not asserted. The intake carries a required
-`alignedPayloadDigest`: the caller computes it with the exported
-`alignedPayloadDigestOf` over the payload it shows the human before alignment,
-and the helper recomputes the same canonical digest over the normalized payload
-it is about to persist. A mismatch is refused as `alignment-unbound`, so a caller
-cannot hand in `alignment: "verified"` beside bytes the human never saw.
+The alignment gate is bound, not asserted. Two modes are supported:
+
+- the legacy whole-payload mode carries `alignedPayloadDigest`, computed with
+  `alignedPayloadDigestOf`;
+- the canonical Discovery flow carries `alignedFindingsDigest`, computed with
+  `alignedFindingsDigestOf` over exactly the findings shown to the human, plus
+  `domainModelBasisDigest` and `frontierBasisDigest` receipts that must equal
+  that digest.
+
+A findings mismatch is `alignment-unbound`. A domain-model or frontier receipt
+that does not bind to those findings is `derivation-unbound`. This preserves
+the required order without claiming the human saw outputs produced only after
+alignment.
 
 Be precise about what the binding proves. It proves the persisted payload is
 byte-for-byte the payload that was digested. It does **not** prove a human
-understood or approved that payload — alignment is a human act this atom cannot
-witness. The digest covers the subject, the nine durable sets, the frontier, the
-next action, and the resolved list, in a canonical serialization that does not
-depend on JSON key order. It deliberately **excludes** `cycle`, `timestamp`, and
-`history`, because the write appends those and they cannot be known at alignment
-time. So the digest proves the aligned content, and proves nothing about the
-bookkeeping the write adds.
+understood or approved that payload — alignment is a human act this atom cannot witness. The whole-payload digest
+covers every durable set, including `domainModel`, plus frontier, next action,
+and resolved records. The aligned-findings digest excludes the post-alignment
+`domainModel`, frontier, and next action, which are instead bound by their basis
+receipts. Both deliberately exclude cycle, timestamp, and history.
 
 ## Retention — the no-overwrite, no-launder guarantee
 
 This is the load-bearing rule, and it is per field. Before writing, the helper
 reads and parses any existing artifact. Every previously recorded entry in the
-durable sets — confirmed facts, evidence references, decisions, constraints,
-assumptions, contradictions, open questions, scope, exclusions — **and the
+durable sets — confirmed facts, source, relationship, and boundary claims,
+evidence references, decisions, constraints, assumptions, contradictions,
+risks, open questions, scope, exclusions, and the domain model — **and the
 frontier** must reappear in the **same** field with at least its prior
 multiplicity, or be discharged by a `Resolved` record. Counts matter, so
 dropping one of two identical entries is a regression. An entry that leaves one
@@ -274,7 +281,8 @@ The JSON file is a version `1` intake record: `repositoryRoot`, `subject`
 (`id`, `slug`), the aligned `alignment` result, the `alignedPayloadDigest`, the
 `expectedPriorRevision` (the revision the cycle rehydrated, or `null` for a
 genuine first cycle), a `cycle` identifier, a canonical UTC `timestamp`, the
-nine durable sets, the current `frontier` and `nextAction`, and a `resolved`
+durable sets, including the aligned claims, risks, and domain model, the current
+`frontier` and `nextAction`, and a `resolved`
 list of `{field, entry, resolution}` records. Exit `0` prints one JSON object on
 standard output with the persisted `locator`, `revision`, subject identity, and
 the write-verification record. Any failure prints one
@@ -294,7 +302,8 @@ shows the human.
 | `usage` | The command-line arguments were not understood. |
 | `invalid-input` | The intake broke a shape, type, or bound, a rendered free-text field would open Markdown structure, a persisted string carried an ASCII control character, or a parsed artifact was not strictly and canonically recoverable. |
 | `unaligned` | The alignment result was not `verified` or `corrected`. |
-| `alignment-unbound` | The persisted payload did not match the supplied `alignedPayloadDigest`. |
+| `alignment-unbound` | The persisted payload or findings did not match the supplied alignment digest. |
+| `derivation-unbound` | The domain-model or frontier receipt did not bind to the aligned findings digest. |
 | `unsafe-destination` | The slug named a path outside `docs/agent/discovery/`, or a bounded path component was a symbolic link or a non-directory. |
 | `subject-mismatch` | An existing foundation at the destination belongs to a different subject. |
 | `foundation-regression` | A prior durable or frontier entry would be dropped, moved between sections, or a prior resolution or history line would be rewritten, or two conflicting resolutions name the same `(field, entry)`. |

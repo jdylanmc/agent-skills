@@ -1,6 +1,6 @@
 ---
 name: alignment-check
-description: Offer an interactive alignment check that verifies shared human understanding of the current discovery state before any discovery handoff is written.
+description: Offer an interactive alignment check that verifies shared human understanding of documented Discovery findings before domain modeling, frontier mapping, or persistence.
 level: atom
 allowed-tools: []
 includes: []
@@ -17,8 +17,8 @@ the same understanding before discovery state is persisted.
 
 | Input | Required | Meaning |
 | --- | --- | --- |
-| `discovery packet` | yes | The current evidence, decisions, questions, frontier, and recommended next action. |
-| `proposed handoff focus` | yes | The exact continuation context that would be written if aligned. |
+| `documented findings` | yes | The current evidence, facts, claims, decisions, assumptions, contradictions, risks, and open questions. |
+| `findings marker` | yes | The exact `findings-documented` marker returned by the acquisition cycle. |
 
 ## Operation
 
@@ -29,22 +29,25 @@ the same understanding before discovery state is persisted.
    - source claims that remain only claims;
    - contradictions and ambiguities;
    - decisions made;
-   - open questions;
-   - current frontier state;
-   - proposed next cycle.
-3. Ask whether that summary is the shared understanding to preserve before any
-   handoff is written.
-4. If the human corrects the summary, update the discovery packet and repeat
+   - open questions.
+3. Ask whether those documented findings are the shared understanding to use
+   for domain modeling.
+4. If the human corrects the summary, update the documented findings and repeat
    the alignment summary.
-5. Continue only when the human verifies the current discovery state as shared
-   understanding.
-6. If the human does not align, stop with `not-aligned` and no handoff.
+5. Continue only when the human verifies the documented findings as shared
+   understanding. Return a SHA-256 `aligned-findings-digest` over exactly those
+   findings so later domain-model, frontier, and persistence receipts can bind
+   their derivations to the aligned input without pretending the later outputs
+   were shown before alignment.
+6. If the human does not align, stop with `not-aligned`; produce no domain
+   model, frontier, foundation, or handoff.
 
 ## Output
 
 Return:
 
 - `alignment`: `offered`, `verified`, `corrected`, or `not-aligned`;
+- `aligned-findings-digest` for `verified` or `corrected`;
 - the exact aligned summary;
 - corrections that changed the discovery packet;
 - unresolved disagreements that block persistence.
@@ -55,5 +58,6 @@ Return:
 - It writes nothing.
 - It does not turn corrections into facts unless the human explicitly supplies
   them as decisions or source-backed evidence.
-- It is mandatory before every discovery handoff.
+- It is mandatory before domain modeling, frontier mapping, foundation
+  persistence, and every discovery handoff.
 - It verifies shared understanding; it is not a generic approval prompt.

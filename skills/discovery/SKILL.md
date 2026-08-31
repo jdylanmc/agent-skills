@@ -1,6 +1,6 @@
 ---
 name: discovery
-description: Run a human-aligned, evidence-preserving discovery loop for an unclear product, engineering, or workflow question until the known facts, open questions, decisions, blockers, and next action are clear. Use when the operator asks to run discovery, start a discovery loop, investigate requirements, clarify an unsettled problem, or maintain discovery state. Do not use to interrogate a single rough idea, map a domain, write a spec, create tickets, implement code, or mutate trackers without explicit approval.
+description: Run a human-aligned, evidence-preserving discovery loop for an unclear problem domain until the known facts, aligned domain model, frontier, blockers, and next action are clear. Use when terminology, actors, systems, ownership or trust boundaries, states, transitions, events, competing names, or relationships are unclear. Do not use to interrogate a single rough idea, map GitHub issues, tickets, work items, backlog graphs, dependencies, critical paths, delivery sequencing, roadmaps, decide ready work, write a spec, create tickets, or implement code.
 allowed-tools: ["execute","read","search","task"]
 includes: ["_base/_molecules/chronicler/chronicler.md","discovery/_atoms/foundation-rehydrate/foundation-rehydrate.md","discovery/_molecules/cycle-controller/cycle-controller.md","discovery/_atoms/tracker-update-gate/tracker-update-gate.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","discovery/_atoms/foundation-rehydrate/foundation-rehydrate.md","discovery/_molecules/cycle-controller/cycle-controller.md","discovery/_atoms/tracker-update-gate/tracker-update-gate.md"]
@@ -15,7 +15,10 @@ Run a bounded discovery loop, align with the human, and keep the evidence trail
 intact.
 
 ```text
-record -> rehydrate foundation -> cycle -> align -> persist foundation -> reread -> compact -> choose next cycle
+record -> rehydrate foundation -> acquire knowledge -> document findings -> align
+       -> model aligned domain -> map frontier -> persist full foundation
+       -> reread full foundation -> compact and persist handoff
+       -> reread compact handoff -> continue or exit
 ```
 
 Discovery is for unsettled work that needs evidence before it can become a
@@ -51,16 +54,17 @@ and one boundary.
    durable continuation state: every later cycle carries that exact ordered,
    field-qualified multiset forward and only appends newly aligned resolutions.
 3. Run [Cycle controller](./_molecules/cycle-controller/cycle-controller.md).
-   It runs the read-only discovery cycle, routes to `interrogate` or
-   `domain-mapping` when those jobs own the next question, dispatches a research
+   It runs the read-only knowledge-acquisition cycle, dispatches a research
    thread when the blocker is external knowledge, retrieves a human-supplied URI
    or path seed and folds its content in as untrusted `origin: seed` evidence,
-   incorporates the returned answers, map, cited findings, or seed claims, offers
-   an interactive human alignment check, persists the durable foundation for the
+   incorporates returned answers, cited findings, or seed claims, documents the
+   findings, offers an interactive human alignment check, runs Discovery's
+   aligned-findings-only domain model only after verified or corrected alignment, uses
+   that domain model to map the frontier, persists the full durable foundation for the
    subject beneath `docs/agent/discovery/`, rereads it to verify the write,
    writes the ephemeral bounded handoff whose compaction carries the exact
-   foundation locator and revision, reads it back, compacts the continuation
-   state, and chooses the next discovery cycle.
+   foundation locator and revision,    reads the full foundation back, compacts and persists the continuation
+   handoff, reads that compact handoff back, and continues or exits.
 4. If and only if the operator explicitly approves a tracker update, run
    [Tracker update gate](./_atoms/tracker-update-gate/tracker-update-gate.md).
    The discovery cycle body never mutates tracker state.
@@ -137,6 +141,9 @@ Return:
   agent must summarize what was found and uncovered, the current discovery
   state, and the proposed next cycle, then let the human correct it. Only a
   verified shared understanding can be persisted.
+- Only aligned context can be modeled or persisted. Offered, rejected, absent,
+  or otherwise unverified alignment cannot enter domain modeling, frontier
+  mapping, foundation persistence, or handoff.
 - Every cycle handoff is read back before it becomes the input to the next
   cycle. The reread handoff is compacted into the continuation focus for the
   next discovery pass. If read-back fails, stop with an incomplete handoff
@@ -145,8 +152,13 @@ Return:
   operator approval for the exact update.
 - Not interrogate. Use `interrogate` when one rough idea needs pointed
   document-grounded questioning before broader discovery.
-- Not domain mapping. Use `domain-mapping` when concepts, actors, systems,
-  terminology, boundaries, states, events, or relationships are the blocker.
+- Domain modeling is a Discovery-owned post-alignment step. Discovery composes
+  an aligned-findings-only local molecule; it never model-selects the
+  standalone human-only `/domain-mapping` wrapper.
+- Not backlog or delivery graphing. GitHub issues, tickets, work items, backlog
+  dependencies, critical paths, sequencing, roadmaps, and ready-work decisions
+  route to `chart-a-course`, `next-step-selection`, ticket planning, or direct
+  read-only tracker analysis.
 - Not proof of concept. Use `proof-of-concept` when a small bounded prototype
   would answer a discovery question more cheaply than more discussion or
   reading.

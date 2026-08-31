@@ -24,11 +24,11 @@ function flat(relativePath) {
   return read(relativePath).replace(/\s+/g, ' ');
 }
 
-test('domain-mapping is user-invocable and read-only', () => {
+test('domain-mapping is an explicit human-only read-only action', () => {
   const parsed = frontmatter(ENTRY);
 
   assert.equal(parsed.name, 'domain-mapping');
-  assert.equal(parsed.disableModelInvocation, false);
+  assert.equal(parsed.disableModelInvocation, true);
   assert.equal(parsed.userInvocable, true);
   assert.deepEqual(parsed.requiresSkills, []);
   assert.deepEqual(parsed.allowedTools, PINNED_TOOLS);
@@ -36,19 +36,20 @@ test('domain-mapping is user-invocable and read-only', () => {
   assert.ok(!parsed.allowedTools.includes('*'));
 });
 
-test('the routing description includes positive and negative triggers', () => {
+test('the routing description distinguishes explicit human use from excluded work graphs', () => {
   const { description } = frontmatter(ENTRY);
 
-  assert.match(description, /Use when/);
-  assert.match(description, /map a domain/);
+  assert.match(description, /Use only when/);
+  assert.match(description, /human invokes `\/domain-mapping`/);
   assert.match(description, /actors/);
   assert.match(description, /Do not use/);
-  assert.match(description, /interrogate/);
-  assert.match(description, /discovery/);
-  assert.match(description, /trackers/);
+  assert.match(description, /GitHub issues/);
+  assert.match(description, /dependency chains/);
+  assert.match(description, /critical paths/);
+  assert.match(description, /roadmaps/);
 });
 
-test('the skill composes chronicler and local domain units', () => {
+test('the wrapper composes its human-only domain operation', () => {
   const parsed = frontmatter(ENTRY);
   assert.deepEqual(parsed.composes, [
     '_base/_molecules/chronicler/chronicler.md',
@@ -60,7 +61,7 @@ test('the skill composes chronicler and local domain units', () => {
     '_base/_molecules/chronicler/chronicler.md',
     'domain-mapping/_molecules/domain-map/domain-map.md',
     'domain-mapping/_atoms/domain-inventory/domain-inventory.md',
-    'domain-mapping/_atoms/relationship-map/relationship-map.md',
+    '_base/_atoms/relationship-map/relationship-map.md',
   ]) {
     assert.ok(closure.includes(unit), `${ENTRY} must reach ${unit}`);
   }
@@ -87,6 +88,7 @@ test('domain-mapping explicitly refuses neighboring jobs', () => {
   assert.match(entry, /Not discovery\./);
   assert.match(entry, /Not specification\./);
   assert.match(entry, /Not implementation planning\./);
+  assert.match(entry, /Not backlog mapping\./);
   assert.match(entry, /Read-only with respect to repository and trackers/);
 });
 
@@ -94,7 +96,7 @@ test('the map keeps entities, relationships, boundaries, and uncertainty separat
   const entry = flat(ENTRY);
   const molecule = flat('domain-mapping/_molecules/domain-map/domain-map.md');
   const inventory = flat('domain-mapping/_atoms/domain-inventory/domain-inventory.md');
-  const relationships = flat('domain-mapping/_atoms/relationship-map/relationship-map.md');
+  const relationships = flat('_base/_atoms/relationship-map/relationship-map.md');
 
   assert.match(entry, /glossary entries with aliases, contested terms/);
   assert.match(entry, /relationships between entities, with direction, confidence, and evidence/);
@@ -102,6 +104,16 @@ test('the map keeps entities, relationships, boundaries, and uncertainty separat
   assert.match(molecule, /overloaded or contested terms/);
   assert.match(inventory, /Mark guesses as guesses/);
   assert.match(relationships, /Do not invent a relationship/);
+});
+
+test('the human operation is local and its relationship atom is shared', () => {
+  const map = frontmatter('domain-mapping/_molecules/domain-map/domain-map.md');
+  assert.deepEqual(map.usedBy, ['domain-mapping/SKILL.md']);
+  const relationships = frontmatter('_base/_atoms/relationship-map/relationship-map.md');
+  assert.deepEqual(relationships.usedBy, [
+    'discovery/_molecules/aligned-domain-model/aligned-domain-model.md',
+    'domain-mapping/_molecules/domain-map/domain-map.md',
+  ]);
 });
 
 test('the package carries a plain human-readable intent', () => {
