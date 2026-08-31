@@ -54,6 +54,7 @@ export const EXIT_FINDINGS = 2;
 const TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const MANIFEST_START = '<!-- technical-design-manifest:start -->';
 const MANIFEST_END = '<!-- technical-design-manifest:end -->';
+const APPROVAL_REMOTE = 'origin';
 
 function object(value, field) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -217,15 +218,44 @@ function defaultGitRunner(repositoryRoot, args) {
   }
 }
 
+function linesOutsideMarkdownFences(bytes) {
+  const lines = [];
+  let fence = null;
+  for (const line of bytes.toString('utf8').split(/\r?\n/)) {
+    const opening = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    const validOpening = opening
+      && (opening[1][0] === '~' || !opening[2].includes('`'));
+    if (validOpening && !fence) {
+      fence = { marker: opening[1][0], length: opening[1].length };
+      lines.push(null);
+      continue;
+    }
+    const closing = fence
+      ? line.match(new RegExp(`^ {0,3}(\\${fence.marker}{${fence.length},})[ \\t]*$`))
+      : null;
+    if (closing) {
+      fence = null;
+      lines.push(null);
+      continue;
+    }
+    lines.push(fence ? null : line);
+  }
+  return fence ? null : lines;
+}
+
 function requirementsFromNano(bytes) {
-  const lines = bytes.toString('utf8').split(/\r?\n/);
-  const start = lines.findIndex((line) => line.trim() === '## Acceptance Criteria');
-  if (start === -1) return null;
-  const endOffset = lines.slice(start + 1).findIndex((line) => line.startsWith('## '));
+  const lines = linesOutsideMarkdownFences(bytes);
+  if (!lines) return null;
+  const headings = lines
+    .map((line, index) => (line?.trim() === '## Acceptance Criteria' ? index : -1))
+    .filter((index) => index !== -1);
+  if (headings.length !== 1) return null;
+  const start = headings[0];
+  const endOffset = lines.slice(start + 1).findIndex((line) => line?.startsWith('## '));
   const end = endOffset === -1 ? lines.length : start + 1 + endOffset;
   const requirements = [];
   for (const line of lines.slice(start + 1, end)) {
-    if (line.trim() === '') continue;
+    if (line === null || line.trim() === '') continue;
     const match = line.match(/^- ([A-Za-z0-9][A-Za-z0-9._-]*):\s+(.+)$/);
     if (!match) return null;
     requirements.push({ id: match[1], text: match[2].trim() });
@@ -259,29 +289,36 @@ function metadataValue(bytes, label) {
 function verifiedApproval(repositoryRoot, approval, field, expected, runGit) {
   if (approval.state !== 'approved') return false;
   if (approval.boundary !== 'git-default-branch'
-      || typeof approval.remote !== 'string'
+      || approval.remote !== APPROVAL_REMOTE
+      || typeof approval.repositoryUrl !== 'string'
+      || approval.repositoryUrl.trim() === ''
       || typeof approval.defaultBranch !== 'string'
-      || approval.defaultBranchRef !== `${approval.remote}/${approval.defaultBranch}`
+      || approval.defaultBranchRef !== `${APPROVAL_REMOTE}/${approval.defaultBranch}`
       || approval.artifactPath !== expected.artifactPath
       || approval.contentDigest !== expected.contentDigest
       || !/^[0-9a-f]{40}$/.test(approval.publishedCommit ?? '')
       || Number.isNaN(Date.parse(approval.observedAt))) return false;
   const commands = [
-    ['fetch', approval.remote],
-    ['remote', 'get-url', approval.remote],
-    ['rev-parse', '--symbolic-full-name', approval.defaultBranchRef],
-    ['symbolic-ref', `refs/remotes/${approval.remote}/HEAD`],
+    ['fetch', APPROVAL_REMOTE],
+    ['remote', 'get-url', APPROVAL_REMOTE],
+    ['ls-remote', '--symref', APPROVAL_REMOTE, 'HEAD'],
     ['rev-parse', approval.defaultBranchRef],
-    ['show', `${approval.defaultBranchRef}:${approval.artifactPath}`],
+    ['show', `${approval.publishedCommit}:${approval.artifactPath}`],
   ];
   const results = commands.map((args) => runGit({ repositoryRoot, args }));
   if (results.some((result) => result?.status !== 'ok')) return false;
-  const symbolicRef = String(results[2].stdout).trim();
-  const remoteHead = String(results[3].stdout).trim();
-  const publishedCommit = String(results[4].stdout).trim().toLowerCase();
-  const publishedBytes = Buffer.isBuffer(results[5].stdout)
-    ? results[5].stdout
-    : Buffer.from(String(results[5].stdout));
+  const remoteUrl = String(results[1].stdout).trim();
+  const remoteHeadLines = String(results[2].stdout).trim().split(/\r?\n/);
+  const remoteHeadRef = remoteHeadLines
+    .map((line) => /^ref:\s+(\S+)\s+HEAD$/.exec(line)?.[1])
+    .find(Boolean);
+  const remoteHeadCommit = remoteHeadLines
+    .map((line) => /^([0-9a-fA-F]{40})\s+HEAD$/.exec(line)?.[1])
+    .find(Boolean);
+  const publishedCommit = String(results[3].stdout).trim().toLowerCase();
+  const publishedBytes = Buffer.isBuffer(results[4].stdout)
+    ? results[4].stdout
+    : Buffer.from(String(results[4].stdout));
   const publishedDigest = crypto.createHash('sha256').update(publishedBytes).digest('hex');
   const requirementsMatch = !expected.functionalRequirements
     || digestFunctionalRequirements(requirementsFromNano(publishedBytes) ?? [])
@@ -298,8 +335,9 @@ function verifiedApproval(repositoryRoot, approval, field, expected, runGit) {
       recordMatch = false;
     }
   }
-  return symbolicRef === `refs/remotes/${approval.remote}/${approval.defaultBranch}`
-    && remoteHead === `refs/remotes/${approval.remote}/${approval.defaultBranch}`
+  return remoteUrl === approval.repositoryUrl
+    && remoteHeadRef === `refs/heads/${approval.defaultBranch}`
+    && remoteHeadCommit?.toLowerCase() === approval.publishedCommit
     && publishedCommit === approval.publishedCommit
     && publishedDigest === expected.contentDigest
     && requirementsMatch

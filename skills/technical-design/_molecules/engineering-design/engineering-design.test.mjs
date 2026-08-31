@@ -22,6 +22,7 @@ const fullSpecificationPath = `docs/agent/specs/${specificationSlug}.full.md`;
 const nfrPath = `docs/agent/nfr/${fixtureId}.md`;
 const nfrApprovalPath = `docs/agent/nfr/approvals/${fixtureId}.json`;
 const publishedCommit = 'c'.repeat(40);
+const repositoryUrl = 'https://github.com/jdylanmc/agent-skills.git';
 const specificationBytes = [
   '# Checkout specification',
   '',
@@ -127,6 +128,7 @@ function approval(artifactPath, contentDigest, overrides = {}) {
     state: 'approved',
     boundary: 'git-default-branch',
     remote: 'origin',
+    repositoryUrl,
     defaultBranch: 'main',
     defaultBranchRef: 'origin/main',
     artifactPath,
@@ -140,19 +142,19 @@ function approval(artifactPath, contentDigest, overrides = {}) {
 function fakeGit({ args }) {
   if (args[0] === 'fetch') return { status: 'ok', stdout: Buffer.from('') };
   if (args[0] === 'remote' && args[1] === 'get-url') {
-    return { status: 'ok', stdout: Buffer.from('https://github.com/jdylanmc/agent-skills.git\n') };
+    return { status: 'ok', stdout: Buffer.from(`${repositoryUrl}\n`) };
   }
-  if (args[0] === 'rev-parse' && args[1] === '--symbolic-full-name') {
-    return { status: 'ok', stdout: Buffer.from('refs/remotes/origin/main\n') };
-  }
-  if (args[0] === 'symbolic-ref') {
-    return { status: 'ok', stdout: Buffer.from('refs/remotes/origin/main\n') };
+  if (args[0] === 'ls-remote') {
+    return {
+      status: 'ok',
+      stdout: Buffer.from(`ref: refs/heads/main\tHEAD\n${publishedCommit}\tHEAD\n`),
+    };
   }
   if (args[0] === 'rev-parse') {
     return { status: 'ok', stdout: Buffer.from(`${publishedCommit}\n`) };
   }
   if (args[0] === 'show') {
-    const relativePath = args[1].slice('origin/main:'.length);
+    const relativePath = args[1].slice(args[1].indexOf(':') + 1);
     try {
       return { status: 'ok', stdout: fs.readFileSync(path.join(repositoryRoot, relativePath)) };
     } catch {
@@ -593,6 +595,103 @@ test('approval refuses an observation whose remote was not freshly fetched', () 
   });
   assert.equal(result.status, 'needs-decision');
   assert.equal(result.downstream.eligible, false);
+});
+
+test('approval authority is fixed to the repository origin remote', () => {
+  const packet = design();
+  packet.specification.approval.remote = 'caller-selected';
+  packet.specification.approval.defaultBranchRef = 'caller-selected/main';
+  packet.designApproval.remote = 'caller-selected';
+  packet.designApproval.defaultBranchRef = 'caller-selected/main';
+  const result = resolveEngineeringDesignRaw(packet, {
+    runGit: ({ args }) => {
+      if (args[0] === 'fetch') return { status: 'ok', stdout: Buffer.from('') };
+      if (args[0] === 'remote') return { status: 'ok', stdout: Buffer.from('https://attacker.invalid/repository.git\n') };
+      if (args[0] === 'ls-remote') {
+        return {
+          status: 'ok',
+          stdout: Buffer.from(`ref: refs/heads/main\tHEAD\n${publishedCommit}\tHEAD\n`),
+        };
+      }
+      if (args[0] === 'rev-parse') return { status: 'ok', stdout: Buffer.from(`${publishedCommit}\n`) };
+      if (args[0] === 'show') return fakeGit({ args: ['show', args[1].replace('caller-selected/', 'origin/')] });
+      return { status: 'error', stderr: 'unexpected command' };
+    },
+  });
+  assert.equal(result.status, 'needs-decision');
+  assert.equal(result.specification.approved, false);
+  assert.equal(result.designApproval.approved, false);
+  assert.equal(result.downstream.eligible, false);
+});
+
+test('approval refuses an origin URL that does not match the recorded repository identity', () => {
+  const packet = design();
+  const result = resolveEngineeringDesignRaw(packet, {
+    runGit: ({ args }) => {
+      if (args[0] === 'remote' && args[1] === 'get-url') {
+        return { status: 'ok', stdout: Buffer.from('https://attacker.invalid/repository.git\n') };
+      }
+      return fakeGit({ args });
+    },
+  });
+  assert.equal(result.status, 'needs-decision');
+  assert.equal(result.specification.approved, false);
+  assert.equal(result.designApproval.approved, false);
+  assert.equal(result.downstream.eligible, false);
+});
+
+test('approval reads artifact bytes from the verified immutable commit', () => {
+  const packet = design();
+  const shown = [];
+  const result = resolveEngineeringDesignRaw(packet, {
+    runGit: ({ args }) => {
+      if (args[0] === 'show') shown.push(args[1]);
+      return fakeGit({ args });
+    },
+  });
+  assert.equal(result.status, 'complete');
+  assert.ok(shown.length > 0);
+  assert.ok(shown.every((target) => target.startsWith(`${publishedCommit}:`)));
+});
+
+test('specification approval ignores fenced acceptance-criteria decoys', () => {
+  const packet = design();
+  const decoy = [
+    '```markdown',
+    '## Acceptance Criteria',
+    '',
+    '- AC-DECOY: A forged criterion replaces product authority.',
+    '```',
+    '',
+    specificationBytes,
+  ].join('\n');
+  writeRepositoryFile(specificationPath, decoy);
+  packet.specification.contentDigest = digest(decoy);
+  packet.specification.approval = approval(specificationPath, packet.specification.contentDigest);
+  persistDesignPacket(packet);
+  const result = resolveEngineeringDesign(packet);
+  assert.equal(result.status, 'complete');
+  assert.equal(result.specification.approved, true);
+  assert.equal(result.downstream.eligible, true);
+  writeRepositoryFile(specificationPath, specificationBytes);
+});
+
+test('specification approval rejects malformed and unterminated fences', () => {
+  for (const prefix of [
+    ['````markdown', '## Acceptance Criteria', '- AC-DECOY: hidden', '```'],
+    ['~~~markdown', '## Acceptance Criteria', '- AC-DECOY: hidden'],
+  ]) {
+    const malformed = [...prefix, '', specificationBytes].join('\n');
+    writeRepositoryFile(specificationPath, malformed);
+    const packet = design();
+    packet.specification.contentDigest = digest(malformed);
+    packet.specification.approval = approval(specificationPath, packet.specification.contentDigest);
+    persistDesignPacket(packet);
+    const result = resolveEngineeringDesign(packet);
+    assert.equal(result.specification.approved, false);
+    assert.equal(result.downstream.eligible, false);
+  }
+  writeRepositoryFile(specificationPath, specificationBytes);
 });
 
 test('design approval rejects fenced decoys and duplicate identity metadata', () => {
