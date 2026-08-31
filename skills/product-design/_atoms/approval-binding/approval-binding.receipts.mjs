@@ -71,10 +71,11 @@ function verifiedPayloads({ envelopes, trustedPublicKeys, streamId }) {
 export function createAppendOnlyEventVerifier(options) {
   const payloads = verifiedPayloads(options);
   return (event) => {
-    const payloadId = event?.receiptId ?? event?.eventId;
+    const payloadId = event?.receiptId ?? event?.eventId ?? event?.observationId;
     return typeof payloadId === 'string' && payloads.get(payloadId) === canonical(event);
   };
 }
 
 export const createHumanReceiptVerifier = createAppendOnlyEventVerifier;
 export const createSpecialistEventVerifier = createAppendOnlyEventVerifier;
+export const createWalkthroughObservationVerifier = createAppendOnlyEventVerifier;

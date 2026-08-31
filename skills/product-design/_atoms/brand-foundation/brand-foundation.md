@@ -17,7 +17,9 @@ Create the first runnable foundation beneath the subject workspace:
 
 - its own `package.json` and `package-lock.json`;
 - static HTML entry, CSS foundation, and JavaScript behavior entry;
-- substantive Storybook configuration and stories;
+- substantive Storybook configuration and stories using the exact locked
+  `@storybook/html-vite` framework package, with that framework named in the
+  Storybook configuration;
 - fixed allowlisted `start` and `storybook` commands emitted only for explicit
   human execution and review;
 - mocked content;

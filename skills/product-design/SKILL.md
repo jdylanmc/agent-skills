@@ -63,6 +63,10 @@ record -> verify Discovery bytes/receipt -> brand specialist -> human brand alig
    feature/flow walkthrough whose visible overlays identify the current step,
    target, expected interaction, why the behavior exists, linked decisions,
    mocked behavior and limitations, resulting state, and accessibility behavior.
+   A separately supplied trusted human-run observation must exercise every
+   declared walkthrough step and restart path, proving visible targets,
+   interactions, and resulting states with exact reverse coverage. Produced
+   walkthrough metadata alone is never executable evidence.
 7. Record Design Space evidence: axes, hypotheses, comparison criteria, budget,
    accountable human, stop rationale, and rejected alternatives. One justified
    concept is valid; there is no fixed count.
@@ -80,6 +84,9 @@ record -> verify Discovery bytes/receipt -> brand specialist -> human brand alig
    the surrounding human-interaction event producer must verify actor,
    role/context, action, channel/source, subject, time/sequence, and digests;
    receipt JSON alone never advances a gate.
+   The supported executable GitHub host composes these signed receipt and
+   walkthrough verifiers with official merge observation and exact merged-tree
+   validation; no prose-only host wiring may claim approval.
 11. Publish through the surrounding delivery/provider workflow. This skill
    does not merge or produce its own merge receipt. Report `approved` only
    after that workflow supplies a trusted observation naming the change

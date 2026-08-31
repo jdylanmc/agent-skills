@@ -13,7 +13,9 @@ import {
   CONTRACT_SCHEMA,
   MERGE_SCHEMA,
   RECEIPT_SCHEMA,
+  semanticVersionSatisfies,
   SPECIALIST_EVENT_SCHEMA,
+  WALKTHROUGH_OBSERVATION_SCHEMA,
   STATUS_PRECEDENCE,
   STATUSES,
   validateApprovalBinding,
@@ -23,9 +25,11 @@ import {
   createGitHubRepositoryResolver,
   observeGitHubMerge,
 } from './approval-binding.github.mjs';
+import { validateThroughGitHubHost } from './approval-binding.host.mjs';
 import {
   createHumanReceiptVerifier,
   createSpecialistEventVerifier,
+  createWalkthroughObservationVerifier,
   RECEIPT_ENVELOPE_SCHEMA,
 } from './approval-binding.receipts.mjs';
 
@@ -48,7 +52,7 @@ const canonical = (value) => {
 function receiptEnvelopes(payloads, streamId, privateKey) {
   let previousDigest = null;
   return payloads.map((payload, index) => {
-    const payloadId = payload.receiptId ?? payload.eventId;
+    const payloadId = payload.receiptId ?? payload.eventId ?? payload.observationId;
     const payloadDigest = sha(canonical(payload));
     const unsigned = {
       schema: RECEIPT_ENVELOPE_SCHEMA,
@@ -72,6 +76,7 @@ function siteFiles(root, siteRoot, title, { storybook = false } = {}) {
   if (storybook) {
     scripts.storybook = 'storybook dev --host 127.0.0.1 --port 6006 --ci';
     devDependencies.storybook = '8.6.14';
+    devDependencies['@storybook/html-vite'] = '8.6.14';
   }
   const files = {
     [`${siteRoot}/package.json`]: JSON.stringify({
@@ -102,6 +107,11 @@ function siteFiles(root, siteRoot, title, { storybook = false } = {}) {
             resolved: 'https://registry.npmjs.org/storybook/-/storybook-8.6.14.tgz',
             integrity: 'sha512-YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=',
           },
+          'node_modules/@storybook/html-vite': {
+            version: '8.6.14',
+            resolved: 'https://registry.npmjs.org/@storybook/html-vite/-/html-vite-8.6.14.tgz',
+            integrity: 'sha512-c3Rvcnlib29rLWh0bWwtdml0ZS1maXh0dXJl',
+          },
         } : {}),
       },
     }),
@@ -110,7 +120,7 @@ function siteFiles(root, siteRoot, title, { storybook = false } = {}) {
     [`${siteRoot}/app.js`]: 'document.body.dataset.ready="true";\n',
   };
   if (storybook) {
-    files[`${siteRoot}/.storybook/main.js`] = 'export default { stories: ["../src/*.stories.js"] };\n';
+    files[`${siteRoot}/.storybook/main.js`] = 'export default { stories: ["../src/*.stories.js"], framework: "@storybook/html-vite" };\n';
     files[`${siteRoot}/src/example.stories.js`] = 'export default { title: "Example" }; export const Primary = { render: () => "example" };\n';
   }
   for (const [relative, bytes] of Object.entries(files)) {
@@ -423,6 +433,35 @@ function fixture() {
       sequence: 4,
     },
   ];
+  const walkthroughObservations = packet.concepts.flatMap((concept) => concept.walkthroughs.flatMap(
+    (walkthrough) => walkthrough.steps.map((step, index) => ({
+      schema: WALKTHROUGH_OBSERVATION_SCHEMA,
+      observationId: `observation.${step.id}`,
+      subjectId: 'checkout',
+      prototypeRevision,
+      conceptId: concept.id,
+      conceptDigest: concept.digest,
+      walkthroughId: walkthrough.id,
+      stepId: step.id,
+      overlayVisible: true,
+      overlay: step.overlay,
+      target: step.target,
+      targetVisible: true,
+      interaction: step.interaction,
+      interactionSucceeded: true,
+      expectedStateId: step.expectedStateId,
+      observedStateId: step.expectedStateId,
+      nextStepId: step.nextStepId,
+      observedNextStepId: step.nextStepId,
+      restartControlId: walkthrough.restartControlId,
+      restartStateId: walkthrough.restartStateId,
+      observedRestartStateId: walkthrough.restartStateId,
+      channel: 'trusted-human-run-browser',
+      sourceId: `browser-session-${concept.id}`,
+      observedAt: `2026-08-31T12:02:${55 + index}Z`,
+      sequence: index + 1,
+    })),
+  ));
   const mergeObservation = {
     schema: MERGE_SCHEMA,
     provider: 'github',
@@ -441,16 +480,20 @@ function fixture() {
     repositoryRoot: root,
     humanReceipts: receipts,
     specialistObservations,
+    walkthroughObservations,
     mergeObservation,
     verifyHumanReceipt: () => true,
     verifySpecialistObservation: () => true,
+    verifyWalkthroughObservation: () => true,
     verifyMergeObservation: () => true,
     resolveExpectedRepository: () => 'jdylanmc/example',
     verifyGitAncestry: () => true,
     readMergedArtifact: (_repo, _revision, artifactPath) => files[artifactPath],
+    listMergedWorkspaceArtifacts: () => Object.keys(files),
   };
   return {
-    root, packet, receipts, specialistObservations, mergeObservation, options, files,
+    root, packet, receipts, specialistObservations, walkthroughObservations,
+    mergeObservation, options, files,
     values: { discoveryDigest, prototypeRevision, brandDigest, conceptDigest, artifactSetDigest, contractDigest },
   };
 }
@@ -508,6 +551,16 @@ function addRejectedConcept(value) {
     digest: sha(added[artifactPath]),
   })));
   value.packet.artifactManifest.sort((a, b) => bytewise(a.path, b.path));
+  const newObservation = structuredClone(value.walkthroughObservations[0]);
+  newObservation.observationId = 'observation.step.compact';
+  newObservation.conceptId = concept.id;
+  newObservation.walkthroughId = 'walkthrough.compact';
+  newObservation.stepId = 'step.compact';
+  newObservation.conceptDigest = concept.digest;
+  newObservation.sourceId = `browser-session-${concept.id}`;
+  newObservation.sequence = value.walkthroughObservations.length + 1;
+  newObservation.observedAt = '2026-08-31T12:02:57Z';
+  value.walkthroughObservations.push(newObservation);
   bindCurrentConceptRevision(value);
   const artifactSetDigest = setDigest(value.packet.artifactManifest);
   value.receipts[3].artifactSetDigest = artifactSetDigest;
@@ -559,6 +612,20 @@ test('canonical artifact ordering is locale-independent code-unit order', () => 
   assert.equal(canonicalArtifactSetDigest(records.reverse()), expected);
 });
 
+test('semantic-version compatibility matches npm partial and prerelease ordering', () => {
+  for (const [version, range, expected] of [
+    ['1.2.1', '>1.2', false],
+    ['1.3.0', '>1.2', true],
+    ['1.2.5', '<=1.2', true],
+    ['1.3.0', '<=1.2', false],
+    ['1.2.3-alpha.9', '>=1.2.3-alpha.10', false],
+    ['1.2.3-alpha.10', '>=1.2.3-alpha.9', true],
+    ['1.5.0-beta', '^1.0.0', false],
+  ]) {
+    assert.equal(semanticVersionSatisfies(version, range), expected, `${version} ${range}`);
+  }
+});
+
 test('approves only with external receipts and trusted merged default-branch observation', () => {
   const fixtureData = fixture();
   const result = validateApprovalBinding(fixtureData.packet, fixtureData.options);
@@ -592,6 +659,11 @@ test('signed digest-chained runtime envelopes provide concrete fail-closed recei
     envelopes: receiptEnvelopes(data.specialistObservations, 'specialist-events', privateKey),
     trustedPublicKeys,
     streamId: 'specialist-events',
+  });
+  data.options.verifyWalkthroughObservation = createWalkthroughObservationVerifier({
+    envelopes: receiptEnvelopes(data.walkthroughObservations, 'walkthrough-events', privateKey),
+    trustedPublicKeys,
+    streamId: 'walkthrough-events',
   });
   const exec = (command, args) => ({
     status: 0,
@@ -787,6 +859,46 @@ test('requires isolated npm and substantive Storybook/static sites with bounded 
 });
 
 test('requires complete npm lock closure with generated-style package metadata', () => {
+  const ranged = fixture();
+  const rangedLockPath = path.join(ranged.root, ranged.packet.brand.packageLockPath);
+  const rangedLock = JSON.parse(fs.readFileSync(rangedLockPath, 'utf8'));
+  rangedLock.packages['node_modules/storybook'].dependencies = { helper: '^2.3.0' };
+  rangedLock.packages['node_modules/@storybook/html-vite'].peerDependencies = {
+    optionalHelper: '>= 2.1.2 < 3.0.0',
+  };
+  rangedLock.packages['node_modules/@storybook/html-vite'].peerDependenciesMeta = {
+    optionalHelper: { optional: true },
+  };
+  rangedLock.packages['node_modules/helper'] = {
+    version: '2.4.1',
+    resolved: 'https://registry.npmjs.org/helper/-/helper-2.4.1.tgz',
+    integrity: 'sha512-aGVscGVyLXRyYW5zaXRpdmUtZml4dHVyZQ==',
+  };
+  fs.writeFileSync(rangedLockPath, JSON.stringify(rangedLock));
+  ranged.files[ranged.packet.brand.packageLockPath] = fs.readFileSync(rangedLockPath);
+  ranged.packet.artifactManifest.find(({ path: artifactPath }) => artifactPath === ranged.packet.brand.packageLockPath).digest = sha(fs.readFileSync(rangedLockPath));
+  ranged.packet.brand.digest = setDigest(ranged.packet.artifactManifest.filter(({ path: artifactPath }) => ranged.packet.brand.artifactPaths.includes(artifactPath)));
+  ranged.receipts[1].brandDigest = ranged.packet.brand.digest;
+  ranged.receipts[2].brandDigest = ranged.packet.brand.digest;
+  ranged.receipts[3].brandDigest = ranged.packet.brand.digest;
+  ranged.specialistObservations[1].artifactRevision = ranged.packet.brand.digest;
+  ranged.specialistObservations[2].artifactRevision = ranged.packet.brand.digest;
+  ranged.packet.concepts[0].brandRevision = ranged.packet.brand.digest;
+  bindCurrentConceptRevision(ranged);
+  rewriteContract(ranged, (contract) => {
+    contract.brandRevision = ranged.packet.brand.digest;
+  });
+  assert.equal(validateApprovalBinding(ranged.packet, ranged.options).status, 'approved');
+
+  const requiredPeer = fixture();
+  const requiredPeerPath = path.join(requiredPeer.root, requiredPeer.packet.brand.packageLockPath);
+  const requiredPeerLock = JSON.parse(fs.readFileSync(requiredPeerPath, 'utf8'));
+  requiredPeerLock.packages['node_modules/storybook'].peerDependencies = { missingPeer: '>= 2.1.2 < 3.0.0' };
+  fs.writeFileSync(requiredPeerPath, JSON.stringify(requiredPeerLock));
+  requiredPeer.packet.artifactManifest.find(({ path: artifactPath }) => artifactPath === requiredPeer.packet.brand.packageLockPath).digest = sha(fs.readFileSync(requiredPeerPath));
+  requiredPeer.packet.brand.digest = setDigest(requiredPeer.packet.artifactManifest.filter(({ path: artifactPath }) => requiredPeer.packet.brand.artifactPaths.includes(artifactPath)));
+  assert.equal(errorCode(() => validateApprovalBinding(requiredPeer.packet, requiredPeer.options)), 'invalid-input');
+
   const truncated = fixture();
   const lockPath = path.join(truncated.root, truncated.packet.brand.packageLockPath);
   const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
@@ -830,6 +942,37 @@ test('requires complete npm lock closure with generated-style package metadata',
 });
 
 test('Storybook remains brand-root static configuration and concepts cannot import or carry stories', () => {
+  const missingFramework = fixture();
+  const missingFrameworkPath = path.join(missingFramework.root, missingFramework.packet.brand.storybookConfigPath);
+  const missingFrameworkBytes = 'export default { stories: ["../src/*.stories.js"] };\n';
+  fs.writeFileSync(missingFrameworkPath, missingFrameworkBytes);
+  missingFramework.packet.artifactManifest.find(({ path: artifactPath }) => artifactPath === missingFramework.packet.brand.storybookConfigPath).digest = sha(missingFrameworkBytes);
+  missingFramework.packet.brand.digest = setDigest(missingFramework.packet.artifactManifest.filter(({ path: artifactPath }) => missingFramework.packet.brand.artifactPaths.includes(artifactPath)));
+  assert.equal(errorCode(() => validateApprovalBinding(missingFramework.packet, missingFramework.options)), 'invalid-site');
+
+  for (const replacement of ['lib/example.stories.js', 'src/example.stories.ts']) {
+    const misplaced = fixture();
+    const oldPath = misplaced.packet.brand.storybookStoryPath;
+    const siteRoot = path.posix.dirname(misplaced.packet.brand.packageJsonPath);
+    const newPath = `${siteRoot}/${replacement}`;
+    const bytes = misplaced.files[oldPath];
+    fs.mkdirSync(path.dirname(path.join(misplaced.root, newPath)), { recursive: true });
+    fs.renameSync(path.join(misplaced.root, oldPath), path.join(misplaced.root, newPath));
+    delete misplaced.files[oldPath];
+    misplaced.files[newPath] = bytes;
+    misplaced.packet.brand.storybookStoryPath = newPath;
+    misplaced.packet.brand.artifactPaths = misplaced.packet.brand.artifactPaths.map(
+      (artifactPath) => artifactPath === oldPath ? newPath : artifactPath,
+    );
+    const manifest = misplaced.packet.artifactManifest.find(({ path: artifactPath }) => artifactPath === oldPath);
+    manifest.path = newPath;
+    misplaced.packet.artifactManifest.sort((left, right) => bytewise(left.path, right.path));
+    misplaced.packet.brand.digest = setDigest(misplaced.packet.artifactManifest.filter(
+      ({ path: artifactPath }) => misplaced.packet.brand.artifactPaths.includes(artifactPath),
+    ));
+    assert.equal(errorCode(() => validateApprovalBinding(misplaced.packet, misplaced.options)), 'invalid-site');
+  }
+
   for (const configBytes of [
     'import config from "/outside.js"; export default { stories: [config] };\n',
     'export default { stories: ["../../outside/*.stories.js"] };\n',
@@ -880,7 +1023,30 @@ test('requires brand outputs, Design Space evidence, walkthrough explanations, l
   const navigation = fixture();
   navigation.packet.concepts[0].walkthroughs[0].steps[0].nextStepId = 'step.missing';
   bindCurrentConceptRevision(navigation);
-  assert.equal(errorCode(() => validateApprovalBinding(navigation.packet, navigation.options)), 'cross-reference');
+  assert.equal(errorCode(() => validateApprovalBinding(navigation.packet, navigation.options)), 'invalid-evidence');
+});
+
+test('requires trusted exact reverse coverage of human-run walkthrough behavior', () => {
+  const missing = fixture();
+  missing.options.walkthroughObservations = [];
+  assert.equal(errorCode(() => validateApprovalBinding(missing.packet, missing.options)), 'incomplete');
+
+  const untrusted = fixture();
+  untrusted.options.verifyWalkthroughObservation = () => false;
+  assert.equal(errorCode(() => validateApprovalBinding(untrusted.packet, untrusted.options)), 'untrusted-walkthrough-observation');
+
+  const wrongState = fixture();
+  wrongState.walkthroughObservations[0].observedStateId = 'state.start';
+  assert.equal(errorCode(() => validateApprovalBinding(wrongState.packet, wrongState.options)), 'invalid-evidence');
+
+  const extra = fixture();
+  extra.walkthroughObservations.push({
+    ...extra.walkthroughObservations[0],
+    observationId: 'observation.extra',
+    sequence: 2,
+    observedAt: '2026-08-31T12:02:56Z',
+  });
+  assert.equal(errorCode(() => validateApprovalBinding(extra.packet, extra.options)), 'invalid-evidence');
 });
 
 test('parses the exact interaction contract and rejects missing fields and broken cross-references', () => {
@@ -1094,6 +1260,63 @@ test('unmerged commits, untrusted observations, wrong destinations, and ancestry
   fork.mergeObservation.repository = 'attacker/example';
   fork.options.verifyMergeObservation = () => true;
   assert.equal(errorCode(() => validateApprovalBinding(fork.packet, fork.options)), 'invalid-merge');
+
+  const extraMergedArtifact = fixture();
+  extraMergedArtifact.options.listMergedWorkspaceArtifacts = () => [
+    ...Object.keys(extraMergedArtifact.files),
+    `${extraMergedArtifact.packet.workspace}/unapproved.txt`,
+  ];
+  assert.equal(errorCode(() => validateApprovalBinding(
+    extraMergedArtifact.packet,
+    extraMergedArtifact.options,
+  )), 'invalid-merge');
+});
+
+test('executable GitHub host composes signed evidence and provider verification', () => {
+  const data = fixture();
+  data.packet.artifactManifest[0] = {
+    path: `./${data.packet.artifactManifest[0].path}`,
+    digest: data.packet.artifactManifest[0].digest.toUpperCase(),
+  };
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const evidence = {
+    trustedPublicKeys: {
+      'runtime-key-1': publicKey.export({ type: 'spki', format: 'pem' }),
+    },
+    humanStreamId: 'human-events',
+    humanEnvelopes: receiptEnvelopes(data.receipts, 'human-events', privateKey),
+    specialistStreamId: 'specialist-events',
+    specialistEnvelopes: receiptEnvelopes(data.specialistObservations, 'specialist-events', privateKey),
+    walkthroughStreamId: 'walkthrough-events',
+    walkthroughEnvelopes: receiptEnvelopes(data.walkthroughObservations, 'walkthrough-events', privateKey),
+  };
+  const exec = (command, args) => ({
+    status: 0,
+    stdout: command === 'git' ? 'https://github.com/jdylanmc/example.git\n' : JSON.stringify(args[0] === 'pr'
+      ? {
+        number: 155,
+        state: 'MERGED',
+        baseRefName: 'main',
+        mergeCommit: { oid: 'c'.repeat(40) },
+        mergedAt: '2026-08-31T13:00:00Z',
+        url: 'https://github.com/jdylanmc/example/pull/155',
+      }
+      : { nameWithOwner: 'jdylanmc/example', defaultBranchRef: { name: 'main' } }),
+  });
+  const result = validateThroughGitHubHost({
+    repositoryRoot: data.root,
+    packet: data.packet,
+    evidence,
+    changeRequestId: '155',
+  }, {
+    exec,
+    validationOptions: {
+      verifyGitAncestry: () => true,
+      readMergedArtifact: data.options.readMergedArtifact,
+      listMergedWorkspaceArtifacts: data.options.listMergedWorkspaceArtifacts,
+    },
+  });
+  assert.equal(result.status, 'approved');
 });
 
 test('resolves lifecycle statuses in deterministic gate order', () => {

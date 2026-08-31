@@ -37,11 +37,16 @@ Run one product-design phase between Discovery and specification.
    mocked concepts and restartable explanatory overlay walkthroughs with stable
    identifiers. Emit fixed commands for explicit human execution/review; never
    execute package scripts, Storybook, or prototype JavaScript.
-6. Record Design Space evidence and stop for a digest-bound concept-selection
+6. Collect separately supplied trusted human-run observations after specialist
+   completion. Require exact reverse coverage of every concept walkthrough
+   step, including the visible overlay and target, performed interaction,
+   resulting state, ordered next step, and restart control/state. Produced
+   walkthrough claims cannot satisfy this gate.
+7. Record Design Space evidence and stop for a digest-bound concept-selection
    receipt.
-7. Write the parseable interaction contract and its non-authority marker.
-8. Run Approval binding. Present the recomputed exact digests to the human.
-9. After a separate exact-byte approval receipt, wait for a trusted provider
+8. Write the parseable interaction contract and its non-authority marker.
+9. Run Approval binding. Present the recomputed exact digests to the human.
+10. After a separate exact-byte approval receipt, wait for a trusted provider
    observation proving the change request merged those bytes to the default
    branch.
 

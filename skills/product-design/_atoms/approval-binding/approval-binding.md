@@ -3,7 +3,7 @@ name: approval-binding
 description: Validate product-design phase ordering, bounded runnable artifacts, interaction coverage, and exact-byte human approval and merge evidence.
 level: atom
 allowed-tools: ["execute"]
-includes: ["product-design/_atoms/approval-binding/approval-binding.mjs","product-design/_atoms/approval-binding/approval-binding.github.mjs","product-design/_atoms/approval-binding/approval-binding.receipts.mjs"]
+includes: ["product-design/_atoms/approval-binding/approval-binding.mjs","product-design/_atoms/approval-binding/approval-binding.github.mjs","product-design/_atoms/approval-binding/approval-binding.host.mjs","product-design/_atoms/approval-binding/approval-binding.receipts.mjs"]
 composes: []
 used-by: ["product-design/_molecules/product-design-cycle/product-design-cycle.md"]
 ---
@@ -14,7 +14,8 @@ used-by: ["product-design/_molecules/product-design-cycle/product-design-cycle.m
 
 1. [Approval binding validator](./approval-binding.mjs)
 2. [GitHub merge observation adapter](./approval-binding.github.mjs)
-3. [Append-only receipt verifier adapters](./approval-binding.receipts.mjs)
+3. [Executable composed GitHub host](./approval-binding.host.mjs)
+4. [Append-only receipt verifier adapters](./approval-binding.receipts.mjs)
 
 Use the deterministic helper to validate the product-design packet:
 
@@ -57,13 +58,29 @@ inject those adapters plus git ancestry and merged-blob reads into
 trusted human or dispatch adapter and therefore fails closed; mere JSON cannot
 advance a gate.
 
+The executable composed host is the supported end-to-end path:
+
+```text
+node <atoms>/approval-binding.host.mjs --root <absolute-repository-root> \
+  --input <absolute-packet-json-path> --evidence <absolute-signed-evidence-json-path> \
+  --change-request <id>
+```
+
+It composes signed human, specialist, and human-run walkthrough verifiers with
+the official GitHub merge observer, canonical repository resolver, default
+git ancestry/blob readers, and exact merged-workspace enumeration. Public keys
+and signed append-only envelopes come from the external host evidence file.
+
 The required host interface injects all of
 `verifyHumanReceipt`, `verifySpecialistObservation`,
+`verifyWalkthroughObservation`,
 `verifyMergeObservation`, `resolveExpectedRepository`, `verifyGitAncestry`,
-and `readMergedArtifact`. Missing functions fail closed. A host with an
+`readMergedArtifact`, and `listMergedWorkspaceArtifacts`. Missing trust
+functions fail closed. A host with an
 externally produced signed, digest-chained local receipt stream may wire
 `createHumanReceiptVerifier` and `createSpecialistEventVerifier` from
-`approval-binding.receipts.mjs`. Those deterministic adapters verify the
+`approval-binding.receipts.mjs`, plus
+`createWalkthroughObservationVerifier` for executable behavior evidence. Those deterministic adapters verify the
 configured trusted public key, stream identity, monotonic sequence, previous
 envelope digest, payload digest, envelope digest, and exact event bytes. They
 authenticate only the surrounding runtime's append-only envelope provenance;
@@ -80,8 +97,8 @@ It refuses:
 - incomplete isolated npm/Storybook/static brand sites or isolated npm static
   concept sites, unexpected or lifecycle scripts, Node/preload/eval/custom
   server commands, dependencies, devDependencies, optionalDependencies, or
-  peerDependencies absent from the complete lockfile closure, non-exact
-  declarations, non-`registry.npmjs.org` resolution, missing integrity,
+  peerDependencies absent from the complete lockfile closure, incompatible
+  exact or ranged semantic-version declarations, non-`registry.npmjs.org` resolution, missing integrity,
   unreachable/extra lock records, shared or nested roots/files, weak brand
   Storybook records, external/absolute/traversing/dynamic Storybook imports or
   globs, or concept-local Storybook configuration/stories,
@@ -89,7 +106,9 @@ It refuses:
 - a concept without mocked data, its own human-run command and entrypoint, stable
   identifiers, structured per-category accessibility evidence linked to
   concept-owned artifact paths and observable targets, typed alternatives, or
-  a restartable overlay walkthrough;
+  a restartable overlay walkthrough, or separately verified human-run
+  observations that exactly and bidirectionally cover every declared step,
+  visible overlay/target, interaction, resulting state, and restart state;
 - any nonselected concept without an explicit rejected disposition, rationale,
   decision link, and exact interaction-contract alternative record;
 - duplicate concept, walkthrough, or step identifiers;
@@ -108,7 +127,8 @@ It refuses:
   digests, observed time, or sequence;
 - merge observations that are untrusted, unmerged, name another change request
   or destination, do not target the observed default branch, fail ancestry
-  verification, or whose revision lacks the exact approved bytes.
+  verification, or whose revision lacks the exact approved bytes or contains
+  additional workspace artifacts.
 
 There is no required concept count beyond one valid result and no maximum. The
 helper enforces structural distinction through unique stable identities and

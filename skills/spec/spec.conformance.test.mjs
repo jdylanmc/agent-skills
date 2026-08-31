@@ -74,6 +74,8 @@ test('durable workflow artifacts stay under docs agent', () => {
   assert.match(intent, /durable workspace/);
   assert.match(skill, /docs\/agent\/specs\/<slug>\.nano\.md/);
   assert.match(skill, /docs\/agent\/specs\/<slug>\.full\.md/);
+  assert.match(skill, /Discovery persists aligned application knowledge directly beneath `docs\/agent\/discovery\/`/);
+  assert.doesNotMatch(skill, /temporary handoff.*promotion approved/i);
 });
 
 test('nano authority and full supporting context cannot silently trade places', () => {

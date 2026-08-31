@@ -64,6 +64,7 @@ test('brand and user experience use separate ordered specialist contexts', () =>
   assert.match(skill, /user-experience-designer/);
   assert.match(skill, /new, separate internal/);
   assert.match(brand, /Storybook/);
+  assert.match(brand, /exact locked `@storybook\/html-vite` framework package/);
   assert.match(brand, /static HTML entry, CSS foundation, and JavaScript behavior entry/);
   assert.match(brand, /supplies a provenance-bearing `brand-aligned` receipt/);
   assert.match(ux, /Only after exact-digest brand alignment/);
@@ -87,6 +88,13 @@ test('artifacts are runnable, mocked, walkthrough-guided, accessible, and bounde
   assert.match(approval, /no required concept count beyond one valid result and no maximum/i);
   assert.match(skill, /never runs Storybook, npm scripts, or prototype JavaScript/i);
   assert.match(skill, /untrusted human-run commands/i);
+  assert.match(skill, /trusted human-run observation/i);
+  const cycle = flat('skills/product-design/_molecules/product-design-cycle/product-design-cycle.md');
+  assert.match(cycle, /trusted human-run observations/i);
+  assert.ok(
+    cycle.indexOf('trusted human-run observations') < cycle.indexOf('concept-selection'),
+    'walkthrough observations must precede concept selection',
+  );
 });
 
 test('prototype implementation is excluded from downstream production authority', () => {
@@ -112,6 +120,7 @@ test('approval binds exact bytes and merge confirms the exact revision', () => {
   assert.match(approval, /standalone approval command has no trusted human or dispatch adapter and therefore fails closed/);
   for (const adapter of [
     'createHumanReceiptVerifier', 'createSpecialistEventVerifier',
+    'createWalkthroughObservationVerifier',
     'createGitHubMergeVerifier', 'createGitHubRepositoryResolver',
   ]) assert.match(approval, new RegExp(adapter));
 });

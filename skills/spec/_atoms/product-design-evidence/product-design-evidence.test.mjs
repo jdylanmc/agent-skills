@@ -81,6 +81,7 @@ test('admits non-applicability only from trusted exact-revision Discovery readin
     subjectId: 'checkout',
     discoveryRevision: digest,
   });
+
 });
 
 test('rejects hand-authored approved output instead of treating it as primary evidence', () => {

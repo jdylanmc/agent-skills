@@ -1132,6 +1132,7 @@ function foundationsEqual(a, b) {
   if (a.subject.id !== b.subject.id || a.subject.slug !== b.subject.slug) return false;
   if (a.alignment !== b.alignment) return false;
   if (a.nextAction !== b.nextAction) return false;
+  if (JSON.stringify(a.frontierRoute) !== JSON.stringify(b.frontierRoute)) return false;
   for (const field of LIST_SECTIONS) {
     if (a[field].length !== b[field].length) return false;
     for (let i = 0; i < a[field].length; i += 1) {

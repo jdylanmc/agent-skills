@@ -100,20 +100,20 @@ function code(fn) {
     if (error instanceof FoundationPersistError) return error.code;
     throw error;
   }
-
-  test('every declared frontier has one exact structured product-design route', () => {
-    assert.deepEqual(Object.keys(FRONTIER_ROUTES), [
-      'ready', 'needs-product-design', 'needs-interrogate', 'needs-domain-mapping',
-      'needs-proof-of-concept', 'needs-research', 'needs-uri-seed',
-      'needs-more-evidence', 'blocked', 'stop',
-    ]);
-    assert.equal(FRONTIER_ROUTES.ready.applicability, 'not-applicable');
-    assert.equal(FRONTIER_ROUTES['needs-product-design'].applicability, 'required');
-    for (const route of Object.keys(FRONTIER_ROUTES).slice(2)) {
-      assert.equal(FRONTIER_ROUTES[route].applicability, 'unresolved', route);
-    }
-  });
 }
+
+test('every declared frontier has one exact structured product-design route', () => {
+  assert.deepEqual(Object.keys(FRONTIER_ROUTES), [
+    'ready', 'needs-product-design', 'needs-interrogate', 'needs-domain-mapping',
+    'needs-proof-of-concept', 'needs-research', 'needs-uri-seed',
+    'needs-more-evidence', 'blocked', 'stop',
+  ]);
+  assert.equal(FRONTIER_ROUTES.ready.applicability, 'not-applicable');
+  assert.equal(FRONTIER_ROUTES['needs-product-design'].applicability, 'required');
+  for (const route of Object.keys(FRONTIER_ROUTES).slice(2)) {
+    assert.equal(FRONTIER_ROUTES[route].applicability, 'unresolved', route);
+  }
+});
 
 test.after(() => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });

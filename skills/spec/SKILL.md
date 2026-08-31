@@ -132,13 +132,12 @@ the specification is approved, the differing revision is held rather than
 refused, so that routine Discovery enrichment does not invalidate approved
 product intent.
 
-The current Discovery package persists its bounded continuation handoff beneath
-the operating system temporary directory. Until Discovery is reinforced to
-persist aligned application knowledge directly beneath `docs/agent/discovery/`,
-a Markdown source reaches `/spec` only after an explicitly approved promotion
-into that durable workspace. A tracker issue may be consumed directly when it
-satisfies the same confirmation and revision contract. Never silently copy a
-temporary handoff and call that promotion approved.
+Discovery persists aligned application knowledge directly beneath
+`docs/agent/discovery/` and binds its structured frontier route to those exact
+bytes. `/spec` revalidates that durable source and revision rather than
+promoting a temporary handoff. A tracker issue may still be consumed directly
+when it satisfies the same confirmation, frontier-route, and revision
+contract.
 
 ## Output Contract
 

@@ -167,6 +167,7 @@ export function validateProductDesignEvidence(input, {
   }
   return {
     applicability: 'required',
+    rationaleCode: input.rationaleCode,
     subjectId: validation.subjectId,
     discoveryRevision,
     selectedConceptId: validation.selectedConceptId,

@@ -10,6 +10,7 @@ export const AUTHORITY_MARKER = 'prototype-implementation-excluded-from-producti
 export const STATE_VERSION = 2;
 export const RECEIPT_SCHEMA = 'product-design-human-receipt/v2';
 export const SPECIALIST_EVENT_SCHEMA = 'product-design-specialist-event/v1';
+export const WALKTHROUGH_OBSERVATION_SCHEMA = 'product-design-walkthrough-observation/v1';
 export const MERGE_SCHEMA = 'product-design-merge-observation/v1';
 export const CONTRACT_SCHEMA = 'product-design-interaction-contract/v1';
 export const STATUSES = [
@@ -70,6 +71,14 @@ const SPECIALIST_EVENT_FIELDS = [
   'observedAt', 'sequence',
 ];
 const SPECIALIST_ACTIONS = ['specialist-started', 'specialist-completed'];
+const WALKTHROUGH_OBSERVATION_FIELDS = [
+  'schema', 'observationId', 'subjectId', 'prototypeRevision', 'conceptId',
+  'conceptDigest', 'walkthroughId', 'stepId', 'overlayVisible', 'target',
+  'overlay', 'targetVisible', 'interaction', 'interactionSucceeded', 'expectedStateId',
+  'observedStateId', 'nextStepId', 'observedNextStepId',
+  'restartControlId', 'restartStateId',
+  'observedRestartStateId', 'channel', 'sourceId', 'observedAt', 'sequence',
+];
 const MERGE_FIELDS = [
   'schema', 'provider', 'repository', 'changeRequestId', 'state',
   'destinationBranch', 'defaultBranch', 'revision', 'artifactSetDigest',
@@ -81,6 +90,8 @@ const STATIC_SERVER_VERSION = '14.1.1';
 const STATIC_SERVER_SCRIPT = 'http-server . -a 127.0.0.1 -p 4173 -c-1 --no-dotfiles';
 const STORYBOOK_PACKAGE = 'storybook';
 const STORYBOOK_VERSION = '8.6.14';
+const STORYBOOK_HTML_PACKAGE = '@storybook/html-vite';
+const STORYBOOK_HTML_VERSION = '8.6.14';
 const STORYBOOK_SCRIPT = 'storybook dev --host 127.0.0.1 --port 6006 --ci';
 const PACKAGE_RECORD_METADATA = ['version', 'resolved', 'integrity'];
 const DEPENDENCY_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
@@ -269,6 +280,112 @@ function exactPinnedVersion(value, field) {
   return match[1];
 }
 
+function parseVersion(value, field) {
+  const match = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$/.exec(text(value, field));
+  if (!match) fail('invalid-site', `${field} is not a supported semantic version`);
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2] ?? 0),
+    patch: Number(match[3] ?? 0),
+    prerelease: match[4] ?? null,
+    parts: [match[1], match[2], match[3]].filter((part) => part !== undefined).length,
+  };
+}
+
+function compareVersions(left, right) {
+  for (const field of ['major', 'minor', 'patch']) {
+    if (left[field] !== right[field]) return left[field] < right[field] ? -1 : 1;
+  }
+  if (left.prerelease === right.prerelease) return 0;
+  if (left.prerelease === null) return 1;
+  if (right.prerelease === null) return -1;
+  const leftParts = left.prerelease.split('.');
+  const rightParts = right.prerelease.split('.');
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    if (leftParts[index] === undefined) return -1;
+    if (rightParts[index] === undefined) return 1;
+    if (leftParts[index] === rightParts[index]) continue;
+    const leftNumeric = /^\d+$/.test(leftParts[index]);
+    const rightNumeric = /^\d+$/.test(rightParts[index]);
+    if (leftNumeric && rightNumeric) {
+      return Number(leftParts[index]) < Number(rightParts[index]) ? -1 : 1;
+    }
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    return bytewise(leftParts[index], rightParts[index]);
+  }
+  return 0;
+}
+
+function satisfiesComparator(version, comparator, field) {
+  const match = /^(<=|>=|<|>|=|~|\^)?\s*(v?\d+(?:\.\d+)?(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?)$/.exec(comparator);
+  if (!match) fail('invalid-site', `${field} contains an unsupported semantic-version comparator`);
+  const operator = match[1] ?? '=';
+  const target = parseVersion(match[2], field);
+  const comparison = compareVersions(version, target);
+  if (operator === '=') {
+    if (target.parts === 1) return version.major === target.major;
+    if (target.parts === 2) return version.major === target.major && version.minor === target.minor;
+    return comparison === 0;
+  }
+  if (operator === '>' && target.parts < 3) {
+    const upper = target.parts === 1
+      ? { ...target, major: target.major + 1, minor: 0, patch: 0, prerelease: null }
+      : { ...target, minor: target.minor + 1, patch: 0, prerelease: null };
+    return compareVersions(version, upper) >= 0;
+  }
+  if (operator === '>') return comparison > 0;
+  if (operator === '>=') return comparison >= 0;
+  if (operator === '<') return comparison < 0;
+  if (operator === '<=' && target.parts < 3) {
+    const upper = target.parts === 1
+      ? { ...target, major: target.major + 1, minor: 0, patch: 0, prerelease: null }
+      : { ...target, minor: target.minor + 1, patch: 0, prerelease: null };
+    return compareVersions(version, upper) < 0;
+  }
+  if (operator === '<=') return comparison <= 0;
+  if (comparison < 0) return false;
+  if (operator === '~') {
+    return version.major === target.major
+      && (target.parts === 1 || version.minor === target.minor);
+  }
+  if (target.major > 0) return version.major === target.major;
+  if (target.parts === 1) return version.major === 0;
+  if (target.parts === 2) return version.major === 0 && version.minor === target.minor;
+  if (target.minor > 0) return version.major === 0 && version.minor === target.minor;
+  return version.major === 0 && version.minor === 0 && version.patch === target.patch;
+}
+
+export function semanticVersionSatisfies(versionText, rangeText, field = 'semanticVersionRange') {
+  const version = parseVersion(versionText, `${field}.lockedVersion`);
+  const range = text(rangeText, field).trim();
+  return range.split(/\s*\|\|\s*/).some((alternative) => {
+    const normalizedAlternative = alternative.replace(
+      /(<=|>=|<|>|=|~|\^)\s+(?=v?\d)/g,
+      '$1',
+    );
+    if (version.prerelease !== null) {
+      const prereleaseCore = `${version.major}.${version.minor}.${version.patch}-`;
+      if (!normalizedAlternative.includes(prereleaseCore)) return false;
+    }
+    const hyphen = /^(\S+)\s+-\s+(\S+)$/.exec(normalizedAlternative);
+    if (hyphen) {
+      return satisfiesComparator(version, `>=${hyphen[1]}`, field)
+        && satisfiesComparator(version, `<=${hyphen[2]}`, field);
+    }
+    const tokens = normalizedAlternative.split(/\s+/).filter(Boolean);
+    return tokens.length > 0 && tokens.every((token) => {
+      if (/^(?:\*|x|X)$/.test(token)) return true;
+      const wildcard = /^v?(\d+)(?:\.(\d+|x|X|\*))?(?:\.(\d+|x|X|\*))?$/.exec(token);
+      if (wildcard && [wildcard[2], wildcard[3]].some((part) => part === undefined || /^(?:x|X|\*)$/.test(part))) {
+        if (version.major !== Number(wildcard[1])) return false;
+        return wildcard[2] === undefined || /^(?:x|X|\*)$/.test(wildcard[2])
+          || version.minor === Number(wildcard[2]);
+      }
+      return satisfiesComparator(version, token, field);
+    });
+  });
+}
+
 function resolvePackageRecord(packages, parentPath, dependencyName) {
   let cursor = parentPath;
   while (cursor.startsWith('node_modules/')) {
@@ -316,10 +433,19 @@ function validateLockClosure(lock, rootDependencies, field) {
         : object(record[dependencyField], `${field}.lock.${packagePath}.${dependencyField}`);
       for (const [dependencyName, declaration] of Object.entries(edges)) {
         const dependencyPath = resolvePackageRecord(packages, packagePath, dependencyName);
+        if (packages[dependencyPath] === undefined
+          && dependencyField === 'peerDependencies'
+          && record.peerDependenciesMeta?.[dependencyName]?.optional === true) {
+          continue;
+        }
         const dependency = object(packages[dependencyPath], `${field}.package-lock.json package ${dependencyName}`);
-        const expectedVersion = exactPinnedVersion(declaration, `${field}.lock.${packagePath}.${dependencyField}.${dependencyName}`);
-        if (text(dependency.version, `${field}.lock.${dependencyPath}.version`) !== expectedVersion) {
-          fail('invalid-site', `${field} lock edge ${packagePath} -> ${dependencyName} does not match its exact declaration`);
+        const lockedVersion = text(dependency.version, `${field}.lock.${dependencyPath}.version`);
+        if (!semanticVersionSatisfies(
+          lockedVersion,
+          declaration,
+          `${field}.lock.${packagePath}.${dependencyField}.${dependencyName}`,
+        )) {
+          fail('invalid-site', `${field} lock edge ${packagePath} -> ${dependencyName} does not satisfy its declaration`);
         }
         queue.push(dependencyPath);
       }
@@ -343,7 +469,7 @@ function validatePackage(repositoryRoot, site, field, { storybook }) {
   if (!site.packageJsonPath.endsWith('/package.json') || !site.packageLockPath.endsWith('/package-lock.json')) {
     fail('invalid-site', `${field} requires package.json and package-lock.json`);
   }
-  if (storybook && (!site.storybookConfigPath.includes('/.storybook/main.') || !/\.stories\.[cm]?[jt]sx?$/.test(site.storybookStoryPath))) {
+  if (storybook && (!site.storybookConfigPath.includes('/.storybook/main.') || !/\.stories\.js$/.test(site.storybookStoryPath))) {
     fail('invalid-site', `${field} requires actual Storybook configuration and stories`);
   }
   for (const [name, extension] of [['htmlPath', '.html'], ['cssPath', '.css'], ['javascriptPath', '.js']]) {
@@ -414,8 +540,11 @@ function validatePackage(repositoryRoot, site, field, { storybook }) {
   if (storybook && devDependencies[STORYBOOK_PACKAGE] !== STORYBOOK_VERSION) {
     fail('invalid-site', `${field} requires the fixed locked Storybook devDependency`);
   }
+  if (storybook && devDependencies[STORYBOOK_HTML_PACKAGE] !== STORYBOOK_HTML_VERSION) {
+    fail('invalid-site', `${field} requires the fixed locked Storybook HTML framework devDependency`);
+  }
   const allowedDependencies = new Set(storybook
-    ? [STATIC_SERVER_PACKAGE, STORYBOOK_PACKAGE]
+    ? [STATIC_SERVER_PACKAGE, STORYBOOK_PACKAGE, STORYBOOK_HTML_PACKAGE]
     : [STATIC_SERVER_PACKAGE]);
   for (const dependencyField of DEPENDENCY_FIELDS) {
     for (const name of Object.keys(packageJson[dependencyField] ?? {})) {
@@ -436,9 +565,9 @@ function validatePackage(repositoryRoot, site, field, { storybook }) {
   const relativeStory = path.posix.relative(path.posix.dirname(site.storybookConfigPath), site.storybookStoryPath);
   if (/(?:\bimport\s*\(|\brequire\s*\(|\bimport\s+.+\s+from\b)/s.test(config)
     || /(?:\bimport\s*\(|\brequire\s*\(|\bimport\s+.+\s+from\b)/s.test(story)
-    || path.isAbsolute(relativeStory) || relativeStory.startsWith('../..')
+    || path.isAbsolute(relativeStory) || !/^[.][.]\/src\/[^/]+[.]stories[.]js$/.test(relativeStory)
     || !/stories\s*:\s*\[\s*["'][.][.]\/src\/\*\.stories\.js["']\s*\]/s.test(config)
-    || (!config.includes(relativeStory) && !config.includes('../src/*.stories.js'))
+    || !/framework\s*:\s*["']@storybook\/html-vite["']/s.test(config)
     || !/export\s+default\s+\{[^}]*title\s*:/s.test(story)
     || !/export\s+const\s+[A-Za-z_$][\w$]*\s*=\s*\{[^}]+(?:render|args|play|parameters)\s*:/s.test(story)) {
     fail('invalid-site', `${field} Storybook configuration or story is not substantive`);
@@ -945,6 +1074,7 @@ function specialistEventMap(events, expected, verifySpecialistObservation) {
       || event.prototypeRevision !== expected.prototypeRevision) {
       fail('invalid-evidence', 'specialist event identity, action, subject, or revision is invalid');
     }
+
     for (const field of ['contextId', 'channel', 'sourceId']) text(event[field], `specialistObservations[${index}].${field}`);
     digestText(event.artifactRevision, `specialistObservations[${index}].artifactRevision`);
     const order = sequence(event.sequence, `specialistObservations[${index}].sequence`);
@@ -965,6 +1095,70 @@ function specialistEventMap(events, expected, verifySpecialistObservation) {
   return result;
 }
 
+function walkthroughObservationMap(observations, expected, verifyWalkthroughObservation) {
+  if (!Array.isArray(observations)) fail('invalid-evidence', 'walkthroughObservations must be a separately supplied array');
+  const expectedSteps = new Map();
+  for (const concept of expected.concepts) {
+    for (const walkthrough of concept.walkthroughs) {
+      for (const step of walkthrough.steps) {
+        expectedSteps.set(`${concept.id}:${walkthrough.id}:${step.id}`, {
+          walkthrough,
+          step,
+          conceptDigest: expected.conceptDigests.get(concept.id),
+        });
+      }
+    }
+  }
+  const result = new Map();
+  let previousSequence = -1;
+  let previousTime = -1;
+  for (const [index, observation] of observations.entries()) {
+    exactFields(observation, WALKTHROUGH_OBSERVATION_FIELDS, `walkthroughObservations[${index}]`);
+    if (observation.schema !== WALKTHROUGH_OBSERVATION_SCHEMA
+      || observation.subjectId !== expected.subjectId
+      || observation.prototypeRevision !== expected.prototypeRevision) {
+      fail('invalid-evidence', 'walkthrough observation schema, subject, or revision is invalid');
+    }
+    stableId(observation.observationId, `walkthroughObservations[${index}].observationId`);
+    const key = `${stableId(observation.conceptId, 'walkthroughObservation.conceptId')}:${stableId(observation.walkthroughId, 'walkthroughObservation.walkthroughId')}:${stableId(observation.stepId, 'walkthroughObservation.stepId')}`;
+    const declared = expectedSteps.get(key);
+    if (!declared || result.has(key)) fail('invalid-evidence', 'walkthrough observations must cover each declared step exactly once');
+    if (digestText(observation.conceptDigest, 'walkthroughObservation.conceptDigest') !== declared.conceptDigest
+      || observation.target !== declared.step.target
+      || observation.overlay !== declared.step.overlay
+      || observation.interaction !== declared.step.interaction
+      || observation.expectedStateId !== declared.step.expectedStateId
+      || observation.observedStateId !== declared.step.expectedStateId
+      || observation.nextStepId !== declared.step.nextStepId
+      || observation.observedNextStepId !== declared.step.nextStepId
+      || observation.restartControlId !== declared.walkthrough.restartControlId
+      || observation.restartStateId !== declared.walkthrough.restartStateId
+      || observation.observedRestartStateId !== declared.walkthrough.restartStateId
+      || observation.overlayVisible !== true
+      || observation.targetVisible !== true
+      || observation.interactionSucceeded !== true) {
+      fail('invalid-evidence', `${key} does not prove the declared visible interaction, resulting state, and restart behavior`);
+    }
+    for (const field of ['channel', 'sourceId']) text(observation[field], `walkthroughObservations[${index}].${field}`);
+    const order = sequence(observation.sequence, `walkthroughObservations[${index}].sequence`);
+    const observed = observedTime(observation.observedAt, `walkthroughObservations[${index}].observedAt`);
+    if (order <= previousSequence || observed.time <= previousTime) {
+      fail('invalid-evidence', 'walkthrough observations must be in strict trusted producer order');
+    }
+    previousSequence = order;
+    previousTime = observed.time;
+    if (typeof verifyWalkthroughObservation !== 'function'
+      || verifyWalkthroughObservation(observation) !== true) {
+      fail('untrusted-walkthrough-observation', `${key} was not verified by the trusted human-run observation adapter`);
+    }
+    result.set(key, observation);
+  }
+  if (result.size !== expectedSteps.size) {
+    fail('incomplete', 'trusted human-run observations must exactly cover every concept walkthrough step');
+  }
+  return [...result.values()];
+}
+
 function requireReceipt(receipts, action, expected) {
   const receipt = receipts.get(action);
   if (!receipt) return null;
@@ -981,6 +1175,14 @@ function readFromRevision(repositoryRoot, revision, artifactPath) {
   });
   if (result.status !== 0) fail('invalid-merge', `cannot read ${artifactPath} from ${revision}`);
   return result.stdout;
+}
+
+function listWorkspaceFromRevision(repositoryRoot, revision, workspace) {
+  const result = spawnSync('git', [
+    '-C', repositoryRoot, 'ls-tree', '-r', '--name-only', revision, '--', workspace,
+  ], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  if (result.status !== 0) fail('invalid-merge', `cannot enumerate ${workspace} from ${revision}`);
+  return result.stdout.split(/\r?\n/).filter(Boolean).sort(bytewise);
 }
 
 function verifyLocalAncestry(repositoryRoot, observation) {
@@ -1018,6 +1220,16 @@ function validateMerge(observation, expected, options) {
   if (verifyAncestry(options.repositoryRoot, observation) !== true) {
     fail('invalid-merge', 'merge revision is not verified on the destination/default branch ancestry');
   }
+  const mergedPaths = (options.listMergedWorkspaceArtifacts ?? listWorkspaceFromRevision)(
+    options.repositoryRoot,
+    observation.revision,
+    expected.workspace,
+  );
+  const approvedPaths = expected.artifacts.map(({ path: artifactPath }) => artifactPath).sort(bytewise);
+  if (!Array.isArray(mergedPaths)
+    || JSON.stringify([...mergedPaths].sort(bytewise)) !== JSON.stringify(approvedPaths)) {
+    fail('invalid-merge', 'merge revision workspace must exactly equal the approved artifact set');
+  }
   for (const artifact of expected.artifacts) {
     if (sha((options.readMergedArtifact ?? readFromRevision)(options.repositoryRoot, observation.revision, artifact.path)) !== artifact.digest) {
       fail('invalid-merge', `${artifact.path} at the merge revision differs from approved bytes`);
@@ -1031,9 +1243,11 @@ export function validateApprovalBinding(input, options = {}) {
     repositoryRoot,
     humanReceipts = [],
     specialistObservations = [],
+    walkthroughObservations = [],
     mergeObservation = null,
     verifyHumanReceipt,
     verifySpecialistObservation,
+    verifyWalkthroughObservation,
   } = options;
   if (!path.isAbsolute(repositoryRoot ?? '')) fail('invalid-input', 'repositoryRoot must be absolute');
   exactFields(input, TOP_FIELDS, 'packet');
@@ -1142,6 +1356,15 @@ export function validateApprovalBinding(input, options = {}) {
     || !eventIsStrictlyBefore(uxStartEvent, uxEvent)) {
     fail('invalid-evidence', 'user-experience specialist start/completion must be strictly after trusted brand alignment');
   }
+  const walkthroughEvidence = walkthroughObservationMap(walkthroughObservations, {
+    subjectId,
+    prototypeRevision,
+    concepts: input.concepts,
+    conceptDigests: concepts.conceptDigests,
+  }, verifyWalkthroughObservation);
+  if (walkthroughEvidence.some((observation) => !eventIsStrictlyBefore(uxEvent, observation))) {
+    fail('invalid-evidence', 'trusted human-run walkthrough observations must follow user-experience completion');
+  }
   const brandOwned = new Set(input.brand.artifactPaths);
   for (const artifactPath of concepts.ownedPaths) {
     if (brandOwned.has(artifactPath)) fail('invalid-site', `${artifactPath} is shared by brand and concept sites`);
@@ -1176,6 +1399,9 @@ export function validateApprovalBinding(input, options = {}) {
   }
   if (!eventIsStrictlyBefore(uxEvent, conceptSelection)) {
     fail('invalid-evidence', 'concept selection must strictly follow trusted user-experience completion');
+  }
+  if (walkthroughEvidence.some((observation) => !eventIsStrictlyBefore(observation, conceptSelection))) {
+    fail('invalid-evidence', 'concept selection must follow every trusted human-run walkthrough observation');
   }
 
   if (input.interactionContract === null) fail('incomplete', 'interactionContract is required after concept selection');
@@ -1221,6 +1447,7 @@ export function validateApprovalBinding(input, options = {}) {
     artifactSetDigest,
     interactionContractDigest: contract.digest,
     artifacts,
+    workspace,
   }, options);
   if (!merge) {
     return {
@@ -1273,12 +1500,18 @@ export function run(argv, streams = process) {
   const input = JSON.parse(fs.readFileSync(argv[3], 'utf8'));
   const evidence = argv.length === 6
     ? JSON.parse(fs.readFileSync(argv[5], 'utf8'))
-    : { humanReceipts: [], specialistObservations: [], mergeObservation: null };
-  exactFields(evidence, ['humanReceipts', 'specialistObservations', 'mergeObservation'], 'evidence');
+    : {
+      humanReceipts: [], specialistObservations: [], walkthroughObservations: [],
+      mergeObservation: null,
+    };
+  exactFields(evidence, [
+    'humanReceipts', 'specialistObservations', 'walkthroughObservations', 'mergeObservation',
+  ], 'evidence');
   streams.stdout.write(`${JSON.stringify(validateApprovalBinding(input, {
     repositoryRoot: argv[1],
     humanReceipts: evidence.humanReceipts,
     specialistObservations: evidence.specialistObservations,
+    walkthroughObservations: evidence.walkthroughObservations,
     mergeObservation: evidence.mergeObservation,
   }), null, 2)}\n`);
   return 0;
