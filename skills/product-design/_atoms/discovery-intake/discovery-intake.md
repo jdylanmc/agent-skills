@@ -31,7 +31,9 @@ Safely read and hash the exact locator bytes; never accept caller-written
 ## Output
 
 Return the single normalized subject, source locator and revision, and bounded
-workspace.
+workspace. The brand-specialist start event must bind its artifact revision to
+this exact Discovery SHA-256, so dispatch cannot silently use an earlier aligned
+foundation.
 
 ## Boundary
 

@@ -134,7 +134,7 @@ function receipt(action, values, sequence) {
     conceptDigest: values.conceptDigest ?? null,
     artifactSetDigest: values.artifactSetDigest ?? null,
     interactionContractDigest: values.interactionContractDigest ?? null,
-    actor: 'human@example.test',
+    actor: 'synthetic-human-reviewer-155',
     role: 'accountable-product-owner',
     contextId: 'review-context-155',
     channel: 'change-request-review',
@@ -374,7 +374,7 @@ function fixture() {
       action: 'specialist-started',
       subjectId: 'checkout',
       prototypeRevision,
-      artifactRevision: prototypeRevision,
+      artifactRevision: discoveryDigest,
       channel: 'trusted-dispatch-runtime',
       sourceId: 'dispatch-brand-1',
       observedAt: '2026-08-31T12:01:10Z',
@@ -595,7 +595,7 @@ test('signed digest-chained runtime envelopes provide concrete fail-closed recei
   });
   const exec = (command, args) => ({
     status: 0,
-    stdout: command === 'git' ? 'git@github.com:jdylanmc/example.git\n' : JSON.stringify(args[0] === 'pr'
+    stdout: command === 'git' ? 'https://github.com/jdylanmc/example.git\n' : JSON.stringify(args[0] === 'pr'
       ? {
         number: 155,
         state: 'MERGED',
@@ -624,7 +624,7 @@ test('official gh observation adapter proves merged target/default branch and re
   const calls = [];
   const exec = (command, args) => {
     calls.push(args);
-    if (command === 'git') return { status: 0, stdout: 'git@github.com:jdylanmc/example.git\n' };
+    if (command === 'git') return { status: 0, stdout: 'https://github.com/jdylanmc/example.git\n' };
     const payload = args[0] === 'pr'
       ? {
         number: 155,
@@ -661,7 +661,7 @@ test('official gh observation adapter proves merged target/default branch and re
   const forkExec = (command, args) => ({
     status: 0,
     stdout: command === 'git'
-      ? 'git@github.com:attacker/example.git\n'
+      ? 'https://github.com/synthetic-attacker/example.git\n'
       : JSON.stringify({ nameWithOwner: 'jdylanmc/example', defaultBranchRef: { name: 'main' } }),
   });
   assert.throws(() => observeGitHubMerge(request, { exec: forkExec }), /differs from the canonical origin remote/);
@@ -671,7 +671,7 @@ test('official provider observation plus ancestry and exact merged bytes reaches
   const data = fixture();
   const exec = (command, args) => ({
     status: 0,
-    stdout: command === 'git' ? 'git@github.com:jdylanmc/example.git\n' : JSON.stringify(args[0] === 'pr'
+    stdout: command === 'git' ? 'https://github.com/jdylanmc/example.git\n' : JSON.stringify(args[0] === 'pr'
       ? {
         number: 155,
         state: 'MERGED',
@@ -691,7 +691,7 @@ test('official provider observation plus ancestry and exact merged bytes reaches
 
   const unmergedExec = (command, args) => ({
     status: 0,
-    stdout: command === 'git' ? 'git@github.com:jdylanmc/example.git\n' : JSON.stringify(args[0] === 'pr'
+    stdout: command === 'git' ? 'https://github.com/jdylanmc/example.git\n' : JSON.stringify(args[0] === 'pr'
       ? { number: 155, state: 'OPEN', baseRefName: 'main', mergeCommit: null, url: 'x' }
       : { nameWithOwner: 'jdylanmc/example', defaultBranchRef: { name: 'main' } }),
   });

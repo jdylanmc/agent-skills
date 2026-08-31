@@ -1096,10 +1096,11 @@ export function validateApprovalBinding(input, options = {}) {
   if (!brandStartEvent || !brandEvent
     || brandStartEvent.contextId !== brandContextId
     || brandEvent.contextId !== brandContextId
+    || brandStartEvent.artifactRevision !== discoveryDigest
     || brandEvent.artifactRevision !== brandDigest
     || !eventIsStrictlyBefore(discoveryReceipt, brandStartEvent)
     || !eventIsStrictlyBefore(brandStartEvent, brandEvent)) {
-    fail('invalid-evidence', 'trusted brand specialist start/completion must follow Discovery alignment and bind the packet context and exact brand revision');
+    fail('invalid-evidence', 'trusted brand specialist start/completion must follow Discovery alignment and bind the exact Discovery and brand revisions');
   }
   if (!requireReceipt(receipts, 'brand-aligned', {
     discoveryDigest,

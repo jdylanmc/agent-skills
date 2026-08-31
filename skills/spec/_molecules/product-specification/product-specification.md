@@ -46,14 +46,7 @@ resolve approval state -> resolve source with state-dependent freshness
    When revisions match, the source is fresh. When revisions differ, the outcome
    depends on approval state: a draft refuses with `stale`; an approved
    specification is `held`.
-3. Run [Product-design evidence](../../_atoms/product-design-evidence/product-design-evidence.md).
-   Revalidate the primary exact-revision Discovery packet and authoritative
-   frontier route. If it routed `needs-product-design`, reject
-   `not-applicable` and require the exact `approved` validator result for the
-   same subject/revision. A `ready` route may use only the typed
-   `discovery-frontier-ready-for-spec` non-applicability code. Never infer either
-   branch from absence or free prose.
-4. **On `held`, check contradiction, then route through the deterministic
+3. **On `held`, check contradiction, then route through the deterministic
    resolver.** The approved specification stands and nothing was re-derived or
    written. Run
    [Contradiction check](../../../_base/_atoms/contradiction-check/contradiction-check.md)
@@ -75,8 +68,17 @@ resolve approval state -> resolve source with state-dependent freshness
    supplied by the caller for this run; no durable store of previously accepted
    divergences exists yet, so that continuity gap is visible rather than
    assumed. Nothing else is derived, written, roasted, or published on this
-   path.
-4. Run
+   path. Return before product-design evidence validation; the held approved
+   specification keeps its already-bound product evidence.
+4. For a fresh source, run
+   [Product-design evidence](../../_atoms/product-design-evidence/product-design-evidence.md).
+   Revalidate the primary exact-revision Discovery packet and authoritative
+   frontier route. If it routed `needs-product-design`, reject
+   `not-applicable` and require the exact `approved` validator result for the
+   same subject/revision. A `ready` route may use only the typed
+   `discovery-frontier-ready-for-spec` nonapplicability code. Never infer either
+   branch from absence or free prose.
+5. Run
    [Product requirements](../../_atoms/product-requirements/product-requirements.md).
    Formalize only what the source and normalized product-design evidence
    support. When product design is required, map every validated contract
@@ -87,12 +89,12 @@ resolve approval state -> resolve source with state-dependent freshness
    choices. Preserve facts, claims, decisions, assumptions, contradictions,
    and open questions as different categories. A missing product decision
    remains a question.
-5. Run [Specification pair](../../_atoms/spec-pair/spec-pair.md). Assign one
+6. Run [Specification pair](../../_atoms/spec-pair/spec-pair.md). Assign one
    stable specification identity and acceptance-criteria identities, render the
    nano and full documents from the same model, write them as siblings beneath
    `docs/agent/specs/`, reread both, and validate their identity, provenance,
    links, authority, and traceability.
-6. Run [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md) to
+7. Run [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md) to
    resolve the status from source, pair, questions, Roast, approval, and
    contradiction evidence. A valid pair is a candidate, not `complete`;
    independent Roast and human approval remain with the caller.

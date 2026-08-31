@@ -345,6 +345,17 @@ test('the held path routes through spec-outcome rather than returning directly',
   assert.match(molecule, /Specification outcome.*sourceStatus.*held/i);
 });
 
+test('held returns before product-design evidence validation', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
+  assert.match(skill, /return before product-design evidence validation/i);
+  assert.match(molecule, /return before product-design evidence validation/i);
+  assert.ok(
+    molecule.indexOf('**On `held`') < molecule.indexOf('For a fresh source, run'),
+    'held routing must precede fresh product-design evidence validation',
+  );
+});
+
 // F6: the molecule does not claim publication ownership
 test('the molecule does not claim to open a change request', () => {
   const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');

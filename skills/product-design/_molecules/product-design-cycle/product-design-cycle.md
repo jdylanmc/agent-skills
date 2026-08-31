@@ -26,7 +26,8 @@ Run one product-design phase between Discovery and specification.
    `docs/agent/prototypes/<subject>/` workspace.
 2. Run Brand foundation in its own `brand-designer` specialist context.
    Require a trusted dispatch/event observation binding that role, context,
-   subject, artifact revision, source channel, observed time, and sequence.
+   subject, the exact aligned Discovery revision at start, the exact brand
+   artifact revision at completion, source channel, observed time, and sequence.
 3. Stop for a separate, provenance-bearing human alignment receipt bound to
    the exact brand artifact digest.
 4. Only after alignment, run User-experience concepts in a distinct

@@ -72,7 +72,9 @@ record -> resolve approval state -> resolve confirmed Discovery source
    `sourceStatus: 'held'`, the approval state, and that verdict. Return whatever
    it resolves — `held` when nothing new contradicts, `needs-decision` when the
    contradiction escalated. Nothing else is derived, written, roasted, or
-   published on this path; the contradiction check, the Chronicler recording,
+   published on this path. In particular, return before product-design evidence
+   validation: the approved specification and its bound evidence remain the
+   authority under review. The contradiction check, the Chronicler recording,
    and the resolver call are the only additional steps.
 5. The molecule preserves the source's evidence distinctions, formalizes product
    intent, writes the sibling Product Requirements Documents beneath
