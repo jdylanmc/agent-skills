@@ -109,7 +109,7 @@ export function run(argv, streams = process) {
 
   try {
     emitEvent(parsed.input, parsed.context);
-    if (parsed.context.harness === 'copilot-cli' && parsed.context.session_id) {
+    {
       const logDirectory = path.dirname(parsed.context.log_path);
       if (path.basename(logDirectory) !== '.skill-log') {
         streams.stderr.write('rehydration_tracking_failed: invalid-log-root: log is not directly below .skill-log\n');

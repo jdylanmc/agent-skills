@@ -26,6 +26,11 @@ identifiers, counters, and timestamps. It never contains prompt text,
 transcripts, tool output, canonical file contents, secrets, or arbitrary
 Chronicle summaries.
 
+Runs registered before a provider session identifier is available enter a
+bounded pending registry. A hook may claim that registry only when it describes
+one unambiguous root run; ambiguity degrades explicitly. Correlation stores no
+prompt, transcript, or arbitrary output.
+
 An armed generation permits one exact full-file read at a time from its
 canonical read set. A successful provider observation advances that set only
 when the path and current digest match. The final matching observation clears
@@ -33,5 +38,9 @@ the latch once and returns a bounded checkpoint. Claims made by the model or
 copied into a compacted summary are not acknowledgements.
 
 State is stored below the repository's ignored `.skill-log/rehydration/`
-directory with owner-only permissions and atomic replacement. Missing state is
-inactive, not permission to invent an active run.
+directory with owner-only permissions, atomic replacement, and a bounded
+cross-process lock. Dead lock owners are reclaimed and live contention times
+out below the hook command's three-second budget. The final checkpoint is
+rendered and size-validated before the latch is cleared; an oversized packet
+degrades explicitly. Missing state is inactive, not permission to invent an
+active run.

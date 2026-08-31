@@ -6,6 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { run } from './compaction-rehydration-hook.mjs';
+import { run as runAppend } from '../skills/_base/_atoms/chronicle-append/chronicle-append.mjs';
 import { registerRun } from '../skills/_base/_atoms/rehydration-state/rehydration-state.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -53,6 +54,34 @@ test('hook entry point arms compaction and emits one JSON output', () => {
     cwd: ROOT,
     trigger: 'auto',
     timestamp: Date.now(),
+  }, io), 0);
+  assert.equal(JSON.parse(io.output()).status, 'rehydration-required');
+});
+
+test('normal Chronicle entry without correlation is claimed by the hook session', () => {
+  fs.rmSync(ROOT, { recursive: true, force: true });
+  fs.mkdirSync(path.join(ROOT, 'skills', 'root'), { recursive: true });
+  fs.mkdirSync(path.join(ROOT, '.skill-log'), { recursive: true });
+  fs.mkdirSync(path.join(ROOT, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(ROOT, 'intent.md'), '# fixture\n');
+  fs.writeFileSync(
+    path.join(ROOT, 'skills', 'root', 'SKILL.md'),
+    '---\nname: root\nincludes: []\ncomposes: []\n---\ninstructions\n',
+  );
+  const tracker = path.join(REPOSITORY_ROOT, 'scripts', 'compaction-rehydration-register.mjs');
+  fs.writeFileSync(
+    path.join(ROOT, 'scripts', 'compaction-rehydration-register.mjs'),
+    `import { run } from ${JSON.stringify(`file://${tracker}`)};\nlet s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{process.exitCode=run(JSON.parse(s));});\n`,
+  );
+  const log = path.join(ROOT, '.skill-log', 'root.jsonl');
+  assert.equal(runAppend([
+    '--log', log, '--run', 'run-1', '--root-skill', 'root',
+    '--event', 'run', '--phase', 'before', '--summary', 'Start.',
+  ], streams()), 0);
+
+  const io = streams();
+  assert.equal(run('preCompact', {
+    sessionId: 'hook-session', cwd: ROOT, trigger: 'auto', timestamp: Date.now(),
   }, io), 0);
   assert.equal(JSON.parse(io.output()).status, 'rehydration-required');
 });

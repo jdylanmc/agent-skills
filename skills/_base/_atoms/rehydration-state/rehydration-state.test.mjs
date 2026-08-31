@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -221,4 +222,57 @@ test('state storage refuses symlinked control directories', () => {
   fs.rmSync(path.join(root, '.skill-log'), { recursive: true });
   fs.symlinkSync(outside, path.join(root, '.skill-log'));
   assert.throws(() => register(root), { code: 'invalid-state' });
+});
+
+test('concurrent subprocess registrations serialize without losing frames', async () => {
+  const root = repo('concurrent');
+  const moduleUrl = new URL('./rehydration-state.mjs', import.meta.url).href;
+  const children = Array.from({ length: 8 }, (_, index) => new Promise((resolve, reject) => {
+    const input = {
+      repositoryRoot: root,
+      sessionId: 'session-1',
+      runId: `run-${index}`,
+      rootSkill: 'root',
+      skill: 'root',
+      logPath: path.join(root, '.skill-log', 'root.jsonl'),
+      phase: 'before',
+    };
+    const child = spawn(process.execPath, [
+      '--input-type=module',
+      '--eval',
+      `import {registerRun} from ${JSON.stringify(moduleUrl)}; registerRun(${JSON.stringify(input)});`,
+    ]);
+    child.on('error', reject);
+    child.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`child exited ${code}`)));
+  }));
+  await Promise.all(children);
+  assert.equal(readState(root, 'session-1').stack.length, 8);
+});
+
+test('oversized final checkpoint degrades before the latch can be silently cleared', () => {
+  const root = repo('oversized-checkpoint');
+  for (let index = 0; index < 16; index += 1) {
+    registerRun({
+      repositoryRoot: root,
+      sessionId: 'session-1',
+      runId: `run-${index}-${'x'.repeat(80)}`,
+      rootSkill: `root-${'y'.repeat(90)}`,
+      skill: 'root',
+      logPath: path.join(root, '.skill-log', 'root.jsonl'),
+      phase: 'before',
+    });
+  }
+  const armed = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  let result;
+  for (const relativePath of armed.files) {
+    result = acknowledgeRead({
+      repositoryRoot: root,
+      sessionId: 'session-1',
+      generation: armed.generation,
+      relativePath,
+    });
+  }
+  assert.equal(result.status, STATES.degraded);
+  assert.equal(result.reason, 'checkpoint-too-large');
+  assert.equal(readState(root, 'session-1').degradedReason, 'checkpoint-too-large');
 });

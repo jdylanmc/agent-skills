@@ -4,6 +4,7 @@ import {
   acknowledgeRead,
   agentStopFallback,
   arm,
+  correlateSession,
   expectedRead,
   noteEnforcement,
   readState,
@@ -38,6 +39,8 @@ function isFullView(payload, expected) {
 }
 
 export function preCompact(repositoryRoot, payload) {
+  const correlation = correlateSession(repositoryRoot, sessionId(payload));
+  if (correlation.status === STATES.degraded) return correlation;
   return arm({
     repositoryRoot,
     sessionId: sessionId(payload),

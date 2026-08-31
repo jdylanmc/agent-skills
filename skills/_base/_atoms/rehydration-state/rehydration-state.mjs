@@ -8,6 +8,9 @@ export const MAX_FILES = 64;
 export const MAX_RELATIVE_PATH_BYTES = 300;
 export const MAX_CHECKPOINT_BYTES = 4096;
 export const MAX_AGENT_STOP_BLOCKS = 1;
+export const MAX_PENDING_RUNS = 16;
+const LOCK_WAIT_MS = 2500;
+const LOCK_STALE_MS = 500;
 export const STATES = Object.freeze({
   active: 'active',
   compacting: 'compacting',
@@ -178,7 +181,7 @@ function ensureSafeStateDirectory(repositoryRoot) {
   return stateDirectory;
 }
 
-export function readState(repositoryRoot, sessionId) {
+function readStateUnlocked(repositoryRoot, sessionId) {
   ensureSafeStateDirectory(repositoryRoot);
   const target = statePath(repositoryRoot, sessionId);
   if (!fs.existsSync(target)) return null;
@@ -187,7 +190,11 @@ export function readState(repositoryRoot, sessionId) {
   return validateState(JSON.parse(fs.readFileSync(target, 'utf8')));
 }
 
-export function writeState(repositoryRoot, state) {
+export function readState(repositoryRoot, sessionId) {
+  return readStateUnlocked(repositoryRoot, sessionId);
+}
+
+function writeStateUnlocked(repositoryRoot, state) {
   const target = statePath(repositoryRoot, state.sessionId);
   validateState(state);
   const directory = ensureSafeStateDirectory(repositoryRoot);
@@ -198,33 +205,93 @@ export function writeState(repositoryRoot, state) {
   return target;
 }
 
-export function registerRun(input) {
-  const root = canonicalRoot(input.repositoryRoot);
-  const sessionId = requireIdentifier(input.sessionId, 'sessionId');
-  const existing = readState(root, sessionId);
-  const state = existing ?? {
-    schema: STATE_SCHEMA,
-    sessionId,
-    generation: 0,
-    status: STATES.active,
-    stack: [],
+export function writeState(repositoryRoot, state) {
+  return withStateLock(repositoryRoot, () => writeStateUnlocked(repositoryRoot, state));
+}
+
+function sleep(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function withStateLock(repositoryRoot, operation) {
+  const directory = ensureSafeStateDirectory(repositoryRoot);
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const lock = path.join(directory, '.lock');
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  while (true) {
+    try {
+      fs.mkdirSync(lock, { mode: 0o700 });
+      fs.writeFileSync(path.join(lock, 'owner.json'), JSON.stringify({ pid: process.pid }), { mode: 0o600 });
+      break;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      try {
+        let ownerAlive = false;
+        let ownerKnown = false;
+        try {
+          const owner = JSON.parse(fs.readFileSync(path.join(lock, 'owner.json'), 'utf8'));
+          if (Number.isSafeInteger(owner.pid) && owner.pid > 0) {
+            ownerKnown = true;
+            process.kill(owner.pid, 0);
+            ownerAlive = true;
+          }
+        } catch (ownerError) {
+          if (ownerError.code === 'EPERM') ownerAlive = true;
+        }
+        if (!ownerAlive && (ownerKnown || Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS)) {
+          fs.rmSync(lock, { recursive: true, force: true });
+          continue;
+        }
+      } catch (inspectError) {
+        if (inspectError.code === 'ENOENT') continue;
+        throw inspectError;
+      }
+      if (Date.now() >= deadline) fail('state-lock-timeout', 'rehydration state lock is busy');
+      sleep(10);
+    }
+  }
+  try {
+    return operation();
+  } finally {
+    fs.rmSync(lock, { recursive: true, force: true });
+  }
+}
+
+function pendingPath(root) {
+  return path.join(ensureSafeStateDirectory(root), 'pending.json');
+}
+
+function readPending(root) {
+  const target = pendingPath(root);
+  if (!fs.existsSync(target)) return [];
+  const value = JSON.parse(fs.readFileSync(target, 'utf8'));
+  if (!Array.isArray(value) || value.length > MAX_PENDING_RUNS) fail('invalid-state', 'pending run registry is invalid');
+  return value;
+}
+
+function writePending(root, pending) {
+  const target = pendingPath(root);
+  const temporary = `${target}.next-${process.pid}`;
+  fs.writeFileSync(temporary, `${JSON.stringify(pending)}\n`, { mode: 0o600 });
+  fs.renameSync(temporary, target);
+}
+
+function mutateRegistration(root, sessionId, input, preparedFrame) {
+  const state = readStateUnlocked(root, sessionId) ?? {
+    schema: STATE_SCHEMA, sessionId, generation: 0, status: STATES.active, stack: [],
   };
   const key = `${input.runId}:${input.skill}`;
-
   if (input.phase === 'before') {
     if (!state.stack.some((frame) => `${frame.runId}:${frame.skill}` === key)) {
       if (state.stack.length >= MAX_FRAMES) fail('bounded-state-exceeded', 'active stack is full');
-      state.stack.push({
-        runId: requireIdentifier(input.runId, 'runId'),
-        rootSkill: requireIdentifier(input.rootSkill, 'rootSkill'),
-        skill: requireIdentifier(input.skill, 'skill'),
-        logPath: relativePath(root, path.resolve(input.logPath)),
-        files: buildCanonicalManifest(root, input.skill),
-        checkpoint: {
-          event: 'run',
-          phase: 'before',
-        },
-      });
+      state.stack.push(preparedFrame ?? {
+          runId: requireIdentifier(input.runId, 'runId'),
+          rootSkill: requireIdentifier(input.rootSkill, 'rootSkill'),
+          skill: requireIdentifier(input.skill, 'skill'),
+          logPath: relativePath(root, path.resolve(input.logPath)),
+          files: buildCanonicalManifest(root, input.skill),
+          checkpoint: { event: 'run', phase: 'before' },
+        });
     }
     state.status = state.latch ? STATES.required : STATES.active;
   } else if (input.phase === 'after') {
@@ -242,13 +309,65 @@ export function registerRun(input) {
   } else {
     fail('invalid-input', 'run phase must be before or after');
   }
-
   state.updatedAt = new Date().toISOString();
-  return writeState(root, state);
+  return writeStateUnlocked(root, state);
+}
+
+export function registerRun(input) {
+  const root = canonicalRoot(input.repositoryRoot);
+  return withStateLock(root, () => {
+    if (input.sessionId) {
+      return mutateRegistration(root, requireIdentifier(input.sessionId, 'sessionId'), input);
+    }
+    const registry = readPending(root);
+    const logPath = relativePath(root, path.resolve(input.logPath));
+    const correlated = registry.find((frame) =>
+      frame.sessionId && frame.runId === input.runId &&
+      frame.rootSkill === input.rootSkill && frame.logPath === logPath);
+    if (correlated) {
+      const result = mutateRegistration(root, correlated.sessionId, input);
+      const key = `${input.runId}:${input.skill}`;
+      if (input.phase === 'before' && !registry.some((frame) => `${frame.runId}:${frame.skill}` === key)) {
+        registry.push({ ...readStateUnlocked(root, correlated.sessionId).stack.at(-1), sessionId: correlated.sessionId });
+      } else if (input.phase === 'after') {
+        const index = registry.findLastIndex((frame) => `${frame.runId}:${frame.skill}` === key);
+        if (index >= 0) registry.splice(index, 1);
+      }
+      writePending(root, registry);
+      return result;
+    }
+    const key = `${input.runId}:${input.skill}`;
+    if (input.phase === 'before' && !registry.some((frame) => `${frame.runId}:${frame.skill}` === key)) {
+      if (registry.length >= MAX_PENDING_RUNS) fail('bounded-state-exceeded', 'pending run registry is full');
+      registry.push({
+        runId: requireIdentifier(input.runId, 'runId'),
+        rootSkill: requireIdentifier(input.rootSkill, 'rootSkill'),
+        skill: requireIdentifier(input.skill, 'skill'),
+        logPath,
+        files: buildCanonicalManifest(root, input.skill),
+        checkpoint: { event: 'run', phase: 'before' },
+      });
+    } else if (input.phase === 'after') {
+      const index = registry.findLastIndex((frame) => `${frame.runId}:${frame.skill}` === key);
+      if (index >= 0) registry.splice(index, 1);
+    } else if (input.phase !== 'before') {
+      fail('invalid-input', 'run phase must be before or after');
+    }
+    writePending(root, registry);
+    return pendingPath(root);
+  });
 }
 
 export function updateCheckpoint(input) {
-  const state = readState(input.repositoryRoot, input.sessionId);
+  return withStateLock(input.repositoryRoot, () => {
+  let sessionId = input.sessionId;
+  if (!sessionId) {
+    sessionId = readPending(input.repositoryRoot).find(
+      (frame) => frame.sessionId && frame.runId === input.runId && frame.skill === input.skill,
+    )?.sessionId;
+  }
+  if (!sessionId) return null;
+  const state = readStateUnlocked(input.repositoryRoot, sessionId);
   if (!state || state.stack.length === 0) return null;
   const frame = [...state.stack].reverse().find(
     (candidate) => candidate.runId === input.runId && candidate.skill === input.skill,
@@ -261,11 +380,13 @@ export function updateCheckpoint(input) {
     ...(input.outcome ? { outcome: requireIdentifier(input.outcome, 'outcome') } : {}),
   };
   state.updatedAt = new Date().toISOString();
-  return writeState(input.repositoryRoot, state);
+  return writeStateUnlocked(input.repositoryRoot, state);
+  });
 }
 
 export function arm(input) {
-  const state = readState(input.repositoryRoot, input.sessionId);
+  return withStateLock(input.repositoryRoot, () => {
+  const state = readStateUnlocked(input.repositoryRoot, input.sessionId);
   if (!state || state.stack.length === 0) return { status: 'inactive' };
   state.generation += 1;
   state.status = STATES.compacting;
@@ -281,8 +402,29 @@ export function arm(input) {
   };
   state.status = STATES.required;
   state.updatedAt = new Date().toISOString();
-  writeState(input.repositoryRoot, state);
+  writeStateUnlocked(input.repositoryRoot, state);
   return { status: state.status, generation: state.generation, files: files.map((file) => file.path) };
+  });
+}
+
+export function correlateSession(repositoryRoot, sessionId) {
+  const root = canonicalRoot(repositoryRoot);
+  requireIdentifier(sessionId, 'sessionId');
+  return withStateLock(root, () => {
+    if (readStateUnlocked(root, sessionId)) return { status: 'correlated' };
+    const pending = readPending(root);
+    if (pending.length === 0) return { status: 'none' };
+    const roots = new Set(pending.map((frame) => `${frame.runId}:${frame.rootSkill}:${frame.logPath}`));
+    if (roots.size !== 1) return { status: STATES.degraded, reason: 'ambiguous-active-runs' };
+    const state = {
+      schema: STATE_SCHEMA, sessionId, generation: 0, status: STATES.active,
+      stack: pending.map(({ sessionId: _ignored, ...frame }) => frame),
+      updatedAt: new Date().toISOString(),
+    };
+    writeStateUnlocked(root, state);
+    writePending(root, pending.map((frame) => ({ ...frame, sessionId })));
+    return { status: 'correlated' };
+  });
 }
 
 export function expectedRead(repositoryRoot, sessionId) {
@@ -292,16 +434,19 @@ export function expectedRead(repositoryRoot, sessionId) {
 }
 
 export function noteEnforcement(repositoryRoot, sessionId) {
-  const state = readState(repositoryRoot, sessionId);
+  return withStateLock(repositoryRoot, () => {
+  const state = readStateUnlocked(repositoryRoot, sessionId);
   if (!state?.latch || state.latch.enforcementRecorded) return false;
   state.latch.enforcementRecorded = true;
-  writeState(repositoryRoot, state);
+  writeStateUnlocked(repositoryRoot, state);
   return true;
+  });
 }
 
 export function acknowledgeRead(input) {
   const root = canonicalRoot(input.repositoryRoot);
-  const state = readState(root, input.sessionId);
+  return withStateLock(root, () => {
+  const state = readStateUnlocked(root, input.sessionId);
   if (!state?.latch || state.status !== STATES.required) return { status: 'inactive' };
   if (input.generation !== state.generation) {
     return { status: STATES.required, reason: 'stale-packet' };
@@ -310,53 +455,67 @@ export function acknowledgeRead(input) {
   if (!expected || input.relativePath !== expected.path ||
       (input.runId !== undefined && input.runId !== expected.runId) ||
       (input.skill !== undefined && input.skill !== expected.skill)) {
-    return degrade(root, state, 'wrong-identity');
+    return degradeUnlocked(root, state, 'wrong-identity');
   }
   let current;
   try {
     current = readCanonicalFile(root, expected.path);
   } catch {
-    return degrade(root, state, 'missing-instructions');
+    return degradeUnlocked(root, state, 'missing-instructions');
   }
-  if (current.digest !== expected.digest) return degrade(root, state, 'digest-drift');
+  if (current.digest !== expected.digest) return degradeUnlocked(root, state, 'digest-drift');
   state.latch.remaining.shift();
   state.updatedAt = new Date().toISOString();
   if (state.latch.remaining.length > 0) {
-    writeState(root, state);
+    writeStateUnlocked(root, state);
     return { status: STATES.required, next: state.latch.remaining[0] };
+  }
+  let checkpoint;
+  try {
+    checkpoint = renderCheckpoint(state);
+  } catch (error) {
+    if (error.code === 'bounded-state-exceeded') return degradeUnlocked(root, state, 'checkpoint-too-large');
+    throw error;
   }
   state.status = STATES.rehydrated;
   state.lastCompletedGeneration = state.generation;
   state.latch = undefined;
-  writeState(root, state);
-  return { status: STATES.rehydrated, checkpoint: renderCheckpoint(state) };
+  writeStateUnlocked(root, state);
+  return { status: STATES.rehydrated, checkpoint };
+  });
 }
 
 function degrade(root, state, reason) {
+  return withStateLock(root, () => degradeUnlocked(root, state, reason));
+}
+
+function degradeUnlocked(root, state, reason) {
   state.status = STATES.degraded;
   state.degradedReason = reason;
   state.latch = undefined;
   state.updatedAt = new Date().toISOString();
-  writeState(root, state);
+  writeStateUnlocked(root, state);
   return { status: STATES.degraded, reason };
 }
 
 export function agentStopFallback(repositoryRoot, sessionId, stopHookActive) {
-  const state = readState(repositoryRoot, sessionId);
+  return withStateLock(repositoryRoot, () => {
+  const state = readStateUnlocked(repositoryRoot, sessionId);
   if (!state?.latch || state.status !== STATES.required) return { decision: 'allow' };
   if (stopHookActive || state.latch.agentStopBlocks >= MAX_AGENT_STOP_BLOCKS) {
     state.status = STATES.degraded;
     state.degradedReason = 'agent-stop-ceiling-avoided';
     state.latch = undefined;
-    writeState(repositoryRoot, state);
+    writeStateUnlocked(repositoryRoot, state);
     return { decision: 'allow', degraded: true };
   }
   state.latch.agentStopBlocks += 1;
-  writeState(repositoryRoot, state);
+  writeStateUnlocked(repositoryRoot, state);
   return {
     decision: 'block',
     reason: `Compaction rehydration is still required. Read the next canonical file exactly: ${state.latch.remaining[0].path}`,
   };
+  });
 }
 
 export function renderCheckpoint(state) {

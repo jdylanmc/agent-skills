@@ -8,7 +8,10 @@ context compaction.
 
 1. Chronicle run-start recording registers the root or nested skill, canonical
    `SKILL.md` and required Markdown references, relative paths, and SHA-256
-   digests.
+   digests. When Chronicle lacks the optional runtime session identifier, the
+   hook-observed identifier deterministically claims one unambiguous bounded
+   pending run; ambiguity reports degradation rather than silently staying
+   inactive.
 2. `preCompact` synchronously arms a new bounded generation.
 3. While armed, local command `preToolUse` permits only the next exact,
    full-file canonical `view` read. Other material tool operations are denied.
@@ -26,7 +29,9 @@ skill invocation, so it cannot recursively create a run.
 
 ## Stored data
 
-State below `.skill-log/rehydration/` is bounded and owner-only. It stores
+State below `.skill-log/rehydration/` is bounded, owner-only, atomically
+replaced, and serialized across subprocesses with a bounded crash-recoverable
+lock. It stores
 opaque session/run identities, skill names, repository-relative paths,
 digests, byte counts, lifecycle identifiers, timestamps, and counters. It does
 not store prompts, secrets, transcripts, tool results, canonical file content,
