@@ -126,6 +126,47 @@ test('agentStop fallback is bounded and all enforcement dispositions are distinc
   assert.equal(classifyDisposition(), 'unsupported');
 });
 
+test('ambiguous preCompact persists a marker surfaced by tool and stop hooks', () => {
+  const root = fixture('ambiguous');
+  registerRun({
+    repositoryRoot: root,
+    runId: 'pending-a',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+  registerRun({
+    repositoryRoot: root,
+    runId: 'pending-b',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+
+  const compact = preCompact(root, {
+    sessionId: 'ambiguous-session',
+    trigger: 'auto',
+    timestamp: Date.now(),
+  });
+  assert.equal(compact.status, STATES.degraded);
+  const denied = preToolUse(root, {
+    sessionId: 'ambiguous-session',
+    cwd: root,
+    toolName: 'bash',
+    toolArgs: { command: 'git status' },
+  });
+  assert.equal(denied.permissionDecision, 'deny');
+  assert.match(denied.permissionDecisionReason, /ambiguous-active-runs/);
+  const stopped = agentStop(root, {
+    sessionId: 'ambiguous-session',
+    stop_hook_active: false,
+  });
+  assert.equal(stopped.degraded, true);
+  assert.equal(stopped.reason, 'ambiguous-active-runs');
+});
+
 test('hook configuration states the local gate and timeout without a fictional postCompact hook', () => {
   const hook = fs.readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '.github', 'hooks', 'compaction-rehydration.json'),

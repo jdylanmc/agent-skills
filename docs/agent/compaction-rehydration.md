@@ -10,8 +10,10 @@ context compaction.
    `SKILL.md` and required Markdown references, relative paths, and SHA-256
    digests. When Chronicle lacks the optional runtime session identifier, the
    hook-observed identifier deterministically claims one unambiguous bounded
-   pending run; ambiguity reports degradation rather than silently staying
-   inactive.
+   pending run. Entries assigned to another session are never candidates.
+   Compatible unassigned runs are atomically added to reused session state;
+   terminal state may be safely replaced. Ambiguity persists a session-keyed
+   degraded marker rather than silently staying inactive.
 2. `preCompact` synchronously arms a new bounded generation.
 3. While armed, local command `preToolUse` permits only the next exact,
    full-file canonical `view` read. Other material tool operations are denied.
@@ -26,6 +28,12 @@ Repeated compactions create new generations. A stale generation, wrong run or
 skill identity, missing or moved file, changed digest, partial read, and forged
 model acknowledgement cannot clear the latch. Rehydration is a read, not a
 skill invocation, so it cannot recursively create a run.
+
+A lifecycle `run/after` event never silently satisfies canonical-read
+obligations. If an active run ends while rehydration is armed, state becomes
+deterministically degraded (`active-run-ended-during-rehydration` or
+`all-runs-ended-during-rehydration`). `preToolUse` then refuses material work,
+while `agentStop` and resumed sessions surface the persisted reason.
 
 ## Stored data
 

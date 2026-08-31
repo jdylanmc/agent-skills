@@ -10,6 +10,8 @@ import {
   agentStopFallback,
   arm,
   buildCanonicalManifest,
+  correlateSession,
+  expectedRead,
   MAX_AGENT_STOP_BLOCKS,
   readState,
   registerRun,
@@ -73,7 +75,7 @@ test('root and nested runs arm one ordered canonical read set', () => {
   ]);
 });
 
-test('a nested run ending during recovery preserves the root latch', () => {
+test('a nested run ending during recovery persists a blocked marker', () => {
   const root = repo('nested-after');
   register(root);
   register(root, 'nested', 'run-1');
@@ -89,8 +91,31 @@ test('a nested run ending during recovery preserves the root latch', () => {
   });
 
   const state = readState(root, 'session-1');
-  assert.equal(state.status, STATES.required);
-  assert.ok(state.latch.remaining.every((file) => file.skill === 'root'));
+  assert.equal(state.status, STATES.degraded);
+  assert.equal(state.degradedReason, 'active-run-ended-during-rehydration');
+  assert.equal(state.latch, undefined);
+  assert.equal(expectedRead(root, 'session-1').status, STATES.degraded);
+});
+
+test('the final active run ending mid-rehydration cannot impersonate successful delivery', () => {
+  const root = repo('final-after');
+  register(root);
+  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    runId: 'run-1',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'after',
+  });
+
+  const state = readState(root, 'session-1');
+  assert.equal(state.status, STATES.degraded);
+  assert.equal(state.degradedReason, 'all-runs-ended-during-rehydration');
+  assert.equal(state.stack.length, 0);
+  assert.equal(agentStopFallback(root, 'session-1', false).degraded, true);
 });
 
 test('a run starting during recovery cannot disable the armed latch', () => {
@@ -101,6 +126,29 @@ test('a run starting during recovery cannot disable the armed latch', () => {
   const state = readState(root, 'session-1');
   assert.equal(state.status, STATES.required);
   assert.ok(state.latch.remaining.length > 0);
+});
+
+test('a later registration cannot clear a mid-rehydration degraded marker', () => {
+  const root = repo('degraded-before');
+  register(root);
+  register(root, 'nested', 'run-1');
+  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    runId: 'run-1',
+    rootSkill: 'root',
+    skill: 'nested',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'after',
+  });
+  register(root, 'nested', 'run-2');
+  assert.equal(readState(root, 'session-1').status, STATES.degraded);
+  assert.equal(arm({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    trigger: 'auto',
+  }).status, STATES.degraded);
 });
 
 test('a complete exact read sequence clears once and returns a bounded checkpoint', () => {
@@ -193,6 +241,83 @@ test('persisted state survives restart without prompt, transcript, or content by
   const serialized = JSON.stringify(readState(root, 'session-1'));
   assert.doesNotMatch(serialized, /root instructions|root reference|prompt|transcript|secret/i);
   assert.equal(readState(root, 'session-1').status, STATES.required);
+});
+
+test('correlation reuses empty completed state for a later pending run', () => {
+  const root = repo('reuse-terminal');
+  register(root);
+  const armed = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  for (const relativePath of armed.files) {
+    acknowledgeRead({
+      repositoryRoot: root,
+      sessionId: 'session-1',
+      generation: armed.generation,
+      relativePath,
+    });
+  }
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    runId: 'run-1',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'after',
+  });
+  registerRun({
+    repositoryRoot: root,
+    runId: 'run-2',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+
+  assert.equal(correlateSession(root, 'session-1').status, 'correlated');
+  const reused = readState(root, 'session-1');
+  assert.equal(reused.status, STATES.active);
+  assert.deepEqual(reused.stack.map((frame) => frame.runId), ['run-2']);
+  assert.equal(arm({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    trigger: 'auto',
+  }).status, STATES.required);
+});
+
+test('correlation excludes entries assigned to other sessions', () => {
+  const root = repo('assigned-other');
+  const pending = (runId) => registerRun({
+    repositoryRoot: root,
+    runId,
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+  pending('run-other');
+  assert.equal(correlateSession(root, 'other-session').status, 'correlated');
+  pending('run-target');
+  assert.equal(correlateSession(root, 'target-session').status, 'correlated');
+  assert.deepEqual(readState(root, 'target-session').stack.map((frame) => frame.runId), ['run-target']);
+});
+
+test('ambiguous correlation persists a session-keyed degraded marker', () => {
+  const root = repo('ambiguous');
+  for (const runId of ['run-a', 'run-b']) {
+    registerRun({
+      repositoryRoot: root,
+      runId,
+      rootSkill: 'root',
+      skill: 'root',
+      logPath: path.join(root, '.skill-log', 'root.jsonl'),
+      phase: 'before',
+    });
+  }
+  const result = correlateSession(root, 'session-ambiguous');
+  assert.equal(result.status, STATES.degraded);
+  assert.equal(readState(root, 'session-ambiguous').degradedReason, 'ambiguous-active-runs');
+  assert.equal(expectedRead(root, 'session-ambiguous').status, STATES.degraded);
+  assert.equal(agentStopFallback(root, 'session-ambiguous', false).degraded, true);
 });
 
 test('agent stop forces one turn then yields below the eight-block ceiling', () => {

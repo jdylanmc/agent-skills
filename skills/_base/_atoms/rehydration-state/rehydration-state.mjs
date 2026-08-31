@@ -293,19 +293,27 @@ function mutateRegistration(root, sessionId, input, preparedFrame) {
           checkpoint: { event: 'run', phase: 'before' },
         });
     }
-    state.status = state.latch ? STATES.required : STATES.active;
+    if (state.status !== STATES.degraded) {
+      state.status = state.latch ? STATES.required : STATES.active;
+      delete state.degradedReason;
+    }
   } else if (input.phase === 'after') {
     const index = state.stack.findLastIndex((frame) => `${frame.runId}:${frame.skill}` === key);
-    if (index >= 0) state.stack.splice(index, 1);
-    if (state.latch) {
-      state.latch.remaining = state.latch.remaining.filter(
-        (file) => file.runId !== input.runId || file.skill !== input.skill,
-      );
-      if (state.latch.remaining.length === 0) state.latch = undefined;
+    if (index >= 0) {
+      state.stack.splice(index, 1);
+      if (state.latch) {
+        state.status = STATES.degraded;
+        state.degradedReason = state.stack.length === 0
+          ? 'all-runs-ended-during-rehydration'
+          : 'active-run-ended-during-rehydration';
+        state.latch = undefined;
+      }
     }
-    state.status = state.latch
-      ? STATES.required
-      : state.stack.length > 0 ? STATES.active : STATES.rehydrated;
+    if (state.status !== STATES.degraded) {
+      state.status = state.latch
+        ? STATES.required
+        : state.stack.length > 0 ? STATES.active : STATES.rehydrated;
+    }
   } else {
     fail('invalid-input', 'run phase must be before or after');
   }
@@ -388,6 +396,9 @@ export function arm(input) {
   return withStateLock(input.repositoryRoot, () => {
   const state = readStateUnlocked(input.repositoryRoot, input.sessionId);
   if (!state || state.stack.length === 0) return { status: 'inactive' };
+  if (state.status === STATES.degraded) {
+    return { status: STATES.degraded, reason: state.degradedReason };
+  }
   state.generation += 1;
   state.status = STATES.compacting;
   const files = state.stack.flatMap((frame) =>
@@ -411,24 +422,81 @@ export function correlateSession(repositoryRoot, sessionId) {
   const root = canonicalRoot(repositoryRoot);
   requireIdentifier(sessionId, 'sessionId');
   return withStateLock(root, () => {
-    if (readStateUnlocked(root, sessionId)) return { status: 'correlated' };
     const pending = readPending(root);
-    if (pending.length === 0) return { status: 'none' };
-    const roots = new Set(pending.map((frame) => `${frame.runId}:${frame.rootSkill}:${frame.logPath}`));
-    if (roots.size !== 1) return { status: STATES.degraded, reason: 'ambiguous-active-runs' };
-    const state = {
-      schema: STATE_SCHEMA, sessionId, generation: 0, status: STATES.active,
-      stack: pending.map(({ sessionId: _ignored, ...frame }) => frame),
-      updatedAt: new Date().toISOString(),
-    };
+    const existing = readStateUnlocked(root, sessionId);
+    const unclaimed = pending.filter((frame) => !frame.sessionId);
+    const rootKey = (frame) => `${frame.runId}:${frame.rootSkill}:${frame.logPath}`;
+    const terminal = existing && existing.stack.length === 0 && !existing.latch;
+    if (existing?.status === STATES.degraded && !terminal) {
+      return { status: STATES.degraded, reason: existing.degradedReason };
+    }
+
+    let candidates = unclaimed;
+    if (existing && !terminal && existing.stack.length > 0) {
+      const compatibleRoot = rootKey(existing.stack[0]);
+      candidates = unclaimed.filter((frame) => rootKey(frame) === compatibleRoot);
+    }
+
+    if (candidates.length === 0) {
+      if (existing?.status === STATES.degraded) {
+        return { status: STATES.degraded, reason: existing.degradedReason };
+      }
+      return { status: existing ? 'correlated' : 'none' };
+    }
+
+    const roots = new Set(candidates.map(rootKey));
+    if (roots.size !== 1) {
+      const state = {
+        schema: STATE_SCHEMA,
+        sessionId,
+        generation: existing?.generation ?? 0,
+        status: STATES.degraded,
+        stack: existing?.stack ?? [],
+        degradedReason: 'ambiguous-active-runs',
+        updatedAt: new Date().toISOString(),
+      };
+      writeStateUnlocked(root, state);
+      return { status: STATES.degraded, reason: state.degradedReason };
+    }
+
+    const claimed = candidates.map(({ sessionId: _ignored, ...frame }) => frame);
+    let state;
+    if (!existing || terminal) {
+      state = {
+        schema: STATE_SCHEMA,
+        sessionId,
+        generation: existing?.generation ?? 0,
+        status: STATES.active,
+        stack: claimed,
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      const existingKeys = new Set(existing.stack.map((frame) => `${frame.runId}:${frame.skill}`));
+      const additions = claimed.filter((frame) => !existingKeys.has(`${frame.runId}:${frame.skill}`));
+      if (existing.stack.length + additions.length > MAX_FRAMES) {
+        fail('bounded-state-exceeded', 'active stack is full');
+      }
+      existing.stack.push(...additions);
+      existing.status = existing.latch ? STATES.required : STATES.active;
+      delete existing.degradedReason;
+      existing.updatedAt = new Date().toISOString();
+      state = existing;
+    }
     writeStateUnlocked(root, state);
-    writePending(root, pending.map((frame) => ({ ...frame, sessionId })));
+    const candidateKeys = new Set(candidates.map((frame) => `${frame.runId}:${frame.skill}:${frame.logPath}`));
+    writePending(root, pending.map((frame) =>
+      !frame.sessionId && candidateKeys.has(`${frame.runId}:${frame.skill}:${frame.logPath}`)
+        ? { ...frame, sessionId }
+        : frame));
     return { status: 'correlated' };
   });
 }
 
 export function expectedRead(repositoryRoot, sessionId) {
   const state = readState(repositoryRoot, sessionId);
+  if (state?.status === STATES.degraded) {
+    return { status: STATES.degraded, reason: state.degradedReason };
+  }
   if (!state?.latch || state.status !== STATES.required) return { status: 'inactive' };
   return { status: state.status, generation: state.generation, file: state.latch.remaining[0] };
 }
@@ -501,6 +569,9 @@ function degradeUnlocked(root, state, reason) {
 export function agentStopFallback(repositoryRoot, sessionId, stopHookActive) {
   return withStateLock(repositoryRoot, () => {
   const state = readStateUnlocked(repositoryRoot, sessionId);
+  if (state?.status === STATES.degraded) {
+    return { decision: 'allow', degraded: true, reason: state.degradedReason };
+  }
   if (!state?.latch || state.status !== STATES.required) return { decision: 'allow' };
   if (stopHookActive || state.latch.agentStopBlocks >= MAX_AGENT_STOP_BLOCKS) {
     state.status = STATES.degraded;

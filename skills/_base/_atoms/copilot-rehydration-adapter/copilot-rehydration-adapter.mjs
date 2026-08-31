@@ -52,6 +52,11 @@ export function preCompact(repositoryRoot, payload) {
 export function sessionStart(repositoryRoot, payload) {
   if (payload.source !== 'resume') return {};
   const state = readState(repositoryRoot, sessionId(payload));
+  if (state?.status === STATES.degraded) {
+    return {
+      additionalContext: `Compaction rehydration is blocked: ${state.degradedReason}. Stop material work.`,
+    };
+  }
   if (!state || state.stack.length === 0) return {};
   const result = arm({
     repositoryRoot,
@@ -67,6 +72,13 @@ export function sessionStart(repositoryRoot, payload) {
 export function preToolUse(repositoryRoot, payload) {
   const expected = expectedRead(repositoryRoot, sessionId(payload));
   if (expected.status === 'inactive') return {};
+  if (expected.status === STATES.degraded) {
+    return {
+      permissionDecision: 'deny',
+      permissionDecisionReason:
+        `Compaction rehydration is blocked: ${expected.reason}. Material work is not allowed.`,
+    };
+  }
   const absolute = absoluteToolPath(payload);
   const canonical = path.join(repositoryRoot, expected.file.path);
   if (absolute === canonical && isFullView(payload, expected.file)) {
