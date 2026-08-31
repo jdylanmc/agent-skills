@@ -226,7 +226,7 @@ export function registerRun(input) {
         },
       });
     }
-    state.status = STATES.active;
+    state.status = state.latch ? STATES.required : STATES.active;
   } else if (input.phase === 'after') {
     const index = state.stack.findLastIndex((frame) => `${frame.runId}:${frame.skill}` === key);
     if (index >= 0) state.stack.splice(index, 1);
