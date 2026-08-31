@@ -1,0 +1,90 @@
+---
+name: quality-evidence
+description: Enforce the candidate delivery order, exact revision binding, blast-radius contract adaptation, bounded remediation, and evidence invalidation after mutation.
+level: atom
+allowed-tools: ["execute","read","search","task"]
+includes: ["ship-with-squadron/_atoms/quality-evidence/quality-evidence.mjs"]
+composes: []
+used-by: ["ship-with-squadron/_molecules/candidate-delivery/candidate-delivery.md"]
+---
+
+# Quality Evidence
+
+## Required Files
+
+1. [Quality evidence helper](./quality-evidence.mjs)
+
+Run every candidate in this order:
+
+```text
+implementation
+  -> diff reconciliation
+  -> run-ci
+  -> Roast
+  -> blast-radius proof
+  -> bounded remediation
+  -> criterion verdict
+  -> publication
+  -> real nested Shepherd
+```
+
+Use the quality evidence helper to enforce order and bind every receipt or
+report to exact base and head revisions. Any head mutation invalidates
+diff, Continuous Integration, Roast, blast-radius, criterion, publication, and
+Shepherd evidence; restart from reconciliation. Remediation is a fresh bounded
+worker dispatch, never an unbounded loop or validation weakening.
+
+The helper reuses `ship`'s validated deterministic hunk reconciler through a
+code dependency. This does not compose or route to another skill-local unit;
+the composition graph remains squadron-local.
+
+The final quality gate validates raw receipts rather than caller-shaped pass
+booleans. It requires revision-bound `reconciled`; a complete terminal
+`run-ci: passed` invocation with nonempty steps; a complete terminal Roast
+invocation with no unresolved finding whose canonical field is exactly
+`Priority: Must fix`; blast-radius readiness `satisfied`; and every criterion
+proved `satisfied` or `descoped-by-human` by a human decision receipt bound to
+criterion ID, manifest digest, source revision, decision, actor, and time.
+Absent, malformed, stale, degraded, or incomplete evidence enters bounded
+remediation and never publication readiness.
+The confirmed policy is exact: the first version accepts only `run-ci`,
+`roast`, and `blast-radius-proof`. Manifest additions are rejected until a
+future version can carry them consistently through assignment, evidence,
+persistence, and readiness.
+
+## Blast-radius adapter
+
+Invoke the checked-in independently routable `blast-radius` skill through the
+local required-skill seam. Do not compose or copy its skill-local units, wrap
+its output, or add caller-manufactured status, invocation, branch, pull-request,
+or contract-revision fields. Consume its actual report unchanged. Preserve its
+exact vocabulary:
+
+- classifications: `confirmed-risk`, `cleared-risk`,
+  `unproven-assertion`;
+- rung progression: `completed`, `unavailable`, `not-applicable`,
+  `not-attempted`;
+- evidence outcome: `supports-assertion`, `supports-bad-case`,
+  `inconclusive`, `conflicting`;
+- `regression-proof-status`: `selected` or `unavailable`.
+
+The adapter requires the documented subject, supplied baseline, included
+scope, exclusions, repositories, exact base/head revisions, environments,
+direct and cross-boundary consumers, analysis boundaries and gaps, at least one
+five-rung ladder, exact ordered rung progression/outcomes, and exclusive
+classification of every ladder. Stopping rung, reason, and next-evidence
+metadata are required only when acquisition actually stops on unavailable,
+inconclusive, conflicting, or permitted not-applicable evidence; a fully
+completed ladder must not manufacture stopping metadata. The report also
+contains one nonempty identified regression-proof slot. Classification is derived from acquired sequential
+evidence: source-or-stronger `supports-bad-case` may confirm, ruled-out-bad-case-
+or-stronger `supports-assertion` may clear, and unavailable, conflicting,
+all-not-attempted, or otherwise nondecisive evidence cannot clear. Empty ladders or proof,
+`unavailable`, `unproven-assertion`, invalid revision binding, or malformed
+cross-field evidence never becomes success. A `confirmed-risk` requires
+remediation or a human decision outside this fleet; the fleet cannot accept
+risk. The top-level report schema is exact: the documented common fields only,
+plus `next-evidence-action` and `next-evidence-reason` only when proof status is
+`unavailable`. Synthetic wrappers, completion flags, and extra provenance are
+invalid. The adapter returns the same report as its receipt; it does not
+rewrite or enrich it.

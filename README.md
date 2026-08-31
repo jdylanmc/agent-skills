@@ -152,9 +152,12 @@ For a repository installation, copy doctrine to `.github/doctrine/` beside
 `.github/skills/`. For a personal installation, copy it to
 `~/.agents/doctrine/` beside `~/.agents/skills/`.
 
-`ship-with-squadron` requires `/handoff` as a local skill dependency. This
-repository ships `skills/handoff/`; install it together with the shared
-`_base/` directory required by its composition graph.
+`ship-with-squadron` requires local `run-ci`, `roast`, `blast-radius`, and
+`orchestration-handoff`, with optional local `shepherd`. It consumes the
+checked-in blast-radius report and canonical Shepherd landability receipt
+unchanged, while binding fleet-specific identity in its own persisted state.
+Install the local dependencies together with the shared `_base/` directory
+required by their composition graphs.
 
 ## Sensitive-content safeguard
 

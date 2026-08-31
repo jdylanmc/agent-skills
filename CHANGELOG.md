@@ -15,6 +15,22 @@ below is unreleased and no comparison links are available.
 
 ### Added
 
+- **Dependency-aware fleet delivery (`ship-with-squadron`).** A new
+  human-invoked workflow delivers one confirmed closed issue set through
+  isolated ownership, durable scheduling, revision-bound Continuous
+  Integration, Roast, the checked-in local blast-radius proof, publication,
+  and optional Shepherd readiness without gaining merge or tracker authority.
+  Its fail-closed state core recomputes manifest and provider digests at every
+  trust boundary, binds storage to the confirmed repository/run path, uses
+  atomically initialized and replacement-safe token-owned lock directories,
+  reclaims stale ownerless or malformed locks without deleting live
+  replacements, validates portable
+  no-link/reparse artifact reads on Windows and POSIX, persists semantic
+  readiness and expiry, archives completed no-Shepherd ownership, and requires
+  canonical worktree identity across path aliases, preserves in-flight
+  ownership across readiness expiry, and retains a persisted handoff-required
+  obligation for timeout, crash, stall, or exhaustion until an identity- and
+  digest-bound handoff exists.
 - **Discovery foundation rehydration.** Discovery now grounds every run on its
   persisted, human-aligned foundation rather than conversation memory. At the
   start of an invocation it resolves and rereads the latest aligned foundation
