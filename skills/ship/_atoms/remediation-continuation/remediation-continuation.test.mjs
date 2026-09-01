@@ -290,7 +290,9 @@ test('validation-only implementation failure continues instead of invoking Sheph
         steps: [{
           workflow: '.github/workflows/validate-skills.yml',
           job: 'validate',
+          stepIndex: null,
           name: 'Run validator and conformance tests',
+          shell: null,
           command: 'node scripts/run-registered-tests.mjs',
           status: 'failed',
         }, {
@@ -306,7 +308,9 @@ test('validation-only implementation failure continues instead of invoking Sheph
         stepIdentity: JSON.stringify({
           workflow: '.github/workflows/validate-skills.yml',
           job: 'validate',
+          stepIndex: null,
           name: 'Run validator and conformance tests',
+          shell: null,
           command: 'node scripts/run-registered-tests.mjs',
         }),
         id: 'ci-failure',
@@ -334,6 +338,68 @@ test('run-ci fingerprints preserve exact failed-step identity', () => {
     );
 });
 
+test('validation continuation accepts only the run-ci failure and skip state machine', () => {
+    const failed = {
+      workflow: 'ci.yml',
+      job: 'validate',
+      stepIndex: 2,
+      name: 'tests',
+      shell: 'bash',
+      command: 'node --test',
+      status: 'failed',
+    };
+    const classification = (step) => ({
+      stepIdentity: JSON.stringify({
+        workflow: step.workflow,
+        job: step.job,
+        stepIndex: step.stepIndex,
+        name: step.name,
+        shell: step.shell,
+        command: step.command,
+      }),
+      classification: 'implementation',
+      ledgerEntryId: 'L1',
+      location: 'ci.yml:1',
+      rule: 'tests-pass',
+    });
+    const malformed = [
+      {
+        evidenceComplete: false,
+        steps: [{
+          ...failed,
+          stepIndex: 1,
+          status: 'skipped',
+          reason: 'prior step did not complete successfully',
+        }, failed],
+        classifications: [classification(failed)],
+      },
+      {
+        evidenceComplete: true,
+        steps: [failed, { ...failed, stepIndex: 3, status: 'passed' }],
+        classifications: [classification(failed)],
+      },
+      {
+        evidenceComplete: true,
+        steps: [failed, { ...failed, stepIndex: 3 }],
+        classifications: [classification(failed), classification({ ...failed, stepIndex: 3 })],
+      },
+    ];
+    for (const entry of malformed) {
+      const result = decision({
+        findings: [],
+        validation: {
+          evidenceComplete: entry.evidenceComplete,
+          status: 'failed',
+          repository: { revision: HEAD },
+          steps: entry.steps,
+        },
+        validationClassifications: entry.classifications,
+      });
+      assert.equal(result.action, 'human-handoff');
+      assert.equal(result.reason, 'validation-evidence-incomplete');
+    }
+});
+
 test('validation-only continuation uses the same canonical fingerprints during authorization', () => {
   const failedStep = {
     workflow: '.github/workflows/validate-skills.yml',
@@ -346,7 +412,9 @@ test('validation-only continuation uses the same canonical fingerprints during a
     stepIdentity: JSON.stringify({
       workflow: failedStep.workflow,
       job: failedStep.job,
+      stepIndex: failedStep.stepIndex ?? null,
       name: failedStep.name,
+      shell: failedStep.shell ?? null,
       command: failedStep.command,
     }),
     id: 'ci-failure',
@@ -412,7 +480,9 @@ test('validation-only authorization rejects missing or mismatched canonical fail
     stepIdentity: JSON.stringify({
       workflow: failedStep.workflow,
       job: failedStep.job,
+      stepIndex: failedStep.stepIndex ?? null,
       name: failedStep.name,
+      shell: failedStep.shell ?? null,
       command: failedStep.command,
     }),
     classification: 'implementation',
@@ -427,7 +497,9 @@ test('validation-only authorization rejects missing or mismatched canonical fail
       stepIdentity: JSON.stringify({
         workflow: 'other.yml',
         job: 'test',
+        stepIndex: null,
         name: 'other tests',
+        shell: null,
         command: 'node --test other',
       }),
     }],
@@ -436,7 +508,9 @@ test('validation-only authorization rejects missing or mismatched canonical fail
       stepIdentity: JSON.stringify({
         workflow: failedStep.workflow,
         job: failedStep.job,
+        stepIndex: failedStep.stepIndex ?? null,
         name: failedStep.name,
+        shell: failedStep.shell ?? null,
         command: 'node --test different',
       }),
     }],
@@ -560,7 +634,9 @@ test('regression, added blockers, blocker replacement, and criterion regression 
           steps: [{
             workflow: 'ci.yml',
             job: 'test',
+            stepIndex: null,
             name: 'tests',
+            shell: null,
             command: 'node --test',
             status: 'failed',
           }],
@@ -569,7 +645,9 @@ test('regression, added blockers, blocker replacement, and criterion regression 
           stepIdentity: JSON.stringify({
             workflow: 'ci.yml',
             job: 'test',
+            stepIndex: null,
             name: 'tests',
+            shell: null,
             command: 'node --test',
           }),
           classification: 'implementation',

@@ -142,6 +142,54 @@ test('execution refuses a different worktree before running a discovered command
   assert.equal(fs.existsSync(path.join(executionRoot, 'ran.txt')), false);
 });
 
+test('execution refuses stale state in the same worktree before running commands', async () => {
+  const root = sandbox('run-ci-stale-state-');
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), [
+    'name: CI',
+    'on: [pull_request]',
+    'jobs:',
+    '  validate:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - name: Must not run',
+    "        run: node -e \"require('node:fs').writeFileSync('ran.txt', 'yes')\"",
+    '',
+  ].join('\n'));
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  const discovery = discoverRepositoryCi(root);
+  fs.writeFileSync(path.join(root, 'changed-after-discovery.txt'), 'changed\n');
+
+  await assert.rejects(
+    runDiscoveredCi(root, discovery),
+    /repository state changed after CI discovery/,
+  );
+  assert.equal(fs.existsSync(path.join(root, 'ran.txt')), false);
+});
+
+test('execution refuses to attribute commands that mutate the discovered repository state', async () => {
+  const root = sandbox('run-ci-mutating-command-');
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), [
+    'name: CI',
+    'on: [pull_request]',
+    'jobs:',
+    '  validate:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - name: Mutate checkout',
+    "        run: node -e \"require('node:fs').writeFileSync('mutated.txt', 'yes')\"",
+    '',
+  ].join('\n'));
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  const discovery = discoverRepositoryCi(root);
+
+  await assert.rejects(
+    runDiscoveredCi(root, discovery),
+    /repository state changed during CI execution/,
+  );
+});
+
 test('discovers this repository validation command without globbing tests', () => {
   const result = discoverRepositoryCi(REPOSITORY_ROOT, {
     workflowPath: '.github/workflows/validate-skills.yml',

@@ -25,7 +25,10 @@ repository path or explicit construct identity, ledger entry, kind, and
 ownership classification. Ignore caller-made fingerprints, line movement, and
 free-form wording. Consume the canonical `run-ci` envelope's
 `evidenceComplete`, `status`, and failed `steps`, with each failed step
-classified exactly once against the confirmed ledger. Combine those failures
+classified exactly once against the confirmed ledger by workflow, job, step
+index, name, shell, and command. Accept only the runner's ordered failure
+shape: passed or intermittent steps, one failed step, then only deterministic
+skips caused by that failure. Combine those failures
 with Roast blockers before deciding. Then:
 
 - continue local remediation while attempts remain;

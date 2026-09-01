@@ -92,7 +92,9 @@ function stepIdentity(step) {
   return JSON.stringify({
     workflow: step.workflow ?? null,
     job: step.job ?? null,
+    stepIndex: step.stepIndex ?? null,
     name: step.name ?? null,
+    shell: step.shell ?? null,
     command: step.command ?? null,
   });
 }
@@ -123,23 +125,27 @@ function validationFindings(validation, classifications) {
   if (validation.status === 'intermittent') return 'intermittent';
   if (validation.status !== 'failed') return validation.status ?? 'incomplete';
   if (!Array.isArray(validation.steps)) return null;
-  const failed = validation.steps.filter((step) => step?.status === 'failed');
-  const skipped = validation.steps.filter((step) => step?.status === 'skipped');
-  const statusesValid = validation.steps.every((step) =>
-    ['passed', 'intermittent', 'failed', 'skipped'].includes(step?.status));
-  const skippedAreDeterministic = skipped.every((step) =>
-    step.reason === 'prior step did not complete successfully');
-  const completenessValid = validation.evidenceComplete === true
-    ? skipped.length === 0
-    : skipped.length > 0 && skippedAreDeterministic;
-  if (failed.length === 0
-      || !statusesValid
+  const failedIndexes = validation.steps
+    .map((step, index) => step?.status === 'failed' ? index : -1)
+    .filter((index) => index !== -1);
+  if (failedIndexes.length !== 1) return null;
+  const failedIndex = failedIndexes[0];
+  const beforeFailureValid = validation.steps
+    .slice(0, failedIndex)
+    .every((step) => ['passed', 'intermittent'].includes(step?.status));
+  const afterFailure = validation.steps.slice(failedIndex + 1);
+  const afterFailureValid = afterFailure.every((step) =>
+    step?.status === 'skipped'
+      && step.reason === 'prior step did not complete successfully');
+  const completenessValid = validation.evidenceComplete === (afterFailure.length === 0);
+  if (!beforeFailureValid
+      || !afterFailureValid
       || !completenessValid
       || !Array.isArray(classifications)
-      || classifications.length !== failed.length) {
+      || classifications.length !== 1) {
     return null;
   }
-  const findings = failed.map((step) => {
+  const findings = [validation.steps[failedIndex]].map((step) => {
     const identity = stepIdentity(step);
     const matches = classifications.filter((entry) => entry?.stepIdentity === identity);
     if (matches.length !== 1) return null;
