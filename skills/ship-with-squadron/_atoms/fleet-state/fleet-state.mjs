@@ -1613,19 +1613,78 @@ function openVerifiedRegularFile(file) {
   }
 }
 
-export function loadFleetState(file, manifest) {
-  const runId = path.basename(path.dirname(file));
-  assertFleetStatePath(file, manifest, runId);
+const COMMIT_SLOT_SUFFIX = '.commit-r';
+
+function commitSlotPath(file, revision) {
+  return `${file}${COMMIT_SLOT_SUFFIX}${revision}`;
+}
+
+function readStateFile(file, manifest, expectedRevision = null) {
   const handle = openVerifiedRegularFile(file);
   try {
     const stat = fs.fstatSync(handle, { bigint: true });
     if (!stat.isFile()) throw new Error('fleet state descriptor is not a regular file');
+    if (stat.nlink < 1n || stat.nlink > 2n) {
+      throw new Error('fleet state file has an unsafe hard-link count');
+    }
     const state = assertFleetState(JSON.parse(fs.readFileSync(handle, 'utf8')), manifest);
-    assertFleetStatePath(file, manifest, state.runId);
+    assertFleetStatePath(
+      path.join(path.dirname(file), 'fleet-state.json'),
+      manifest,
+      state.runId,
+    );
+    if (expectedRevision !== null && state.revision !== expectedRevision) {
+      throw new Error(
+        `fleet state commit slot revision mismatch: file is ${expectedRevision}, state is ${state.revision}`,
+      );
+    }
     return state;
   } finally {
     fs.closeSync(handle);
   }
+}
+
+function highestCommitSlot(file, manifest) {
+  const directory = path.dirname(file);
+  let entries;
+  try {
+    entries = fs.readdirSync(directory);
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+  const base = path.basename(file);
+  const prefix = `${base}${COMMIT_SLOT_SUFFIX}`;
+  const slots = [];
+  for (const entry of entries) {
+    if (!entry.startsWith(`${base}.commit-`)) continue;
+    const match = entry.match(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}([1-9]\\d*)$`, 'u'));
+    if (!match) throw new Error(`fleet state commit slot name is invalid: ${entry}`);
+    const revision = Number(match[1]);
+    if (!Number.isSafeInteger(revision)) {
+      throw new Error(`fleet state commit slot revision is invalid: ${entry}`);
+    }
+    slots.push({ path: path.join(directory, entry), revision });
+  }
+  if (slots.length === 0) return null;
+  slots.sort((left, right) => right.revision - left.revision);
+  const highest = slots[0];
+  return {
+    ...highest,
+    state: readStateFile(highest.path, manifest, highest.revision),
+  };
+}
+
+function authoritativeFleetState(file, manifest) {
+  const slot = highestCommitSlot(file, manifest);
+  if (slot) return slot;
+  return { path: file, revision: null, state: readStateFile(file, manifest) };
+}
+
+export function loadFleetState(file, manifest) {
+  const runId = path.basename(path.dirname(file));
+  assertFleetStatePath(file, manifest, runId);
+  return authoritativeFleetState(file, manifest).state;
 }
 
 function wait(milliseconds) {
@@ -1707,20 +1766,51 @@ function lockOwnerPath(lockDirectory, token) {
   return path.join(lockDirectory, `owner-${token}.json`);
 }
 
-function readLockOwner(lockDirectory) {
+function malformedLockMetadata(message, cause = undefined) {
+  const error = new Error(message, cause ? { cause } : undefined);
+  error.code = 'FLEET_LOCK_MALFORMED';
+  return error;
+}
+
+function injectLockOwnerReadFailure(options, stage) {
+  const injection = options.testOnlyLockOwnerReadError;
+  if (injection === undefined || injection.stage !== stage) return;
+  if (!['directory', 'entries', 'owner'].includes(injection.stage)
+      || !['EACCES', 'EPERM', 'EBUSY', 'EIO'].includes(injection.code)) {
+    throw new Error('invalid test-only lock owner read failure');
+  }
+  const error = new Error(`injected lock owner ${stage} read failure: ${injection.code}`);
+  error.code = injection.code;
+  throw error;
+}
+
+function readLockOwner(lockDirectory, options = {}) {
   const directoryBefore = fs.lstatSync(lockDirectory, { bigint: true });
+  injectLockOwnerReadFailure(options, 'directory');
   if (directoryBefore.isSymbolicLink() || !directoryBefore.isDirectory()
       || !sameResolvedPath(fs.realpathSync(lockDirectory), lockDirectory)) {
     throw new Error('fleet state lock path is unsafe');
   }
   const owners = fs.readdirSync(lockDirectory)
     .filter((entry) => /^owner-[a-f0-9]{48}\.json$/.test(entry));
-  if (owners.length !== 1) throw new Error('fleet state lock metadata has no unique ownership token');
+  injectLockOwnerReadFailure(options, 'entries');
+  if (owners.length !== 1) {
+    throw malformedLockMetadata('fleet state lock metadata has no unique ownership token');
+  }
   const ownerPath = path.join(lockDirectory, owners[0]);
   const handle = openVerifiedRegularFile(ownerPath);
   try {
     const ownerStat = fs.fstatSync(handle, { bigint: true });
-    const metadata = JSON.parse(fs.readFileSync(handle, 'utf8'));
+    injectLockOwnerReadFailure(options, 'owner');
+    let metadata;
+    try {
+      metadata = JSON.parse(fs.readFileSync(handle, 'utf8'));
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        throw malformedLockMetadata('fleet state lock metadata is malformed', error);
+      }
+      throw error;
+    }
     const token = owners[0].slice('owner-'.length, -'.json'.length);
     if (!metadata
         || !same(Object.keys(metadata).sort(), [
@@ -1734,7 +1824,7 @@ function readLockOwner(lockDirectory) {
         || !Number.isInteger(metadata.expectedRevision)
         || metadata.expectedRevision < 0
         || !validTimestamp(metadata.createdAt)) {
-      throw new Error('fleet state lock metadata is malformed');
+      throw malformedLockMetadata('fleet state lock metadata is malformed');
     }
     const directoryAfter = fs.lstatSync(lockDirectory, { bigint: true });
     if (!sameStatIdentity(directoryBefore, directoryAfter)) {
@@ -1807,20 +1897,35 @@ function acquireLock(lockDirectory, expectedRevision, options) {
     } catch (error) {
       if (!['EEXIST', 'ENOTEMPTY', 'EPERM'].includes(error.code)) throw error;
       try {
-        const observed = readLockOwner(lockDirectory);
+        const observed = readLockOwner(lockDirectory, options);
         const ownerStat = fs.lstatSync(lockOwnerPath(lockDirectory, observed.token), { bigint: true });
         const stale = Date.now() - Number(ownerStat.mtimeMs) >= staleLockMs;
         if (stale && !lockOwnerIsCurrent(observed.metadata)) {
-          options.beforeStaleLockClaim?.();
-          if (removeOwnedLockDirectory(lockDirectory, observed, 'stale')) continue;
+          options.beforeStaleLockClaim?.(Object.freeze(structuredClone(observed)));
+          const quarantine = quarantineLockDirectory(lockDirectory, observed, 'stale', options);
+          if (quarantine.status === 'quarantined') continue;
         }
       } catch (inspectionError) {
         if (inspectionError.code === 'ENOENT') continue;
         if (inspectionError.message === 'fleet state lock path is unsafe') throw inspectionError;
-        const malformed = inspectLockDirectory(lockDirectory);
+        if (inspectionError.code !== 'FLEET_LOCK_MALFORMED') throw inspectionError;
+        options.testOnlyAfterMalformedOwnershipRead?.();
+        let malformed;
+        try {
+          malformed = inspectLockDirectory(lockDirectory);
+        } catch (malformedInspectionError) {
+          if (malformedInspectionError.code === 'ENOENT') continue;
+          throw malformedInspectionError;
+        }
         if (Date.now() - malformed.mtimeMs >= staleLockMs) {
-          options.beforeMalformedLockClaim?.();
-          if (quarantineLockDirectory(lockDirectory, malformed, 'malformed')) continue;
+          options.beforeMalformedLockClaim?.(Object.freeze(structuredClone(malformed)));
+          const quarantine = quarantineLockDirectory(
+            lockDirectory,
+            malformed,
+            'malformed',
+            options,
+          );
+          if (quarantine.status === 'quarantined') continue;
         }
       }
       wait(delayMs);
@@ -1829,57 +1934,64 @@ function acquireLock(lockDirectory, expectedRevision, options) {
   throw new Error('fleet state write lock is busy');
 }
 
-function quarantineLockDirectory(lockDirectory, ownership, purpose) {
-  const marker = path.join(
-    lockDirectory,
-    `${purpose}-${process.pid}-${crypto.randomBytes(16).toString('hex')}`,
-  );
-  try {
-    const markerHandle = fs.openSync(marker, 'wx', 0o600);
-    fs.closeSync(markerHandle);
-  } catch (error) {
-    if (error.code === 'ENOENT') return false;
-    throw error;
-  }
-  const quarantine = `${lockDirectory}.${purpose}-${process.pid}-${crypto.randomBytes(16).toString('hex')}`;
-  try {
-    const directory = serializeFilesystemIdentity(
-      fs.lstatSync(lockDirectory, { bigint: true }),
-    );
-    if (directory.device !== ownership.directory.device
-        || directory.inode !== ownership.directory.inode) {
-      return false;
-    }
-    if (ownership.token) {
-      const current = readLockOwner(lockDirectory);
-      if (current.token !== ownership.token
-          || current.directory.device !== ownership.directory.device
-          || current.directory.inode !== ownership.directory.inode
-          || current.owner.device !== ownership.owner.device
-          || current.owner.inode !== ownership.owner.inode) return false;
-    }
-    fs.renameSync(lockDirectory, quarantine);
-    const moved = serializeFilesystemIdentity(fs.lstatSync(quarantine, { bigint: true }));
-    if (moved.device !== ownership.directory.device
-        || moved.inode !== ownership.directory.inode
-        || !fs.existsSync(path.join(quarantine, path.basename(marker)))) {
-      if (!fs.existsSync(lockDirectory)) fs.renameSync(quarantine, lockDirectory);
-      throw new Error('fleet state lock changed during atomic quarantine');
-    }
-    removePrivateDirectory(quarantine);
-    fsyncDirectory(path.dirname(lockDirectory));
-    return true;
-  } finally {
+function sameLockOwnership(lockDirectory, ownership, purpose = 'owned') {
+  const directory = inspectLockDirectory(lockDirectory).directory;
+  if (directory.device !== ownership.directory.device
+      || directory.inode !== ownership.directory.inode) return false;
+  if (!ownership.token) {
+    if (purpose !== 'malformed') return true;
     try {
-      if (fs.existsSync(marker)) fs.unlinkSync(marker);
-    } catch {
-      // The canonical lock may already belong to a replacement owner.
+      readLockOwner(lockDirectory);
+      return false;
+    } catch (error) {
+      if (error.code === 'FLEET_LOCK_MALFORMED') return true;
+      throw error;
     }
+  }
+  const current = readLockOwner(lockDirectory);
+  return current.token === ownership.token
+    && current.directory.device === ownership.directory.device
+    && current.directory.inode === ownership.directory.inode
+    && current.owner.device === ownership.owner.device
+    && current.owner.inode === ownership.owner.inode;
+}
+
+function quarantineLockDirectory(lockDirectory, ownership, purpose, options = {}) {
+  const quarantine = `${lockDirectory}.quarantine-${purpose}-${process.pid}-${crypto.randomBytes(24).toString('hex')}`;
+  let moved = false;
+  try {
+    if (!sameLockOwnership(lockDirectory, ownership, purpose)) return { status: 'not-owned' };
+    fs.renameSync(lockDirectory, quarantine);
+    moved = true;
+    const evidence = Object.freeze({
+      lockDirectory,
+      ownership: structuredClone(ownership),
+      purpose,
+      quarantine,
+    });
+    options.afterLockQuarantineRename?.(evidence);
+    if (!sameLockOwnership(quarantine, ownership, purpose)) {
+      throw new Error('moved lock does not match the observed candidate');
+    }
+    fsyncDirectory(path.dirname(lockDirectory));
+    return { status: 'quarantined', path: quarantine };
+  } catch (error) {
+    if (error.code === 'ENOENT' && !moved) return { status: 'not-owned' };
+    if (moved) {
+      const retained = new Error(
+        `fleet state lock quarantine retained after ${purpose} verification failure: ${quarantine}`,
+        { cause: error },
+      );
+      retained.code = 'FLEET_LOCK_QUARANTINE_RETAINED';
+      retained.quarantinePath = quarantine;
+      throw retained;
+    }
+    throw error;
   }
 }
 
-function removeOwnedLockDirectory(lockDirectory, ownership, purpose) {
-  return quarantineLockDirectory(lockDirectory, ownership, purpose);
+function removeOwnedLockDirectory(lockDirectory, ownership, purpose, options = {}) {
+  return quarantineLockDirectory(lockDirectory, ownership, purpose, options);
 }
 
 function fsyncDirectory(directory) {
@@ -1948,26 +2060,33 @@ function prepareFleetStatePath(file, manifest, runId) {
 }
 
 function readLockedState(file, expectedRevision, manifest) {
-  if (!fs.existsSync(file)) {
+  let authoritative;
+  try {
+    authoritative = authoritativeFleetState(file, manifest);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
     if (expectedRevision !== 0) {
       throw new Error(`state revision conflict: state file absent at revision ${expectedRevision}`);
     }
     return null;
   }
-  const handle = openVerifiedRegularFile(file);
-  let disk;
-  try {
-    const stat = fs.fstatSync(handle, { bigint: true });
-    if (!stat.isFile()) throw new Error('fleet state descriptor is not a regular file');
-    disk = JSON.parse(fs.readFileSync(handle, 'utf8'));
-  } finally {
-    fs.closeSync(handle);
-  }
-  assertFleetState(disk, manifest);
+  const disk = authoritative.state;
   if (disk.revision !== expectedRevision) {
     throw new Error(`state revision conflict: disk is ${disk.revision}, expected ${expectedRevision}`);
   }
   return disk;
+}
+
+function committedStateError(evidence, cause) {
+  const error = new Error(
+    `fleet state revision ${evidence.revision} committed but projection or cleanup failed`,
+    { cause },
+  );
+  error.code = 'FLEET_STATE_COMMITTED';
+  error.committedRevision = evidence.revision;
+  error.committedState = structuredClone(evidence.state);
+  error.commitPath = evidence.commitPath;
+  return error;
 }
 
 function writeLockedState(
@@ -1996,20 +2115,53 @@ function writeLockedState(
     fs.closeSync(pendingHandle);
   }
   options.beforeStateCommit?.();
-  if (!ownsLock(lockDirectory, ownership) || !sameFleetDirectoryChain(directoryChain)) {
-    throw new Error('fleet state directory or lock changed immediately before commit');
+  if (!sameFleetDirectoryChain(directoryChain)) {
+    throw new Error('fleet state directory changed immediately before commit');
   }
   const pendingStat = fs.lstatSync(pending, { bigint: true });
   if (pendingStat.isSymbolicLink() || !pendingStat.isFile()
       || !sameResolvedPath(fs.realpathSync(pending), pending)) {
     throw new Error('pending fleet state path was substituted before commit');
   }
-  fs.renameSync(pending, file);
-  if (!ownsLock(lockDirectory, ownership) || !sameFleetDirectoryChain(directoryChain)) {
-    throw new Error('fleet state directory or lock changed during commit');
+  const commitPath = commitSlotPath(file, next.revision);
+  try {
+    fs.linkSync(pending, commitPath);
+  } catch (error) {
+    if (error.code === 'EEXIST') {
+      throw new Error(
+        `state revision conflict: commit slot ${next.revision} already exists`,
+        { cause: error },
+      );
+    }
+    throw error;
   }
-  fsyncDirectory(path.dirname(file));
-  return loadFleetState(file, manifest);
+  const evidence = Object.freeze({
+    revision: next.revision,
+    state: structuredClone(next),
+    commitPath,
+  });
+  try {
+    const committed = readStateFile(commitPath, manifest, next.revision);
+    options.afterCommitSlot?.(Object.freeze({
+      revision: evidence.revision,
+      state: structuredClone(evidence.state),
+      commitPath,
+    }));
+    fs.renameSync(pending, file);
+    options.afterCanonicalProjection?.(Object.freeze({
+      revision: evidence.revision,
+      state: structuredClone(evidence.state),
+      commitPath,
+      file,
+    }));
+    if (!sameFleetDirectoryChain(directoryChain)) {
+      throw new Error('fleet state directory changed during canonical projection');
+    }
+    fsyncDirectory(path.dirname(file));
+    return { value: committed, commit: evidence };
+  } catch (error) {
+    throw committedStateError(evidence, error);
+  }
 }
 
 function ownsLock(lockDirectory, ownership) {
@@ -2025,50 +2177,49 @@ function ownsLock(lockDirectory, ownership) {
   }
 }
 
-function recoverPendingResidue(file, lockDirectory, ownership) {
-  if (!ownsLock(lockDirectory, ownership)) {
-    throw new Error('cannot recover pending fleet state files without current lock ownership');
-  }
-  const directory = path.dirname(file);
-  const prefix = `${path.basename(file)}.next-`;
-  const pattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[a-f0-9]{48}-[a-f0-9]{32}$`);
-  for (const entry of fs.readdirSync(directory)) {
-    if (!pattern.test(entry)) continue;
-    const residue = path.join(directory, entry);
-    const stat = fs.lstatSync(residue, { bigint: true });
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-      throw new Error('pending fleet state residue is not a real regular file');
-    }
-    fs.unlinkSync(residue);
-  }
-  fsyncDirectory(directory);
-  if (!ownsLock(lockDirectory, ownership)) {
-    throw new Error('fleet state lock changed during pending residue recovery');
-  }
-}
-
 function withFleetStateLock(file, manifest, runId, expectedRevision, options, operation) {
   const directoryChain = prepareFleetStatePath(file, manifest, runId);
   const lockFile = `${file}.lock`;
   const lock = acquireLock(lockFile, expectedRevision, options);
   const pending = `${file}.next-${lock.token}-${crypto.randomBytes(16).toString('hex')}`;
+  let operationResult;
+  let operationError;
   try {
-    recoverPendingResidue(file, lockFile, lock);
     if (!sameFleetDirectoryChain(directoryChain)) {
       throw new Error('fleet state directory ancestry changed before mutation');
     }
-    return operation(pending, lockFile, lock, directoryChain);
-  } finally {
+    operationResult = operation(pending, lockFile, lock, directoryChain);
+  } catch (error) {
+    operationError = error;
+  }
+  let releaseError;
+  try {
     try {
       if (fs.existsSync(pending)) fs.unlinkSync(pending);
     } finally {
-      options.beforeReleaseLockClaim?.();
-      removeOwnedLockDirectory(lockFile, lock, 'release');
+      options.beforeReleaseLockClaim?.(Object.freeze(structuredClone(lock)));
+      const release = removeOwnedLockDirectory(lockFile, lock, 'release', options);
+      if (release.status !== 'quarantined' && release.status !== 'not-owned') {
+        const error = new Error(`fleet state lock release was not completed: ${release.status}`);
+        error.code = 'FLEET_LOCK_RELEASE_INCOMPLETE';
+        throw error;
+      }
       if (!sameFleetDirectoryChain(directoryChain)) {
         throw new Error('fleet state directory ancestry changed during mutation');
       }
     }
+  } catch (error) {
+    releaseError = error;
   }
+  if (operationError) {
+    if (releaseError) operationError.releaseError = releaseError;
+    throw operationError;
+  }
+  if (releaseError) {
+    if (operationResult?.commit) throw committedStateError(operationResult.commit, releaseError);
+    throw releaseError;
+  }
+  return operationResult.value;
 }
 
 export function persistFleetState(file, state, expectedRevision, manifest, options = {}) {
@@ -2079,6 +2230,7 @@ export function persistFleetState(file, state, expectedRevision, manifest, optio
     throw new Error(`state revision conflict: expected ${expectedRevision}, received ${state.revision}`);
   }
   assertFleetState(state, manifest);
+  readLockedState(file, expectedRevision, manifest);
   return withFleetStateLock(file, manifest, state.runId, expectedRevision, options, (
     pending,
     lockDirectory,
@@ -2109,6 +2261,9 @@ export function mutateFleetState(file, manifest, expectedRevision, mutate, optio
     throw new Error('expected fleet state revision is invalid');
   }
   if (typeof mutate !== 'function') throw new Error('fleet state mutator is required');
+  if (!readLockedState(file, expectedRevision, manifest)) {
+    throw new Error('fleet state mutation requires an existing state file');
+  }
   return withFleetStateLock(file, manifest, runId, expectedRevision, options, (
     pending,
     lockDirectory,
