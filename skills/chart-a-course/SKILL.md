@@ -1,6 +1,6 @@
 ---
 name: chart-a-course
-description: Map the dependency chain and critical path from a bounded mixed set of work records to one named goal. Use when the operator asks to chart a course, find goal prerequisites, expose a ready frontier, or analyze an explicit dependency graph. Do not use to prioritize work, dispatch workers, mutate trackers, or choose the next tactical action.
+description: Map the dependency chain and critical path from a bounded mixed set of work records to one named goal, and separately expose bounded operational readiness prerequisites. Use when the operator asks to chart a course, find goal prerequisites, expose a ready frontier, analyze an explicit dependency graph, or verify whether repository or provider state permits implementation. Do not use to prioritize work, dispatch workers, mutate trackers, infer dependency edges, or choose the next tactical action.
 allowed-tools: ["execute","read","search"]
 includes: ["_base/_molecules/chronicler/chronicler.md","chart-a-course/_molecules/course-chart/course-chart.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","chart-a-course/_molecules/course-chart/course-chart.md"]
@@ -11,10 +11,11 @@ requires-skills: []
 
 # Chart A Course
 
-Produce one read-only dependency course from a bounded work graph to one goal.
+Produce one read-only dependency course and operational readiness view from
+bounded evidence around one goal.
 
 ```text
-record -> normalize explicit graph -> isolate goal prerequisites -> calculate course -> report one planning action
+record -> normalize explicit graph and readiness evidence -> isolate goal prerequisites -> calculate course -> report one planning action
 ```
 
 ## Required References
@@ -33,9 +34,22 @@ record -> normalize explicit graph -> isolate goal prerequisites -> calculate co
    explicit dependency edges whose direction names a `prerequisite` and
    `dependent`; never infer an edge from order, wording, hierarchy, ownership,
    links, or proximity.
-3. Run [Course chart](./_molecules/course-chart/course-chart.md) with the supplied
-   revision, timestamps, freshness policy, estimates, records, and edges.
-4. Return the chart as observed. Do not dispatch its action, break ties, or turn
+3. When implementation readiness matters, gather only bounded repository or
+   provider observations and explicitly declare the complete set of required
+   readiness identities. State each operational prerequisite as satisfied,
+   unsatisfied, or unknown with source identity, source revision, observation
+   time, a full SHA-256 identity of the bounded provider snapshot, freshness
+   policy, and evidence, and cite any matching foundation record. Keep provider evidence
+   distinguishable from analyzer-derived citations and keep both separate from
+   dependency edges. Missing, floating, stale, or undeclared coverage remains
+   uncertain and cannot support
+   implementation-ready output. Supplemental observations remain visible but
+   do not gate readiness unless their identities are in the declared required
+   set.
+4. Run [Course chart](./_molecules/course-chart/course-chart.md) with the supplied
+   revision, timestamps, freshness policy, estimates, records, edges, and
+   readiness observations.
+5. Return the chart as observed. Do not dispatch its action, break ties, or turn
    a structural chain into a schedule.
 
 ## Output Contract
@@ -56,6 +70,15 @@ Return:
 - ready frontier records whose explicit prerequisites are complete;
 - blocked records with every explicit incomplete blocker;
 - completed gating records;
+- separately labeled dependency, operational, and combined implementation
+  readiness conclusions;
+- operational readiness prerequisites with bounded repository or provider
+  evidence, including satisfied, unsatisfied, and unknown state, plus declared
+  requirement coverage, freshness, and any missing required observation;
+- separate graph and operational completeness, with `not-assessed` distinct
+  from complete declared coverage;
+- any matching foundation record as a citation, with explicit human
+  confirmation required before a missing dependency edge can enter topology;
 - outside work that remains visible but is excluded from course calculation;
 - cycles and unresolved edges without guessed repairs;
 - reordering unknowns caused by defects, stale state, unavailable state,
@@ -83,6 +106,15 @@ never conceal uncertainty by guessing.
   not emit a worker brief.
 - No invented graph. Use only explicit directed dependencies in the bounded
   input. Preserve unresolved endpoints, ambiguous directions, cycles, and ties.
+- No readiness promotion. Repository or provider evidence may block operational
+  readiness but never creates a dependency edge. A matching foundation record
+  is cited separately, and only a human-confirmed explicit edge may move it into
+  dependency topology.
+- No false implementation readiness. An unsatisfied required repository
+  baseline or other mechanically required foundation prevents an
+  implementation-ready conclusion. Unknown or malformed readiness evidence
+  and stale or incomplete provider observations remain visibly uncertain
+  without suppressing otherwise supported dependency conclusions.
 - No calendar promise. Estimates are weights only when explicitly marked
   reliable, expressed in one unit, and represented as positive safe integers in
   the caller's smallest unit. Fractional estimates force structural mode.

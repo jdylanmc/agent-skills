@@ -214,3 +214,195 @@ test('freshness conversion uses validated offsets without date rollover', () => 
   assert.ok(result.defects.some(({ code, affectedIds }) =>
     code === 'invalid-status-observation-time' && affectedIds.includes('X')));
 });
+
+test('normalizes bounded readiness observations without promoting them into graph edges', () => {
+  const input = {
+    goal: 'GOAL',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [
+      { id: 'FOUNDATION', status: 'open' },
+      { id: 'GOAL', status: 'open' },
+    ],
+    edges: [],
+    readinessRequirementIds: ['repository-baseline'],
+    readinessFreshness: { maxObservationAgeSeconds: 3600 },
+    readinessObservations: [
+      {
+        id: 'repository-baseline',
+        kind: 'repository-baseline',
+        state: 'unsatisfied',
+        detail: 'The repository has no committed baseline.',
+        source: 'repository-provider',
+        sourceRevision: {
+          algorithm: 'sha256',
+          digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+        observedAt: '2026-08-31T22:20:52Z',
+        evidence: ['provider:commits=0'],
+        matchingRecord: {
+          id: 'FOUNDATION',
+          title: 'Establish repository',
+          url: 'https://example.test/issues/1',
+        },
+      },
+    ],
+  };
+
+  const result = normalizeGraph(input);
+
+  assert.deepEqual(result.edges, []);
+  assert.deepEqual(result.readiness.defects, []);
+  assert.equal(result.readiness.coverageDeclared, true);
+  assert.deepEqual(result.readiness.requirements, ['repository-baseline']);
+  assert.deepEqual(result.readiness.missingRequirementIds, []);
+  assert.deepEqual(result.readiness.observations, [{
+    ...input.readinessObservations[0],
+    freshness: 'current',
+    ageSeconds: 0,
+  }]);
+  assert.ok(result.records.some(({ id }) => id === 'FOUNDATION'));
+});
+
+test('readiness evidence defects stay separate from dependency graph completeness', () => {
+  const result = normalizeGraph({
+    goal: 'GOAL',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'GOAL', status: 'open' }],
+    edges: [],
+    readinessFreshness: { maxObservationAgeSeconds: 3600 },
+    readinessObservations: [
+      {
+        id: 'repository-baseline',
+        kind: 'repository-baseline',
+        state: 'unsatisfied',
+        detail: 'The repository has no committed baseline.',
+        source: 'repository-provider',
+        sourceRevision: {
+          algorithm: 'sha256',
+          digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+        observedAt: '2026-08-31T22:20:52Z',
+        evidence: [],
+      },
+    ],
+  });
+
+  assert.equal(result.complete, true);
+  assert.equal(result.readiness.complete, false);
+  assert.deepEqual(
+    result.readiness.defects.map(({ code }) => code),
+    ['missing-readiness-observation-evidence'],
+  );
+});
+
+test('refuses malformed readiness evidence and citation fields instead of repairing them', () => {
+  const result = normalizeGraph({
+    goal: 'GOAL',
+    revision: 'revision-1',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'GOAL', status: 'open' }],
+    edges: [],
+    readinessRequirementIds: ['repository-baseline'],
+    readinessFreshness: { maxObservationAgeSeconds: 3600 },
+    readinessObservations: [
+      {
+        id: 'repository-baseline',
+        kind: 'repository-baseline',
+        state: 'unsatisfied',
+        detail: 'The repository has no committed baseline.',
+        source: 'repository-provider',
+        sourceRevision: {
+          algorithm: 'sha256',
+          digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+        observedAt: '2026-08-31T22:20:52Z',
+        evidence: ['provider:commits=0', 42],
+        matchingRecord: {
+          id: 'FOUNDATION',
+          title: '',
+          url: 'not-a-url',
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(result.readiness.observations, []);
+  assert.deepEqual(result.readiness.missingRequirementIds, ['repository-baseline']);
+  assert.deepEqual(
+    result.readiness.defects.map(({ code }) => code),
+    [
+      'invalid-readiness-matching-record-title',
+      'invalid-readiness-matching-record-url',
+      'invalid-readiness-observation-evidence',
+    ],
+  );
+});
+
+test('normalizes source revision evidence without inventing one', () => {
+  const available = normalizeGraph({
+    goal: 'GOAL',
+    revision: ' revision-1 ',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'GOAL', status: 'open' }],
+    edges: [],
+  });
+  const unavailable = normalizeGraph({
+    goal: 'GOAL',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'GOAL', status: 'open' }],
+    edges: [],
+  });
+
+  assert.deepEqual(available.sourceRevision, {
+    available: true,
+    evidence: ['revision:revision-1'],
+  });
+  assert.deepEqual(unavailable.sourceRevision, {
+    available: false,
+    evidence: ['revision:unavailable'],
+  });
+});
+
+test('quarantines malformed citation fields without discarding valid readiness evidence', () => {
+  const result = normalizeGraph({
+    goal: 'GOAL',
+    revision: 'revision-1',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'GOAL', status: 'open' }],
+    edges: [],
+    readinessRequirementIds: ['repository-baseline'],
+    readinessFreshness: { maxObservationAgeSeconds: 3600 },
+    readinessObservations: [
+      {
+        id: 'repository-baseline',
+        kind: 'repository-baseline',
+        state: 'unsatisfied',
+        detail: 'The repository has no committed baseline.',
+        source: 'repository-provider',
+        sourceRevision: {
+          algorithm: 'sha256',
+          digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+        observedAt: '2026-08-31T22:20:52Z',
+        evidence: ['provider:commits=0'],
+        matchingRecord: {
+          id: 'FOUNDATION',
+          title: '',
+          url: 'not-a-url',
+        },
+      },
+    ],
+  });
+
+  assert.equal(result.readiness.observations.length, 1);
+  assert.equal(result.readiness.observations[0].state, 'unsatisfied');
+  assert.deepEqual(result.readiness.observations[0].matchingRecord, {
+    id: 'FOUNDATION',
+    title: null,
+    url: null,
+  });
+  assert.deepEqual(
+    result.readiness.defects.map(({ code }) => code),
+    ['invalid-readiness-matching-record-title', 'invalid-readiness-matching-record-url'],
+  );
+});

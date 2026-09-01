@@ -1,7 +1,13 @@
 # Intent: chart-a-course
 
+## Purpose
+
 Chart-a-course exists to make the dependency shape of a bounded body of work
-visible around one named goal.
+visible around one named goal, and to expose separately any bounded operational
+readiness prerequisites that mechanically prevent that goal from being
+attempted.
+
+## Evidence and readiness
 
 It accepts mixed work records, such as requirements and tickets, when they have
 stable identities, lifecycle state, and explicit dependency relationships. It
@@ -9,6 +15,21 @@ normalizes that evidence deterministically, identifies the goal's transitive
 prerequisites, and shows which work gates the goal, which work is ready, which
 work is blocked by named prerequisites, which work is complete, and which work
 is outside the goal's dependency chain.
+
+Alongside that topology, the skill may use bounded repository or provider
+evidence to identify operational readiness prerequisites. An absent required
+foundation, such as a missing repository baseline, prevents the goal from being
+reported ready for implementation even when no explicit tracker dependency
+gates it. Dependency gating and operational readiness gating remain separately
+labeled, evidence-backed conclusions with their uncertainty visible.
+
+When bounded evidence identifies a matching foundation record, the skill cites
+that record as an operational readiness prerequisite. It requires human
+confirmation before treating the record as a dependency-graph edge; it never
+promotes wording, hierarchy, ownership, proximity, or mechanical necessity into
+tracker topology on its own.
+
+## Course calculation
 
 When every remaining gating record has a reliable estimate in one unit, the
 skill may calculate the longest weighted gating path. Otherwise it reports only
@@ -18,6 +39,8 @@ than being collapsed into a preferred route. Completed records remain in path
 topology but contribute zero remaining weight. Weighted values use exact
 integer smallest units; fractional estimates are not used for weighted
 comparison.
+
+## Boundaries
 
 The skill must not manufacture dependency edges or silently repair malformed
 work data. Missing or duplicate identities, absent edge endpoints, unclear edge

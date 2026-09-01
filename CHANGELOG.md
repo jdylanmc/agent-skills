@@ -236,6 +236,12 @@ below is unreleased and no comparison links are available.
 
 ### Changed
 
+- **Operational readiness in `chart-a-course`.** Dependency topology still uses
+  only explicit tracker edges, while bounded repository or provider evidence
+  now produces a separately labeled operational readiness view. Missing
+  foundations such as an unborn repository baseline block implementation-ready
+  output, cite any matching foundation record, and require human confirmation
+  before that record can become a dependency edge.
 - **One review entry point.** Four sibling review skills were replaced by a
   single `roast` that selects applicable doctrine, so a review request no longer
   requires choosing a reviewer first.

@@ -417,3 +417,410 @@ test('every result contains evidence-bearing conclusions and exactly one plannin
     assert.ok(Array.isArray(result.pathResult.evidence));
   }
 });
+
+test('an unborn repository blocks implementation readiness without inventing a dependency edge', () => {
+  const result = chartCourse(fixtures.unbornRepositoryWithFoundationIssue);
+  const foundation = 'dylanmccurry_microsoft/agent-skills#1';
+  const goal = 'dylanmccurry_microsoft/agent-skills#25';
+
+  assert.deepEqual(result.gatingSubgraph.value.edges, []);
+  assert.deepEqual(result.gatingSubgraph.value.records.map(({ id }) => id), [goal]);
+  assert.deepEqual(result.outsideWork.value.map(({ id }) => id), [foundation]);
+  assert.equal(result.readiness.dependency.value.status, 'ready');
+  assert.equal(result.readiness.operational.value.status, 'blocked');
+  assert.equal(result.readiness.implementation.value.status, 'operationally-blocked');
+  assert.equal(result.readiness.implementation.value.readyForImplementation, false);
+
+  const [prerequisite] = result.readiness.operational.value.prerequisites;
+  assert.equal(prerequisite.state, 'unsatisfied');
+  assert.equal(prerequisite.matchingRecord.id, foundation);
+  assert.equal(
+    prerequisite.matchingRecord.url,
+    'https://github.com/dylanmccurry_microsoft/agent-skills/issues/1',
+  );
+  assert.deepEqual(prerequisite.dependencyEdge, {
+    prerequisite: foundation,
+    dependent: goal,
+    explicit: false,
+    confirmationRequired: true,
+    status: 'human-confirmation-required',
+  });
+  assert.ok(result.readiness.operational.evidence.includes(
+    `readiness:repository-default-branch-baseline:matchingRecord=${foundation}`,
+  ));
+});
+
+test('an explicit confirmed foundation edge remains the only route into dependency topology', () => {
+  const input = structuredClone(fixtures.unbornRepositoryWithFoundationIssue);
+  input.edges.push({
+    prerequisite: 'dylanmccurry_microsoft/agent-skills#1',
+    dependent: 'dylanmccurry_microsoft/agent-skills#25',
+  });
+
+  const result = chartCourse(input);
+  const [prerequisite] = result.readiness.operational.value.prerequisites;
+
+  assert.deepEqual(result.gatingSubgraph.value.edges, input.edges);
+  assert.equal(result.readiness.dependency.value.status, 'blocked');
+  assert.equal(prerequisite.dependencyEdge.explicit, true);
+  assert.equal(prerequisite.dependencyEdge.confirmationRequired, false);
+  assert.equal(prerequisite.dependencyEdge.status, 'explicit-edge-present');
+});
+
+test('malformed readiness evidence leaves dependency conclusions intact but readiness uncertain', () => {
+  const result = chartCourse({
+    goal: 'G',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'G', status: 'open' }],
+    edges: [],
+    readinessObservations: {},
+  });
+
+  assert.equal(result.completeness.safeToConclude, true);
+  assert.equal(result.pathResult.mode, 'structural');
+  assert.equal(result.readiness.dependency.value.status, 'ready');
+  assert.equal(result.readiness.operational.value.status, 'uncertain');
+  assert.equal(result.readiness.implementation.value.status, 'uncertain');
+  assert.equal(result.readiness.implementation.value.readyForImplementation, null);
+});
+
+test('operational readiness requires declared complete prerequisite coverage', () => {
+  const base = {
+    goal: 'G',
+    revision: 'revision-1',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'G', status: 'open' }],
+    edges: [],
+    readinessFreshness: { maxObservationAgeSeconds: 3600 },
+    readinessObservations: [
+      {
+        id: 'repository-baseline',
+        kind: 'repository-baseline',
+        state: 'satisfied',
+        detail: 'The repository has a committed baseline.',
+        source: 'repository-provider',
+        sourceRevision: {
+          algorithm: 'sha256',
+          digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+        observedAt: '2026-08-31T22:20:52Z',
+        evidence: ['provider:commits=1'],
+      },
+    ],
+  };
+
+  const undeclared = chartCourse(base);
+  const missing = chartCourse({
+    ...base,
+    readinessRequirementIds: ['repository-baseline', 'required-configuration'],
+  });
+  const complete = chartCourse({
+    ...base,
+    readinessRequirementIds: ['repository-baseline'],
+  });
+
+  assert.equal(undeclared.readiness.operational.value.status, 'uncertain');
+  assert.equal(undeclared.readiness.implementation.value.readyForImplementation, null);
+  assert.equal(undeclared.completeness.complete, false);
+  assert.equal(undeclared.completeness.operational.complete, false);
+  assert.equal(undeclared.readiness.operational.value.coverage.declared, false);
+  assert.equal(missing.readiness.operational.value.status, 'uncertain');
+  assert.ok(missing.readiness.operational.evidence.includes(
+    'readiness:missing-required=required-configuration',
+  ));
+  assert.equal(complete.readiness.operational.value.status, 'ready');
+  assert.equal(complete.readiness.implementation.value.status, 'ready');
+  assert.equal(complete.readiness.implementation.value.readyForImplementation, true);
+});
+
+test('a supported operational blocker survives unrelated malformed readiness evidence', () => {
+  const input = structuredClone(fixtures.unbornRepositoryWithFoundationIssue);
+  input.readinessObservations.push({
+    id: 'required-configuration',
+    kind: 'repository-configuration',
+    state: 'unknown',
+    detail: 'Configuration could not be observed.',
+    source: 'repository-provider',
+    sourceRevision: {
+      algorithm: 'sha256',
+      digest: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    },
+    observedAt: '2026-08-31T22:20:52Z',
+    evidence: [],
+  });
+
+  const result = chartCourse(input);
+
+  assert.equal(result.readiness.operational.value.status, 'blocked');
+  assert.equal(result.readiness.operational.confidence, 'high');
+  assert.equal(result.readiness.implementation.value.status, 'operationally-blocked');
+  assert.equal(result.readiness.implementation.value.readyForImplementation, false);
+  assert.equal(result.readiness.implementation.confidence, 'high');
+  assert.equal(result.completeness.complete, false);
+  assert.equal(result.completeness.operational.complete, false);
+  assert.ok(result.readiness.operational.value.defects.some(
+    ({ code }) => code === 'missing-readiness-observation-evidence',
+  ));
+});
+
+test('dependency readiness cites the blocker edge and prerequisite status', () => {
+  const result = chartCourse({
+    goal: 'G',
+    revision: 'revision-1',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [
+      { id: 'A', status: 'open' },
+      { id: 'G', status: 'open' },
+    ],
+    edges: [{ prerequisite: 'A', dependent: 'G' }],
+  });
+
+  assert.equal(result.readiness.dependency.value.status, 'blocked');
+  assert.ok(result.readiness.dependency.evidence.includes('edge:A->G'));
+  assert.ok(result.readiness.dependency.evidence.includes('record:A:status=open'));
+});
+
+test('missing source revision lowers confidence without inventing a revision', () => {
+  const result = chartCourse({
+    goal: 'G',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'G', status: 'open' }],
+    edges: [],
+  });
+
+  assert.equal(result.sourceRevision.available, false);
+  assert.equal(result.pathResult.confidence, 'medium');
+  assert.ok(result.pathResult.evidence.includes('revision:unavailable'));
+});
+
+test('supplemental readiness observations remain visible without changing the declared gate', () => {
+  const result = chartCourse({
+    goal: 'G',
+    revision: 'revision-1',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'G', status: 'open' }],
+    edges: [],
+    readinessRequirementIds: ['repository-baseline'],
+    readinessFreshness: { maxObservationAgeSeconds: 3600 },
+    readinessObservations: [
+      {
+        id: 'repository-baseline',
+        kind: 'repository-baseline',
+        state: 'satisfied',
+        detail: 'The repository has a committed baseline.',
+        source: 'repository-provider',
+        sourceRevision: {
+          algorithm: 'sha256',
+          digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+        observedAt: '2026-08-31T22:20:52Z',
+        evidence: ['provider:commits=1'],
+      },
+      {
+        id: 'optional-advisory',
+        kind: 'repository-advisory',
+        state: 'unsatisfied',
+        detail: 'An optional advisory is unresolved.',
+        source: 'repository-provider',
+        sourceRevision: {
+          algorithm: 'sha256',
+          digest: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+        observedAt: '2026-08-31T20:00:00Z',
+        evidence: ['provider:advisory=open'],
+        matchingRecord: {
+          id: 'OPTIONAL',
+          url: 'not-a-url',
+        },
+      },
+    ],
+  });
+
+  assert.equal(result.readiness.operational.value.status, 'ready');
+  assert.equal(result.readiness.implementation.value.readyForImplementation, true);
+  assert.equal(result.readiness.operational.value.gatingDefects.length, 0);
+  assert.deepEqual(
+    result.readiness.operational.value.supplementalDefects.map(({ code }) => code),
+    ['invalid-readiness-matching-record-url', 'readiness-observation-stale'],
+  );
+  assert.equal(
+    result.readiness.operational.value.prerequisites.find(
+      ({ id }) => id === 'optional-advisory',
+    ).required,
+    false,
+  );
+});
+
+test('a malformed foundation citation cannot erase a supported operational blocker', () => {
+  const input = structuredClone(fixtures.unbornRepositoryWithFoundationIssue);
+  input.readinessObservations[0].matchingRecord.title = '';
+  input.readinessObservations[0].matchingRecord.url = 'not-a-url';
+
+  const result = chartCourse(input);
+  const [prerequisite] = result.readiness.operational.value.prerequisites;
+
+  assert.equal(result.readiness.operational.value.status, 'blocked');
+  assert.equal(result.readiness.operational.confidence, 'medium');
+  assert.equal(result.readiness.implementation.value.readyForImplementation, false);
+  assert.equal(prerequisite.matchingRecord.id, 'dylanmccurry_microsoft/agent-skills#1');
+  assert.equal(prerequisite.matchingRecord.title, null);
+  assert.equal(prerequisite.matchingRecord.url, null);
+  assert.equal(prerequisite.dependencyEdge.confirmationRequired, true);
+  assert.deepEqual(
+    result.readiness.operational.value.nonGatingDefects.map(({ code }) => code),
+    ['invalid-readiness-matching-record-title', 'invalid-readiness-matching-record-url'],
+  );
+});
+
+test('stale or future provider observations cannot support operational readiness', () => {
+  const stale = structuredClone(fixtures.unbornRepositoryWithFoundationIssue);
+  stale.readinessObservations[0].observedAt = '2026-08-31T20:00:00Z';
+  const staleResult = chartCourse(stale);
+  assert.equal(staleResult.readiness.operational.value.status, 'uncertain');
+  assert.equal(staleResult.readiness.implementation.value.readyForImplementation, null);
+  assert.ok(staleResult.readiness.operational.value.defects.some(
+    ({ code }) => code === 'readiness-observation-stale',
+  ));
+
+  const future = structuredClone(fixtures.unbornRepositoryWithFoundationIssue);
+  future.readinessObservations[0].observedAt = '2026-08-31T22:20:53Z';
+  const futureResult = chartCourse(future);
+  assert.equal(futureResult.readiness.operational.value.status, 'uncertain');
+  assert.ok(futureResult.readiness.operational.value.defects.some(
+    ({ code }) => code === 'readiness-observation-from-future',
+  ));
+});
+
+test('a decisive operational blocker keeps its own confidence despite dependency uncertainty', () => {
+  const input = structuredClone(fixtures.unbornRepositoryWithFoundationIssue);
+  delete input.revision;
+
+  const result = chartCourse(input);
+
+  assert.equal(result.readiness.dependency.confidence, 'medium');
+  assert.equal(result.readiness.operational.confidence, 'high');
+  assert.equal(result.readiness.implementation.confidence, 'high');
+});
+
+test('caller evidence cannot spoof structured readiness completeness', () => {
+  const input = structuredClone(fixtures.unbornRepositoryWithFoundationIssue);
+  input.readinessObservations[0].state = 'satisfied';
+  input.readinessObservations[0].evidence.push(
+    'readiness:missing-required=spoofed-by-provider-evidence',
+  );
+
+  const result = chartCourse(input);
+
+  assert.equal(result.readiness.operational.value.status, 'ready');
+  assert.deepEqual(result.readiness.operational.value.coverage.missingRequirementIds, []);
+  assert.equal(result.completeness.complete, true);
+  assert.equal(result.completeness.operational.complete, true);
+  assert.ok(!result.readiness.operational.evidence.includes(
+    'readiness:missing-required=spoofed-by-provider-evidence',
+  ));
+  assert.ok(result.readiness.operational.evidence.includes(
+    'provider-evidence:"readiness:missing-required=spoofed-by-provider-evidence"',
+  ));
+});
+
+test('no readiness assessment is distinct from complete declared empty coverage', () => {
+  const base = {
+    goal: 'G',
+    revision: 'revision-1',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'G', status: 'open' }],
+    edges: [],
+  };
+  const unassessed = chartCourse(base);
+  const declaredEmpty = chartCourse({
+    ...base,
+    readinessRequirementIds: [],
+  });
+
+  assert.equal(unassessed.readiness.operational.value.status, 'not-assessed');
+  assert.equal(unassessed.completeness.operational.complete, false);
+  assert.equal(unassessed.completeness.complete, false);
+  assert.equal(declaredEmpty.readiness.operational.value.status, 'ready');
+  assert.equal(declaredEmpty.completeness.operational.complete, true);
+  assert.equal(declaredEmpty.completeness.complete, true);
+});
+
+test('only full SHA-256 provider snapshot identities can support readiness', () => {
+  for (const sourceRevision of [
+    'latest',
+    'origin/main',
+    'refs/remotes/origin/main',
+    'abc1234',
+    { algorithm: 'sha256', digest: 'abc1234' },
+    { algorithm: 'sha1', digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+  ]) {
+    const input = structuredClone(fixtures.unbornRepositoryWithFoundationIssue);
+    input.readinessObservations[0].sourceRevision = sourceRevision;
+    const result = chartCourse(input);
+
+    assert.equal(
+      result.readiness.operational.value.status,
+      'uncertain',
+      JSON.stringify(sourceRevision),
+    );
+    assert.ok(result.readiness.operational.value.defects.some(
+      ({ code }) => code === 'invalid-readiness-observation-source-revision',
+    ));
+  }
+});
+
+test('supplemental-only freshness defects do not gate declared empty readiness', () => {
+  const result = chartCourse({
+    goal: 'G',
+    revision: 'revision-1',
+    observationTime: '2026-08-31T22:20:52Z',
+    records: [{ id: 'G', status: 'open' }],
+    edges: [],
+    readinessRequirementIds: [],
+    readinessFreshness: { maxObservationAgeSeconds: 'invalid' },
+    readinessObservations: [
+      {
+        id: 'optional-advisory',
+        kind: 'repository-advisory',
+        state: 'unknown',
+        detail: 'An optional advisory was observed.',
+        source: 'repository-provider',
+        sourceRevision: {
+          algorithm: 'sha256',
+          digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+        observedAt: '2026-08-31T22:20:52Z',
+        evidence: ['provider:advisory=open'],
+      },
+    ],
+  });
+
+  assert.equal(result.readiness.operational.value.status, 'ready');
+  assert.deepEqual(result.readiness.operational.value.gatingDefects, []);
+  assert.equal(result.completeness.operational.complete, false);
+  assert.ok(result.readiness.operational.value.supplementalDefects.length === 0);
+  assert.ok(result.readiness.operational.value.nonGatingDefects.some(
+    ({ code }) => code === 'invalid-readiness-freshness-limit',
+  ));
+});
+
+test('a known operational blocker survives dependency uncertainty in the combined result', () => {
+  const input = structuredClone(fixtures.unbornRepositoryWithFoundationIssue);
+  input.edges.push({
+    source: 'dylanmccurry_microsoft/agent-skills#1',
+    target: 'dylanmccurry_microsoft/agent-skills#25',
+  });
+
+  const result = chartCourse(input);
+
+  assert.equal(result.readiness.dependency.value.status, 'uncertain');
+  assert.equal(result.readiness.operational.value.status, 'blocked');
+  assert.equal(
+    result.readiness.implementation.value.status,
+    'operationally-blocked-with-dependency-uncertainty',
+  );
+  assert.equal(result.readiness.implementation.value.readyForImplementation, false);
+  assert.ok(result.readiness.implementation.evidence.includes(
+    'provider-evidence:\"provider:repository:dylanmccurry_microsoft/agent-skills:commits=0\"',
+  ));
+});

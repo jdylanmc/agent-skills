@@ -184,6 +184,345 @@ function estimateState(estimate) {
   return { usable: true, value: estimate.value, unit: estimate.unit.trim(), reliable: true };
 }
 
+function normalizeReadinessObservations(
+  value,
+  requirementValue,
+  freshnessValue,
+  parsedObservationTime,
+) {
+  const defects = [];
+  let requirements = [];
+  const coverageDeclared = requirementValue !== undefined;
+  if (coverageDeclared) {
+    if (!Array.isArray(requirementValue)) {
+      defects.push(defect(
+        'invalid-readiness-requirements-collection',
+        'readinessRequirementIds must be an array when supplied',
+        ['field:readinessRequirementIds'],
+      ));
+    } else {
+      const normalizedRequirements = requirementValue.map((item) =>
+        typeof item === 'string' ? item.trim() : '');
+      if (normalizedRequirements.some((item) => !item)) {
+        defects.push(defect(
+          'invalid-readiness-requirement-id',
+          'every readinessRequirementIds entry must be a non-empty string',
+          ['field:readinessRequirementIds'],
+        ));
+      } else if (new Set(normalizedRequirements).size !== normalizedRequirements.length) {
+        defects.push(defect(
+          'duplicate-readiness-requirement-id',
+          'readinessRequirementIds must not contain duplicates',
+          ['field:readinessRequirementIds'],
+        ));
+      } else {
+        requirements = normalizedRequirements.sort(compare);
+      }
+    }
+  }
+  const hasObservations = value !== undefined && (!Array.isArray(value) || value.length > 0);
+  let maxObservationAgeSeconds = null;
+  if (hasObservations) {
+    if (!isObject(freshnessValue)) {
+      defects.push(defect(
+        'missing-readiness-freshness-policy',
+        'readinessFreshness must declare maxObservationAgeSeconds when observations are supplied',
+        ['field:readinessFreshness'],
+      ));
+    } else if (!Number.isSafeInteger(freshnessValue.maxObservationAgeSeconds)
+      || freshnessValue.maxObservationAgeSeconds < 0) {
+      defects.push(defect(
+        'invalid-readiness-freshness-limit',
+        'readinessFreshness.maxObservationAgeSeconds must be a non-negative safe integer',
+        ['field:readinessFreshness.maxObservationAgeSeconds'],
+      ));
+    } else {
+      maxObservationAgeSeconds = freshnessValue.maxObservationAgeSeconds;
+    }
+  }
+  if (value === undefined) {
+    return {
+      observations: [],
+      requirements,
+      coverageDeclared,
+      assessmentRequested: coverageDeclared,
+      missingRequirementIds: requirements,
+      freshness: { maxObservationAgeSeconds },
+      defects,
+      complete: defects.length === 0,
+    };
+  }
+  if (!Array.isArray(value)) {
+    return {
+      observations: [],
+      requirements,
+      coverageDeclared,
+      assessmentRequested: true,
+      missingRequirementIds: requirements,
+      freshness: { maxObservationAgeSeconds },
+      defects: [...defects, defect(
+        'invalid-readiness-observations-collection',
+        'readinessObservations must be an array when supplied',
+        ['field:readinessObservations'],
+      )],
+      complete: false,
+    };
+  }
+
+  const idCounts = new Map();
+  value.forEach((observation, index) => {
+    if (!isObject(observation)) return;
+    const id = typeof observation.id === 'string' ? observation.id.trim() : '';
+    if (id) idCounts.set(id, (idCounts.get(id) ?? 0) + 1);
+  });
+  const duplicateIds = new Set(
+    [...idCounts].filter(([, count]) => count > 1).map(([id]) => id),
+  );
+  for (const id of [...duplicateIds].sort(compare)) {
+    defects.push(defect(
+      'duplicate-readiness-observation-id',
+      `readiness observation identity ${id} occurs more than once`,
+      [`readiness:${id}`],
+      [id],
+    ));
+  }
+
+  const observations = value
+    .map((observation, index) => {
+      if (!isObject(observation)) {
+        defects.push(defect(
+          'invalid-readiness-observation',
+          `readinessObservations[${index}] must be an object`,
+          [`readiness:${index}`],
+        ));
+        return null;
+      }
+
+      const id = typeof observation.id === 'string' ? observation.id.trim() : '';
+      if (!id) {
+        defects.push(defect(
+          'missing-readiness-observation-id',
+          `readinessObservations[${index}] has no stable identity`,
+          [`readiness:${index}`],
+        ));
+        return null;
+      }
+      if (duplicateIds.has(id)) return null;
+
+      const kind = typeof observation.kind === 'string' ? observation.kind.trim() : '';
+      const state = typeof observation.state === 'string' ? observation.state.trim() : '';
+      const detail = typeof observation.detail === 'string' ? observation.detail.trim() : '';
+      const source = typeof observation.source === 'string' ? observation.source.trim() : '';
+      const sourceRevisionValid = isObject(observation.sourceRevision)
+        && observation.sourceRevision.algorithm === 'sha256'
+        && typeof observation.sourceRevision.digest === 'string'
+        && /^[a-f0-9]{64}$/.test(observation.sourceRevision.digest);
+      const sourceRevision = sourceRevisionValid
+        ? {
+          algorithm: 'sha256',
+          digest: observation.sourceRevision.digest,
+        }
+        : null;
+      const observedAt = typeof observation.observedAt === 'string'
+        ? observation.observedAt
+        : null;
+      const parsedObservedAt = parseTimestamp(observedAt);
+      const evidenceIsArray = Array.isArray(observation.evidence);
+      const suppliedEvidence = evidenceIsArray
+        ? observation.evidence.map((item) => typeof item === 'string' ? item.trim() : '')
+        : [];
+      let valid = true;
+
+      if (!kind) {
+        defects.push(defect(
+          'missing-readiness-observation-kind',
+          `readiness observation ${id} has no kind`,
+          [`readiness:${id}:kind`],
+          [id],
+        ));
+        valid = false;
+      }
+      if (!['satisfied', 'unsatisfied', 'unknown'].includes(state)) {
+        defects.push(defect(
+          'invalid-readiness-observation-state',
+          `readiness observation ${id} state must be satisfied, unsatisfied, or unknown`,
+          [`readiness:${id}:state`],
+          [id],
+        ));
+        valid = false;
+      }
+      if (!detail) {
+        defects.push(defect(
+          'missing-readiness-observation-detail',
+          `readiness observation ${id} has no detail`,
+          [`readiness:${id}:detail`],
+          [id],
+        ));
+        valid = false;
+      }
+      if (!source) {
+        defects.push(defect(
+          'missing-readiness-observation-source',
+          `readiness observation ${id} requires a source identity`,
+          [`readiness:${id}:source`],
+          [id],
+        ));
+      }
+      if (!sourceRevisionValid) {
+        defects.push(defect(
+          'invalid-readiness-observation-source-revision',
+          `readiness observation ${id} requires a SHA-256 provider snapshot identity`,
+          [`readiness:${id}:sourceRevision`],
+          [id],
+        ));
+      }
+      if (observedAt === null || !parsedObservedAt) {
+        defects.push(defect(
+          'invalid-readiness-observation-time',
+          `readiness observation ${id} requires a valid observedAt timestamp`,
+          [`readiness:${id}:observedAt`],
+          [id],
+        ));
+      }
+      if (!evidenceIsArray || suppliedEvidence.length === 0) {
+        defects.push(defect(
+          'missing-readiness-observation-evidence',
+          `readiness observation ${id} requires bounded evidence`,
+          [`readiness:${id}:evidence`],
+          [id],
+        ));
+        valid = false;
+      } else if (suppliedEvidence.some((item) => !item)) {
+        defects.push(defect(
+          'invalid-readiness-observation-evidence',
+          `readiness observation ${id} evidence must contain only non-empty strings`,
+          [`readiness:${id}:evidence`],
+          [id],
+        ));
+        valid = false;
+      } else if (new Set(suppliedEvidence).size !== suppliedEvidence.length) {
+        defects.push(defect(
+          'duplicate-readiness-observation-evidence',
+          `readiness observation ${id} evidence must not contain duplicates`,
+          [`readiness:${id}:evidence`],
+          [id],
+        ));
+        valid = false;
+      }
+
+      let matchingRecord = null;
+      if (observation.matchingRecord !== undefined) {
+        if (!isObject(observation.matchingRecord)) {
+          defects.push(defect(
+            'invalid-readiness-matching-record',
+            `readiness observation ${id} matchingRecord must be an object`,
+            [`readiness:${id}:matchingRecord`],
+            [id],
+          ));
+        } else {
+          const recordId = typeof observation.matchingRecord.id === 'string'
+            ? observation.matchingRecord.id.trim()
+            : '';
+          if (!recordId) {
+            defects.push(defect(
+              'invalid-readiness-matching-record',
+              `readiness observation ${id} matchingRecord requires an id`,
+              [`readiness:${id}:matchingRecord:id`],
+              [id],
+            ));
+          } else {
+            const titleSupplied = Object.prototype.hasOwnProperty.call(observation.matchingRecord, 'title');
+            const urlSupplied = Object.prototype.hasOwnProperty.call(observation.matchingRecord, 'url');
+            const title = typeof observation.matchingRecord.title === 'string'
+              ? observation.matchingRecord.title.trim()
+              : '';
+            const url = typeof observation.matchingRecord.url === 'string'
+              ? observation.matchingRecord.url.trim()
+              : '';
+            if (titleSupplied && !title) {
+              defects.push(defect(
+                'invalid-readiness-matching-record-title',
+                `readiness observation ${id} matchingRecord title must be a non-empty string when supplied`,
+                [`readiness:${id}:matchingRecord:title`],
+                [id],
+              ));
+            }
+            if (urlSupplied && (!url || !/^https?:\/\/\S+$/.test(url))) {
+              defects.push(defect(
+                'invalid-readiness-matching-record-url',
+                `readiness observation ${id} matchingRecord url must be an absolute HTTP(S) URL when supplied`,
+                [`readiness:${id}:matchingRecord:url`],
+                [id],
+              ));
+            }
+            matchingRecord = {
+              id: recordId,
+              title: titleSupplied && title ? title : null,
+              url: urlSupplied && /^https?:\/\/\S+$/.test(url) ? url : null,
+            };
+          }
+        }
+      }
+
+      if (!valid) return null;
+      let freshness = 'current';
+      let ageSeconds = null;
+      if (!source || !sourceRevision || !parsedObservedAt
+        || !parsedObservationTime || maxObservationAgeSeconds === null) {
+        freshness = 'unavailable';
+      } else {
+        ageSeconds = (
+          parsedObservationTime.epochMilliseconds - parsedObservedAt.epochMilliseconds
+        ) / 1000;
+        if (ageSeconds < 0) {
+          freshness = 'unavailable';
+          defects.push(defect(
+            'readiness-observation-from-future',
+            `readiness observation ${id} is after observationTime`,
+            [`readiness:${id}:observedAt`, 'field:observationTime'],
+            [id],
+          ));
+        } else if (ageSeconds > maxObservationAgeSeconds) {
+          freshness = 'stale';
+          defects.push(defect(
+            'readiness-observation-stale',
+            `readiness observation ${id} is stale`,
+            [`readiness:${id}:observedAt`, 'field:readinessFreshness.maxObservationAgeSeconds'],
+            [id],
+          ));
+        }
+      }
+      return {
+        id,
+        kind,
+        state,
+        detail,
+        source: source || null,
+        sourceRevision,
+        observedAt,
+        freshness,
+        ageSeconds,
+        evidence: suppliedEvidence.sort(compare),
+        matchingRecord,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => compare(a.id, b.id));
+
+  defects.sort((a, b) => compare(a.code, b.code) || compare(a.detail, b.detail));
+  const observationIds = new Set(observations.map(({ id }) => id));
+  return {
+    observations,
+    requirements,
+    coverageDeclared,
+    assessmentRequested: coverageDeclared || observations.length > 0 || defects.length > 0,
+    missingRequirementIds: requirements.filter((id) => !observationIds.has(id)),
+    freshness: { maxObservationAgeSeconds },
+    defects,
+    complete: defects.length === 0,
+  };
+}
+
 export function normalizeGraph(input) {
   const defects = [];
   const sourceValid = isObject(input);
@@ -234,6 +573,15 @@ export function normalizeGraph(input) {
       }
     }
   }
+  const readiness = normalizeReadinessObservations(
+    source.readinessObservations,
+    source.readinessRequirementIds,
+    source.readinessFreshness,
+    parsedObservationTime,
+  );
+  const revision = typeof source.revision === 'string' && source.revision.trim()
+    ? source.revision.trim()
+    : null;
 
   const idCounts = new Map();
   records.forEach((record, recordIndex) => {
@@ -387,7 +735,11 @@ export function normalizeGraph(input) {
   return {
     schemaVersion: 1,
     goal: typeof source.goal === 'string' && source.goal.trim() ? source.goal.trim() : null,
-    revision: source.revision ?? null,
+    revision,
+    sourceRevision: {
+      available: revision !== null,
+      evidence: [revision === null ? 'revision:unavailable' : `revision:${revision}`],
+    },
     observationTime,
     freshness: { maxStatusAgeSeconds },
     records: normalizedRecords,
@@ -397,5 +749,6 @@ export function normalizeGraph(input) {
     duplicateIds,
     defects,
     complete: defects.length === 0,
+    readiness,
   };
 }

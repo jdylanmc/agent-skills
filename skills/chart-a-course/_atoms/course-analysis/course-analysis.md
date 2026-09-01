@@ -1,6 +1,6 @@
 ---
 name: course-analysis
-description: Restrict a normalized work graph to one goal's prerequisites and calculate readiness and tied weighted or structural gating paths.
+description: Restrict a normalized work graph to one goal's prerequisites and calculate dependency readiness, operational readiness, and tied weighted or structural gating paths.
 level: atom
 allowed-tools: ["execute"]
 includes: ["chart-a-course/_atoms/course-analysis/course-analysis.mjs"]
@@ -49,11 +49,39 @@ Calculate the dependency course to one goal from normalized explicit evidence.
    order, or weight. Cite source-backed statuses, status timestamps, freshness
    policy, estimate values, reliability, units, records, and edges with each
    material conclusion and reordering unknown.
-10. Return exactly one read-only planning action.
+10. Report dependency readiness from explicit edges only. Separately report
+    operational readiness from bounded repository or provider observations.
+    An unsatisfied prerequisite blocks implementation readiness; an unknown or
+    malformed observation makes it uncertain without changing graph
+    conclusions.
+11. Report operational readiness as ready only when the caller explicitly
+    declares the complete required readiness set and every required observation
+    is present, current, and satisfied. Supplemental observations stay visible
+    but do not gate readiness.
+12. Preserve a supported unsatisfied prerequisite as a blocker even when other
+    readiness evidence is malformed; expose the defects and lower confidence
+    rather than erasing the known blocker.
+13. Keep defects belonging only to supplemental observations outside the
+    operational gate while retaining them in evidence completeness. Quarantine
+    malformed citation fields without discarding a valid required observation.
+14. Keep provider-supplied evidence origin-tagged and distinct from
+    analyzer-derived edge, coverage, freshness, and citation evidence.
+15. Report operational completeness only for an assessment with authoritative
+    declared coverage; no assessment is `not-assessed`, not complete.
+16. When an operational prerequisite cites a matching foundation record, show
+    whether the corresponding edge is already explicit. Otherwise require
+    human confirmation before it can enter dependency topology.
+17. Return exactly one read-only planning action.
 
 ## Boundaries
 
 - Dependency gating is not priority.
+- Operational readiness gating is not dependency topology.
+- A matching foundation record is a citation, not an inferred edge.
+- An absent required repository baseline cannot produce implementation-ready
+  output.
+- Stale, future, or unpinned readiness evidence cannot support a ready or
+  blocked operational conclusion.
 - A ready record is not dispatched or selected for execution.
 - Tied paths remain tied.
 - Completed work stays visible but contributes no remaining path weight.

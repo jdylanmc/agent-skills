@@ -18,6 +18,14 @@ function conclusion(value, confidence, evidence) {
   return { value, confidence, evidence: unique(evidence) };
 }
 
+function leastConfidence(...values) {
+  const rank = new Map([['none', 0], ['low', 1], ['medium', 2], ['high', 3]]);
+  return values.reduce(
+    (least, value) => (rank.get(value) < rank.get(least) ? value : least),
+    'high',
+  );
+}
+
 function prerequisitesByDependent(ids, edges) {
   const result = new Map(ids.map((id) => [id, []]));
   for (const edge of edges) result.get(edge.dependent)?.push(edge.prerequisite);
@@ -174,6 +182,202 @@ function onePlanningAction(normalized, unsafeReasons, reorderUnknowns, ready, un
   };
 }
 
+function analyzeReadiness(normalized, safe, qualifiedConfidence, ready, blocked, completed) {
+  const goal = normalized.goal;
+  const goalReady = ready.some(({ id }) => id === goal);
+  const goalBlocked = blocked.some(({ id }) => id === goal);
+  const goalCompleted = completed.some(({ id }) => id === goal);
+  const goalRecord = normalized.records.find(({ id }) => id === goal);
+  let dependencyStatus = 'not-ready';
+  if (!safe) dependencyStatus = 'uncertain';
+  else if (goalCompleted) dependencyStatus = 'completed';
+  else if (goalReady) dependencyStatus = 'ready';
+  else if (goalBlocked) dependencyStatus = 'blocked';
+  else if (goalRecord?.status.canonical === 'active') dependencyStatus = 'active';
+
+  const goalClassification = ready.find(({ id }) => id === goal)
+    ?? blocked.find(({ id }) => id === goal)
+    ?? completed.find(({ id }) => id === goal);
+  const dependencyEvidence = goalClassification?.evidence ?? (goalRecord
+    ? recordEvidence(goalRecord, {
+      observationTime: normalized.observationTime,
+      maxStatusAgeSeconds: normalized.freshness.maxStatusAgeSeconds,
+    })
+    : [`goal:${goal ?? 'missing'}`]);
+  const acceptedEdges = new Set(
+    normalized.edges.map(({ prerequisite, dependent }) => `${prerequisite}\0${dependent}`),
+  );
+  const readiness = normalized.readiness ?? {
+    observations: [],
+    requirements: [],
+    coverageDeclared: false,
+    missingRequirementIds: [],
+    defects: [],
+    complete: true,
+  };
+  const prerequisites = readiness.observations.map((observation) => {
+    const matchingRecord = observation.matchingRecord;
+    const edgeKey = matchingRecord ? `${matchingRecord.id}\0${goal}` : null;
+    const explicit = edgeKey !== null && acceptedEdges.has(edgeKey);
+    const matchingEvidence = matchingRecord
+      ? [
+        `readiness:${observation.id}:matchingRecord=${matchingRecord.id}`,
+        ...(matchingRecord.title
+          ? [`readiness:${observation.id}:matchingRecordTitle=${matchingRecord.title}`]
+          : []),
+        ...(matchingRecord.url
+          ? [`readiness:${observation.id}:matchingRecordUrl=${matchingRecord.url}`]
+          : []),
+      ]
+      : [];
+    const providerEvidence = observation.evidence.map(
+      (item) => `provider-evidence:${JSON.stringify(item)}`,
+    );
+    return {
+      ...observation,
+      required: readiness.requirements.includes(observation.id),
+      evidence: unique([
+        ...providerEvidence,
+        ...matchingEvidence,
+        `readiness:${observation.id}:source=${observation.source ?? 'missing'}`,
+        `readiness:${observation.id}:sourceRevision=${
+          observation.sourceRevision
+            ? `${observation.sourceRevision.algorithm}:${observation.sourceRevision.digest}`
+            : 'missing'
+        }`,
+        `readiness:${observation.id}:observedAt=${observation.observedAt ?? 'missing'}`,
+        `readiness:${observation.id}:freshness=${observation.freshness}`,
+        `policy:readinessMaxObservationAgeSeconds=${readiness.freshness.maxObservationAgeSeconds ?? 'missing'}`,
+      ]),
+      dependencyEdge: matchingRecord
+        ? {
+          prerequisite: matchingRecord.id,
+          dependent: goal,
+          explicit,
+          confirmationRequired: !explicit,
+          status: explicit ? 'explicit-edge-present' : 'human-confirmation-required',
+        }
+        : null,
+    };
+  });
+  const requiredPrerequisites = prerequisites.filter(({ required }) => required);
+  const requirementSet = new Set(readiness.requirements);
+  const globalGatingCodes = new Set([
+    'invalid-readiness-observations-collection',
+    'invalid-readiness-requirements-collection',
+    'invalid-readiness-requirement-id',
+    'duplicate-readiness-requirement-id',
+  ]);
+  const freshnessPolicyCodes = new Set([
+    'missing-readiness-freshness-policy',
+    'invalid-readiness-freshness-limit',
+  ]);
+  const citationCodes = new Set([
+    'invalid-readiness-matching-record',
+    'invalid-readiness-matching-record-title',
+    'invalid-readiness-matching-record-url',
+  ]);
+  const requiredDefects = readiness.defects.filter((entry) =>
+    entry.affectedIds.some((id) => requirementSet.has(id)));
+  const gatingDefects = readiness.defects.filter((entry) =>
+    globalGatingCodes.has(entry.code)
+      || (freshnessPolicyCodes.has(entry.code) && readiness.requirements.length > 0)
+      || (entry.affectedIds.some((id) => requirementSet.has(id))
+        && !citationCodes.has(entry.code)));
+  const supplementalDefects = readiness.defects.filter((entry) =>
+    entry.affectedIds.length > 0
+      && !entry.affectedIds.some((id) => requirementSet.has(id)));
+  const nonGatingDefects = readiness.defects.filter((entry) => !gatingDefects.includes(entry));
+
+  let operationalStatus = 'not-assessed';
+  let operationalConfidence = 'none';
+  if (requiredPrerequisites.some(
+    ({ state, freshness }) => state === 'unsatisfied' && freshness === 'current',
+  )) {
+    operationalStatus = 'blocked';
+    operationalConfidence = requiredDefects.length || readiness.missingRequirementIds.length
+      ? 'medium'
+      : 'high';
+  } else if (gatingDefects.length
+    || readiness.missingRequirementIds.length
+    || requiredPrerequisites.some(({ state, freshness }) =>
+      state === 'unknown' || freshness !== 'current')
+    || (readiness.assessmentRequested && !readiness.coverageDeclared)) {
+    operationalStatus = 'uncertain';
+    operationalConfidence = gatingDefects.length ? 'none' : 'medium';
+  } else if (readiness.coverageDeclared) {
+    operationalStatus = 'ready';
+    operationalConfidence = 'high';
+  }
+
+  const operationalEvidence = unique([
+    ...prerequisites.flatMap(({ evidence }) => evidence),
+    ...readiness.defects.flatMap(({ evidence }) => evidence),
+    ...readiness.requirements.map((id) => `readiness:required=${id}`),
+    ...readiness.missingRequirementIds.map((id) => `readiness:missing-required=${id}`),
+    `readiness:coverage=${readiness.coverageDeclared ? 'declared' : 'undeclared'}`,
+  ]);
+  let implementationStatus = 'not-assessed';
+  let readyForImplementation = null;
+  let implementationConfidence = 'none';
+  if (dependencyStatus === 'completed') {
+    implementationStatus = 'completed';
+    readyForImplementation = false;
+    implementationConfidence = safe ? qualifiedConfidence : 'none';
+  } else if (operationalStatus === 'blocked') {
+    implementationStatus = dependencyStatus === 'uncertain'
+      ? 'operationally-blocked-with-dependency-uncertainty'
+      : 'operationally-blocked';
+    readyForImplementation = false;
+    implementationConfidence = operationalConfidence;
+  } else if (dependencyStatus === 'blocked' || dependencyStatus === 'active' || dependencyStatus === 'not-ready') {
+    implementationStatus = 'dependency-blocked';
+    readyForImplementation = false;
+    implementationConfidence = safe ? qualifiedConfidence : 'none';
+  } else if (dependencyStatus === 'uncertain') {
+    implementationStatus = 'uncertain';
+  } else if (operationalStatus === 'uncertain') {
+    implementationStatus = 'uncertain';
+  } else if (operationalStatus === 'ready') {
+    implementationStatus = 'ready';
+    readyForImplementation = true;
+    implementationConfidence = leastConfidence(qualifiedConfidence, operationalConfidence);
+  } else if (dependencyStatus === 'ready') {
+    implementationStatus = 'dependency-ready-only';
+  }
+
+  return {
+    dependency: conclusion(
+      { status: dependencyStatus },
+      safe ? qualifiedConfidence : 'none',
+      [...dependencyEvidence, ...normalized.sourceRevision.evidence],
+    ),
+    operational: conclusion(
+      {
+        status: operationalStatus,
+        prerequisites,
+        defects: readiness.defects,
+        gatingDefects,
+        supplementalDefects,
+        nonGatingDefects,
+        coverage: {
+          assessmentRequested: readiness.assessmentRequested,
+          declared: readiness.coverageDeclared,
+          requiredIds: readiness.requirements,
+          missingRequirementIds: readiness.missingRequirementIds,
+        },
+      },
+      operationalConfidence,
+      operationalEvidence,
+    ),
+    implementation: conclusion(
+      { status: implementationStatus, readyForImplementation },
+      implementationConfidence,
+      [...dependencyEvidence, ...operationalEvidence, ...normalized.sourceRevision.evidence],
+    ),
+  };
+}
+
 export function chartCourse(input) {
   const normalized = normalizeGraph(input);
   const recordsById = new Map(normalized.records.map((record) => [record.id, record]));
@@ -183,7 +387,6 @@ export function chartCourse(input) {
   const gatingSet = new Set(gatingIds);
   const affectingUnresolved = unresolvedAffectingGoal(normalized.unresolvedEdges, gatingIds);
   const affectingUnresolvedIndexes = new Set(affectingUnresolved.map(({ index }) => index));
-  const gatingCycles = normalized.cycles.filter((cycle) => cycle.some((id) => gatingSet.has(id)));
   const globalCodes = new Set([
     'invalid-input',
     'invalid-records-collection',
@@ -223,7 +426,9 @@ export function chartCourse(input) {
   const nonBlockingDefects = normalized.defects.filter((entry) => !affectingDefects.includes(entry));
   const outsideDefects = nonBlockingDefects.filter((entry) =>
     entry.affectedIds.length === 0 || !entry.affectedIds.some((id) => gatingSet.has(id)));
-  const qualifiedConfidence = nonBlockingDefects.length ? 'medium' : 'high';
+  const qualifiedConfidence = nonBlockingDefects.length || !normalized.sourceRevision.available
+    ? 'medium'
+    : 'high';
 
   const outsideIds = normalized.records.map(({ id }) => id).filter((id) => !gatingSet.has(id)).sort(compare);
   const outsideEvidence = outsideIds.flatMap((id) =>
@@ -343,6 +548,7 @@ export function chartCourse(input) {
     ({ prerequisite, dependent }) => gatingSet.has(prerequisite) && gatingSet.has(dependent),
   );
   const pathEvidence = [
+    ...normalized.sourceRevision.evidence,
     ...gatingIds.flatMap((id) => recordEvidence(recordsById.get(id), freshnessEvidence)),
     ...gatingEdges.map(({ prerequisite, dependent }) => `edge:${prerequisite}->${dependent}`),
     ...nonBlockingDefects.flatMap(({ evidence }) => evidence),
@@ -389,22 +595,48 @@ export function chartCourse(input) {
 
   const uniqueUnknowns = unique(reorderUnknowns);
   const gatingEvidence = [
+    ...normalized.sourceRevision.evidence,
     ...gatingIds.flatMap((id) => recordEvidence(recordsById.get(id), freshnessEvidence)),
     ...gatingEdges.map(({ prerequisite, dependent }) => `edge:${prerequisite}->${dependent}`),
     ...nonBlockingDefects.flatMap(({ evidence }) => evidence),
   ];
+  const readiness = analyzeReadiness(
+    normalized,
+    safe,
+    qualifiedConfidence,
+    ready,
+    blocked,
+    completed,
+  );
+  const operationalComplete = readiness.operational.value.coverage.assessmentRequested
+    && readiness.operational.value.defects.length === 0
+    && readiness.operational.value.coverage.declared
+    && readiness.operational.value.coverage.missingRequirementIds.length === 0
+    && readiness.operational.value.prerequisites.every(
+      ({ freshness }) => freshness === 'current',
+    );
 
   return {
     schemaVersion: 1,
     goal: normalized.goal,
     revision: normalized.revision,
+    sourceRevision: normalized.sourceRevision,
     observationTime: normalized.observationTime,
     freshness: normalized.freshness,
     completeness: {
-      complete: normalized.complete,
+      complete: normalized.complete
+        && operationalComplete,
       safeToConclude: safe,
       defects: normalized.defects,
       affectingDefects,
+      graph: {
+        complete: normalized.complete,
+        defects: normalized.defects,
+      },
+      operational: {
+        complete: operationalComplete,
+        defects: readiness.operational.value.defects,
+      },
     },
     gatingSubgraph: conclusion(
       { records: gatingIds.map((id) => recordsById.get(id)), edges: gatingEdges },
@@ -416,6 +648,7 @@ export function chartCourse(input) {
     blocked: conclusion(blocked, safe ? qualifiedConfidence : 'none', blocked.flatMap(({ evidence }) => evidence)),
     completed: conclusion(completed, safe ? qualifiedConfidence : 'none', completed.flatMap(({ evidence }) => evidence)),
     outsideWork,
+    readiness,
     cycles: normalized.cycles,
     unresolvedEdges: normalized.unresolvedEdges,
     reorderingUnknowns: conclusion(

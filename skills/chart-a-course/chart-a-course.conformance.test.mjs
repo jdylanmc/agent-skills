@@ -44,6 +44,8 @@ test('routing metadata names positive graph triggers and negative authority boun
   assert.match(description, /one named goal/);
   assert.match(description, /chart a course/);
   assert.match(description, /ready frontier/);
+  assert.match(description, /operational readiness prerequisites/);
+  assert.match(description, /repository or provider state/);
   assert.match(description, /Do not use/);
   assert.match(description, /prioritize/);
   assert.match(description, /mutate trackers/);
@@ -92,6 +94,9 @@ test('the output and refusal contracts cover the complete course', () => {
     'ready frontier',
     'blocked records with every explicit incomplete blocker',
     'completed gating records',
+    'dependency, operational, and combined implementation readiness',
+    'matching foundation record',
+    'human confirmation required',
     'outside work',
     'cycles and unresolved edges',
     'reordering unknowns',
@@ -118,8 +123,13 @@ test('the package refuses mutation, dispatch, priority, and next-step selection'
   assert.match(entry, /Not next-step-selection/);
   assert.match(entry, /neither invokes nor composes\s+`next-step-selection`/);
   assert.match(entry, /No invented graph/);
+  assert.match(entry, /No readiness promotion/);
+  assert.match(entry, /No false implementation readiness/);
   assert.match(entry, /Local implementation only/);
   assert.match(analysis, /Dependency gating is not priority/);
+  assert.match(analysis, /Operational readiness gating is not dependency topology/);
+  assert.match(analysis, /matching foundation record is a citation/i);
+  assert.match(analysis, /absent required repository baseline/i);
   assert.match(analysis, /does not invoke or duplicate next-step-selection/);
 });
 
@@ -130,6 +140,8 @@ test('the package carries plain human intent and local implementation', () => {
   assert.ok(!intent.startsWith('---'));
   assert.match(intent.replace(/\s+/g, ' '), /bounded body of work/);
   assert.match(intent.replace(/\s+/g, ' '), /must not manufacture dependency edges/);
+  assert.match(intent.replace(/\s+/g, ' '), /operational readiness prerequisites/);
+  assert.match(intent.replace(/\s+/g, ' '), /requires human confirmation/);
   assert.match(intent.replace(/\s+/g, ' '), /does not invoke or reproduce next-step-selection/);
   assert.ok(fs.existsSync(path.join(
     SKILLS_ROOT,

@@ -123,5 +123,54 @@
     "edges": [
       {"prerequisite": "A", "dependent": "G"}
     ]
+  },
+  "unbornRepositoryWithFoundationIssue": {
+    "goal": "dylanmccurry_microsoft/agent-skills#25",
+    "revision": "issue-body-sha256:goal-25",
+    "observationTime": "2026-08-31T22:20:52Z",
+    "records": [
+      {
+        "id": "dylanmccurry_microsoft/agent-skills#1",
+        "kind": "issue",
+        "title": "init: establish personal work skills repository",
+        "status": "open"
+      },
+      {
+        "id": "dylanmccurry_microsoft/agent-skills#25",
+        "kind": "issue",
+        "title": "Implement downstream skill",
+        "status": "open"
+      }
+    ],
+    "edges": [],
+    "readinessRequirementIds": [
+      "repository-default-branch-baseline"
+    ],
+    "readinessFreshness": {
+      "maxObservationAgeSeconds": 3600
+    },
+    "readinessObservations": [
+      {
+        "id": "repository-default-branch-baseline",
+        "kind": "repository-baseline",
+        "state": "unsatisfied",
+        "detail": "The repository has no committed default-branch baseline from which an isolated implementation worktree can be created.",
+        "source": "github-repository-provider",
+        "sourceRevision": {
+          "algorithm": "sha256",
+          "digest": "b581d534411e00481edaa457a3a16646933fc264416be90ef2106b957e8ac272"
+        },
+        "observedAt": "2026-08-31T22:20:52Z",
+        "evidence": [
+          "provider:repository:dylanmccurry_microsoft/agent-skills:commits=0",
+          "provider:repository:dylanmccurry_microsoft/agent-skills:defaultBranchBaseline=absent"
+        ],
+        "matchingRecord": {
+          "id": "dylanmccurry_microsoft/agent-skills#1",
+          "title": "init: establish personal work skills repository",
+          "url": "https://github.com/dylanmccurry_microsoft/agent-skills/issues/1"
+        }
+      }
+    ]
   }
 }
