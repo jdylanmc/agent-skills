@@ -16,6 +16,9 @@ doctrine:
   - id: testing
     path: testing.doctrine.md
     sha256: 02661877aa625b3b2bfd1af1c8733550fabe886e19ae82c2d873a5ce020688aa
+  - id: tactical-strategic-programming
+    path: tactical-strategic-programming.doctrine.md
+    sha256: 70fa05e63e4c8921612ba0e6cb8298fea6b88a3d186661d59dd132017a8eef70
 ---
 
 # Doctrine Manifest
