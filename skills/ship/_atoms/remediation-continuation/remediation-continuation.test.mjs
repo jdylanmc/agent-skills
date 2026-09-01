@@ -77,6 +77,7 @@ function payload(expected, overrides = {}) {
     criterion_verdicts: JSON.stringify(expected.criterionVerdicts),
     reconciliation_result: JSON.stringify(expected.reconciliationResult),
     run_ci_evidence: JSON.stringify(expected.runCiEvidence),
+    validation_classifications: JSON.stringify(expected.validationClassifications),
     roast_findings: JSON.stringify(expected.roastFindings),
     prior_remediation_attempts: JSON.stringify(expected.priorRemediationAttempts),
   };
@@ -149,6 +150,7 @@ function authorization(overrides = {}) {
       },
       steps: [],
     },
+    validationClassifications: [],
     roastFindings: [finding],
     priorRemediationAttempts: { used: 5, limit: 5 },
     continuationsUsed: 0,
@@ -309,6 +311,145 @@ test('validation-only implementation failure continues instead of invoking Sheph
     });
     assert.equal(result.action, 'persist-continuation-handoff');
     assert.equal(result.invokeShepherd, false);
+});
+
+test('validation-only continuation uses the same canonical fingerprints during authorization', () => {
+  const failedStep = {
+    workflow: '.github/workflows/validate-skills.yml',
+    job: 'validate',
+    name: 'Run validator and conformance tests',
+    command: 'node scripts/run-registered-tests.mjs',
+    status: 'failed',
+  };
+  const classification = {
+    stepIdentity: JSON.stringify({
+      workflow: failedStep.workflow,
+      job: failedStep.job,
+      name: failedStep.name,
+      command: failedStep.command,
+    }),
+    id: 'ci-failure',
+    classification: 'implementation',
+    ledgerEntryId: 'L1',
+    location: '.github/workflows/validate-skills.yml:1',
+    rule: 'declared-validation-must-pass',
+  };
+  const input = authorization();
+  input.canonicalState.runCiEvidence = {
+    evidenceComplete: true,
+    status: 'failed',
+    repository: {
+      root: input.expected.worktree,
+      revision: HEAD,
+      dirtyState: [],
+    },
+    steps: [failedStep],
+  };
+  input.canonicalState.validationClassifications = [classification];
+  input.canonicalState.roastFindings = [];
+  input.canonicalState.currentState.validationStatus = 'failed';
+  input.canonicalState.findingFingerprints = [fingerprintFinding({
+    ...classification,
+    kind: 'run-ci',
+    severity: 'Must fix',
+  })];
+  input.decision = decision({
+    findings: [],
+    validation: structuredClone(input.canonicalState.runCiEvidence),
+    validationClassifications: [classification],
+  });
+  input.handoffPayload = payload(input.canonicalState);
+  input.artifactDocument = expectedHandoffDocument(input.handoffPayload);
+  input.handoffReceipt.bytes = Buffer.byteLength(input.artifactDocument);
+  input.handoffReceipt.headings = input.artifactDocument.split('\n')
+    .filter((line) => line.startsWith('## '))
+    .map((line) => line.slice(3));
+  input.freshness.repository = structuredClone(input.canonicalState.runCiEvidence.repository);
+  input.canonicalState.digest = digestCanonicalContinuationState(input.canonicalState);
+
+  const result = authorize(input);
+  assert.equal(result.authorized, true);
+  assert.equal(result.action, 'dispatch-fresh-continuation');
+});
+
+test('validation-only authorization rejects missing or mismatched canonical failed-step classifications', () => {
+  const failedStep = {
+    workflow: 'ci.yml',
+    job: 'test',
+    name: 'tests',
+    command: 'node --test',
+    status: 'failed',
+  };
+  const classification = {
+    stepIdentity: JSON.stringify({
+      workflow: failedStep.workflow,
+      job: failedStep.job,
+      name: failedStep.name,
+      command: failedStep.command,
+    }),
+    classification: 'implementation',
+    ledgerEntryId: 'L1',
+    location: 'ci.yml:1',
+    rule: 'tests-pass',
+  };
+  for (const validationClassifications of [
+    [],
+    [classification, {
+      ...classification,
+      stepIdentity: JSON.stringify({
+        workflow: 'other.yml',
+        job: 'test',
+        name: 'other tests',
+        command: 'node --test other',
+      }),
+    }],
+    [{
+      ...classification,
+      stepIdentity: JSON.stringify({
+        workflow: failedStep.workflow,
+        job: failedStep.job,
+        name: failedStep.name,
+        command: 'node --test different',
+      }),
+    }],
+  ]) {
+    const input = authorization();
+    input.canonicalState.runCiEvidence = {
+      evidenceComplete: true,
+      status: 'failed',
+      repository: {
+        root: input.expected.worktree,
+        revision: HEAD,
+        dirtyState: [],
+      },
+      steps: [failedStep],
+    };
+    input.canonicalState.validationClassifications = validationClassifications;
+    input.canonicalState.roastFindings = [];
+    input.canonicalState.currentState.validationStatus = 'failed';
+    input.canonicalState.findingFingerprints = [fingerprintFinding({
+      ...classification,
+      kind: 'run-ci',
+      severity: 'Must fix',
+    })];
+    input.decision = decision({
+      findings: [],
+      validation: structuredClone(input.canonicalState.runCiEvidence),
+      validationClassifications: [classification],
+    });
+    input.handoffPayload = payload(input.canonicalState);
+    input.artifactDocument = expectedHandoffDocument(input.handoffPayload);
+    input.handoffReceipt.bytes = Buffer.byteLength(input.artifactDocument);
+    input.handoffReceipt.headings = input.artifactDocument.split('\n')
+      .filter((line) => line.startsWith('## '))
+      .map((line) => line.slice(3));
+    input.freshness.repository = structuredClone(input.canonicalState.runCiEvidence.repository);
+    input.canonicalState.digest = digestCanonicalContinuationState(input.canonicalState);
+
+    const result = authorize(input);
+    assert.equal(result.authorized, false);
+    assert.match(result.defects.join('\n'), /failed-step classifications/);
+  }
 });
 
 test('caller-made fingerprints and progress booleans cannot bypass repetition detection', () => {
@@ -608,6 +749,7 @@ test('stale consolidated evidence and policy mismatches refuse ownership transfe
     (input) => { input.canonicalState.isolationState = { isolated: false }; },
     (input) => { input.canonicalState.criterionVerdicts = [{ id: 'C1', verdict: 'satisfied' }]; },
     (input) => { input.canonicalState.runCiEvidence = { evidenceComplete: true, status: 'failed', repository: { revision: HEAD }, steps: [] }; },
+    (input) => { input.canonicalState.validationClassifications = [{ stepIdentity: 'stale' }]; },
     (input) => { input.canonicalState.nextGeneration = 2; },
     (input) => { input.canonicalState.findingFingerprints = ['f'.repeat(64)]; },
     (input) => { input.canonicalState.globalContinuationPolicy = { ...input.canonicalState.globalContinuationPolicy, limit: 3 }; },

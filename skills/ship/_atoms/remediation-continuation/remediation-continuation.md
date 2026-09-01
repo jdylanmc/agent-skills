@@ -76,9 +76,11 @@ Before dispatching a fresh implementation agent:
    `ACCEPTANCE`, `VERIFY`, `TIMEBOX`, `FORBIDDEN`, `REPORT`, and `STANDING`.
 4. Bind the payload to the issue, confirmed ledger and exclusions, criterion
    verdicts, branch, worktree, pull request when one exists, base and head
-   commits, isolation state, exclusions, reconciliation result, `run-ci` evidence, current
-   Roast findings, prior remediation attempts, finding fingerprints, local
-   five-attempt budget, continuation generation, and configured global ceiling.
+   commits, isolation state, exclusions, reconciliation result, `run-ci`
+   evidence, canonical failed-step classifications, current Roast findings,
+   prior remediation attempts, finding fingerprints, local five-attempt budget,
+   continuation generation, and configured global ceiling. Authorization
+   reconstructs the fingerprint set from both canonical sources.
 5. Consume the actual persistence result. Require its exact path, directory,
    name, byte count, headings, redactions, and suggested-skills flag. Reread the
    real regular file and compare its bytes with the deterministic rendering of

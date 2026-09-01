@@ -100,7 +100,7 @@ test('discovery-to-execution preserves the complete canonical repository snapsho
   execFileSync('git', ['add', '.'], { cwd: root });
   execFileSync('git', [
     '-c', 'user.name=Run CI Test',
-    '-c', 'user.email=run-ci@example.invalid',
+    '-c', 'user.email=run-ci.invalid',
     'commit', '--quiet', '-m', 'fixture',
   ], { cwd: root });
   fs.appendFileSync(path.join(root, 'tracked.txt'), 'dirty\n');

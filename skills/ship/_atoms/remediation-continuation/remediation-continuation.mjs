@@ -40,6 +40,7 @@ const REQUIRED_BINDINGS = [
   'criterion_verdicts',
   'reconciliation_result',
   'run_ci_evidence',
+  'validation_classifications',
   'roast_findings',
   'prior_remediation_attempts',
 ];
@@ -119,7 +120,11 @@ function validationFindings(validation, classifications) {
   if (validation.status !== 'failed') return validation.status ?? 'incomplete';
   const failed = (validation.steps ?? []).filter((step) =>
     !['passed', 'intermittent'].includes(step?.status));
-  if (failed.length === 0 || !Array.isArray(classifications)) return null;
+  if (failed.length === 0
+      || !Array.isArray(classifications)
+      || classifications.length !== failed.length) {
+    return null;
+  }
   const findings = failed.map((step) => {
     const identity = stepIdentity(step);
     const matches = classifications.filter((entry) => entry?.stepIdentity === identity);
@@ -443,6 +448,7 @@ export function authorizeFreshContinuation(input, options = {}) {
       criterion_verdicts: expected.criterionVerdicts,
       reconciliation_result: expected.reconciliationResult,
       run_ci_evidence: expected.runCiEvidence,
+      validation_classifications: expected.validationClassifications,
       roast_findings: expected.roastFindings,
       prior_remediation_attempts: expected.priorRemediationAttempts,
     };
@@ -474,10 +480,19 @@ export function authorizeFreshContinuation(input, options = {}) {
         )) {
       defects.push('run-ci evidence is incomplete, stale, or differs from the continuation decision');
     }
-        let canonicalFindingFingerprints = [];
-        try {
-          const canonicalFindings = (expected.roastFindings ?? [])
-            .filter((finding) => finding?.severity === 'Must fix' && finding?.cleared !== true);
+    let canonicalFindingFingerprints = [];
+    try {
+      const canonicalCiFindings = validationFindings(
+        expected.runCiEvidence,
+        expected.validationClassifications,
+      );
+      if (!Array.isArray(canonicalCiFindings)) {
+        defects.push('canonical run-ci failed-step classifications are incomplete or invalid');
+      } else {
+        const canonicalFindings = [
+          ...(expected.roastFindings ?? []),
+          ...canonicalCiFindings,
+        ].filter((finding) => finding?.severity === 'Must fix' && finding?.cleared !== true);
           if (canonicalFindings.length === 0
               || canonicalFindings.some((finding) => finding.classification !== 'implementation')) {
             defects.push('canonical Ship findings do not authorize implementation continuation');
@@ -486,30 +501,31 @@ export function authorizeFreshContinuation(input, options = {}) {
           if (!same(canonicalFindingFingerprints, expected.findingFingerprints)) {
             defects.push('canonical Ship findings do not match continuation fingerprints');
           }
-        } catch (error) {
-          defects.push(`canonical Ship findings could not be verified: ${error.message}`);
-        }
-        const priorOutcomeRequired = !validCount(expected.continuationsUsed)
-          || expected.continuationsUsed > 0;
-        const priorOutcomeComplete = expected.previousState
-          && nonEmpty(expected.previousState.headSha)
-          && nonEmpty(expected.previousState.diffDigest)
-          && nonEmpty(expected.previousState.validationStatus)
-          && Array.isArray(expected.previousState.criterionVerdicts)
-          && Array.isArray(expected.previousState.findingFingerprints);
-        if (!expected.currentState
-            || expected.currentState.headSha !== expected.headSha
-            || expected.currentState.validationStatus !== runCi?.status
-            || !same(expected.currentState.criterionVerdicts, expected.criterionVerdicts)
-            || (priorOutcomeRequired && !priorOutcomeComplete)
-            || (priorOutcomeComplete
-              && !measurableProgress(
-                expected.previousState,
-                expected.currentState,
-                canonicalFindingFingerprints,
-              ))) {
-          defects.push('canonical Ship outcome history does not authorize monotonic continuation progress');
-        }
+      }
+    } catch (error) {
+      defects.push(`canonical Ship findings could not be verified: ${error.message}`);
+    }
+    const priorOutcomeRequired = !validCount(expected.continuationsUsed)
+      || expected.continuationsUsed > 0;
+    const priorOutcomeComplete = expected.previousState
+      && nonEmpty(expected.previousState.headSha)
+      && nonEmpty(expected.previousState.diffDigest)
+      && nonEmpty(expected.previousState.validationStatus)
+      && Array.isArray(expected.previousState.criterionVerdicts)
+      && Array.isArray(expected.previousState.findingFingerprints);
+    if (!expected.currentState
+        || expected.currentState.headSha !== expected.headSha
+        || expected.currentState.validationStatus !== runCi?.status
+        || !same(expected.currentState.criterionVerdicts, expected.criterionVerdicts)
+        || (priorOutcomeRequired && !priorOutcomeComplete)
+        || (priorOutcomeComplete
+          && !measurableProgress(
+            expected.previousState,
+            expected.currentState,
+            canonicalFindingFingerprints,
+          ))) {
+      defects.push('canonical Ship outcome history does not authorize monotonic continuation progress');
+    }
   }
 
   let freshness = {};
