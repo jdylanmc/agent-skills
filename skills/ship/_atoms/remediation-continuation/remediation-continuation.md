@@ -29,13 +29,15 @@ classified exactly once against the confirmed ledger. Combine those failures
 with Roast blockers before deciding. Then:
 
 - continue local remediation while attempts remain;
-- invoke Shepherd only when no implementation `Must fix` remains, or every
-  remaining condition is explicitly `shepherd-owned`;
+- authorize Shepherd only when no implementation `Must fix` remains, or every
+  remaining condition is explicitly `shepherd-owned`, then independently load
+  canonical Ship state and observe Git and exclusive ownership before dispatch;
 - stop for a human on an out-of-scope, requirement, architecture, product,
   accepted-risk, or otherwise decision-dependent finding;
-- stop when the same blocker repeats without a mechanically observed head or
-  complete-diff change plus an outcome change in validation, criteria, or the
-  normalized blocker set;
+- stop unless the whole outcome moves monotonically: validation and criteria
+  cannot regress, no blocker may be added or substituted, and a mechanically
+  observed head or complete-diff change must accompany at least one strict
+  improvement in validation, criteria, or the normalized blocker set;
 - stop at the configured global continuation ceiling; and
 - after local exhaustion, continue only an in-scope, remediable
   `implementation` finding.
@@ -56,6 +58,12 @@ canonical `run-ci` envelope whose full lowercase immutable
 validation is eligible for implementation classification. `cancelled`,
 `environment-failed`, `unsupported-provider`, and `incomplete` return to the
 human under their distinct statuses.
+
+The final `run-ci` execution envelope preserves the complete canonical
+repository snapshot captured during discovery: repository root, immutable
+revision, and dirty-state lines. Continuation and Shepherd authorization compare
+that complete snapshot with a fresh independent Git observation; a caller-made
+revision mirror is insufficient.
 
 ## Required Continuation Handoff
 

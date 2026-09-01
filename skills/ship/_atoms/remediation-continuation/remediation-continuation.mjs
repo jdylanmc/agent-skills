@@ -143,11 +143,16 @@ function measurableProgress(previous, current, currentFingerprints) {
   const revisionChanged = previous.headSha !== current.headSha
     || previous.diffDigest !== current.diffDigest;
   const validationRank = { failed: 0, intermittent: 1, passed: 2 };
-  const validationImproved = (validationRank[current.validationStatus] ?? -1)
-    > (validationRank[previous.validationStatus] ?? -1);
+  const previousValidationRank = validationRank[previous.validationStatus] ?? -1;
+  const currentValidationRank = validationRank[current.validationStatus] ?? -1;
+  const validationMonotonic = currentValidationRank >= previousValidationRank;
+  const validationImproved = currentValidationRank > previousValidationRank;
   const priorFindings = new Set(previous.findingFingerprints ?? []);
-  const blockerRemoved = [...priorFindings].some((fingerprint) =>
-    !currentFingerprints.includes(fingerprint));
+  const currentFindings = new Set(currentFingerprints);
+  const blockersMonotonic = [...currentFindings].every((fingerprint) =>
+    priorFindings.has(fingerprint));
+  const blockerRemoved = blockersMonotonic
+    && [...priorFindings].some((fingerprint) => !currentFindings.has(fingerprint));
   const criterionRank = {
     'not-satisfied': 0,
     'not-verifiable': 0,
@@ -162,12 +167,17 @@ function measurableProgress(previous, current, currentFingerprints) {
   const criteriaComparable = priorCriteria.size > 0
     && priorCriteria.size === currentCriteria.size
     && [...priorCriteria.keys()].every((id) => currentCriteria.has(id));
-  const criteriaImproved = criteriaComparable
+  const criteriaMonotonic = criteriaComparable
     && [...priorCriteria].every(([id, verdict]) =>
-      (criterionRank[currentCriteria.get(id)] ?? -1) >= (criterionRank[verdict] ?? -1))
+      (criterionRank[currentCriteria.get(id)] ?? -1) >= (criterionRank[verdict] ?? -1));
+  const criteriaImproved = criteriaMonotonic
     && [...priorCriteria].some(([id, verdict]) =>
       (criterionRank[currentCriteria.get(id)] ?? -1) > (criterionRank[verdict] ?? -1));
-  return revisionChanged && (validationImproved || blockerRemoved || criteriaImproved);
+  return revisionChanged
+    && validationMonotonic
+    && blockersMonotonic
+    && criteriaMonotonic
+    && (validationImproved || blockerRemoved || criteriaImproved);
 }
 
 export function evaluateRemediationContinuation(input) {
@@ -201,6 +211,14 @@ export function evaluateRemediationContinuation(input) {
     return {
       action: 'human-handoff',
       reason: 'validation-revision-stale-or-invalid',
+      invokeShepherd: false,
+      unresolved: [],
+    };
+  }
+  if (input.currentState.validationStatus !== input.validation.status) {
+    return {
+      action: 'human-handoff',
+      reason: 'validation-state-mismatch',
       invokeShepherd: false,
       unresolved: [],
     };
@@ -246,22 +264,8 @@ export function evaluateRemediationContinuation(input) {
       unresolved,
     };
   }
-  if (unresolved.length === 0) {
-    return { action: 'invoke-shepherd', reason: 'no-unresolved-implementation-must-fix', invokeShepherd: true, unresolved };
-  }
-  if (unresolved.some((finding) => finding.classification === 'human-owned')) {
-    return { action: 'human-handoff', reason: 'scope-or-intent-decision-required', invokeShepherd: false, unresolved };
-  }
-  if (unresolved.every((finding) => finding.classification === 'shepherd-owned')) {
-    return { action: 'invoke-shepherd', reason: 'remaining-condition-is-shepherd-owned', invokeShepherd: true, unresolved };
-  }
-  if (unresolved.some((finding) => finding.classification !== 'implementation')) {
-    return { action: 'human-handoff', reason: 'mixed-or-unknown-finding-ownership', invokeShepherd: false, unresolved };
-  }
-  if (input.localAttempts < input.localLimit) {
-    return { action: 'dispatch-local-remediation', reason: 'local-remediation-budget-available', invokeShepherd: false, unresolved };
-  }
-  if (input.continuationsUsed >= policy.limit) {
+  if (unresolved.some((finding) => finding.classification === 'implementation')
+      && input.continuationsUsed >= policy.limit) {
     return { action: 'human-handoff', reason: 'global-continuation-ceiling-reached', invokeShepherd: false, unresolved };
   }
 
@@ -275,9 +279,24 @@ export function evaluateRemediationContinuation(input) {
         || !Array.isArray(input.previousState.criterionVerdicts))) {
     return { action: 'human-handoff', reason: 'prior-continuation-state-incomplete', invokeShepherd: false, unresolved };
   }
-  if (previous.some((fingerprint) => fingerprints.includes(fingerprint))
+  if (input.previousState
       && !measurableProgress(input.previousState, input.currentState, fingerprints)) {
     return { action: 'human-handoff', reason: 'unchanged-blocker-without-progress', invokeShepherd: false, unresolved };
+  }
+  if (unresolved.length === 0) {
+    return { action: 'authorize-shepherd-handoff', reason: 'no-unresolved-implementation-must-fix', invokeShepherd: false, unresolved };
+  }
+  if (unresolved.some((finding) => finding.classification === 'human-owned')) {
+    return { action: 'human-handoff', reason: 'scope-or-intent-decision-required', invokeShepherd: false, unresolved };
+  }
+  if (unresolved.every((finding) => finding.classification === 'shepherd-owned')) {
+    return { action: 'authorize-shepherd-handoff', reason: 'remaining-condition-is-shepherd-owned', invokeShepherd: false, unresolved };
+  }
+  if (unresolved.some((finding) => finding.classification !== 'implementation')) {
+    return { action: 'human-handoff', reason: 'mixed-or-unknown-finding-ownership', invokeShepherd: false, unresolved };
+  }
+  if (input.localAttempts < input.localLimit) {
+    return { action: 'dispatch-local-remediation', reason: 'local-remediation-budget-available', invokeShepherd: false, unresolved };
   }
   return {
     action: 'persist-continuation-handoff',
@@ -337,6 +356,8 @@ export function authorizeFreshContinuation(input, options = {}) {
   if (input?.decision?.action !== 'persist-continuation-handoff') {
     defects.push('continuation decision does not authorize persistence');
   }
+
+
   let payload = null;
   try {
     payload = normalizeOrchestrationPayload(input?.handoffPayload);
@@ -440,6 +461,9 @@ export function authorizeFreshContinuation(input, options = {}) {
     const runCi = expected.runCiEvidence;
     if (runCi?.evidenceComplete !== true
         || runCi?.repository?.revision !== expected.headSha
+        || !exactKeys(runCi?.repository, ['root', 'revision', 'dirtyState'])
+        || runCi.repository.root !== expected.worktree
+        || !Array.isArray(runCi.repository.dirtyState)
         || runCi?.status !== input?.decision?.validationStatus
         || !same(
           (runCi?.steps ?? [])
@@ -450,6 +474,42 @@ export function authorizeFreshContinuation(input, options = {}) {
         )) {
       defects.push('run-ci evidence is incomplete, stale, or differs from the continuation decision');
     }
+        let canonicalFindingFingerprints = [];
+        try {
+          const canonicalFindings = (expected.roastFindings ?? [])
+            .filter((finding) => finding?.severity === 'Must fix' && finding?.cleared !== true);
+          if (canonicalFindings.length === 0
+              || canonicalFindings.some((finding) => finding.classification !== 'implementation')) {
+            defects.push('canonical Ship findings do not authorize implementation continuation');
+          }
+          canonicalFindingFingerprints = canonicalFindings.map(fingerprintFinding).sort();
+          if (!same(canonicalFindingFingerprints, expected.findingFingerprints)) {
+            defects.push('canonical Ship findings do not match continuation fingerprints');
+          }
+        } catch (error) {
+          defects.push(`canonical Ship findings could not be verified: ${error.message}`);
+        }
+        const priorOutcomeRequired = !validCount(expected.continuationsUsed)
+          || expected.continuationsUsed > 0;
+        const priorOutcomeComplete = expected.previousState
+          && nonEmpty(expected.previousState.headSha)
+          && nonEmpty(expected.previousState.diffDigest)
+          && nonEmpty(expected.previousState.validationStatus)
+          && Array.isArray(expected.previousState.criterionVerdicts)
+          && Array.isArray(expected.previousState.findingFingerprints);
+        if (!expected.currentState
+            || expected.currentState.headSha !== expected.headSha
+            || expected.currentState.validationStatus !== runCi?.status
+            || !same(expected.currentState.criterionVerdicts, expected.criterionVerdicts)
+            || (priorOutcomeRequired && !priorOutcomeComplete)
+            || (priorOutcomeComplete
+              && !measurableProgress(
+                expected.previousState,
+                expected.currentState,
+                canonicalFindingFingerprints,
+              ))) {
+          defects.push('canonical Ship outcome history does not authorize monotonic continuation progress');
+        }
   }
 
   let freshness = {};
@@ -463,8 +523,10 @@ export function authorizeFreshContinuation(input, options = {}) {
       || freshness.worktree !== expected.worktree
       || freshness.baseSha !== expected.baseSha
       || freshness.headSha !== expected.headSha
+      || freshness.repository?.root !== freshness.worktree
+      || !same(freshness.repository, expected.runCiEvidence?.repository)
       || !nonEmpty(freshness.observedAt)) {
-    defects.push('continuation branch, worktree, base, or head was not freshly re-read');
+    defects.push('continuation branch, worktree, repository snapshot, base, or head was not freshly re-read');
   }
   if (receipt && payload && defects.length === 0) {
     try {
@@ -532,5 +594,137 @@ export function authorizeFreshContinuation(input, options = {}) {
     headSha: expected.headSha,
     requireCompleteDiffReconciliation: true,
     handoffPath: receipt.path,
+  };
+}
+
+export function authorizeShepherdHandoff(input, options = {}) {
+const defects = [];
+  if (input?.decision?.action !== 'authorize-shepherd-handoff'
+      || input?.decision?.invokeShepherd !== false) {
+    defects.push('continuation decision does not require Shepherd authorization');
+  }
+
+  let expected = null;
+  try {
+    expected = options.loadCanonicalState?.(input?.canonicalStateRef);
+  } catch (error) {
+    defects.push(`canonical Ship state could not be loaded: ${error.code ?? error.message}`);
+  }
+  if (!expected
+      || expected.schemaVersion !== 1
+      || expected.confirmed !== true
+      || !nonEmpty(expected.digest)
+      || digestCanonicalContinuationState(expected) !== expected.digest) {
+    defects.push('canonical Ship state is absent, unconfirmed, or digest-mismatched');
+    expected = expected ?? {};
+  }
+
+  const runCi = expected.runCiEvidence;
+  if (runCi?.evidenceComplete !== true
+      || runCi?.status !== 'passed'
+      || !exactKeys(runCi?.repository, ['root', 'revision', 'dirtyState'])
+      || runCi.repository.revision !== expected.headSha
+      || runCi.repository.root !== expected.worktree
+      || !Array.isArray(runCi.repository.dirtyState)) {
+    defects.push('canonical run-ci repository snapshot is incomplete, stale, or not passed');
+  }
+
+  let canonicalFindingFingerprints = [];
+  try {
+    const canonicalFindings = (expected.roastFindings ?? [])
+      .filter((finding) => finding?.severity === 'Must fix' && finding?.cleared !== true);
+    if (canonicalFindings.some((finding) => finding.classification === 'implementation')) {
+      defects.push('canonical Ship state still contains an implementation Must-fix');
+    } else if (canonicalFindings.some((finding) =>
+      !['shepherd-owned'].includes(finding.classification))) {
+      defects.push('canonical Ship state contains a human-owned or unknown Must-fix');
+    }
+    canonicalFindingFingerprints = canonicalFindings.map(fingerprintFinding).sort();
+    const expectedReason = canonicalFindings.length === 0
+      ? 'no-unresolved-implementation-must-fix'
+      : 'remaining-condition-is-shepherd-owned';
+    const decisionFingerprints = (input.decision.unresolved ?? [])
+      .map((finding) => finding.fingerprint ?? fingerprintFinding(finding))
+      .sort();
+    if (input.decision.reason !== expectedReason
+        || !same(decisionFingerprints, canonicalFindingFingerprints)) {
+      defects.push('Shepherd decision does not match canonical unresolved findings');
+    }
+  } catch (error) {
+    defects.push(`canonical Ship findings could not be verified: ${error.message}`);
+  }
+  const priorOutcomeRequired = !validCount(expected.continuationsUsed)
+    || expected.continuationsUsed > 0;
+  const priorOutcomeComplete = expected.previousState
+    && nonEmpty(expected.previousState.headSha)
+    && nonEmpty(expected.previousState.diffDigest)
+    && nonEmpty(expected.previousState.validationStatus)
+    && Array.isArray(expected.previousState.criterionVerdicts)
+    && Array.isArray(expected.previousState.findingFingerprints);
+  if (!expected.currentState
+      || expected.currentState.headSha !== expected.headSha
+      || expected.currentState.validationStatus !== runCi?.status
+      || !same(expected.currentState.criterionVerdicts, expected.criterionVerdicts)
+      || (priorOutcomeRequired && !priorOutcomeComplete)
+      || (priorOutcomeComplete
+        && !measurableProgress(
+          expected.previousState,
+          expected.currentState,
+          canonicalFindingFingerprints,
+        ))) {
+    defects.push('canonical Ship outcome history does not authorize monotonic Shepherd progress');
+  }
+
+  let freshness = {};
+  try {
+    freshness = options.observeGitState?.(expected) ?? {};
+  } catch (error) {
+    defects.push(`Shepherd git state could not be observed: ${error.code ?? error.message}`);
+  }
+  if (freshness.complete !== true
+      || freshness.branch !== expected.branch
+      || freshness.worktree !== expected.worktree
+      || freshness.baseSha !== expected.baseSha
+      || freshness.headSha !== expected.headSha
+      || freshness.repository?.root !== freshness.worktree
+      || !same(freshness.repository, runCi?.repository)
+      || !nonEmpty(freshness.observedAt)) {
+    defects.push('Shepherd branch, worktree, repository snapshot, base, or head was not freshly re-read');
+  }
+
+  let ownership = {};
+  try {
+    ownership = options.observeOwnership?.(expected) ?? {};
+  } catch (error) {
+    defects.push(`Shepherd ownership could not be observed: ${error.code ?? error.message}`);
+  }
+  if (ownership.branch !== expected.branch
+      || ownership.worktree !== expected.worktree
+      || ownership.sourceAgent !== expected.sourceAgent
+      || ownership.sourceActive !== true
+      || ownership.shepherdActive !== false
+      || ownership.concurrentOwners !== 1) {
+    defects.push('exclusive implementation ownership was not independently observed before Shepherd dispatch');
+  }
+
+  if (defects.length > 0) {
+    return {
+      authorized: false,
+      action: 'human-handoff',
+      reason: 'stale-or-incomplete-shepherd-authorization',
+      invokeShepherd: false,
+      defects,
+    };
+  }
+  return {
+    authorized: true,
+    action: 'invoke-shepherd',
+    reason: input.decision.reason,
+    invokeShepherd: true,
+    branch: expected.branch,
+    worktree: expected.worktree,
+    baseSha: expected.baseSha,
+    headSha: expected.headSha,
+    observedAt: freshness.observedAt,
   };
 }

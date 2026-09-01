@@ -353,6 +353,13 @@ function runCommand(command, cwd, declaredShell) {
 }
 
 export async function runDiscoveredCi(repositoryRoot, discovery) {
+  const executionRoot = fs.realpathSync(repositoryRoot);
+  const discoveredRoot = discovery?.repository?.root
+    ? fs.realpathSync(discovery.repository.root)
+    : null;
+  if (discoveredRoot !== executionRoot) {
+    throw new Error('execution root does not match the discovered repository snapshot');
+  }
   if (discovery.provider === 'unsupported-provider') {
     return {
       ...discovery,
@@ -411,6 +418,7 @@ export async function runDiscoveredCi(repositoryRoot, discovery) {
     provider: discovery.provider,
     inspected: discovery.inspected,
     providerActions: discovery.providerActions,
+    repository: structuredClone(discovery.repository),
     status,
     evidenceComplete: !steps.some((step) => step.status === 'skipped'),
     steps,

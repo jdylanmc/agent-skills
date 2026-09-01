@@ -128,12 +128,15 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
    resumes at implementation and reruns reconciliation, complete declared
    validation, and Roast over the whole diff.
 
-   Invoke Shepherd only when no unresolved implementation `Must fix` remains or
-   the remaining condition is explicitly Shepherd-owned. Stop for a human on
-   unchanged blockers without measurable progress, out-of-scope or
-   decision-dependent findings, stale or incomplete handoff evidence, ownership
-   ambiguity, or the global continuation ceiling. A new context is capacity,
-   not permission to waive old evidence.
+   Authorize Shepherd only when no unresolved implementation `Must fix` remains
+   or the remaining condition is explicitly Shepherd-owned. Dispatch requires
+   independently loaded canonical Ship state plus fresh Git and exclusive-owner
+   observations. Stop for a human when the whole outcome is not monotonic:
+   validation or criteria regress, a blocker is added or substituted, or no
+   strict outcome improvement accompanies the complete-diff change. Also stop
+   on out-of-scope or decision-dependent findings, stale or incomplete handoff
+   evidence, ownership ambiguity, or the global continuation ceiling. A new
+   context is capacity, not permission to waive old evidence.
 
 7. **Verdict.** Report criterion by criterion with evidence, then the derived
    aggregate. Report the reconciliation verdict, the validation envelope, the

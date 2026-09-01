@@ -1384,8 +1384,10 @@ test('remediation gets bounded local attempts and verified fresh-agent continuat
   assert.match(cycle, /When attempt five returns without clearing the defects, do not start attempt\s+six in that worker/);
   assert.match(cycle, /verified\s+`orchestration-handoff` to one fresh owner with a new bounded `0\/5` budget/);
   assert.match(cycle, /configured global continuation ceiling/);
-  assert.match(cycle, /unchanged blockers without measurable progress/);
-  assert.match(cycle, /Invoke Shepherd only when no unresolved implementation `Must fix` remains/);
+  assert.match(cycle, /whole outcome is not monotonic/);
+  assert.match(cycle, /blocker is added or substituted/);
+  assert.match(cycle, /independently loaded canonical Ship state plus fresh Git and exclusive-owner\s+observations/);
+  assert.match(cycle, /Authorize Shepherd only when no unresolved implementation `Must fix` remains/);
   assert.match(cycle, /remediation accounting as `n\/5`/);
   assert.match(dispatch, /Remediation Is A Dispatch, Not A Correction/);
   assert.match(dispatch, /new dispatch to a\s+fresh worker context/);

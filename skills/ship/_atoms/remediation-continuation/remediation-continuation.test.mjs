@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   LOCAL_REMEDIATION_LIMIT,
   authorizeFreshContinuation,
+  authorizeShepherdHandoff,
   digestCanonicalContinuationState,
   evaluateRemediationContinuation,
   expectedHandoffDocument,
@@ -23,6 +24,19 @@ const finding = {
 };
 
 function decision(overrides = {}) {
+  const validation = overrides.validation ?? {
+    evidenceComplete: true,
+    status: 'passed',
+    repository: { revision: HEAD },
+    steps: [],
+  };
+  const currentState = {
+    headSha: HEAD,
+    diffDigest: 'd'.repeat(64),
+    validationStatus: validation.status,
+    criterionVerdicts: [{ id: 'C1', verdict: 'partial' }],
+    ...overrides.currentState,
+  };
   return evaluateRemediationContinuation({
     localAttempts: LOCAL_REMEDIATION_LIMIT,
     localLimit: LOCAL_REMEDIATION_LIMIT,
@@ -34,21 +48,11 @@ function decision(overrides = {}) {
       globalContinuationLimit: 2,
     },
     findings: [finding],
-    validation: {
-      evidenceComplete: true,
-      status: 'passed',
-      repository: { revision: HEAD },
-      steps: [],
-    },
+    validation,
     validationClassifications: [],
     previousState: null,
-    currentState: {
-      headSha: HEAD,
-      diffDigest: 'd'.repeat(64),
-      validationStatus: 'passed',
-      criterionVerdicts: [{ id: 'C1', verdict: 'partial' }],
-    },
     ...overrides,
+    currentState,
   });
 }
 
@@ -138,11 +142,23 @@ function authorization(overrides = {}) {
     runCiEvidence: {
       evidenceComplete: true,
       status: 'passed',
-      repository: { revision: HEAD },
+      repository: {
+        root: '/workspace/issue-164',
+        revision: HEAD,
+        dirtyState: [],
+      },
       steps: [],
     },
     roastFindings: [finding],
     priorRemediationAttempts: { used: 5, limit: 5 },
+    continuationsUsed: 0,
+    previousState: null,
+    currentState: {
+      headSha: HEAD,
+      diffDigest: 'd'.repeat(64),
+      validationStatus: 'passed',
+      criterionVerdicts: [{ id: 'C1', verdict: 'partial' }],
+    },
     taskContract: {
       goal: 'Clear the remaining in-scope blocker.',
       scope: 'Issue 164 and its confirmed ledger only.',
@@ -183,6 +199,7 @@ function authorization(overrides = {}) {
       worktree: expected.worktree,
       baseSha: BASE,
       headSha: HEAD,
+      repository: structuredClone(expected.runCiEvidence.repository),
       observedAt: '2026-08-31T12:00:00Z',
     },
     ownership: {
@@ -228,9 +245,16 @@ test('a verified continuation clears the path to normal Shepherd handoff', () =>
     localAttempts: 1,
     continuationsUsed: 1,
     findings: [{ ...finding, cleared: true }],
+    previousState: {
+      headSha: BASE,
+      diffDigest: 'c'.repeat(64),
+      validationStatus: 'passed',
+      criterionVerdicts: [{ id: 'C1', verdict: 'partial' }],
+      findingFingerprints: [fingerprintFinding(finding)],
+    },
   });
-  assert.equal(cleared.action, 'invoke-shepherd');
-  assert.equal(cleared.invokeShepherd, true);
+  assert.equal(cleared.action, 'authorize-shepherd-handoff');
+  assert.equal(cleared.invokeShepherd, false);
 });
 
 test('an unchanged blocker without measurable progress stops instead of respawning', () => {
@@ -250,8 +274,11 @@ test('an unchanged blocker without measurable progress stops instead of respawni
       criterionVerdicts: [{ id: 'C1', verdict: 'partial' }],
     },
   });
+  assert.equal(result.action, 'human-handoff');
+  assert.equal(result.reason, 'unchanged-blocker-without-progress');
+});
 
-  test('validation-only implementation failure continues instead of invoking Shepherd', () => {
+test('validation-only implementation failure continues instead of invoking Shepherd', () => {
     const result = decision({
       findings: [],
       validation: {
@@ -282,9 +309,9 @@ test('an unchanged blocker without measurable progress stops instead of respawni
     });
     assert.equal(result.action, 'persist-continuation-handoff');
     assert.equal(result.invokeShepherd, false);
-  });
+});
 
-  test('caller-made fingerprints and progress booleans cannot bypass repetition detection', () => {
+test('caller-made fingerprints and progress booleans cannot bypass repetition detection', () => {
     const fingerprint = fingerprintFinding(finding);
     const result = decision({
       findings: [{ ...finding, fingerprint: 'f'.repeat(64) }],
@@ -304,23 +331,23 @@ test('an unchanged blocker without measurable progress stops instead of respawni
       },
     });
     assert.equal(result.reason, 'unchanged-blocker-without-progress');
-  });
+});
 
-  test('free-form Roast wording churn keeps the same blocker fingerprint', () => {
+test('free-form Roast wording churn keeps the same blocker fingerprint', () => {
     assert.equal(
       fingerprintFinding(finding),
       fingerprintFinding({ ...finding, id: 'renumbered', evidence: 'different prose' }),
     );
-  });
+});
 
-  test('line-number movement keeps the same blocker fingerprint', () => {
+test('line-number movement keeps the same blocker fingerprint', () => {
     assert.equal(
       fingerprintFinding(finding),
       fingerprintFinding({ ...finding, location: 'skills/ship/SKILL.md:99' }),
     );
-  });
+});
 
-  test('a genuine revision and validation improvement permits bounded continuation', () => {
+test('a genuine revision and validation improvement permits bounded continuation', () => {
     const fingerprint = fingerprintFinding(finding);
     const result = decision({
       previousState: {
@@ -338,9 +365,9 @@ test('an unchanged blocker without measurable progress stops instead of respawni
       },
     });
     assert.equal(result.action, 'persist-continuation-handoff');
-  });
+});
 
-  test('regression, added blockers, and criterion regression are not measurable progress', () => {
+test('regression, added blockers, blocker replacement, and criterion regression are not measurable progress', () => {
     const old = fingerprintFinding(finding);
     const added = {
       ...finding,
@@ -393,6 +420,16 @@ test('an unchanged blocker without measurable progress stops instead of respawni
         },
       },
       {
+        findings: [added],
+        previousState: {
+          headSha: BASE,
+          diffDigest: 'c'.repeat(64),
+          validationStatus: 'passed',
+          criterionVerdicts: [{ id: 'C1', verdict: 'partial' }],
+          findingFingerprints: [old],
+        },
+      },
+      {
         previousState: {
           headSha: BASE,
           diffDigest: 'c'.repeat(64),
@@ -413,9 +450,87 @@ test('an unchanged blocker without measurable progress stops instead of respawni
       assert.equal(result.action, 'human-handoff');
       assert.equal(result.reason, 'unchanged-blocker-without-progress');
     }
+});
+
+test('caller validation mirrors cannot fabricate monotonic progress', () => {
+  const fingerprint = fingerprintFinding(finding);
+  const result = decision({
+    continuationsUsed: 1,
+    validation: {
+      evidenceComplete: true,
+      status: 'failed',
+      repository: { revision: HEAD },
+      steps: [{
+        workflow: 'ci.yml',
+        job: 'test',
+        name: 'tests',
+        command: 'node --test',
+        status: 'failed',
+      }],
+    },
+    validationClassifications: [{
+      stepIdentity: JSON.stringify({
+        workflow: 'ci.yml',
+        job: 'test',
+        name: 'tests',
+        command: 'node --test',
+      }),
+      classification: 'implementation',
+      ledgerEntryId: 'L1',
+      location: 'ci.yml:1',
+      rule: 'tests-pass',
+    }],
+    previousState: {
+      headSha: BASE,
+      diffDigest: 'c'.repeat(64),
+      validationStatus: 'failed',
+      criterionVerdicts: [{ id: 'C1', verdict: 'partial' }],
+      findingFingerprints: [fingerprint],
+    },
+    currentState: {
+      headSha: HEAD,
+      diffDigest: 'd'.repeat(64),
+      validationStatus: 'passed',
+      criterionVerdicts: [{ id: 'C1', verdict: 'partial' }],
+    },
   });
   assert.equal(result.action, 'human-handoff');
-  assert.equal(result.reason, 'unchanged-blocker-without-progress');
+  assert.equal(result.reason, 'validation-state-mismatch');
+});
+
+test('Shepherd exits still require monotonic whole-outcome progress', () => {
+    const old = fingerprintFinding(finding);
+    const regressedCriterion = decision({
+      continuationsUsed: 1,
+      findings: [{ ...finding, cleared: true }],
+      previousState: {
+        headSha: BASE,
+        diffDigest: 'c'.repeat(64),
+        validationStatus: 'passed',
+        criterionVerdicts: [{ id: 'C1', verdict: 'satisfied' }],
+        findingFingerprints: [old],
+      },
+    });
+    assert.equal(regressedCriterion.action, 'human-handoff');
+    assert.equal(regressedCriterion.reason, 'unchanged-blocker-without-progress');
+
+    const shepherdReplacement = decision({
+      continuationsUsed: 1,
+      findings: [{
+        ...finding,
+        classification: 'shepherd-owned',
+        rule: 'new-shepherd-condition',
+      }],
+      previousState: {
+        headSha: BASE,
+        diffDigest: 'c'.repeat(64),
+        validationStatus: 'passed',
+        criterionVerdicts: [{ id: 'C1', verdict: 'partial' }],
+        findingFingerprints: [old],
+      },
+    });
+    assert.equal(shepherdReplacement.action, 'human-handoff');
+    assert.equal(shepherdReplacement.reason, 'unchanged-blocker-without-progress');
 });
 
 test('out-of-scope or decision-dependent findings return to the human', () => {
@@ -442,8 +557,9 @@ test('an explicitly Shepherd-owned condition invokes Shepherd directly', () => {
   const result = decision({
     findings: [{ ...finding, classification: 'shepherd-owned' }],
   });
-  assert.equal(result.action, 'invoke-shepherd');
+  assert.equal(result.action, 'authorize-shepherd-handoff');
   assert.equal(result.reason, 'remaining-condition-is-shepherd-owned');
+  assert.equal(result.invokeShepherd, false);
 });
 
 test('the global continuation ceiling produces a bounded human handoff', () => {
@@ -589,39 +705,190 @@ test('only failed validation is eligible for implementation continuation', () =>
         steps: [{ name: 'validation', status }],
       },
     });
-
-    test('local attempt accounting refuses an already-consumed sixth attempt', () => {
-      assert.equal(decision({ localAttempts: 4 }).action, 'dispatch-local-remediation');
-      assert.equal(decision({ localAttempts: 5 }).action, 'persist-continuation-handoff');
-      for (const localAttempts of [6, 99]) {
-        const result = decision({ localAttempts });
-        assert.equal(result.action, 'human-handoff');
-        assert.equal(result.reason, 'local-attempt-accounting-invalid');
-      }
-    });
-
-    test('authorization requires independently loaded canonical state and observations', () => {
-      const input = authorization();
-      const result = authorizeFreshContinuation(input, {
-        readArtifact: () => ({
-          bytes: Buffer.from(input.artifactDocument),
-          modifiedAt: '2026-08-31T11:59:59Z',
-        }),
-      });
-      assert.equal(result.authorized, false);
-      assert.match(result.defects.join('\n'), /canonical Ship state/);
-      assert.match(result.defects.join('\n'), /not freshly re-read/);
-      assert.match(result.defects.join('\n'), /ownership/);
-    });
     assert.equal(result.action, 'human-handoff');
     assert.equal(result.reason, `validation-${status}`);
   }
+});
+
+test('local attempt accounting refuses an already-consumed sixth attempt', () => {
+  assert.equal(decision({ localAttempts: 4 }).action, 'dispatch-local-remediation');
+  assert.equal(decision({ localAttempts: 5 }).action, 'persist-continuation-handoff');
+  for (const localAttempts of [6, 99]) {
+    const result = decision({ localAttempts });
+    assert.equal(result.action, 'human-handoff');
+    assert.equal(result.reason, 'local-attempt-accounting-invalid');
+  }
+});
+
+test('authorization requires independently loaded canonical state and observations', () => {
+  const input = authorization();
+  const result = authorizeFreshContinuation(input, {
+    readArtifact: () => ({
+      bytes: Buffer.from(input.artifactDocument),
+      modifiedAt: '2026-08-31T11:59:59Z',
+    }),
+  });
+  assert.equal(result.authorized, false);
+  assert.match(result.defects.join('\n'), /canonical Ship state/);
+  assert.match(result.defects.join('\n'), /not freshly re-read/);
+  assert.match(result.defects.join('\n'), /ownership/);
+});
+
+test('fresh continuation authorization independently enforces canonical outcome history', () => {
+    const input = authorization();
+    input.canonicalState.continuationsUsed = 1;
+    input.canonicalState.previousState = {
+      headSha: BASE,
+      diffDigest: 'c'.repeat(64),
+      validationStatus: 'passed',
+      criterionVerdicts: [{ id: 'C1', verdict: 'satisfied' }],
+      findingFingerprints: [...input.expected.findingFingerprints],
+    };
+    input.canonicalState.digest = digestCanonicalContinuationState(input.canonicalState);
+    const result = authorize(input);
+    assert.equal(result.authorized, false);
+    assert.match(result.defects.join('\n'), /outcome history/);
+});
+
+test('fresh continuation authorization derives blocker fingerprints from canonical findings', () => {
+    const input = authorization();
+    input.canonicalState.roastFindings = [{
+      ...finding,
+      rule: 'replacement-blocker',
+    }];
+    input.canonicalState.digest = digestCanonicalContinuationState(input.canonicalState);
+    const result = authorize(input);
+    assert.equal(result.authorized, false);
+    assert.match(result.defects.join('\n'), /continuation fingerprints/);
+});
+
+test('direct Shepherd handoff requires canonical state plus independent Git and ownership observations', () => {
+  const input = authorization();
+  input.canonicalState.roastFindings = [];
+  input.canonicalState.digest = digestCanonicalContinuationState(input.canonicalState);
+  input.decision = decision({ findings: [] });
+  const result = authorizeShepherdHandoff(input, {
+    loadCanonicalState: () => structuredClone(input.canonicalState),
+    observeGitState: () => structuredClone(input.freshness),
+    observeOwnership: () => ({
+      branch: input.expected.branch,
+      worktree: input.expected.worktree,
+      sourceAgent: input.expected.sourceAgent,
+      sourceActive: true,
+      shepherdActive: false,
+      concurrentOwners: 1,
+    }),
+  });
+  assert.equal(result.authorized, true);
+  assert.equal(result.action, 'invoke-shepherd');
+  assert.equal(result.invokeShepherd, true);
+
+  for (const missing of ['loadCanonicalState', 'observeGitState', 'observeOwnership']) {
+    const observers = {
+      loadCanonicalState: () => structuredClone(input.canonicalState),
+      observeGitState: () => structuredClone(input.freshness),
+      observeOwnership: () => ({
+        branch: input.expected.branch,
+        worktree: input.expected.worktree,
+        sourceAgent: input.expected.sourceAgent,
+        sourceActive: true,
+        shepherdActive: false,
+        concurrentOwners: 1,
+      }),
+    };
+    delete observers[missing];
+    const refused = authorizeShepherdHandoff(input, observers);
+    assert.equal(refused.authorized, false, missing);
+    assert.equal(refused.invokeShepherd, false, missing);
+  }
+});
+
+test('direct Shepherd authorization refuses a caller decision that hides canonical blockers', () => {
+  const input = authorization();
+  input.decision = decision({ findings: [] });
+  const result = authorizeShepherdHandoff(input, {
+    loadCanonicalState: () => structuredClone(input.canonicalState),
+    observeGitState: () => structuredClone(input.freshness),
+    observeOwnership: () => ({
+      branch: input.expected.branch,
+      worktree: input.expected.worktree,
+      sourceAgent: input.expected.sourceAgent,
+      sourceActive: true,
+      shepherdActive: false,
+      concurrentOwners: 1,
+    }),
+  });
+  assert.equal(result.authorized, false);
+  assert.equal(result.invokeShepherd, false);
+  assert.match(result.defects.join('\n'), /implementation Must-fix/);
+});
+
+test('direct Shepherd authorization independently enforces canonical outcome history', () => {
+    const input = authorization();
+    input.canonicalState.roastFindings = [];
+    input.canonicalState.previousState = {
+      headSha: BASE,
+      diffDigest: 'c'.repeat(64),
+      validationStatus: 'passed',
+      criterionVerdicts: [{ id: 'C1', verdict: 'satisfied' }],
+      findingFingerprints: [fingerprintFinding(finding)],
+    };
+    input.canonicalState.digest = digestCanonicalContinuationState(input.canonicalState);
+    input.decision = {
+      action: 'authorize-shepherd-handoff',
+      reason: 'no-unresolved-implementation-must-fix',
+      invokeShepherd: false,
+      unresolved: [],
+    };
+    const result = authorizeShepherdHandoff(input, {
+      loadCanonicalState: () => structuredClone(input.canonicalState),
+      observeGitState: () => structuredClone(input.freshness),
+      observeOwnership: () => ({
+        branch: input.expected.branch,
+        worktree: input.expected.worktree,
+        sourceAgent: input.expected.sourceAgent,
+        sourceActive: true,
+        shepherdActive: false,
+        concurrentOwners: 1,
+      }),
+    });
+    assert.equal(result.authorized, false);
+    assert.match(result.defects.join('\n'), /outcome history/);
+});
+
+test('later-generation direct Shepherd authorization requires canonical prior outcome history', () => {
+      const input = authorization();
+      input.canonicalState.roastFindings = [];
+      input.canonicalState.continuationsUsed = 1;
+      input.canonicalState.previousState = null;
+      input.canonicalState.digest = digestCanonicalContinuationState(input.canonicalState);
+      input.decision = {
+        action: 'authorize-shepherd-handoff',
+        reason: 'no-unresolved-implementation-must-fix',
+        invokeShepherd: false,
+        unresolved: [],
+      };
+      const result = authorizeShepherdHandoff(input, {
+        loadCanonicalState: () => structuredClone(input.canonicalState),
+        observeGitState: () => structuredClone(input.freshness),
+        observeOwnership: () => ({
+          branch: input.expected.branch,
+          worktree: input.expected.worktree,
+          sourceAgent: input.expected.sourceAgent,
+          sourceActive: true,
+          shepherdActive: false,
+          concurrentOwners: 1,
+        }),
+    });
+    assert.equal(result.authorized, false);
+    assert.match(result.defects.join('\n'), /outcome history/);
 });
 
 test('run-ci handoff evidence is complete and bound to the current head and decision', () => {
   const cases = [
     (input) => { input.canonicalState.runCiEvidence.evidenceComplete = false; },
     (input) => { input.canonicalState.runCiEvidence.repository.revision = BASE; },
+    (input) => { input.canonicalState.runCiEvidence.repository.root = '/different/worktree'; },
     (input) => { input.canonicalState.runCiEvidence.status = 'failed'; },
     (input) => { delete input.canonicalState.runCiEvidence.repository; },
   ];
@@ -633,4 +900,31 @@ test('run-ci handoff evidence is complete and bound to the current head and deci
     assert.equal(result.authorized, false);
     assert.match(result.defects.join('\n'), /run-ci evidence/);
   }
+});
+
+test('fresh Git observations cannot pair an expected worktree with another repository snapshot', () => {
+  const input = authorization();
+  input.freshness.repository.root = '/different/worktree';
+  input.freshness.worktree = input.expected.worktree;
+  const result = authorize(input);
+  assert.equal(result.authorized, false);
+  assert.match(result.defects.join('\n'), /repository snapshot/);
+
+  input.canonicalState.roastFindings = [];
+  input.canonicalState.digest = digestCanonicalContinuationState(input.canonicalState);
+  input.decision = decision({ findings: [] });
+  const shepherd = authorizeShepherdHandoff(input, {
+    loadCanonicalState: () => structuredClone(input.canonicalState),
+    observeGitState: () => structuredClone(input.freshness),
+    observeOwnership: () => ({
+      branch: input.expected.branch,
+      worktree: input.expected.worktree,
+      sourceAgent: input.expected.sourceAgent,
+      sourceActive: true,
+      shepherdActive: false,
+      concurrentOwners: 1,
+    }),
+  });
+  assert.equal(shepherd.authorized, false);
+  assert.match(shepherd.defects.join('\n'), /repository snapshot/);
 });
