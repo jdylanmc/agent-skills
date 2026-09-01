@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -22,10 +23,15 @@ import {
 } from './fleet-state.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
-const SANDBOX = path.join(ROOT, '.test-sandbox', 'ship-with-squadron-state');
+const SANDBOX = path.join(
+  ROOT,
+  '.test-sandbox',
+  `ship-with-squadron-state-${process.pid}-${randomUUID()}`,
+);
 const REPOSITORY = path.join(SANDBOX, 'repository');
 const MODULE = pathToFileURL(fileURLToPath(new URL('./fleet-state.mjs', import.meta.url))).href;
 const WORKTREE = path.join(SANDBOX, 'worktrees', 'issue-1');
+const CHILD_TIMEOUT_MS = 5_000;
 
 function receipt(observedAt = '2026-08-30T00:00:00Z') {
   return {
@@ -163,9 +169,110 @@ function writeLock(lockDirectory, metadata, modifiedAt = null) {
   return owner;
 }
 
-function readLock(lockDirectory) {
-  const owner = fs.readdirSync(lockDirectory).find((entry) => entry.startsWith('owner-'));
-  return JSON.parse(fs.readFileSync(path.join(lockDirectory, owner), 'utf8'));
+function captureLockIdentity(lockDirectory, expectedMetadata) {
+  const ownerPath = path.join(lockDirectory, `owner-${expectedMetadata.token}.json`);
+  try {
+    const directoryBefore = fs.lstatSync(lockDirectory, { bigint: true });
+    assert.equal(directoryBefore.isSymbolicLink(), false);
+    assert.equal(directoryBefore.isDirectory(), true);
+    const ownerHandle = fs.openSync(ownerPath, 'r');
+    let owner;
+    let metadata;
+    try {
+      owner = fs.fstatSync(ownerHandle, { bigint: true });
+      metadata = JSON.parse(fs.readFileSync(ownerHandle, 'utf8'));
+    } finally {
+      fs.closeSync(ownerHandle);
+    }
+    const directoryAfter = fs.lstatSync(lockDirectory, { bigint: true });
+    assert.deepEqual(
+      serializeFilesystemIdentity(directoryAfter),
+      serializeFilesystemIdentity(directoryBefore),
+      'lock directory changed while its replacement identity was captured',
+    );
+    return {
+      directory: serializeFilesystemIdentity(directoryAfter),
+      owner: serializeFilesystemIdentity(owner),
+      metadata,
+    };
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      assert.fail(`replacement lock disappeared before its identity could be verified: ${lockDirectory}`);
+    }
+    throw error;
+  }
+}
+
+function spawnIpcChild(script, args, timeoutMs = CHILD_TIMEOUT_MS) {
+  const child = spawn(process.execPath, ['--input-type=module', '-e', script, ...args], {
+    stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+    windowsHide: true,
+  });
+  let stdout = '';
+  let stderr = '';
+  let outcome = null;
+  let spawnError = null;
+  let timedOut = false;
+  let readyResolve;
+  let readyReject;
+  let readySettled = false;
+  const ready = new Promise((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+  });
+  const completed = new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (!readySettled) {
+        readySettled = true;
+        readyReject(new Error(`child did not reach its IPC barrier within ${timeoutMs}ms`));
+      }
+      child.kill();
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('message', (message) => {
+      if (message?.type === 'ready' && !readySettled) {
+        readySettled = true;
+        readyResolve(message);
+      } else if (message?.type === 'outcome') {
+        outcome = message;
+      }
+    });
+    child.on('error', (error) => {
+      spawnError = error;
+      if (!readySettled) {
+        readySettled = true;
+        readyReject(error);
+      }
+    });
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      if (!readySettled) {
+        readySettled = true;
+        readyReject(new Error(`child exited before its IPC barrier: code=${code} signal=${signal}`));
+      }
+      resolve({ code, signal, stdout, stderr, timedOut, spawnError, outcome });
+    });
+  });
+  return {
+    child,
+    ready,
+    completed,
+    async terminate() {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      return completed;
+    },
+  };
+}
+
+function assertCleanChildExit(result) {
+  assert.equal(result.timedOut, false, `child timed out\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+  assert.equal(result.spawnError, null);
+  assert.equal(result.signal, null, `child terminated by ${result.signal}\nstderr: ${result.stderr}`);
+  assert.equal(result.code, 0, `child exited ${result.code}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+  assert.equal(result.stderr, '');
+  assert.ok(result.outcome, `child exited without an outcome\nstdout: ${result.stdout}`);
 }
 
 test('persists, rereads, validates schema, and compare-and-swaps run state', (t) => {
@@ -188,42 +295,45 @@ test('serializes a multiprocess revision race so only one writer wins', async (t
   const manifestFile = path.join(SANDBOX, 'manifest.json');
   fs.writeFileSync(manifestFile, JSON.stringify(manifest));
   persistFleetState(file, createFleetState(manifest, 'race'), 0, manifest);
-  const go = path.join(SANDBOX, 'go');
   const script = `
     import fs from 'node:fs';
     import { loadFleetState, persistFleetState } from ${JSON.stringify(MODULE)};
-    const [file, manifestFile, ready, go] = process.argv.slice(1);
+    const [identity, file, manifestFile] = process.argv.slice(1);
     const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
     const state = loadFleetState(file, manifest);
-    fs.writeFileSync(ready, 'ready');
-    while (!fs.existsSync(go)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
-    try {
-      persistFleetState(file, state, state.revision, manifest);
-      process.stdout.write('won');
-    } catch (error) {
-      process.stdout.write('lost:' + error.message);
-    }
-  `;
-  const run = (name) => new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--input-type=module', '-e', script, file, manifestFile, path.join(SANDBOX, name), go], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+    process.once('message', (message) => {
+      let outcome;
+      if (message?.type !== 'go') {
+        outcome = { type: 'outcome', identity, status: 'protocol-error', message: 'expected go' };
+      } else {
+        try {
+          persistFleetState(file, state, state.revision, manifest);
+          outcome = { type: 'outcome', identity, status: 'won', message: null };
+        } catch (error) {
+          outcome = { type: 'outcome', identity, status: 'lost', message: error.message };
+        }
+      }
+      process.send(outcome, () => process.disconnect());
     });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', reject);
-    child.on('close', (code) => code === 0 ? resolve(stdout) : reject(new Error(stderr)));
-  });
-  const first = run('ready-1');
-  const second = run('ready-2');
-  while (!fs.existsSync(path.join(SANDBOX, 'ready-1')) || !fs.existsSync(path.join(SANDBOX, 'ready-2'))) {
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  fs.writeFileSync(go, 'go');
-  const outcomes = await Promise.all([first, second]);
-  assert.equal(outcomes.filter((value) => value === 'won').length, 1);
-  assert.equal(outcomes.filter((value) => value.startsWith('lost:state revision conflict')).length, 1);
+    process.send({ type: 'ready', identity, revision: state.revision });
+  `;
+  const children = [
+    spawnIpcChild(script, ['writer-1', file, manifestFile]),
+    spawnIpcChild(script, ['writer-2', file, manifestFile]),
+  ];
+  t.after(async () => Promise.all(children.map((child) => child.terminate())));
+  const ready = await Promise.all(children.map((child) => child.ready));
+  assert.deepEqual(ready.map((message) => message.identity).sort(), ['writer-1', 'writer-2']);
+  assert.deepEqual(ready.map((message) => message.revision), [1, 1]);
+  for (const child of children) child.child.send({ type: 'go' });
+  const results = await Promise.all(children.map((child) => child.completed));
+  for (const result of results) assertCleanChildExit(result);
+  const outcomes = results.map((result) => result.outcome);
+  assert.deepEqual(outcomes.map((outcome) => outcome.identity).sort(), ['writer-1', 'writer-2']);
+  assert.equal(outcomes.filter((outcome) => outcome.status === 'won').length, 1);
+  const losers = outcomes.filter((outcome) => outcome.status === 'lost');
+  assert.equal(losers.length, 1);
+  assert.match(losers[0].message, /^state revision conflict:/);
   assert.equal(loadFleetState(file, manifest).revision, 2);
 });
 
@@ -427,6 +537,7 @@ test('recovers stale ownerless and malformed locks without deleting a live repla
     expectedRevision: 0,
     createdAt: new Date().toISOString(),
   };
+  let replacementIdentity;
   assert.throws(() => persistFleetState(
     raceFile,
     createFleetState(manifest, 'malformed-race'),
@@ -438,10 +549,11 @@ test('recovers stale ownerless and malformed locks without deleting a live repla
       beforeMalformedLockClaim() {
         fs.rmSync(raceLock, { recursive: true });
         writeLock(raceLock, replacement);
+        replacementIdentity = captureLockIdentity(raceLock, replacement);
       },
     },
   ), /write lock is busy/);
-  assert.deepEqual(readLock(raceLock), replacement);
+  assert.deepEqual(captureLockIdentity(raceLock, replacement), replacementIdentity);
 });
 
 test('never deletes a replacement lock during stale cleanup or release races', (t) => {
@@ -463,6 +575,7 @@ test('never deletes a replacement lock during stale cleanup or release races', (
     expectedRevision: 0,
     createdAt: new Date().toISOString(),
   };
+  let staleReplacementIdentity;
   assert.throws(() => persistFleetState(
     staleFile,
     createFleetState(manifest, 'stale-race'),
@@ -474,10 +587,14 @@ test('never deletes a replacement lock during stale cleanup or release races', (
       beforeStaleLockClaim() {
         fs.rmSync(`${staleFile}.lock`, { recursive: true });
         writeLock(`${staleFile}.lock`, replacement);
+        staleReplacementIdentity = captureLockIdentity(`${staleFile}.lock`, replacement);
       },
     },
   ), /write lock is busy/);
-  assert.deepEqual(readLock(`${staleFile}.lock`), replacement);
+  assert.deepEqual(
+    captureLockIdentity(`${staleFile}.lock`, replacement),
+    staleReplacementIdentity,
+  );
 
   const releaseFile = fleetStatePath(REPOSITORY, 'release-race');
   const releaseReplacement = {
@@ -487,6 +604,7 @@ test('never deletes a replacement lock during stale cleanup or release races', (
     expectedRevision: 1,
     createdAt: new Date().toISOString(),
   };
+  let releaseReplacementIdentity;
   persistFleetState(
     releaseFile,
     createFleetState(manifest, 'release-race'),
@@ -496,10 +614,17 @@ test('never deletes a replacement lock during stale cleanup or release races', (
       beforeReleaseLockClaim() {
         fs.rmSync(`${releaseFile}.lock`, { recursive: true });
         writeLock(`${releaseFile}.lock`, releaseReplacement);
+        releaseReplacementIdentity = captureLockIdentity(
+          `${releaseFile}.lock`,
+          releaseReplacement,
+        );
       },
     },
   );
-  assert.deepEqual(readLock(`${releaseFile}.lock`), releaseReplacement);
+  assert.deepEqual(
+    captureLockIdentity(`${releaseFile}.lock`, releaseReplacement),
+    releaseReplacementIdentity,
+  );
 });
 
 test('multiprocess stale reclamation never removes a replacement live lock', async (t) => {
@@ -515,40 +640,45 @@ test('multiprocess stale reclamation never removes a replacement live lock', asy
     createdAt: old.toISOString(),
   }, old);
   const manifestFile = path.join(SANDBOX, 'stale-manifest.json');
-  const ready = path.join(SANDBOX, 'stale-ready');
-  const proceed = path.join(SANDBOX, 'stale-proceed');
   fs.writeFileSync(manifestFile, JSON.stringify(manifest));
   const script = `
     import fs from 'node:fs';
     import { createFleetState, persistFleetState } from ${JSON.stringify(MODULE)};
-    const [file, manifestFile, ready, proceed] = process.argv.slice(1);
+    const [file, manifestFile] = process.argv.slice(1);
     const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+    let outcome;
     try {
       persistFleetState(file, createFleetState(manifest, 'stale-multiprocess'), 0, manifest, {
         staleLockMs: 0,
         lockAttempts: 1,
         beforeStaleLockClaim() {
-          fs.writeFileSync(ready, 'ready');
-          while (!fs.existsSync(proceed)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
+          process.send({ type: 'ready', identity: 'stale-contender' });
+          const signal = Buffer.alloc(2);
+          let bytes = 0;
+          while (bytes < signal.length) {
+            const received = fs.readSync(0, signal, bytes, signal.length - bytes, null);
+            if (received === 0) break;
+            bytes += received;
+          }
+          if (bytes !== signal.length || signal.toString() !== 'go') {
+            throw new Error('invalid parent synchronization signal');
+          }
         },
       });
-      process.stdout.write('unexpected-success');
+      outcome = { type: 'outcome', identity: 'stale-contender', status: 'unexpected-success' };
     } catch (error) {
-      process.stdout.write(error.message);
+      outcome = {
+        type: 'outcome',
+        identity: 'stale-contender',
+        status: 'failed',
+        message: error.message,
+      };
     }
+    process.send(outcome, () => process.disconnect());
   `;
-  const childResult = new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [
-      '--input-type=module', '-e', script, file, manifestFile, ready, proceed,
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', reject);
-    child.on('close', (code) => code === 0 ? resolve(stdout) : reject(new Error(stderr)));
-  });
-  while (!fs.existsSync(ready)) await new Promise((resolve) => setTimeout(resolve, 5));
+  const contender = spawnIpcChild(script, [file, manifestFile]);
+  t.after(async () => contender.terminate());
+  assert.equal((await contender.ready).identity, 'stale-contender');
   fs.rmSync(`${file}.lock`, { recursive: true });
   const replacement = {
     pid: process.pid,
@@ -558,9 +688,17 @@ test('multiprocess stale reclamation never removes a replacement live lock', asy
     createdAt: new Date().toISOString(),
   };
   writeLock(`${file}.lock`, replacement);
-  fs.writeFileSync(proceed, 'proceed');
-  assert.match(await childResult, /write lock is busy/);
-  assert.deepEqual(readLock(`${file}.lock`), replacement);
+  const replacementIdentity = captureLockIdentity(`${file}.lock`, replacement);
+  contender.child.stdin.end('go');
+  const result = await contender.completed;
+  assertCleanChildExit(result);
+  assert.equal(result.outcome.identity, 'stale-contender');
+  assert.equal(result.outcome.status, 'failed');
+  assert.match(result.outcome.message, /write lock is busy/);
+  assert.deepEqual(
+    captureLockIdentity(`${file}.lock`, replacement),
+    replacementIdentity,
+  );
 });
 
 test('rejects symlinks anywhere in the fleet-state directory ancestry', (t) => {
@@ -617,7 +755,7 @@ test('rejects symlinks anywhere in the fleet-state directory ancestry', (t) => {
 
 test('wrong repository or run path is rejected before creating directories', () => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
-  const wrongRepository = path.join(ROOT, '.test-sandbox', 'wrong-squadron-root');
+  const wrongRepository = path.join(SANDBOX, 'wrong-squadron-root');
   fs.rmSync(wrongRepository, { recursive: true, force: true });
   const state = createFleetState(manifest, 'bound-run');
   assert.throws(
