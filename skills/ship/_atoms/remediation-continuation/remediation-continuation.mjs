@@ -101,8 +101,9 @@ export function fingerprintFinding(finding) {
   if (!finding || typeof finding !== 'object'
       || !nonEmpty(finding.location)
       || !nonEmpty(finding.rule)
-      || !nonEmpty(finding.ledgerEntryId)) {
-    throw new Error('stable finding location, rule, and ledger entry are required');
+      || !nonEmpty(finding.ledgerEntryId)
+      || (finding.kind === 'run-ci' && !nonEmpty(finding.stepIdentity))) {
+    throw new Error('stable finding location, rule, ledger entry, and run-ci step identity are required');
   }
   return crypto.createHash('sha256').update(JSON.stringify(stable({
     kind: finding.kind ?? 'roast',
@@ -110,17 +111,30 @@ export function fingerprintFinding(finding) {
     ledgerEntryId: finding.ledgerEntryId,
     location: finding.locationIdentity ?? finding.location.replace(/:\d+(?::\d+)?$/, ''),
     rule: finding.rule,
+    stepIdentity: finding.kind === 'run-ci' ? finding.stepIdentity : null,
   }))).digest('hex');
 }
 
 function validationFindings(validation, classifications) {
-  if (!validation || validation.evidenceComplete !== true) return null;
-  if (validation.status === 'passed') return [];
+  if (!validation) return null;
+  if (validation.status === 'passed') {
+    return validation.evidenceComplete === true ? [] : null;
+  }
   if (validation.status === 'intermittent') return 'intermittent';
   if (validation.status !== 'failed') return validation.status ?? 'incomplete';
-  const failed = (validation.steps ?? []).filter((step) =>
-    !['passed', 'intermittent'].includes(step?.status));
+  if (!Array.isArray(validation.steps)) return null;
+  const failed = validation.steps.filter((step) => step?.status === 'failed');
+  const skipped = validation.steps.filter((step) => step?.status === 'skipped');
+  const statusesValid = validation.steps.every((step) =>
+    ['passed', 'intermittent', 'failed', 'skipped'].includes(step?.status));
+  const skippedAreDeterministic = skipped.every((step) =>
+    step.reason === 'prior step did not complete successfully');
+  const completenessValid = validation.evidenceComplete === true
+    ? skipped.length === 0
+    : skipped.length > 0 && skippedAreDeterministic;
   if (failed.length === 0
+      || !statusesValid
+      || !completenessValid
       || !Array.isArray(classifications)
       || classifications.length !== failed.length) {
     return null;
@@ -465,7 +479,10 @@ export function authorizeFreshContinuation(input, options = {}) {
       defects.push('handoff task contract does not match current Ship state');
     }
     const runCi = expected.runCiEvidence;
-    if (runCi?.evidenceComplete !== true
+    const evidenceCompletenessValid = runCi?.status === 'failed'
+      ? typeof runCi.evidenceComplete === 'boolean'
+      : runCi?.evidenceComplete === true;
+    if (!evidenceCompletenessValid
         || runCi?.repository?.revision !== expected.headSha
         || !exactKeys(runCi?.repository, ['root', 'revision', 'dirtyState'])
         || runCi.repository.root !== expected.worktree

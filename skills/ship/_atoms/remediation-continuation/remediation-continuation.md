@@ -79,8 +79,11 @@ Before dispatching a fresh implementation agent:
    commits, isolation state, exclusions, reconciliation result, `run-ci`
    evidence, canonical failed-step classifications, current Roast findings,
    prior remediation attempts, finding fingerprints, local five-attempt budget,
-   continuation generation, and configured global ceiling. Authorization
-   reconstructs the fingerprint set from both canonical sources.
+   continuation generation, and configured global ceiling. A failed envelope
+   may be incomplete only because later declared steps were deterministically
+   skipped after the failure; those skipped steps are not findings.
+   Authorization reconstructs the fingerprint set from both canonical sources,
+   with each `run-ci` fingerprint bound to its exact failed-step identity.
 5. Consume the actual persistence result. Require its exact path, directory,
    name, byte count, headings, redactions, and suggested-skills flag. Reread the
    real regular file and compare its bytes with the deterministic rendering of

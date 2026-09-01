@@ -284,7 +284,7 @@ test('validation-only implementation failure continues instead of invoking Sheph
     const result = decision({
       findings: [],
       validation: {
-        evidenceComplete: true,
+        evidenceComplete: false,
         status: 'failed',
         repository: { revision: HEAD },
         steps: [{
@@ -293,6 +293,13 @@ test('validation-only implementation failure continues instead of invoking Sheph
           name: 'Run validator and conformance tests',
           command: 'node scripts/run-registered-tests.mjs',
           status: 'failed',
+        }, {
+          workflow: '.github/workflows/validate-skills.yml',
+          job: 'validate',
+          name: 'Later validation',
+          command: 'node later-validation.mjs',
+          status: 'skipped',
+          reason: 'prior step did not complete successfully',
         }],
       },
       validationClassifications: [{
@@ -311,6 +318,20 @@ test('validation-only implementation failure continues instead of invoking Sheph
     });
     assert.equal(result.action, 'persist-continuation-handoff');
     assert.equal(result.invokeShepherd, false);
+});
+
+test('run-ci fingerprints preserve exact failed-step identity', () => {
+    const base = {
+      kind: 'run-ci',
+      classification: 'implementation',
+      ledgerEntryId: 'L1',
+      location: '.github/workflows/validate-skills.yml:1',
+      rule: 'declared-validation-must-pass',
+    };
+    assert.notEqual(
+      fingerprintFinding({ ...base, stepIdentity: 'unit-tests' }),
+      fingerprintFinding({ ...base, stepIdentity: 'integration-tests' }),
+    );
 });
 
 test('validation-only continuation uses the same canonical fingerprints during authorization', () => {
@@ -336,14 +357,21 @@ test('validation-only continuation uses the same canonical fingerprints during a
   };
   const input = authorization();
   input.canonicalState.runCiEvidence = {
-    evidenceComplete: true,
+    evidenceComplete: false,
     status: 'failed',
     repository: {
       root: input.expected.worktree,
       revision: HEAD,
       dirtyState: [],
     },
-    steps: [failedStep],
+    steps: [failedStep, {
+      workflow: failedStep.workflow,
+      job: failedStep.job,
+      name: 'Later validation',
+      command: 'node later-validation.mjs',
+      status: 'skipped',
+      reason: 'prior step did not complete successfully',
+    }],
   };
   input.canonicalState.validationClassifications = [classification];
   input.canonicalState.roastFindings = [];
@@ -415,14 +443,21 @@ test('validation-only authorization rejects missing or mismatched canonical fail
   ]) {
     const input = authorization();
     input.canonicalState.runCiEvidence = {
-      evidenceComplete: true,
+      evidenceComplete: false,
       status: 'failed',
       repository: {
         root: input.expected.worktree,
         revision: HEAD,
         dirtyState: [],
       },
-      steps: [failedStep],
+      steps: [failedStep, {
+        workflow: failedStep.workflow,
+        job: failedStep.job,
+        name: 'Later validation',
+        command: 'node later-validation.mjs',
+        status: 'skipped',
+        reason: 'prior step did not complete successfully',
+      }],
     };
     input.canonicalState.validationClassifications = validationClassifications;
     input.canonicalState.roastFindings = [];
