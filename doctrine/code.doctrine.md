@@ -110,6 +110,12 @@ Sound construction does not happen by itself. Code that has merely been typed ou
 
 **Standards**
 
+- **Simplify before extending.** Remove proven redundancy before building new behavior. Deletion should leave a smaller, more capable foundation — not become a goal of its own.
+- **Reduce conceptual surface.** Remove unnecessary dependencies, states, ownership splits, and operational burden. Fewer lines matter only when the system becomes easier to understand and change.
+- **Build from evidence, not imagination.** Serve observed needs and credible risks. Reject speculative machinery that protects no named contract, invariant, threat, or known failure.
+- **Keep safeguards proportional.** Preserve validation, compatibility, security, recovery, migration, and resilience when evidence or obligation justifies them. Rare behavior may still be essential.
+- **Finish the refactor.** Once a replacement is proven, remove superseded code, dead branches, temporary bridges, obsolete switches, and empty artifacts unless a current consumer or lifecycle obligation still needs them.
+
 - Refactor when the current structure hides intent, states the same knowledge more than once, or raises the probability of defects. Where reviewability benefits, keep the refactoring in a step separate from any change in behavior.
 - Spend effort on performance only where a requirement and the evidence warrant it. Take measurements on both sides of the change, and retain the clearer form unless a measured tradeoff has been made explicit and is worth what it costs.
 

@@ -64,6 +64,7 @@ receive raw position, provenance, and root-validated Prompt Coach evidence
 7. Run doctrine-transaction prepare. Display the exact UTF-8 candidate bytes,
    SHA-256 digest, target, complete result, and, for update, exact diff and
    prior doctrine and manifest revisions. Display NOTICE independently.
+   A new doctrine must contain fewer than 500 words across the complete file.
 8. Request exact human approval. Any correction discards approval and returns
    to drafting. Rejection or cancellation writes nothing. Unrelated replies and
    silence remain `needs-approval`, never implicit consent.

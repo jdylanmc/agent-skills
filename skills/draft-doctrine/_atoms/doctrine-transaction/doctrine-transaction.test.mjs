@@ -136,6 +136,30 @@ test('create prepares exact UTF-8 bytes and writes only doctrine plus manifest a
   assert.equal(result.rereadVerification[0].sha256, prepared.candidate.digest);
 });
 
+test('create requires fewer than 500 words while update preserves existing long doctrine', (t) => {
+  const root = workspace(t);
+  const words = (count) => Array.from({ length: count }, (_, index) => `word${index}`).join(' ');
+
+  const prepared = prepareDoctrineChange(input(root, { candidateText: words(499) }));
+  assert.equal(prepared.status, 'needs-approval');
+
+  assert.throws(
+    () => prepareDoctrineChange(input(root, { candidateText: words(500) })),
+    (error) => error.code === 'candidate-too-long'
+      && error.status === 'needs-input'
+      && error.detail.candidateWords === 500
+      && error.detail.maximumWords === 499,
+  );
+
+  const update = prepareDoctrineChange(input(root, {
+    operation: 'update',
+    targetId: 'existing',
+    relevantDoctrineIds: [],
+    candidateText: words(500),
+  }));
+  assert.equal(update.status, 'needs-approval');
+});
+
 test('update binds prior doctrine and manifest revisions and presents exact diff plus complete result', (t) => {
   const root = workspace(t);
   const next = `${EXISTING}\n- Record the review decision.\n`;

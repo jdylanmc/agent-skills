@@ -48,6 +48,11 @@ other transformation. The result displays its exact text, Base64 bytes, byte
 length, SHA-256 digest, and complete result. Update also displays an exact
 line-preserving diff against the verified prior bytes.
 
+A create candidate counts the complete document using deterministic
+whitespace-separated tokens containing a Unicode letter or digit. It must
+contain fewer than 500 words. Updates preserve existing doctrine length and do
+not apply this creation limit.
+
 Adapted material requires a closed verification record containing source
 locator, pinned revision or digest, author, license identifier or text basis,
 verifier identity and role, verified-at timestamp no older than 30 days,
@@ -109,7 +114,7 @@ Stable refusal codes include `invalid-manifest`, `digest-drift`,
 `hard-link-collision`, `license-unresolved`, `attribution-required`,
 `prompt-coach-required`, `prompt-coach-mismatch`, `stale-state`,
 `stale-preview`, `stale-prepared`, `stale-provenance`, `invalid-provenance`,
-`invalid-finding`, and `reread-mismatch`.
+`invalid-finding`, `candidate-too-long`, and `reread-mismatch`.
 
 ## Boundaries
 

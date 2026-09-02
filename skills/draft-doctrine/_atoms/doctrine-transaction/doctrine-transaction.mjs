@@ -21,6 +21,7 @@ const NOTICE_GRANT = 'approve-notice-write';
 const MAX_PROVENANCE_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_FINDINGS = 100;
 const MAX_FINDING_TEXT_BYTES = 1000;
+const MAX_CREATE_DOCTRINE_WORDS = 499;
 
 export class DoctrineTransactionError extends Error {
   constructor(code, message, status = 'blocked', detail = {}) {
@@ -54,6 +55,14 @@ function requirePlainString(value, field) {
     fail('needs-input', `${field} is required`, 'needs-input');
   }
   return value;
+}
+
+function countWords(text) {
+  return text
+    .replace(/\r\n/g, '\n')
+    .split(/\s+/)
+    .filter((token) => token !== '' && /[\p{L}\p{N}]/u.test(token))
+    .length;
 }
 
 function directoryIdentity(directory, label, parentAnchors = []) {
@@ -368,6 +377,17 @@ export function prepareDoctrineChange(input, options = {}) {
   requirePlainString(rawPosition, 'rawPosition');
   if (typeof candidateText !== 'string' || candidateText.length === 0) {
     fail('needs-input', 'candidateText must contain the exact UTF-8 candidate', 'needs-input');
+  }
+  if (operation === 'create') {
+    const candidateWords = countWords(candidateText);
+    if (candidateWords > MAX_CREATE_DOCTRINE_WORDS) {
+      fail(
+        'candidate-too-long',
+        `new doctrine candidates must contain fewer than 500 words; received ${candidateWords}`,
+        'needs-input',
+        { candidateWords, maximumWords: MAX_CREATE_DOCTRINE_WORDS },
+      );
+    }
   }
   validatePromptCoach(rawPosition, promptCoachEvidence);
   const source = validateProvenance(provenance, noticeText);
