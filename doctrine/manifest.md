@@ -34,6 +34,9 @@ doctrine:
   - id: context
     path: context.doctrine.md
     sha256: 0017ce9b4aa3a7654a09d3fe4d79a990642020b72987ebc5dbcedc6c9882f88b
+  - id: sequencing
+    path: sequencing.doctrine.md
+    sha256: ccce9ce64c4b15ec240d831e162adde7319df0096117a42dad03e64a155c5fc5
 ---
 
 # Doctrine Manifest
