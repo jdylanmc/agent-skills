@@ -143,7 +143,24 @@ test('parses every manifest entry and rejects a malformed one', () => {
   assert.ok(entries.length >= 5);
   assert.deepEqual(
     entries.map((entry) => entry.id).sort(),
-    ['code', 'data', 'domain', 'pragmatic', 'testing'],
+    [
+      'code',
+      'context',
+      'cyclomatic-complexity',
+      'data',
+      'debugging',
+      'documentation',
+      'domain',
+      'idempotency',
+      'laziness',
+      'machine',
+      'nimble',
+      'pragmatic',
+      'scout',
+      'sequencing',
+      'tactical-strategic',
+      'testing',
+    ],
   );
 
   assert.throws(() => parseManifest('no frontmatter here'), { code: 'invalid_manifest' });
