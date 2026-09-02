@@ -31,6 +31,9 @@ doctrine:
   - id: debugging
     path: debugging.doctrine.md
     sha256: 578d434e712bde7a8dfd69396024f2e89d8df647dc1174273fb37f9bfd6ed46c
+  - id: context
+    path: context.doctrine.md
+    sha256: 0017ce9b4aa3a7654a09d3fe4d79a990642020b72987ebc5dbcedc6c9882f88b
 ---
 
 # Doctrine Manifest
