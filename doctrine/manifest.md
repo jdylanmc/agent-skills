@@ -46,6 +46,9 @@ doctrine:
   - id: cyclomatic-complexity
     path: cyclomatic-complexity.doctrine.md
     sha256: 5bda9469234baba4cc50d7ecc8611ac8136f0e020a2287bf7df0f23f1115edc4
+  - id: tactical-strategic
+    path: tactical-strategic.doctrine.md
+    sha256: b2f91d7a8610ed51bc6160e606e157802da362f4ce8fc39880b6d54f9a06bcf3
 ---
 
 # Doctrine Manifest
