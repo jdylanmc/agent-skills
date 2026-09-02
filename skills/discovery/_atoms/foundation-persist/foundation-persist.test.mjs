@@ -8,6 +8,7 @@ import {
   CONFIRMED,
   DURABLE_SETS,
   FOUNDATION_FIELDS,
+  FRONTIER_ROUTES,
   FoundationPersistError,
   PERSISTABLE_ALIGNMENT,
   alignedPayloadDigestOf,
@@ -76,6 +77,11 @@ function intake(overrides = {}) {
     scope: ['Discovery re-entry.'],
     exclusions: ['Specification.'],
     frontier: ['needs-more-evidence: read discovery-source'],
+    frontierRoute: {
+      route: 'needs-product-design',
+      applicability: 'required',
+      rationaleCode: 'discovery-frontier-requires-product-design',
+    },
     nextAction: 'Read the discovery-source contract.',
     resolved: [],
     ...overrides,
@@ -95,6 +101,19 @@ function code(fn) {
     throw error;
   }
 }
+
+test('every declared frontier has one exact structured product-design route', () => {
+  assert.deepEqual(Object.keys(FRONTIER_ROUTES), [
+    'ready', 'needs-product-design', 'needs-interrogate', 'needs-domain-mapping',
+    'needs-proof-of-concept', 'needs-research', 'needs-uri-seed',
+    'needs-more-evidence', 'blocked', 'stop',
+  ]);
+  assert.equal(FRONTIER_ROUTES.ready.applicability, 'not-applicable');
+  assert.equal(FRONTIER_ROUTES['needs-product-design'].applicability, 'required');
+  for (const route of Object.keys(FRONTIER_ROUTES).slice(2)) {
+    assert.equal(FRONTIER_ROUTES[route].applicability, 'unresolved', route);
+  }
+});
 
 test.after(() => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
@@ -132,7 +151,7 @@ test('a persisted foundation records alignment: confirmed, a schema line, and th
   assert.equal(result.alignment, CONFIRMED);
 
   const bytes = fs.readFileSync(destIn(root), 'utf8');
-  assert.match(bytes, /^- Schema: 1$/m);
+  assert.match(bytes, /^- Schema: 2$/m);
   const parsed = parseFoundation(bytes);
   assert.equal(parsed.alignment, CONFIRMED);
   for (const field of FOUNDATION_FIELDS) {
@@ -165,8 +184,9 @@ test('the aligned payload digest is a binding, not a token', () => {
   assert.equal(code(() => persistFoundation(noDigest, { io: realIo() })), 'invalid-input');
 
   // The digest is independent of JSON key order in the payload.
-  const a = alignedPayloadDigestOf({ subject: { id: 'x', slug: 'y' }, confirmedFacts: ['f'], evidenceReferences: [], decisions: [], constraints: [], assumptions: [], contradictions: [], openQuestions: [], scope: [], exclusions: [], frontier: [], nextAction: 'go', resolved: [] });
-  const b = alignedPayloadDigestOf({ resolved: [], nextAction: 'go', frontier: [], exclusions: [], scope: [], openQuestions: [], contradictions: [], assumptions: [], constraints: [], decisions: [], evidenceReferences: [], confirmedFacts: ['f'], subject: { slug: 'y', id: 'x' } });
+  const route = { route: 'ready', applicability: 'not-applicable', rationaleCode: 'discovery-frontier-ready-for-spec' };
+  const a = alignedPayloadDigestOf({ subject: { id: 'x', slug: 'y' }, confirmedFacts: ['f'], evidenceReferences: [], decisions: [], constraints: [], assumptions: [], contradictions: [], openQuestions: [], scope: [], exclusions: [], frontier: [], frontierRoute: route, nextAction: 'go', resolved: [] });
+  const b = alignedPayloadDigestOf({ resolved: [], nextAction: 'go', frontierRoute: route, frontier: [], exclusions: [], scope: [], openQuestions: [], contradictions: [], assumptions: [], constraints: [], decisions: [], evidenceReferences: [], confirmedFacts: ['f'], subject: { slug: 'y', id: 'x' } });
   assert.equal(a, b);
 });
 
@@ -228,9 +248,9 @@ test('an unknown schema on parse is refused with a named code', () => {
   const root = freshRepo();
   persistFoundation(intake({ repositoryRoot: root }), { io: realIo() });
   const bytes = fs.readFileSync(destIn(root), 'utf8');
-  const bumped = bytes.replace('- Schema: 1', '- Schema: 2');
+  const bumped = bytes.replace('- Schema: 2', '- Schema: 999');
   assert.equal(code(() => parseFoundation(bumped)), 'unsupported-schema');
-  const removed = bytes.replace('- Schema: 1\n', '');
+  const removed = bytes.replace('- Schema: 2\n', '');
   assert.equal(code(() => parseFoundation(removed)), 'unsupported-schema');
 });
 
@@ -677,7 +697,7 @@ test('MF-3: a metadata line moved into a section no longer parses as the header'
   // Move the metadata lines out of the header and into Confirmed Facts, as list
   // items. The positional header parse must refuse rather than recover subject.
   const laundered = bytes
-    .replace('- Schema: 1\n- Subject: issue-119\n- Slug: discovery-rehydration\n- Alignment: confirmed\n', '- Schema: 1\n')
+    .replace('- Schema: 2\n- Subject: issue-119\n- Slug: discovery-rehydration\n- Alignment: confirmed\n', '- Schema: 2\n')
     .replace('## Confirmed Facts\n\n- Discovery rereads its own handoff today.',
       '## Confirmed Facts\n\n- Subject: issue-119\n- Slug: discovery-rehydration\n- Alignment: confirmed\n- Discovery rereads its own handoff today.');
   assert.equal(code(() => parseFoundation(laundered)), 'invalid-input');

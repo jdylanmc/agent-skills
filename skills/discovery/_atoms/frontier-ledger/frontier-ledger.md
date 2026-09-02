@@ -16,15 +16,16 @@ Track what the discovery loop knows and what can happen next.
 
 | State | Meaning |
 | --- | --- |
-| `ready` | Enough evidence exists for the recommended next workflow. |
-| `needs-interrogate` | A pointed question must be answered before discovery can proceed. |
-| `needs-domain-mapping` | Terms, actors, systems, boundaries, or relationships are blocking progress. |
-| `needs-proof-of-concept` | A small bounded prototype is the cheapest way to answer the discovery question. |
-| `needs-research` | The blocker is knowledge that does not exist in reachable evidence and must be sought outside it. |
-| `needs-uri-seed` | A human supplied a URI or path to investigate that has not yet been attempted, and its content has not yet been folded into the evidence. |
-| `needs-more-evidence` | A named source or source type exists and is reachable, but has not been read. |
-| `blocked` | The next step depends on unavailable authority, access, or a decision owner. |
-| `stop` | Discovery should not continue because the request is out of scope or unsafe. |
+| `ready` | Enough evidence exists for specification; persist `frontierRoute` as the exact structured tuple `{route: ready, applicability: not-applicable, rationaleCode: discovery-frontier-ready-for-spec}`. |
+| `needs-product-design` | Product behavior and scope are aligned, but experiential uncertainty must be settled before specification; persist `{route: needs-product-design, applicability: required, rationaleCode: discovery-frontier-requires-product-design}`. |
+| `needs-interrogate` | A pointed question must be answered; persist `{route: needs-interrogate, applicability: unresolved, rationaleCode: discovery-frontier-needs-interrogate}`. |
+| `needs-domain-mapping` | Terms, actors, systems, boundaries, or relationships block progress; persist `{route: needs-domain-mapping, applicability: unresolved, rationaleCode: discovery-frontier-needs-domain-mapping}`. |
+| `needs-proof-of-concept` | A small bounded prototype is the cheapest way to answer the discovery question; persist `{route: needs-proof-of-concept, applicability: unresolved, rationaleCode: discovery-frontier-needs-proof-of-concept}`. |
+| `needs-research` | The blocker is knowledge that does not exist in reachable evidence and must be sought outside it; persist `{route: needs-research, applicability: unresolved, rationaleCode: discovery-frontier-needs-research}`. |
+| `needs-uri-seed` | A human supplied a URI or path to investigate that has not yet been attempted, and its content has not yet been folded into the evidence. Persist `applicability: unresolved` and rationale `discovery-frontier-needs-uri-seed`. |
+| `needs-more-evidence` | A named source or source type exists and is reachable, but has not been read. Persist `applicability: unresolved` and rationale `discovery-frontier-needs-more-evidence`. |
+| `blocked` | The next step depends on unavailable authority, access, or a decision owner; persist `{route: blocked, applicability: unresolved, rationaleCode: discovery-frontier-blocked}`. |
+| `stop` | Discovery should not continue because the request is out of scope or unsafe; persist `{route: stop, applicability: unresolved, rationaleCode: discovery-frontier-stopped}`. |
 
 ## Rules
 
@@ -43,6 +44,11 @@ Track what the discovery loop knows and what can happen next.
 - Assign every blocker an owner, source, or next workflow when known.
 - Route to `proof-of-concept` when code can answer the question cheaply; do not
   pretend the prototype has already been run.
+- Choose `needs-product-design` when the remaining uncertainty is what the
+  experience should be rather than whether a technical approach works. Name the
+  exact experiential uncertainty and route exactly one aligned subject.
+- A `ready` route to specification must carry `product-design: not-applicable`
+  and rationale code `discovery-frontier-ready-for-spec`. Absence is not non-applicability.
 - Choose `needs-research` over `needs-more-evidence` when the answer is not
   reachable from the repository, the tracker, or supplied documents at all. The
   distinction is reachability, not difficulty: a source that exists and has not
@@ -63,7 +69,11 @@ Track what the discovery loop knows and what can happen next.
 ## Output
 
 Return the frontier state, supporting evidence, blockers, ready next action,
-and deferred questions.
+deferred questions, and the structured `frontierRoute` route, product-design
+applicability (`required` or `not-applicable`), and typed rationale code. These
+exact fields are part of the aligned payload digest and persisted foundation
+schema; downstream consumers parse them from the exact Discovery bytes and
+never infer them from prose or accept a caller-supplied route.
 
 ## Boundaries
 

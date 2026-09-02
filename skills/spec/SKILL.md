@@ -72,7 +72,9 @@ record -> resolve approval state -> resolve confirmed Discovery source
    `sourceStatus: 'held'`, the approval state, and that verdict. Return whatever
    it resolves — `held` when nothing new contradicts, `needs-decision` when the
    contradiction escalated. Nothing else is derived, written, roasted, or
-   published on this path; the contradiction check, the Chronicler recording,
+   published on this path. In particular, return before product-design evidence
+   validation: the approved specification and its bound evidence remain the
+   authority under review. The contradiction check, the Chronicler recording,
    and the resolver call are the only additional steps.
 5. The molecule preserves the source's evidence distinctions, formalizes product
    intent, writes the sibling Product Requirements Documents beneath
@@ -109,6 +111,20 @@ The intake must also carry:
 - decisions, assumptions, contradictions, and unresolved questions;
 - scope and exclusions.
 
+Every intake must pass and revalidate the primary exact-revision Discovery
+packet carrying its authoritative frontier route, then explicitly record
+whether product design is `required` or `not-applicable` with the matching
+typed rationale code. Free prose is invalid. When Discovery routed
+`needs-product-design`, `not-applicable` fails and the mechanically composed
+product-design evidence atom requires the product-design validator's `approved`
+result for the same Discovery subject/revision; absence is not
+non-applicability. That result includes stable concept/walkthrough identities,
+exact interaction-contract and artifact-set digests, change-request identity,
+and verified merge revision. The
+contract's observable behavior may inform requirements. Prototype HTML, CSS,
+JavaScript, Storybook configuration, component structure, dependencies, data
+models, and architecture never do.
+
 Raw conversation, a summary reconstructed from memory, an inaccessible source,
 or an unconfirmed source is refused. A source whose current revision differs
 from its confirmed revision is refused when the specification is a draft; when
@@ -116,13 +132,12 @@ the specification is approved, the differing revision is held rather than
 refused, so that routine Discovery enrichment does not invalidate approved
 product intent.
 
-The current Discovery package persists its bounded continuation handoff beneath
-the operating system temporary directory. Until Discovery is reinforced to
-persist aligned application knowledge directly beneath `docs/agent/discovery/`,
-a Markdown source reaches `/spec` only after an explicitly approved promotion
-into that durable workspace. A tracker issue may be consumed directly when it
-satisfies the same confirmation and revision contract. Never silently copy a
-temporary handoff and call that promotion approved.
+Discovery persists aligned application knowledge directly beneath
+`docs/agent/discovery/` and binds its structured frontier route to those exact
+bytes. `/spec` revalidates that durable source and revision rather than
+promoting a temporary handoff. A tracker issue may still be consumed directly
+when it satisfies the same confirmation, frontier-route, and revision
+contract.
 
 ## Output Contract
 
@@ -213,6 +228,9 @@ branch.
   supplies approval.
 - Never let full-document detail become product authority without changing and
   re-approving the nano document.
+- An approved product-design interaction contract is evidence about the exact
+  experience, not production design-system, UI implementation, or architecture
+  authority.
 
 ## Permissions
 

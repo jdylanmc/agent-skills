@@ -15,6 +15,7 @@ const UNITS = [
   'spec/_molecules/product-specification/product-specification.md',
   'spec/_atoms/approval-state/approval-state.md',
   'spec/_atoms/discovery-source/discovery-source.md',
+  'spec/_atoms/product-design-evidence/product-design-evidence.md',
   'spec/_atoms/product-requirements/product-requirements.md',
   'spec/_atoms/spec-outcome/spec-outcome.md',
   'spec/_atoms/spec-pair/spec-pair.md',
@@ -73,6 +74,8 @@ test('durable workflow artifacts stay under docs agent', () => {
   assert.match(intent, /durable workspace/);
   assert.match(skill, /docs\/agent\/specs\/<slug>\.nano\.md/);
   assert.match(skill, /docs\/agent\/specs\/<slug>\.full\.md/);
+  assert.match(skill, /Discovery persists aligned application knowledge directly beneath `docs\/agent\/discovery\/`/);
+  assert.doesNotMatch(skill, /temporary handoff.*promotion approved/i);
 });
 
 test('nano authority and full supporting context cannot silently trade places', () => {
@@ -344,6 +347,17 @@ test('the held path routes through spec-outcome rather than returning directly',
   assert.match(molecule, /Specification outcome.*sourceStatus.*held/i);
 });
 
+test('held returns before product-design evidence validation', () => {
+  const skill = flat('skills/spec/SKILL.md');
+  const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
+  assert.match(skill, /return before product-design evidence validation/i);
+  assert.match(molecule, /return before product-design evidence validation/i);
+  assert.ok(
+    molecule.indexOf('**On `held`') < molecule.indexOf('For a fresh source, run'),
+    'held routing must precede fresh product-design evidence validation',
+  );
+});
+
 // F6: the molecule does not claim publication ownership
 test('the molecule does not claim to open a change request', () => {
   const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
@@ -517,4 +531,17 @@ test('the held-path section names recorded, suppressed, and the recorder togethe
   assert.match(skill, /`recorded`/, 'the skill held-path step must name the recorded findings');
   assert.match(skill, /`suppressed`/, 'the skill held-path step must name the suppressed findings');
   assert.match(skill, /Chronicler/, 'the skill held-path step must name the recorder');
+});
+
+test('required product-design evidence maps observable contract records into requirements and excludes implementation', () => {
+  const atom = flat('skills/spec/_atoms/product-requirements/product-requirements.md');
+  const molecule = flat('skills/spec/_molecules/product-specification/product-specification.md');
+  for (const term of ['feature', 'flow', 'observable state', 'decision', 'accessibility expectation', 'alternative', 'open question']) {
+    assert.match(atom, new RegExp(term, 'i'));
+    assert.match(molecule, new RegExp(term, 'i'));
+  }
+  assert.match(atom, /supporting full-document detail/);
+  assert.match(atom, /observable acceptance criterion/);
+  assert.match(atom, /stable contract IDs.*traceability/i);
+  assert.match(atom, /Prototype package scripts, dependencies, HTML, CSS, JavaScript, Storybook/i);
 });

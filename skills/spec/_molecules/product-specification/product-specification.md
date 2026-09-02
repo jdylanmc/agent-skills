@@ -2,8 +2,8 @@
 name: product-specification
 description: Convert one confirmed Discovery source into a stable product-intent model, persist its authoritative nano and supporting full Product Requirements Documents beneath docs/agent/specs, and validate the reread pair.
 level: molecule
-includes: ["_base/_atoms/contradiction-check/contradiction-check.md","spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
-composes: ["_base/_atoms/contradiction-check/contradiction-check.md","spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
+includes: ["_base/_atoms/contradiction-check/contradiction-check.md","spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-design-evidence/product-design-evidence.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
+composes: ["_base/_atoms/contradiction-check/contradiction-check.md","spec/_atoms/approval-state/approval-state.md","spec/_atoms/discovery-source/discovery-source.md","spec/_atoms/product-design-evidence/product-design-evidence.md","spec/_atoms/product-requirements/product-requirements.md","spec/_atoms/spec-outcome/spec-outcome.md","spec/_atoms/spec-pair/spec-pair.md"]
 used-by: ["spec/SKILL.md"]
 allowed-tools: ["edit","execute"]
 ---
@@ -28,9 +28,10 @@ resolve approval state -> resolve source with state-dependent freshness
 1. [Contradiction check](../../../_base/_atoms/contradiction-check/contradiction-check.md)
 2. [Approval state](../../_atoms/approval-state/approval-state.md)
 3. [Discovery source](../../_atoms/discovery-source/discovery-source.md)
-4. [Product requirements](../../_atoms/product-requirements/product-requirements.md)
-5. [Specification pair](../../_atoms/spec-pair/spec-pair.md)
-6. [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md)
+4. [Product-design evidence](../../_atoms/product-design-evidence/product-design-evidence.md)
+5. [Product requirements](../../_atoms/product-requirements/product-requirements.md)
+6. [Specification pair](../../_atoms/spec-pair/spec-pair.md)
+7. [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md)
 
 ## Operation
 
@@ -67,18 +68,33 @@ resolve approval state -> resolve source with state-dependent freshness
    supplied by the caller for this run; no durable store of previously accepted
    divergences exists yet, so that continuity gap is visible rather than
    assumed. Nothing else is derived, written, roasted, or published on this
-   path.
-4. Run
+   path. Return before product-design evidence validation; the held approved
+   specification keeps its already-bound product evidence.
+4. For a fresh source, run
+   [Product-design evidence](../../_atoms/product-design-evidence/product-design-evidence.md).
+   Revalidate the primary exact-revision Discovery packet and authoritative
+   frontier route. If it routed `needs-product-design`, reject
+   `not-applicable` and require the exact `approved` validator result for the
+   same subject/revision. A `ready` route may use only the typed
+   `discovery-frontier-ready-for-spec` nonapplicability code. Never infer either
+   branch from absence or free prose.
+5. Run
    [Product requirements](../../_atoms/product-requirements/product-requirements.md).
-   Formalize only what the source supports. Preserve facts, claims, decisions,
-   assumptions, contradictions, and open questions as different categories.
-   A missing product decision remains a question.
-5. Run [Specification pair](../../_atoms/spec-pair/spec-pair.md). Assign one
+   Formalize only what the source and normalized product-design evidence
+   support. When product design is required, map every validated contract
+   feature, flow, observable state, decision, accessibility expectation,
+   alternative, and open question into intention, `[INTENT]`/`[AC-###]`
+   supporting detail, acceptance criteria, or an explicitly preserved open
+   question, with stable-ID traceability. Exclude prototype implementation
+   choices. Preserve facts, claims, decisions, assumptions, contradictions,
+   and open questions as different categories. A missing product decision
+   remains a question.
+6. Run [Specification pair](../../_atoms/spec-pair/spec-pair.md). Assign one
    stable specification identity and acceptance-criteria identities, render the
    nano and full documents from the same model, write them as siblings beneath
    `docs/agent/specs/`, reread both, and validate their identity, provenance,
    links, authority, and traceability.
-6. Run [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md) to
+7. Run [Specification outcome](../../_atoms/spec-outcome/spec-outcome.md) to
    resolve the status from source, pair, questions, Roast, approval, and
    contradiction evidence. A valid pair is a candidate, not `complete`;
    independent Roast and human approval remain with the caller.
