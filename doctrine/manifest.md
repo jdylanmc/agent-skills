@@ -40,6 +40,9 @@ doctrine:
   - id: nimble
     path: nimble.doctrine.md
     sha256: 6a7fcaf2e3f6c711f7f70c3f9285f4ddaa0780502b3f40564771ef09ac71ea65
+  - id: idempotency
+    path: idempotency.doctrine.md
+    sha256: 8b18d0a70a883d3226d16103a34887d5755faf4564ded0bd2bc2b34270ed24ff
 ---
 
 # Doctrine Manifest
