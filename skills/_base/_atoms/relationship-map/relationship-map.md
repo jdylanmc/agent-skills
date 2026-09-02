@@ -5,7 +5,7 @@ level: atom
 allowed-tools: []
 includes: []
 composes: []
-used-by: ["domain-mapping/_molecules/domain-map/domain-map.md"]
+used-by: ["discovery/_molecules/aligned-domain-model/aligned-domain-model.md","domain-mapping/_molecules/domain-map/domain-map.md"]
 ---
 
 # Relationship Map
