@@ -16,6 +16,9 @@ doctrine:
   - id: testing
     path: testing.doctrine.md
     sha256: 02661877aa625b3b2bfd1af1c8733550fabe886e19ae82c2d873a5ce020688aa
+  - id: laziness
+    path: laziness.doctrine.md
+    sha256: b1344f70fb34e840665ba02587e7a1ebff4d734ffd146badecace53b5492135f
 ---
 
 # Doctrine Manifest
