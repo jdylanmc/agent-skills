@@ -19,6 +19,9 @@ doctrine:
   - id: laziness
     path: laziness.doctrine.md
     sha256: b1344f70fb34e840665ba02587e7a1ebff4d734ffd146badecace53b5492135f
+  - id: documentation
+    path: documentation.doctrine.md
+    sha256: 54a88537818b03546edc460fc29988141e500a37a2c604f718ea15051af11040
 ---
 
 # Doctrine Manifest
