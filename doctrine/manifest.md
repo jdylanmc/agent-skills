@@ -28,6 +28,9 @@ doctrine:
   - id: scout
     path: scout.doctrine.md
     sha256: ae5c1c3da548a1a6b4970560aa4f5ed1dc4d344ed615db5e801ccbd33160c057
+  - id: debugging
+    path: debugging.doctrine.md
+    sha256: 578d434e712bde7a8dfd69396024f2e89d8df647dc1174273fb37f9bfd6ed46c
 ---
 
 # Doctrine Manifest
