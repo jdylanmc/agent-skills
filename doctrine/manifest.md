@@ -25,6 +25,9 @@ doctrine:
   - id: machine
     path: machine.doctrine.md
     sha256: 05454474f4ad2fbfbd7193abf2a1f9684805addecc51e58a17153687bcf1f90d
+  - id: scout
+    path: scout.doctrine.md
+    sha256: ae5c1c3da548a1a6b4970560aa4f5ed1dc4d344ed615db5e801ccbd33160c057
 ---
 
 # Doctrine Manifest
