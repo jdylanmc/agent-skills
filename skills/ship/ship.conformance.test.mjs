@@ -61,6 +61,7 @@ const CONTINUATION = 'ship/_atoms/continuation-remediation/continuation-remediat
 const PROVIDER_REVIEW = 'ship/_atoms/provider-review/provider-review.md';
 const ISOLATION = 'ship/_atoms/run-isolation/run-isolation.md';
 const DISPATCH = 'ship/_atoms/worker-dispatch/worker-dispatch.md';
+const REMEDIATION_CONTINUATION = 'ship/_atoms/remediation-continuation/remediation-continuation.md';
 const RECONCILE = 'ship/_atoms/diff-reconciliation/diff-reconciliation.md';
 const CRITERION = 'ship/_atoms/criterion-verdict/criterion-verdict.md';
 const MERGE_GATE = 'ship/_atoms/merge-gate/merge-gate.md';
@@ -342,7 +343,7 @@ test('the task grant is new, deliberate, and justified in the body', () => {
     .filter((unit) => (readFrontmatter(read(unit), unit).allowedTools ?? []).includes('task'))
     .sort();
 
-  assert.deepEqual(taskBearing, [DISPATCH, CYCLE, HANDOFF, ENTRY].sort());
+  assert.deepEqual(taskBearing, [DISPATCH, REMEDIATION_CONTINUATION, CYCLE, HANDOFF, ENTRY].sort());
 });
 
 test('the execute-bearing closure is pinned, because execute can mutate', () => {
@@ -1359,13 +1360,13 @@ test('every run is isolated, and absent isolation is named rather than implied',
   assert.match(entry, /isolation state, with worktree path and branch, or the recorded reason it is\s+absent/);
 });
 
-test('remediation gets exactly five attempts and re-runs the complete proof cycle', () => {
+test('remediation gets bounded local attempts and verified fresh-agent continuation', () => {
   const entry = flat(ENTRY);
   const cycle = flat(CYCLE);
   const dispatch = flat(DISPATCH);
 
   assert.match(cycle, /Remediate, within a limit/);
-  assert.match(cycle, /limit is exactly \*\*five attempts\*\* per delivery cycle/);
+  assert.match(cycle, /limit is exactly \*\*five attempts\*\* per (?:delivery cycle|worker context)/);
   assert.match(cycle, /Record `0\/5` before\s+the first attempt/);
   assert.match(cycle, /initial validation and Roast establish the defects and do not consume an\s+attempt/);
   assert.match(cycle, /each later dispatch consumes one slot even when it returns no\s+candidate change/);
@@ -1380,14 +1381,20 @@ test('remediation gets exactly five attempts and re-runs the complete proof cycl
   assert.match(cycle, /Every other remediable validation or review defect receives the remaining\s+attempts through five/);
   assert.match(cycle, /must not invent another early exit/);
   assert.match(cycle, /must not (?:invent another early exit or )?choose\s+a smaller limit merely because two or three rounds were expensive/);
-  assert.match(cycle, /When attempt five returns without clearing the defects, stop and hand back\s+with every outstanding defect named/);
-  assert.match(cycle, /Never start attempt six/);
+  assert.match(cycle, /When attempt five returns without clearing the defects, do not start attempt\s+six in that worker/);
+  assert.match(cycle, /verified\s+`orchestration-handoff` to one fresh owner with a new bounded `0\/5` budget/);
+  assert.match(cycle, /configured global continuation ceiling/);
+  assert.match(cycle, /whole outcome is not monotonic/);
+  assert.match(cycle, /blocker is added or substituted/);
+  assert.match(cycle, /independently loaded canonical Ship state plus fresh Git and exclusive-owner\s+observations/);
+  assert.match(cycle, /Authorize Shepherd only when no unresolved implementation `Must fix` remains/);
   assert.match(cycle, /remediation accounting as `n\/5`/);
   assert.match(dispatch, /Remediation Is A Dispatch, Not A Correction/);
   assert.match(dispatch, /new dispatch to a\s+fresh worker context/);
-  assert.match(dispatch, /bounded to five attempts/);
+  assert.match(dispatch, /bounded to five attempts per worker context/);
   assert.match(dispatch, /Record `0\/5` before the\s+first one/);
-  assert.match(dispatch, /When attempt five fails to clear the defect, the run hands back/);
+  assert.match(dispatch, /Attempt five never becomes attempt six/);
+  assert.match(dispatch, /verified `orchestration-handoff` to one\s+fresh owner/);
   assert.match(entry, /remediates through at most five fresh\s+bounded attempts/);
   assert.match(entry, /remediation attempts reported as `n\/5`/);
 });

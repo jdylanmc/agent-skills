@@ -2,8 +2,8 @@
 name: delivery-cycle
 description: Run the implementation cycle for one confirmed delivery packet — isolate the workspace, dispatch a bounded worker, reconcile the diff against the ledger, validate, review, remediate within a limit, and report criterion by criterion.
 level: molecule
-includes: ["ship/_atoms/run-isolation/run-isolation.md","ship/_atoms/worker-dispatch/worker-dispatch.md","ship/_atoms/diff-reconciliation/diff-reconciliation.md","ship/_atoms/criterion-verdict/criterion-verdict.md"]
-composes: ["ship/_atoms/run-isolation/run-isolation.md","ship/_atoms/worker-dispatch/worker-dispatch.md","ship/_atoms/diff-reconciliation/diff-reconciliation.md","ship/_atoms/criterion-verdict/criterion-verdict.md"]
+includes: ["ship/_atoms/run-isolation/run-isolation.md","ship/_atoms/worker-dispatch/worker-dispatch.md","ship/_atoms/diff-reconciliation/diff-reconciliation.md","ship/_atoms/criterion-verdict/criterion-verdict.md","ship/_atoms/remediation-continuation/remediation-continuation.md"]
+composes: ["ship/_atoms/run-isolation/run-isolation.md","ship/_atoms/worker-dispatch/worker-dispatch.md","ship/_atoms/diff-reconciliation/diff-reconciliation.md","ship/_atoms/criterion-verdict/criterion-verdict.md","ship/_atoms/remediation-continuation/remediation-continuation.md"]
 used-by: ["ship/SKILL.md"]
 allowed-tools: ["execute","read","task"]
 ---
@@ -22,6 +22,7 @@ isolate -> dispatch -> reconcile -> validate -> review -> remediate (bounded) ->
 2. [Worker dispatch](../../_atoms/worker-dispatch/worker-dispatch.md)
 3. [Diff reconciliation](../../_atoms/diff-reconciliation/diff-reconciliation.md)
 4. [Criterion verdict](../../_atoms/criterion-verdict/criterion-verdict.md)
+5. [Remediation continuation](../../_atoms/remediation-continuation/remediation-continuation.md)
 
 ## Entry Condition
 
@@ -92,7 +93,7 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
 
 6. **Remediate, within a limit.** A validation failure or a review blocker
    becomes a **new bounded dispatch** against the same ledger. The remediation
-   limit is exactly **five attempts** per delivery cycle. Record `0/5` before
+   limit is exactly **five attempts** per worker context. Record `0/5` before
    the first attempt and increment it after each returned remediation. The
    initial validation and Roast establish the defects and do not consume an
    attempt; each later dispatch consumes one slot even when it returns no
@@ -118,10 +119,24 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
    attempts through five. The run must not invent another early exit or choose
    a smaller limit merely because two or three rounds were expensive.
 
-   When attempt five returns without clearing the defects, stop and hand back
-   with every outstanding defect named. Never start attempt six, suppress a
-   finding, or weaken validation to manufacture convergence. An unbounded retry
-   loop converts a defect the operator should see into time spent not seeing it.
+   When attempt five returns without clearing the defects, do not start attempt
+   six in that worker. Run
+   [Remediation continuation](../../_atoms/remediation-continuation/remediation-continuation.md).
+   An in-scope remediable implementation blocker transfers through a verified
+   `orchestration-handoff` to one fresh owner with a new bounded `0/5` budget,
+   subject to the configured global continuation ceiling. The continuation
+   resumes at implementation and reruns reconciliation, complete declared
+   validation, and Roast over the whole diff.
+
+   Authorize Shepherd only when no unresolved implementation `Must fix` remains
+   or the remaining condition is explicitly Shepherd-owned. Dispatch requires
+   independently loaded canonical Ship state plus fresh Git and exclusive-owner
+   observations. Stop for a human when the whole outcome is not monotonic:
+   validation or criteria regress, a blocker is added or substituted, or no
+   strict outcome improvement accompanies the complete-diff change. Also stop
+   on out-of-scope or decision-dependent findings, stale or incomplete handoff
+   evidence, ownership ambiguity, or the global continuation ceiling. A new
+   context is capacity, not permission to waive old evidence.
 
 7. **Verdict.** Report criterion by criterion with evidence, then the derived
    aggregate. Report the reconciliation verdict, the validation envelope, the
@@ -134,7 +149,7 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
 | --- | --- |
 | `verified` | Reconciled, validation green, review blockers cleared, every criterion `satisfied` or `descoped`. |
 | `incomplete` | Reconciled and validated, but a criterion is `partial`, `not-satisfied`, or `not-verifiable`. |
-| `handed-back` | The remediation limit was reached with defects outstanding, the operator cancelled, or a required tool, permission, or authority became unavailable. |
+| `handed-back` | Continuation stopped at the global ceiling, made no measurable progress, required a human decision, could not prove a fresh handoff or single owner, the operator cancelled, or a required tool, permission, or authority became unavailable. |
 | `undisclosed-change` | The diff contains changes the confirmed ledger does not. The cycle stopped. |
 | `ambiguous-mapping` | One change is claimed by more than one ledger entry, so "exactly one entry" is unverifiable. The cycle stopped. |
 | `isolation-refused` | No safe place to work and no consent to proceed without one. |

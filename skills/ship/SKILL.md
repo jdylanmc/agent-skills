@@ -1,12 +1,12 @@
 ---
 name: ship
-description: "Take one tracker issue to review-ready, or continue that same issue on exactly one existing change request when new in-scope review or continuous integration evidence requires functional code or test remediation. Ground new delivery into a confirmed plan; for continuation preserve the confirmed ledger, issue, change-request, branch, and captured head identities. Dispatch a fresh bounded worker, reconcile every hunk, validate through run-ci, review through roast, and report criterion by criterion. Do not use for a backlog, merge, approval, risk acceptance, wider product or architecture decisions, review-thread mutation, or Shepherd's pure rebase, configured mechanical conflict resolution, and derived regeneration work."
+description: "Take one tracker issue to review-ready, or continue that same issue on exactly one existing change request when new in-scope review or continuous integration evidence requires functional code or test remediation. Ground new delivery into a confirmed plan; for continuation preserve the confirmed ledger, issue, change-request, branch, and captured head identities. Dispatch a fresh bounded worker, reconcile every hunk, validate through run-ci, review through roast, and transfer unresolved in-scope implementation blockers through a verified orchestration handoff when a local remediation budget expires. Do not use for a backlog, merge, approval, risk acceptance, wider product or architecture decisions, review-thread mutation, or Shepherd's pure rebase, configured mechanical conflict resolution, and derived regeneration work."
 allowed-tools: ["execute","read","search","task"]
 includes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/continuation-remediation/continuation-remediation.md","ship/_atoms/provider-review/provider-review.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md","_base/_atoms/provider-detect/provider-detect.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/continuation-remediation/continuation-remediation.md","ship/_atoms/provider-review/provider-review.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md","_base/_atoms/provider-detect/provider-detect.md"]
 disable-model-invocation: true
 user-invocable: true
-requires-skills: [{"id":"run-ci","source":"local","required":true},{"id":"roast","source":"local","required":true},{"id":"shepherd","source":"local","required":false}]
+requires-skills: [{"id":"run-ci","source":"local","required":true},{"id":"roast","source":"local","required":true},{"id":"orchestration-handoff","source":"local","required":true},{"id":"shepherd","source":"local","required":false}]
 ---
 
 # Ship
@@ -18,7 +18,8 @@ record -> ask about shepherd -> ground on one issue -> fix the scope -> confirm
        -> isolate -> dispatch -> reconcile -> validate -> review -> remediate
        -> verdict -> evaluate the merge gate -> open the change request
        -> ask for the merge grant -> evaluate handoff
-       -> invoke shepherd and wait when requested
+       -> continue through verified handoff when local remediation exhausts
+       -> invoke shepherd and wait when requested and implementation is clear
 
 existing change request:
 record -> bind issue + ledger + branch + captured head + prior evidence
@@ -240,7 +241,10 @@ Shepherd acquiring comment-reading authority.
 5. For `remediation-required`, create a **fresh implementation context** and
    reuse [Delivery cycle](./_molecules/delivery-cycle/delivery-cycle.md) against
    the original confirmed ledger: bounded worker dispatch, diff reconciliation,
-   `run-ci`, `roast`, bounded remediation, and criterion verdicts. Prior green
+   `run-ci`, `roast`, bounded remediation, and criterion verdicts. If that
+   fresh context exhausts its local budget with an in-scope implementation
+   blocker, use the delivery cycle's verified orchestration continuation rather
+   than sending unresolved implementation work to Shepherd. Prior green
    evidence and the reviewer's wording do not skip or weaken any stage.
 
 6. Run the continuation atom's pre-update lease check with the preserved
@@ -455,6 +459,11 @@ Return:
   its siblings. Re-shepherding a set after a sibling merge belongs to the caller
   that owns the set, which is why the set obligation names that caller and the
   exact re-invocation instead of leaving the duty implied.
+- **Never sends unresolved implementation blockers to Shepherd.** Local
+  exhaustion transfers ownership through the existing bounded
+  `orchestration-handoff`, subject to measurable progress and a configured
+  global ceiling. Shepherd is invoked only after implementation blockers clear
+  or when the remaining condition is genuinely Shepherd-owned.
 - **Pushes only its own isolation branch, and never with force.** Ship creates
   a branch in new-delivery mode. In continuation mode it may normally push only
   the bound existing branch after re-reading the captured head; it never force

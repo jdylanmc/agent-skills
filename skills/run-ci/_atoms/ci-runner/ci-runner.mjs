@@ -271,6 +271,12 @@ function repositoryState(repositoryRoot) {
   };
 }
 
+function sameRepositoryState(left, right) {
+  return left?.root === right?.root
+    && left?.revision === right?.revision
+    && JSON.stringify(left?.dirtyState) === JSON.stringify(right?.dirtyState);
+}
+
 export function parseNodeTapSummary(output) {
   const summary = {};
   for (const match of output.matchAll(TAP_SUMMARY)) {
@@ -353,6 +359,17 @@ function runCommand(command, cwd, declaredShell) {
 }
 
 export async function runDiscoveredCi(repositoryRoot, discovery) {
+  const executionRoot = fs.realpathSync(repositoryRoot);
+  const discoveredRoot = discovery?.repository?.root
+    ? fs.realpathSync(discovery.repository.root)
+    : null;
+  if (discoveredRoot !== executionRoot) {
+    throw new Error('execution root does not match the discovered repository snapshot');
+  }
+  const beforeExecution = repositoryState(repositoryRoot);
+  if (!sameRepositoryState(beforeExecution, discovery.repository)) {
+    throw new Error('repository state changed after CI discovery');
+  }
   if (discovery.provider === 'unsupported-provider') {
     return {
       ...discovery,
@@ -406,11 +423,16 @@ export async function runDiscoveredCi(repositoryRoot, discovery) {
   if (steps.some((step) => step.status === 'skipped')) {
     status = status === 'passed' ? 'incomplete' : status;
   }
+  const afterExecution = repositoryState(repositoryRoot);
+  if (!sameRepositoryState(afterExecution, discovery.repository)) {
+    throw new Error('repository state changed during CI execution');
+  }
 
   return {
     provider: discovery.provider,
     inspected: discovery.inspected,
     providerActions: discovery.providerActions,
+    repository: structuredClone(discovery.repository),
     status,
     evidenceComplete: !steps.some((step) => step.status === 'skipped'),
     steps,

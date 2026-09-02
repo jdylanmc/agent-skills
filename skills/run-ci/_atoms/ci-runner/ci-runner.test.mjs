@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,6 +10,7 @@ import {
   discoverGitHubActionsCommands,
   discoverRepositoryCi,
   parseNodeTapSummary,
+  runDiscoveredCi,
 } from './ci-runner.mjs';
 
 const REPOSITORY_ROOT = path.resolve(
@@ -77,6 +79,115 @@ test('repository discovery binds evidence to the current revision and dirty stat
   assert.equal(result.repository.root, REPOSITORY_ROOT);
   assert.match(result.repository.revision, /^[0-9a-f]{40}$/);
   assert.ok(Array.isArray(result.repository.dirtyState));
+});
+
+test('discovery-to-execution preserves the complete canonical repository snapshot', async () => {
+  const root = sandbox('run-ci-snapshot-');
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), [
+    'name: CI',
+    'on: [pull_request]',
+    'jobs:',
+    '  validate:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - name: Exercise execution',
+    '        run: node -e "process.exit(0)"',
+    '',
+  ].join('\n'));
+  fs.writeFileSync(path.join(root, 'tracked.txt'), 'committed\n');
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  execFileSync('git', ['add', '.'], { cwd: root });
+  execFileSync('git', [
+    '-c', 'user.name=Run CI Test',
+    '-c', 'user.email=run-ci.invalid',
+    'commit', '--quiet', '-m', 'fixture',
+  ], { cwd: root });
+  fs.appendFileSync(path.join(root, 'tracked.txt'), 'dirty\n');
+
+  const discovery = discoverRepositoryCi(root);
+  const result = await runDiscoveredCi(root, discovery);
+
+  assert.deepEqual(result.repository, discovery.repository);
+  assert.notEqual(result.repository, discovery.repository);
+  assert.equal(result.repository.root, root);
+  assert.match(result.repository.revision, /^[0-9a-f]{40}$/);
+  assert.deepEqual(result.repository.dirtyState, ['M tracked.txt']);
+  assert.equal(result.status, 'passed');
+  assert.equal(result.evidenceComplete, true);
+});
+
+test('execution refuses a different worktree before running a discovered command', async () => {
+  const discoveredRoot = sandbox('run-ci-discovered-root-');
+  const executionRoot = sandbox('run-ci-execution-root-');
+  fs.mkdirSync(path.join(discoveredRoot, '.github', 'workflows'), { recursive: true });
+  fs.writeFileSync(path.join(discoveredRoot, '.github', 'workflows', 'ci.yml'), [
+    'name: CI',
+    'on: [pull_request]',
+    'jobs:',
+    '  validate:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - name: Must not run',
+    "        run: node -e \"require('node:fs').writeFileSync('ran.txt', 'yes')\"",
+    '',
+  ].join('\n'));
+  execFileSync('git', ['init', '--quiet'], { cwd: discoveredRoot });
+  const discovery = discoverRepositoryCi(discoveredRoot);
+
+  await assert.rejects(
+    runDiscoveredCi(executionRoot, discovery),
+    /execution root does not match/,
+  );
+  assert.equal(fs.existsSync(path.join(executionRoot, 'ran.txt')), false);
+});
+
+test('execution refuses stale state in the same worktree before running commands', async () => {
+  const root = sandbox('run-ci-stale-state-');
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), [
+    'name: CI',
+    'on: [pull_request]',
+    'jobs:',
+    '  validate:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - name: Must not run',
+    "        run: node -e \"require('node:fs').writeFileSync('ran.txt', 'yes')\"",
+    '',
+  ].join('\n'));
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  const discovery = discoverRepositoryCi(root);
+  fs.writeFileSync(path.join(root, 'changed-after-discovery.txt'), 'changed\n');
+
+  await assert.rejects(
+    runDiscoveredCi(root, discovery),
+    /repository state changed after CI discovery/,
+  );
+  assert.equal(fs.existsSync(path.join(root, 'ran.txt')), false);
+});
+
+test('execution refuses to attribute commands that mutate the discovered repository state', async () => {
+  const root = sandbox('run-ci-mutating-command-');
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), [
+    'name: CI',
+    'on: [pull_request]',
+    'jobs:',
+    '  validate:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - name: Mutate checkout',
+    "        run: node -e \"require('node:fs').writeFileSync('mutated.txt', 'yes')\"",
+    '',
+  ].join('\n'));
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  const discovery = discoverRepositoryCi(root);
+
+  await assert.rejects(
+    runDiscoveredCi(root, discovery),
+    /repository state changed during CI execution/,
+  );
 });
 
 test('discovers this repository validation command without globbing tests', () => {

@@ -34,7 +34,9 @@ used-by: ["run-ci/_molecules/local-ci-run/local-ci-run.md"]
    not emulate.
 5. In `run` mode, execute each discovered command from the repository root,
    retry a validation failure once, and stop after an unrecovered
-   non-successful result.
+   non-successful result. Immediately before and after execution, require the
+   repository root, revision, and dirty state to equal the discovered
+   snapshot; otherwise refuse to attribute the commands to that snapshot.
 
 ## Helper Invocation
 
