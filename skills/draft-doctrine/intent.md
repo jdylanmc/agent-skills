@@ -10,6 +10,8 @@ For adapted material, preserve source, author, and license provenance. Block or 
 
 Before writing, show the exact UTF-8 bytes, digest, target, and, for updates, the exact diff and complete result. Approval must identify that exact candidate and the current doctrine and manifest revisions. Corrections, rejection, unrelated replies, silence, or changed repository state require a fresh candidate or approval.
 
+Every newly created doctrine must contain fewer than 500 words across the complete file. Updating an existing doctrine does not require rewriting it to fit that creation limit.
+
 Write nothing before exact approval. Persist only the selected doctrine, its manifest entry, and any separately approved NOTICE attribution. Detect collisions, stale state, path escapes, links, replacement races, partial writes, and verification failures; fail closed and report honestly how to recover. Reread and digest-check every written surface.
 
 Approval, merging, publication, permission expansion, conflict settlement, and doctrine-backlog implementation remain human decisions. A complete result contains status, provenance, coaching effects, conflicts, approvals, changed paths, verification, unresolved decisions, the next review action, and invocation-recording status.
