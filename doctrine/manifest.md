@@ -37,6 +37,9 @@ doctrine:
   - id: sequencing
     path: sequencing.doctrine.md
     sha256: ccce9ce64c4b15ec240d831e162adde7319df0096117a42dad03e64a155c5fc5
+  - id: nimble
+    path: nimble.doctrine.md
+    sha256: 6a7fcaf2e3f6c711f7f70c3f9285f4ddaa0780502b3f40564771ef09ac71ea65
 ---
 
 # Doctrine Manifest
