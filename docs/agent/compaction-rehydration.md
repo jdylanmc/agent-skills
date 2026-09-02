@@ -1,0 +1,116 @@
+# Active skill compaction rehydration
+
+This repository installs a GitHub Copilot CLI repository hook that rehydrates
+canonical instructions for active, Chronicle-correlated skill runs after
+context compaction.
+
+## Contract
+
+1. Chronicle run-start recording registers the root or nested skill, canonical
+   `SKILL.md` and required Markdown references, relative paths, and SHA-256
+   digests. When Chronicle lacks the optional runtime session identifier, the
+   hook-observed identifier deterministically claims one unambiguous bounded
+   pending run. Entries assigned to another session are never candidates.
+   Compatible unassigned runs are atomically added to reused session state;
+   terminal state may be safely replaced. Ambiguity persists a session-keyed
+   degraded marker rather than silently staying inactive. Malformed or unsafe
+   pending correlation state does the same before `preCompact` returns, so a
+   later tool gate denies instead of treating the session as inactive.
+2. `preCompact` synchronously arms a new bounded generation.
+3. While armed, local command `preToolUse` permits only the next exact,
+   full-file canonical `view` read. Other material tool operations are denied.
+4. `postToolUse` accepts both documented Copilot payload shapes and binds the
+   acknowledgement to the successful model-facing tool-result bytes. Their
+   byte count and SHA-256 digest must match the armed canonical identity, and a
+   fresh disk read must still have that identity. Missing, malformed,
+   unsuccessful, or mismatched result evidence degrades with a bounded reason;
+   it never clears the latch or returns a successful checkpoint. The final
+   exact match clears the latch once and returns the bounded run checkpoint
+   through `additionalContext`.
+5. `agentStop` may force one recovery turn for either an armed latch or
+   persisted degradation. It then yields rather than approach the runtime's
+   eight-consecutive-block guard. Re-entry with `stop_hook_active` always
+   allows without consuming a degraded state's one block.
+6. `sessionStart` with `source: resume` atomically correlates an unassigned
+   pending run using the hook-observed session identifier before arming it.
+   Persisted ambiguity is surfaced as blocking context, and repeated resume
+   notifications preserve an already armed generation.
+
+The provider-neutral state keeps one bounded lifecycle emission receipt per
+generation, retains that generation's immutable root-run Chronicle owner, and
+reconciles the receipt with the log before retrying. A failed append remains
+retryable, a completed append is not duplicated after an interrupted receipt
+update, and an outcome is never appended without its recorded start. Repeated
+resume, final-frame degradation, or degraded stop notifications therefore
+cannot append duplicate or out-of-order records for the same rehydration
+operation.
+
+Repeated compactions create new generations. A stale generation, wrong run or
+skill identity, missing or moved file, changed digest, partial read, and forged
+model acknowledgement cannot clear the latch. Rehydration is a read, not a
+skill invocation, so it cannot recursively create a run.
+
+Persisted state is validated before any gate decision. Status and generation
+must agree with the completion marker; an armed latch must match that
+generation and the exact unread suffix of the bounded canonical read sequence.
+A newly registered nested skill is added to an already armed sequence. Invalid,
+missing, contradictory, session-mismatched, or path-escaping state makes the
+local command fail non-zero instead of being treated as inactive.
+
+A lifecycle `run/after` event never silently satisfies canonical-read
+obligations. If an active run ends while rehydration is armed, state becomes
+deterministically degraded (`active-run-ended-during-rehydration` or
+`all-runs-ended-during-rehydration`). `preToolUse` then refuses material work,
+while `agentStop` and resumed sessions surface the persisted reason.
+
+Chronicle event append and rehydration lifecycle registration are separate
+outcomes. Chronicle remains best effort, but a non-timeout failure to register
+`run/before` or `run/after` returns non-zero after stating that the event was
+recorded and registration was not. This makes a missing tracker, helper crash,
+or explicit non-zero result visible instead of silently leaving `preCompact`
+inactive. An actual registration timeout is explicitly reported and remains
+fail-open.
+
+## Stored data
+
+State below `.skill-log/rehydration/` is bounded, owner-only, atomically
+replaced, and serialized across subprocesses with a bounded crash-recoverable
+lock. It stores
+opaque session/run identities, skill names, repository-relative paths,
+digests, byte counts, lifecycle identifiers, timestamps, and counters. It does
+not store prompts, secrets, transcripts, tool results, canonical file content,
+or arbitrary Chronicle summaries.
+
+## Enforcement truth
+
+| Disposition | Meaning |
+| --- | --- |
+| `policy-enforced` | An administrator installed the gate, command implementation, and state root as administrator-controlled policy. It cannot be disabled by `disableAllHooks`, but its timeout still fails open. Pointing policy configuration at repository-owned code is not this disposition. |
+| `hook-enforced-but-disableable` | The checked-in repository hook gates local tool calls, but an operator may disable repository hooks. This repository ships this disposition. |
+| `warn-only` | A provider can inject a notice but cannot intercept material operations. |
+| `unsupported` | The provider exposes neither a usable gate nor context injection. |
+
+GitHub's documented hook surface has no `postCompact` event. `preCompact` is
+notification-only. Command `preToolUse` fails closed on crashes and non-zero
+exits, while every timeout fails open, including policy hooks. Hook
+configuration is loaded only at CLI startup. Whether `preCompact` fires
+independently for every subagent is undocumented; no adapter may claim it.
+Cloud agent supports automatic, not manual, compaction.
+
+Chronicle records latch, gate, acknowledgement, and degraded outcomes when hook
+execution reaches the recorder. Native session events remain the evidence that
+compaction itself started or completed. Post-mortem must report missing hook
+evidence as unobserved, because disabled or timed-out hooks cannot reliably
+record their own absence.
+
+Crash, non-zero, timeout, disabled-hook, and hook-reload behavior ultimately
+belongs to the Copilot runtime. Repository tests verify the local command's
+exit codes, decisions, state transitions, and configuration; an end-to-end
+runtime integration test is still required to prove how a particular installed
+CLI build consumes them.
+
+Official references:
+
+- https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks
+- https://docs.github.com/en/copilot/reference/hooks-reference
+- https://docs.github.com/en/copilot/concepts/agents/hooks
