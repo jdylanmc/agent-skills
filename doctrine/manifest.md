@@ -43,6 +43,9 @@ doctrine:
   - id: idempotency
     path: idempotency.doctrine.md
     sha256: 8b18d0a70a883d3226d16103a34887d5755faf4564ded0bd2bc2b34270ed24ff
+  - id: cyclomatic-complexity
+    path: cyclomatic-complexity.doctrine.md
+    sha256: 5bda9469234baba4cc50d7ecc8611ac8136f0e020a2287bf7df0f23f1115edc4
 ---
 
 # Doctrine Manifest
