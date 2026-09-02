@@ -22,6 +22,9 @@ doctrine:
   - id: documentation
     path: documentation.doctrine.md
     sha256: 54a88537818b03546edc460fc29988141e500a37a2c604f718ea15051af11040
+  - id: machine
+    path: machine.doctrine.md
+    sha256: 05454474f4ad2fbfbd7193abf2a1f9684805addecc51e58a17153687bcf1f90d
 ---
 
 # Doctrine Manifest
