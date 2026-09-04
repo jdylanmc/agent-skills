@@ -1,0 +1,1742 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jdylanmc/agent-skills/skills/slop-sniper/report-contract.schema.json",
+  "title": "Slop Sniper canonical report",
+  "description": "The complete prompt-facing report contract. Standard JSON Schema keywords define structure and bounds. Every $comment, description, and x- section is binding; relational annotations are consumed directly by the validator when standard JSON Schema cannot express a snapshot-derived rule.",
+  "type": "object",
+  "additionalProperties": false,
+  "x-maxUtf8Bytes": 524288,
+  "x-specialistPromptBinding": {
+    "personaPath": "agents/slop-sniper.agent.md",
+    "personaSha256": "96870aa8f1f8589958b9fdce5af37ba2abfd4c20583399e8b7b13c834f8017f3",
+    "reportSchemaPath": "skills/slop-sniper/_atoms/report-contract/report-contract.schema.json"
+  },
+  "x-relationalRules": {
+    "highConfidenceEvidenceCompleteness": "complete",
+    "correctionFindingIds": "exactly-all-findings",
+    "directiveTargetSources": [
+      "referenced-finding-affected-work",
+      "current-work-inventory"
+    ]
+  },
+  "x-outcomeRules": {
+    "statusesRequiringFindings": [
+      "slop-detected",
+      "pause-recommended",
+      "human-decision-required"
+    ],
+    "strategyStatuses": {
+      "continue": [
+        "clean"
+      ],
+      "pause-wave": [
+        "pause-recommended"
+      ],
+      "human-decision": [
+        "human-decision-required"
+      ],
+      "blocked": [
+        "insufficient-evidence",
+        "blocked"
+      ]
+    },
+    "clean": {
+      "snapshotCompleteness": "complete",
+      "findingCount": 0,
+      "strategy": "continue",
+      "parentDirectiveCount": 0,
+      "humanDecisionCount": 0
+    },
+    "humanDecisions": {
+      "status": "human-decision-required",
+      "nonEmptyIfAndOnlyIfStatus": true
+    },
+    "criticalFindingStatuses": [
+      "pause-recommended",
+      "human-decision-required"
+    ],
+    "privacyFinding": {
+      "status": "human-decision-required",
+      "strategy": "human-decision",
+      "parentDirective": "pause-cross-boundary-publication",
+      "humanDecision": "remediate-privacy-incident"
+    }
+  },
+  "x-findingAuditRules": {
+    "exactlyOnePerFinding": true,
+    "categoryMustMatch": true,
+    "requiredRolesMustMatchCategory": true,
+    "allAndOnlyFindingEvidenceAnchors": true
+  },
+  "x-repeatedFailureClusterRules": {
+    "anchorsAreMatchingFailuresOnly": true,
+    "affectedWorkIsFailureWorkUnion": true,
+    "sharedRootClusterMatchesFindingExactly": true
+  },
+  "x-categoryEvidenceRules": {
+    "shared-root-local-remediation": {
+      "roles": {
+        "branches": {
+          "assertions": [
+            "independent-branch"
+          ],
+          "kinds": [
+            "branch"
+          ],
+          "sourceKinds": [
+            "git"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true,
+          "singleWork": true
+        },
+        "changedPaths": {
+          "assertions": [
+            "changed-path"
+          ],
+          "kinds": [
+            "file-change"
+          ],
+          "sourceKinds": [
+            "git",
+            "filesystem"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true,
+          "singleWork": true
+        },
+        "componentOwnership": {
+          "assertions": [
+            "shared-component-owner"
+          ],
+          "kinds": [
+            "file-change"
+          ],
+          "sourceKinds": [
+            "git",
+            "filesystem"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "failures": {
+          "assertions": [
+            "repeated-failure"
+          ],
+          "kinds": [
+            "failure"
+          ],
+          "sourceKinds": [
+            "runtime",
+            "log",
+            "status-receipt"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true,
+          "singleWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-property",
+          "roles": [
+            "branches"
+          ],
+          "property": "baseRevision"
+        },
+        {
+          "type": "distinct-property",
+          "roles": [
+            "branches"
+          ],
+          "property": "revision"
+        },
+        {
+          "type": "same-property",
+          "roles": [
+            "failures"
+          ],
+          "property": "fingerprint"
+        },
+        {
+          "type": "same-subject",
+          "roles": [
+            "componentOwnership",
+            "failures"
+          ]
+        },
+        {
+          "type": "distinct-work",
+          "roles": [
+            "branches",
+            "failures"
+          ]
+        }
+      ],
+      "repeatedFailureClusterRequired": true
+    },
+    "duplicate-investigation": {
+      "requiredRoles": [
+        "investigations",
+        "workers"
+      ],
+      "roles": {
+        "investigations": {
+          "assertions": [
+            "investigation-active"
+          ],
+          "kinds": [
+            "assignment"
+          ],
+          "sourceKinds": [
+            "provider",
+            "runtime",
+            "worker-report",
+            "status-receipt"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true,
+          "singleWork": true
+        },
+        "workers": {
+          "assertions": [
+            "worker-active"
+          ],
+          "kinds": [
+            "worker"
+          ],
+          "sourceKinds": [
+            "provider",
+            "runtime",
+            "worker-report",
+            "status-receipt"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true,
+          "singleWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-property",
+          "roles": [
+            "investigations"
+          ],
+          "property": "hypothesis"
+        },
+        {
+          "type": "same-property",
+          "roles": [
+            "investigations"
+          ],
+          "property": "scope"
+        },
+        {
+          "type": "same-property",
+          "roles": [
+            "investigations"
+          ],
+          "property": "validationPurpose"
+        },
+        {
+          "type": "same-subject",
+          "roles": [
+            "investigations"
+          ]
+        },
+        {
+          "type": "distinct-work",
+          "roles": [
+            "investigations"
+          ]
+        },
+        {
+          "type": "overlapping-activity",
+          "roles": [
+            "investigations"
+          ]
+        },
+        {
+          "type": "overlapping-activity",
+          "roles": [
+            "workers"
+          ]
+        }
+      ]
+    },
+    "duplicate-implementation": {
+      "requiredRoles": [
+        "implementations"
+      ],
+      "roleSets": {
+        "mode": "exactly-one",
+        "sets": [
+          [
+            "branches"
+          ],
+          [
+            "changeRequests"
+          ],
+          [
+            "schedules"
+          ]
+        ]
+      },
+      "roles": {
+        "implementations": {
+          "assertions": [
+            "implementation-active"
+          ],
+          "kinds": [
+            "assignment"
+          ],
+          "sourceKinds": [
+            "provider",
+            "runtime",
+            "worker-report",
+            "status-receipt"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true,
+          "singleWork": true
+        },
+        "branches": {
+          "assertions": [
+            "branch-active"
+          ],
+          "kinds": [
+            "branch"
+          ],
+          "sourceKinds": [
+            "git"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true,
+          "singleWork": true
+        },
+        "changeRequests": {
+          "assertions": [
+            "change-request-active"
+          ],
+          "kinds": [
+            "change-request"
+          ],
+          "sourceKinds": [
+            "provider"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true,
+          "singleWork": true
+        },
+        "schedules": {
+          "assertions": [
+            "schedule-active"
+          ],
+          "kinds": [
+            "schedule"
+          ],
+          "sourceKinds": [
+            "schedule",
+            "runtime"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true,
+          "singleWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-property",
+          "roles": [
+            "implementations"
+          ],
+          "property": "hypothesis"
+        },
+        {
+          "type": "same-property",
+          "roles": [
+            "implementations"
+          ],
+          "property": "scope"
+        },
+        {
+          "type": "same-property",
+          "roles": [
+            "implementations"
+          ],
+          "property": "validationPurpose"
+        },
+        {
+          "type": "same-subject",
+          "roles": [
+            "implementations"
+          ]
+        },
+        {
+          "type": "distinct-work",
+          "roles": [
+            "implementations"
+          ]
+        },
+        {
+          "type": "overlapping-activity",
+          "roles": [
+            "implementations"
+          ]
+        },
+        {
+          "type": "overlapping-activity",
+          "roles": [
+            "branches"
+          ],
+          "optional": true
+        },
+        {
+          "type": "overlapping-activity",
+          "roles": [
+            "changeRequests"
+          ],
+          "optional": true
+        },
+        {
+          "type": "overlapping-activity",
+          "roles": [
+            "schedules"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "stale-worker": {
+      "roleSets": {
+        "mode": "exactly-one",
+        "sets": [
+          [
+            "terminalWorkers",
+            "postTerminalWorkers"
+          ],
+          [
+            "terminalBranches",
+            "postTerminalBranches"
+          ],
+          [
+            "terminalChangeRequests",
+            "postTerminalChangeRequests"
+          ],
+          [
+            "terminalSchedules",
+            "postTerminalSchedules"
+          ]
+        ]
+      },
+      "roles": {
+        "terminalWorkers": {
+          "assertions": [
+            "worker-terminal"
+          ],
+          "kinds": [
+            "worker"
+          ],
+          "states": [
+            "terminal"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "postTerminalWorkers": {
+          "assertions": [
+            "worker-active"
+          ],
+          "kinds": [
+            "worker"
+          ],
+          "sourceKinds": [
+            "provider",
+            "runtime",
+            "worker-report",
+            "status-receipt"
+          ],
+          "states": [
+            "active"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "terminalBranches": {
+          "assertions": [
+            "branch-terminal"
+          ],
+          "kinds": [
+            "branch"
+          ],
+          "sourceKinds": [
+            "git"
+          ],
+          "states": [
+            "terminal"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "postTerminalBranches": {
+          "assertions": [
+            "branch-active"
+          ],
+          "kinds": [
+            "branch"
+          ],
+          "sourceKinds": [
+            "git"
+          ],
+          "states": [
+            "active"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "terminalChangeRequests": {
+          "assertions": [
+            "change-request-terminal"
+          ],
+          "kinds": [
+            "change-request"
+          ],
+          "sourceKinds": [
+            "provider"
+          ],
+          "states": [
+            "terminal"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "postTerminalChangeRequests": {
+          "assertions": [
+            "change-request-active"
+          ],
+          "kinds": [
+            "change-request"
+          ],
+          "sourceKinds": [
+            "provider"
+          ],
+          "states": [
+            "active"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "terminalSchedules": {
+          "assertions": [
+            "schedule-terminal"
+          ],
+          "kinds": [
+            "schedule"
+          ],
+          "sourceKinds": [
+            "schedule",
+            "runtime"
+          ],
+          "states": [
+            "terminal"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "postTerminalSchedules": {
+          "assertions": [
+            "schedule-active"
+          ],
+          "kinds": [
+            "schedule"
+          ],
+          "sourceKinds": [
+            "schedule",
+            "runtime"
+          ],
+          "states": [
+            "active"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-subject",
+          "roles": [
+            "terminalWorkers",
+            "postTerminalWorkers"
+          ],
+          "optional": true
+        },
+        {
+          "type": "activity-spans-terminal",
+          "roles": [
+            "terminalWorkers",
+            "postTerminalWorkers"
+          ],
+          "optional": true
+        },
+        {
+          "type": "same-subject",
+          "roles": [
+            "terminalBranches",
+            "postTerminalBranches"
+          ],
+          "optional": true
+        },
+        {
+          "type": "activity-spans-terminal",
+          "roles": [
+            "terminalBranches",
+            "postTerminalBranches"
+          ],
+          "optional": true
+        },
+        {
+          "type": "same-subject",
+          "roles": [
+            "terminalChangeRequests",
+            "postTerminalChangeRequests"
+          ],
+          "optional": true
+        },
+        {
+          "type": "activity-spans-terminal",
+          "roles": [
+            "terminalChangeRequests",
+            "postTerminalChangeRequests"
+          ],
+          "optional": true
+        },
+        {
+          "type": "same-subject",
+          "roles": [
+            "terminalSchedules",
+            "postTerminalSchedules"
+          ],
+          "optional": true
+        },
+        {
+          "type": "activity-spans-terminal",
+          "roles": [
+            "terminalSchedules",
+            "postTerminalSchedules"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "stale-readiness": {
+      "roles": {
+        "readinessClaim": {
+          "assertions": [
+            "readiness-claim"
+          ],
+          "kinds": [
+            "claim"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "contradiction": {
+          "assertions": [
+            "readiness-contradiction"
+          ],
+          "kinds": [
+            "change-request",
+            "check",
+            "status",
+            "validation"
+          ],
+          "sourceKinds": [
+            "provider",
+            "git",
+            "filesystem",
+            "runtime",
+            "status-receipt"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "distinct-source-kind",
+          "roles": [
+            "readinessClaim",
+            "contradiction"
+          ]
+        }
+      ]
+    },
+    "retry-without-new-evidence": {
+      "roles": {
+        "retries": {
+          "assertions": [
+            "retry-unchanged"
+          ],
+          "kinds": [
+            "retry"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-property",
+          "roles": [
+            "retries"
+          ],
+          "property": "fingerprint"
+        },
+        {
+          "type": "same-subject",
+          "roles": [
+            "retries"
+          ]
+        },
+        {
+          "type": "distinct-property",
+          "roles": [
+            "retries"
+          ],
+          "property": "observedAt"
+        }
+      ]
+    },
+    "out-of-manifest-work": {
+      "roles": {
+        "issues": {
+          "assertions": [
+            "observed-work"
+          ],
+          "kinds": [
+            "issue"
+          ],
+          "sourceKinds": [
+            "issue",
+            "provider"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "outside-manifest",
+          "roles": [
+            "issues"
+          ]
+        }
+      ]
+    },
+    "goal-drift": {
+      "roles": {
+        "goalBoundary": {
+          "assertions": [
+            "goal-boundary"
+          ],
+          "kinds": [
+            "goal",
+            "manifest"
+          ],
+          "sourceKinds": [
+            "human",
+            "issue"
+          ],
+          "minItems": 1
+        },
+        "driftedWork": {
+          "assertions": [
+            "goal-mismatch"
+          ],
+          "kinds": [
+            "assignment",
+            "artifact",
+            "file-change"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "distinct-source-kind",
+          "roles": [
+            "goalBoundary",
+            "driftedWork"
+          ]
+        }
+      ]
+    },
+    "premature-abstraction": {
+      "roles": {
+        "abstraction": {
+          "assertions": [
+            "shared-abstraction"
+          ],
+          "kinds": [
+            "artifact",
+            "file-change"
+          ],
+          "sourceKinds": [
+            "git",
+            "filesystem"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "consumerAbsence": {
+          "assertions": [
+            "second-consumer-absent"
+          ],
+          "kinds": [
+            "claim",
+            "validation"
+          ],
+          "sourceKinds": [
+            "provider",
+            "git",
+            "filesystem",
+            "runtime",
+            "human"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-subject",
+          "roles": [
+            "abstraction",
+            "consumerAbsence"
+          ]
+        }
+      ]
+    },
+    "premature-optimization": {
+      "roles": {
+        "optimization": {
+          "assertions": [
+            "optimization-change"
+          ],
+          "kinds": [
+            "artifact",
+            "file-change"
+          ],
+          "sourceKinds": [
+            "git",
+            "filesystem"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "baselineAbsence": {
+          "assertions": [
+            "measured-baseline-absent"
+          ],
+          "kinds": [
+            "claim",
+            "validation"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "bottleneckAbsence": {
+          "assertions": [
+            "bottleneck-absent"
+          ],
+          "kinds": [
+            "claim",
+            "validation"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "targetAbsence": {
+          "assertions": [
+            "target-absent"
+          ],
+          "kinds": [
+            "claim",
+            "validation"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-subject",
+          "roles": [
+            "optimization",
+            "baselineAbsence",
+            "bottleneckAbsence",
+            "targetAbsence"
+          ]
+        }
+      ]
+    },
+    "authority-escalation": {
+      "roles": {
+        "authorityBoundary": {
+          "assertions": [
+            "authority-boundary"
+          ],
+          "kinds": [
+            "authority"
+          ],
+          "sourceKinds": [
+            "human"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "authorityExceeded": {
+          "assertions": [
+            "authority-exceeded"
+          ],
+          "kinds": [
+            "authority",
+            "interruption"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-subject",
+          "roles": [
+            "authorityBoundary",
+            "authorityExceeded"
+          ]
+        }
+      ]
+    },
+    "human-interruption-noise": {
+      "roles": {
+        "routineQuestion": {
+          "assertions": [
+            "routine-engineering-question"
+          ],
+          "kinds": [
+            "interruption"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "parentAuthority": {
+          "assertions": [
+            "parent-authority"
+          ],
+          "kinds": [
+            "authority"
+          ],
+          "sourceKinds": [
+            "human"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-subject",
+          "roles": [
+            "routineQuestion",
+            "parentAuthority"
+          ]
+        }
+      ]
+    },
+    "ownership-race": {
+      "roles": {
+        "mutationOwners": {
+          "assertions": [
+            "mutation-owner-active"
+          ],
+          "kinds": [
+            "assignment"
+          ],
+          "states": [
+            "active"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true,
+          "singleWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-subject",
+          "roles": [
+            "mutationOwners"
+          ]
+        },
+        {
+          "type": "distinct-work",
+          "roles": [
+            "mutationOwners"
+          ]
+        }
+      ]
+    },
+    "hallucinated-state": {
+      "roles": {
+        "stateClaim": {
+          "assertions": [
+            "state-claim"
+          ],
+          "kinds": [
+            "claim"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "contradiction": {
+          "assertions": [
+            "state-contradiction"
+          ],
+          "kinds": [
+            "change-request",
+            "check",
+            "status",
+            "validation"
+          ],
+          "sourceKinds": [
+            "provider",
+            "git",
+            "filesystem",
+            "runtime",
+            "status-receipt"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "distinct-source-kind",
+          "roles": [
+            "stateClaim",
+            "contradiction"
+          ]
+        }
+      ]
+    },
+    "evidence-laundering": {
+      "roles": {
+        "verificationClaim": {
+          "assertions": [
+            "verification-claim"
+          ],
+          "kinds": [
+            "claim"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "incompleteEvidence": {
+          "assertions": [
+            "incomplete-evidence"
+          ],
+          "kinds": [
+            "check",
+            "status",
+            "validation"
+          ],
+          "sourceKinds": [
+            "provider",
+            "git",
+            "filesystem",
+            "runtime",
+            "status-receipt"
+          ],
+          "completeness": [
+            "partial"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "distinct-source-kind",
+          "roles": [
+            "verificationClaim",
+            "incompleteEvidence"
+          ]
+        }
+      ]
+    },
+    "privacy-boundary-breach": {
+      "roles": {
+        "privacyBoundary": {
+          "assertions": [
+            "privacy-boundary"
+          ],
+          "kinds": [
+            "authority",
+            "repository-privacy"
+          ],
+          "sourceKinds": [
+            "provider",
+            "human"
+          ],
+          "minItems": 1
+        },
+        "crossBoundaryArtifact": {
+          "assertions": [
+            "cross-boundary-publication"
+          ],
+          "kinds": [
+            "artifact",
+            "change-request",
+            "file-change"
+          ],
+          "sourceKinds": [
+            "provider",
+            "git",
+            "filesystem"
+          ],
+          "sensitivity": [
+            "private",
+            "restricted"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "distinct-source-kind",
+          "roles": [
+            "privacyBoundary",
+            "crossBoundaryArtifact"
+          ]
+        }
+      ]
+    },
+    "context-churn": {
+      "roles": {
+        "transitions": {
+          "assertions": [
+            "context-transition"
+          ],
+          "kinds": [
+            "handoff"
+          ],
+          "minItems": 2,
+          "coversAffectedWork": true
+        },
+        "missingState": {
+          "assertions": [
+            "handoff-state-missing"
+          ],
+          "kinds": [
+            "claim",
+            "status",
+            "validation"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": [
+        {
+          "type": "same-subject",
+          "roles": [
+            "transitions",
+            "missingState"
+          ]
+        },
+        {
+          "type": "distinct-property",
+          "roles": [
+            "transitions"
+          ],
+          "property": "observedAt"
+        }
+      ]
+    },
+    "unbounded-work": {
+      "roles": {
+        "activeWork": {
+          "assertions": [
+            "work-active"
+          ],
+          "kinds": [
+            "assignment",
+            "process",
+            "schedule"
+          ],
+          "states": [
+            "active"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        },
+        "missingBound": {
+          "assertions": [
+            "execution-bound-missing"
+          ],
+          "kinds": [
+            "budget",
+            "elapsed-time",
+            "process",
+            "schedule"
+          ],
+          "minItems": 1,
+          "coversAffectedWork": true
+        }
+      },
+      "relations": []
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "snapshot",
+    "currentWorkInventory",
+    "findings",
+    "findingAudits",
+    "repeatedFailureClusters",
+    "correction",
+    "validationPlan",
+    "status"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "snapshot": {
+      "$ref": "#/$defs/snapshotReference"
+    },
+    "currentWorkInventory": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/currentWorkInventoryItem"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "findingAudits": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/findingAudit"
+      }
+    },
+    "repeatedFailureClusters": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/repeatedFailureCluster"
+      }
+    },
+    "correction": {
+      "$ref": "#/$defs/correction"
+    },
+    "validationPlan": {
+      "$ref": "#/$defs/validationPlan"
+    },
+    "status": {
+      "$ref": "#/$defs/reportStatus"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "roleName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "fingerprint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "text4096": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "text2048": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "text1024": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "identifierList128": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/identifier"
+      }
+    },
+    "nonEmptyIdentifierList128": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/identifier"
+      }
+    },
+    "textList32": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/text1024"
+      }
+    },
+    "nonEmptyTextList32": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/text1024"
+      }
+    },
+    "validationPlan": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/text1024"
+      }
+    },
+    "snapshotReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshotId",
+        "bindingDigest",
+        "goalRevision",
+        "manifestRevision",
+        "fleetRevision",
+        "repositoryRevision",
+        "observedAt",
+        "completeness"
+      ],
+      "properties": {
+        "snapshotId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "bindingDigest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "goalRevision": {
+          "$ref": "#/$defs/identifier"
+        },
+        "manifestRevision": {
+          "$ref": "#/$defs/identifier"
+        },
+        "fleetRevision": {
+          "$ref": "#/$defs/identifier"
+        },
+        "repositoryRevision": {
+          "$ref": "#/$defs/identifier"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "completeness": {
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        }
+      }
+    },
+    "workState": {
+      "enum": [
+        "active",
+        "queued",
+        "blocked",
+        "terminal",
+        "unverified"
+      ]
+    },
+    "currentWorkInventoryItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workId",
+        "state",
+        "evidenceAnchors"
+      ],
+      "properties": {
+        "workId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "state": {
+          "$ref": "#/$defs/workState"
+        },
+        "evidenceAnchors": {
+          "$ref": "#/$defs/nonEmptyIdentifierList128"
+        }
+      }
+    },
+    "category": {
+      "enum": [
+        "shared-root-local-remediation",
+        "duplicate-investigation",
+        "duplicate-implementation",
+        "stale-worker",
+        "stale-readiness",
+        "retry-without-new-evidence",
+        "out-of-manifest-work",
+        "goal-drift",
+        "premature-abstraction",
+        "premature-optimization",
+        "authority-escalation",
+        "human-interruption-noise",
+        "ownership-race",
+        "hallucinated-state",
+        "evidence-laundering",
+        "privacy-boundary-breach",
+        "context-churn",
+        "unbounded-work"
+      ]
+    },
+    "severity": {
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "privacyHandling": {
+      "enum": [
+        "not-applicable",
+        "anchors-only-redacted"
+      ]
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "Binding relational rule: confidence high is valid only when every sealed-snapshot observation named by evidenceAnchors has completeness complete. Any partial anchored observation requires medium or low confidence.",
+      "required": [
+        "id",
+        "category",
+        "severity",
+        "evidenceAnchors",
+        "affectedWork",
+        "consequence",
+        "confidence",
+        "disconfirmingEvidence",
+        "rootCorrection",
+        "localActionsToStop",
+        "validation",
+        "privacyHandling"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "category": {
+          "$ref": "#/$defs/category"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "evidenceAnchors": {
+          "$ref": "#/$defs/nonEmptyIdentifierList128"
+        },
+        "affectedWork": {
+          "$ref": "#/$defs/nonEmptyIdentifierList128"
+        },
+        "consequence": {
+          "$ref": "#/$defs/text4096"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "disconfirmingEvidence": {
+          "$ref": "#/$defs/identifierList128"
+        },
+        "rootCorrection": {
+          "$ref": "#/$defs/text4096"
+        },
+        "localActionsToStop": {
+          "$ref": "#/$defs/textList32"
+        },
+        "validation": {
+          "$ref": "#/$defs/nonEmptyTextList32"
+        },
+        "privacyHandling": {
+          "$ref": "#/$defs/privacyHandling"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "category": {
+                "const": "privacy-boundary-breach"
+              }
+            },
+            "required": [
+              "category"
+            ]
+          },
+          "then": {
+            "properties": {
+              "privacyHandling": {
+                "const": "anchors-only-redacted"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "privacyHandling": {
+                "const": "not-applicable"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "evidenceRole": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "observationIds"
+      ],
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/roleName"
+        },
+        "observationIds": {
+          "$ref": "#/$defs/nonEmptyIdentifierList128"
+        }
+      }
+    },
+    "findingAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "findingId",
+        "category",
+        "evidenceRoles"
+      ],
+      "properties": {
+        "findingId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "category": {
+          "$ref": "#/$defs/category"
+        },
+        "evidenceRoles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/evidenceRole"
+          }
+        }
+      }
+    },
+    "repeatedFailureCluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "affectedWork",
+        "evidenceAnchors"
+      ],
+      "properties": {
+        "fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "affectedWork": {
+          "$ref": "#/$defs/nonEmptyIdentifierList128"
+        },
+        "evidenceAnchors": {
+          "$ref": "#/$defs/nonEmptyIdentifierList128"
+        }
+      }
+    },
+    "correctionStrategy": {
+      "enum": [
+        "continue",
+        "pause-wave",
+        "deduplicate",
+        "root-cause-first",
+        "return-to-goal",
+        "replace-worker",
+        "refresh-evidence",
+        "human-decision",
+        "post-mortem",
+        "blocked"
+      ]
+    },
+    "parentDirectiveAction": {
+      "enum": [
+        "stop-new-dispatch",
+        "pause-cross-boundary-publication",
+        "mark-readiness-stale",
+        "deduplicate-queued-retries",
+        "prevent-conflicting-assignment",
+        "consolidate-shared-root-investigation",
+        "request-verified-handoff",
+        "lower-status-to-unverified",
+        "route-routine-engineering-to-parent",
+        "preserve-active-atomic-operations",
+        "preserve-evidence",
+        "request-fresh-observation"
+      ]
+    },
+    "humanDecision": {
+      "enum": [
+        "change-approved-manifest",
+        "reassign-ownership",
+        "modify-code",
+        "mutate-tracker-or-change-request",
+        "delete-branch-worktree-or-artifact",
+        "stop-process-or-cancel-schedule",
+        "accept-risk",
+        "remediate-privacy-incident",
+        "change-product-direction",
+        "change-architecture",
+        "change-scope-or-priority"
+      ]
+    },
+    "parentDirective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "targets",
+        "rationale",
+        "findingIds"
+      ],
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/parentDirectiveAction"
+        },
+        "targets": {
+          "$ref": "#/$defs/nonEmptyIdentifierList128",
+          "$comment": "Binding relational rule: every target must be a validator-derived work identity from either affectedWork on a finding named by this directive or currentWorkInventory. Evidence-anchor and subject identities are not directive targets."
+        },
+        "rationale": {
+          "$ref": "#/$defs/text2048"
+        },
+        "findingIds": {
+          "$ref": "#/$defs/identifierList128"
+        }
+      }
+    },
+    "humanDecisionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "rationale",
+        "findingIds"
+      ],
+      "properties": {
+        "decision": {
+          "$ref": "#/$defs/humanDecision"
+        },
+        "rationale": {
+          "$ref": "#/$defs/text2048"
+        },
+        "findingIds": {
+          "$ref": "#/$defs/identifierList128"
+        }
+      }
+    },
+    "correction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "authority",
+        "findingIds",
+        "parentDirectives",
+        "humanDecisions",
+        "validation"
+      ],
+      "properties": {
+        "strategy": {
+          "$ref": "#/$defs/correctionStrategy"
+        },
+        "authority": {
+          "const": "parent-only"
+        },
+        "findingIds": {
+          "$ref": "#/$defs/identifierList128",
+          "$comment": "Binding relational rule: correction.findingIds must contain all and only the identities in the top-level findings array."
+        },
+        "parentDirectives": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/parentDirective"
+          }
+        },
+        "humanDecisions": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/humanDecisionRequest"
+          }
+        },
+        "validation": {
+          "$ref": "#/$defs/nonEmptyTextList32"
+        }
+      }
+    },
+    "reportStatus": {
+      "enum": [
+        "clean",
+        "slop-detected",
+        "pause-recommended",
+        "human-decision-required",
+        "insufficient-evidence",
+        "blocked"
+      ]
+    }
+  }
+}

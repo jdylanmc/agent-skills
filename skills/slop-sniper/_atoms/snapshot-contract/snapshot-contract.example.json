@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "snapshot-example",
+  "goal": {
+    "id": "goal-example",
+    "revision": "goal-r1",
+    "statement": "Audit the supplied orchestration checkpoint."
+  },
+  "manifest": {
+    "revision": "manifest-r1",
+    "approvedWork": [],
+    "exclusions": []
+  },
+  "fleet": {
+    "revision": "fleet-r1"
+  },
+  "repository": {
+    "id": "owner/repository",
+    "revision": "repository-r1",
+    "visibility": "public"
+  },
+  "observation": {
+    "observedAt": "2026-09-02T20:00:00Z",
+    "completeness": "partial",
+    "priorSnapshotId": null
+  },
+  "coverage": [
+    {
+      "area": "human-decisions-and-authority",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "dependency-frontier",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "assignments",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "worker-generations-and-handoffs",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "branches-and-worktrees",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "change-requests-and-checks",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "failure-fingerprints",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "remediation-and-retries",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "status-receipts",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "schedules-and-processes",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "repository-privacy",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "created-artifacts",
+      "status": "unavailable",
+      "sourceIds": []
+    },
+    {
+      "area": "budgets-and-elapsed-time",
+      "status": "unavailable",
+      "sourceIds": []
+    }
+  ],
+  "observations": []
+}
