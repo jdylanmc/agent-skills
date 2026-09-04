@@ -14,10 +14,14 @@ directive: ./directive.md
 doctrine-manifest: ../../../../../doctrine/manifest.md
 doctrine:
   - testing
+  - test-seams
+  - integration-testing
+  - data-processing
+  - distributed-data
+  - data
   - code
   - domain
   - pragmatic
-  - data
 ---
 
 # LATCH-9 Testing Roaster Instructions

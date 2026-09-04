@@ -29,7 +29,27 @@ const REPOSITORY_ROOT = path.resolve(
   '..',
 );
 const MANIFEST = path.join(REPOSITORY_ROOT, 'doctrine', 'manifest.md');
-const AVAILABLE = ['code', 'domain', 'pragmatic', 'data', 'testing'];
+const AVAILABLE = [
+  'code',
+  'domain',
+  'pragmatic',
+  'data',
+  'testing',
+  'boundaries',
+  'data-processing',
+  'distributed-data',
+  'test-seams',
+  'integration-testing',
+  'solid',
+];
+const SPLIT_DOCTRINES = [
+  'boundaries',
+  'data-processing',
+  'distributed-data',
+  'test-seams',
+  'integration-testing',
+  'solid',
+];
 
 function captureStreams() {
   const out = [];
@@ -46,16 +66,25 @@ function ids(result) {
   return result.selection.map((entry) => entry.id);
 }
 
-test('the canonical manifest supplies every identifier the governing map needs', () => {
+test('every split doctrine has a selective governance route and every governance id exists', () => {
   const available = manifestIds(MANIFEST);
-  assert.ok(available.length >= 5);
+  const routed = new Set();
+  const primary = new Set();
   for (const [type, governance] of Object.entries(GOVERNANCE)) {
+    for (const entry of governance.primary) {
+      primary.add(entry.id);
+    }
     for (const entry of [...governance.primary, ...governance.conditional]) {
+      routed.add(entry.id);
       assert.ok(
         available.includes(entry.id),
         `${type} names ${entry.id}, which the manifest does not declare`,
       );
     }
+  }
+  for (const id of SPLIT_DOCTRINES) {
+    assert.ok(routed.has(id), `${id} has no governance route`);
+    assert.ok(!primary.has(id), `${id} must remain evidence-triggered, not primary`);
   }
 });
 
@@ -91,6 +120,33 @@ test('a conditional doctrine is selected only when its trigger was observed', ()
   assert.equal(testing.role, 'conditional');
   assert.equal(testing.trigger, 'validation');
   assert.ok(testing.reason.length > 0);
+});
+
+test('each split doctrine is selected only by its evidence trigger', () => {
+  const routes = {
+    'boundary-contract': 'boundaries',
+    'replay-order-time': 'data-processing',
+    'distributed-coordination': 'distributed-data',
+    'test-doubles': 'test-seams',
+    'real-boundary-fidelity': 'integration-testing',
+    'object-design': 'solid',
+  };
+  const without = selectDoctrine({ artifactType: 'code', availableIds: AVAILABLE });
+  for (const id of Object.values(routes)) {
+    assert.ok(!ids(without).includes(id), `${id} loaded without evidence`);
+  }
+  for (const [trigger, id] of Object.entries(routes)) {
+    const result = selectDoctrine({
+      artifactType: 'code',
+      triggers: [trigger],
+      availableIds: AVAILABLE,
+    });
+    assert.ok(ids(result).includes(id), `${trigger} did not route to ${id}`);
+    const selected = result.selection.find((entry) => entry.id === id);
+    assert.equal(selected.role, 'conditional');
+    assert.equal(selected.trigger, trigger);
+    assert.ok(selected.reason.length > 0);
+  }
 });
 
 test('reasoning accounts for every doctrine skipped, not only those selected', () => {

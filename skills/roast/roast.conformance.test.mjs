@@ -70,6 +70,14 @@ function markdownSection(document, heading) {
   return body.join('\n');
 }
 
+function frontmatterList(document, field) {
+  const block = document
+    .replace(/\r\n/g, '\n')
+    .match(new RegExp(`^${field}:\\s*\\n((?:  - [^\\n]+\\n?)+)`, 'm'));
+  assert.ok(block, `${field} list must exist`);
+  return [...block[1].matchAll(/^  - ([a-z0-9-]+)\s*$/gm)].map((match) => match[1]);
+}
+
 test('the roast skill declares exactly the pinned tool grant', () => {
   const parsed = frontmatter(ENTRY);
   assert.deepEqual(
@@ -237,6 +245,42 @@ test('no predecessor roast skill package survives the consolidation', () => {
   const survivors = packages.filter((name) => name.startsWith('roast-this-'));
   assert.deepEqual(survivors, [], `superseded packages still present: ${survivors.join(', ')}`);
   assert.ok(packages.includes('roast'));
+});
+
+test('testing roaster allowed doctrines exactly match its directive owners', () => {
+  const instructions = read('roast/references/bundled-roasters/testing-roaster/instructions.md');
+  const directive = read('roast/references/bundled-roasters/testing-roaster/directive.md');
+  const allowed = frontmatterList(instructions, 'doctrine').sort();
+  const owners = [
+    ...markdownSection(directive, '## Doctrine').matchAll(/^- `([a-z0-9-]+)` owns /gm),
+  ].map((match) => match[1]).sort();
+
+  assert.deepEqual(allowed, owners);
+  assert.deepEqual(allowed, [
+    'code',
+    'data',
+    'data-processing',
+    'distributed-data',
+    'domain',
+    'integration-testing',
+    'pragmatic',
+    'test-seams',
+    'testing',
+  ]);
+});
+
+test('legacy doctrine uncertainty markers are absent while real uncertainty still propagates', () => {
+  const documents = [
+    read('roast/_atoms/code-safeguards/code-safeguards.md'),
+    read('roast/_atoms/code-subagent-contract/code-subagent-contract.md'),
+    read('roast/references/bundled-roasters/testing-roaster/directive.md'),
+  ];
+  for (const document of documents) {
+    assert.doesNotMatch(document, /\*\*Open:\*\*|classical\/London|contextual fixture-use/);
+  }
+  assert.match(documents[0], /explicitly unresolved question/);
+  assert.match(documents[1], /explicitly unresolved doctrine question/);
+  assert.match(documents[2], /actually contains unresolved uncertainty/);
 });
 
 test('the skill states that severity is a category and not a gate', () => {

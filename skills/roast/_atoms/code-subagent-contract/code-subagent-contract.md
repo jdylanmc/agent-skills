@@ -168,7 +168,7 @@ For each finding:
 
 ## Doctrine Uncertainties
 
-For each cited `**Open:**` doctrine statement:
+For each explicitly unresolved doctrine question that affects the review:
 
 - `Uncertainty ID`: `<reviewer ID>-U<nn>`, numbered from `01`;
 - `Related finding IDs`: every finding affected by the uncertainty, or `none`;
@@ -204,8 +204,8 @@ Reject a report that:
 - cites doctrine as evidence or returns a doctrine-only finding;
 - omits `Doctrine Uncertainties`, duplicates or malforms an uncertainty ID, or
   references an uncertainty ID that does not exist;
-- uses an `**Open:**` statement without an explicit assumption and unresolved
-  consequence;
+- uses unresolved doctrine uncertainty without an explicit assumption and
+  unresolved consequence;
 - uses humor as the only rationale;
 - comments on the author;
 - invents code or requirements;

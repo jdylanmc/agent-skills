@@ -49,17 +49,23 @@ and the inferred one is reported as unused.
 
 | Artifact type | Always selected | Selected only on an observed trigger |
 | --- | --- | --- |
-| `agent` | `code`, `pragmatic` | `domain` on `domain-model`; `data` on `data-contract` |
-| `prompt` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract` |
-| `skill` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation` |
-| `spec` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation` |
-| `code` | `code`, `pragmatic` | `testing` on `validation`; `data` on `data-contract`; `domain` on `domain-model` |
+| `agent` | `code`, `pragmatic` | `domain` on `domain-model`; `data` on `data-contract`; `boundaries` on `boundary-contract`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination` |
+| `prompt` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `boundaries` on `boundary-contract`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination` |
+| `skill` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation`; `boundaries` on `boundary-contract`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination`; `test-seams` on `test-doubles`; `integration-testing` on `real-boundary-fidelity` |
+| `spec` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation`; `boundaries` on `boundary-contract`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination`; `test-seams` on `test-doubles`; `integration-testing` on `real-boundary-fidelity` |
+| `code` | `code`, `pragmatic` | `testing` on `validation`; `data` on `data-contract`; `domain` on `domain-model`; `boundaries` on `boundary-contract`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination`; `test-seams` on `test-doubles`; `integration-testing` on `real-boundary-fidelity`; `solid` on `object-design` |
 
 The conditional column is how this unit satisfies the repository rule that
 overlap between doctrine files is resolved explicitly. Without it the only
 honest options are to select every plausible doctrine, which is the
 indiscriminate loading that rule forbids, or to drop guidance that genuinely
 applies.
+
+The split doctrines stay conditional because their authority depends on
+specific evidence: system boundaries, processing semantics, distributed
+coordination, substitution seams, real-boundary integration fidelity, or
+object design. The broader `code`, `testing`, and `data` selections do not
+silently stand in for those narrower owners.
 
 ## Operation
 

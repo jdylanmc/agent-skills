@@ -40,7 +40,7 @@ export class DoctrineSelectionError extends Error {
 export const GOVERNANCE = {
   agent: {
     primary: [
-      { id: 'code', reason: 'explicit contracts, boundaries, errors, and validation' },
+      { id: 'code', reason: 'explicit contracts, errors, clarity, and validation' },
       {
         id: 'pragmatic',
         reason: 'ownership, coupling, feedback, reversibility, automation, and stopping points',
@@ -55,7 +55,22 @@ export const GOVERNANCE = {
       {
         id: 'data',
         trigger: 'data-contract',
-        reason: 'state, persistence, retries, schemas, lineage, or distributed behavior are central',
+        reason: 'storage, schema, lineage, or single-store consistency are central',
+      },
+      {
+        id: 'boundaries',
+        trigger: 'boundary-contract',
+        reason: 'system edges, dependency direction, adapters, or boundary ownership are central',
+      },
+      {
+        id: 'data-processing',
+        trigger: 'replay-order-time',
+        reason: 'replay, ordering, time, or duplicate processing semantics are central',
+      },
+      {
+        id: 'distributed-data',
+        trigger: 'distributed-coordination',
+        reason: 'coordination across nodes or stores is central',
       },
     ],
   },
@@ -76,7 +91,22 @@ export const GOVERNANCE = {
       {
         id: 'data',
         trigger: 'data-contract',
-        reason: 'the requested output depends on lineage, schemas, consistency, or temporal data',
+        reason: 'the requested output depends on storage, lineage, schemas, or single-store consistency',
+      },
+      {
+        id: 'boundaries',
+        trigger: 'boundary-contract',
+        reason: 'the request depends on a system edge, adapter, dependency direction, or boundary contract',
+      },
+      {
+        id: 'data-processing',
+        trigger: 'replay-order-time',
+        reason: 'the request depends on replay, ordering, time, or duplicate processing semantics',
+      },
+      {
+        id: 'distributed-data',
+        trigger: 'distributed-coordination',
+        reason: 'the request depends on coordination across nodes or stores',
       },
     ],
   },
@@ -100,12 +130,37 @@ export const GOVERNANCE = {
       {
         id: 'data',
         trigger: 'data-contract',
-        reason: 'persistence, retries, replay, ordering, schemas, consistency, or lineage drive behavior',
+        reason: 'storage, schemas, migrations, lineage, or single-store consistency drive behavior',
       },
       {
         id: 'testing',
         trigger: 'validation',
-        reason: 'the package declares a regression suite or validation gate under review',
+        reason: 'test value, scope, regression economics, or a validation gate are under review',
+      },
+      {
+        id: 'boundaries',
+        trigger: 'boundary-contract',
+        reason: 'system edges, adapters, dependency direction, or boundary ownership drive behavior',
+      },
+      {
+        id: 'data-processing',
+        trigger: 'replay-order-time',
+        reason: 'replay, ordering, time, or duplicate processing semantics drive behavior',
+      },
+      {
+        id: 'distributed-data',
+        trigger: 'distributed-coordination',
+        reason: 'coordination across nodes or stores drives behavior',
+      },
+      {
+        id: 'test-seams',
+        trigger: 'test-doubles',
+        reason: 'test doubles, substitution, interaction checks, or seam placement are under review',
+      },
+      {
+        id: 'integration-testing',
+        trigger: 'real-boundary-fidelity',
+        reason: 'tests must prove behavior against a real process, service, database, or system boundary',
       },
     ],
   },
@@ -129,12 +184,37 @@ export const GOVERNANCE = {
       {
         id: 'data',
         trigger: 'data-contract',
-        reason: 'persistence, lineage, schemas, consistency, retention, or temporal behavior are central to the stated outcomes',
+        reason: 'storage, lineage, schemas, retention, or single-store consistency are central to the stated outcomes',
       },
       {
         id: 'testing',
         trigger: 'validation',
-        reason: 'whether an acceptance criterion is observable is a verification question',
+        reason: 'test value, scope, regression economics, or observability are central to acceptance',
+      },
+      {
+        id: 'boundaries',
+        trigger: 'boundary-contract',
+        reason: 'system edges, adapters, dependency direction, or boundary ownership carry the intention',
+      },
+      {
+        id: 'data-processing',
+        trigger: 'replay-order-time',
+        reason: 'replay, ordering, time, or duplicate processing semantics are central to the outcomes',
+      },
+      {
+        id: 'distributed-data',
+        trigger: 'distributed-coordination',
+        reason: 'coordination across nodes or stores is central to the outcomes',
+      },
+      {
+        id: 'test-seams',
+        trigger: 'test-doubles',
+        reason: 'acceptance depends on where substitution or test doubles are permitted',
+      },
+      {
+        id: 'integration-testing',
+        trigger: 'real-boundary-fidelity',
+        reason: 'acceptance depends on fidelity at a real process, service, database, or system boundary',
       },
     ],
   },
@@ -150,17 +230,47 @@ export const GOVERNANCE = {
       {
         id: 'testing',
         trigger: 'validation',
-        reason: 'tests or a validation gate are inside the reviewed change set',
+        reason: 'test value, scope, regression economics, or a validation gate are inside the reviewed change set',
       },
       {
         id: 'data',
         trigger: 'data-contract',
-        reason: 'persistence, schemas, migrations, ordering, or lineage are inside the change set',
+        reason: 'storage, schemas, migrations, lineage, or single-store consistency are inside the change set',
       },
       {
         id: 'domain',
         trigger: 'domain-model',
         reason: 'domain vocabulary, invariants, or lifecycle are inside the change set',
+      },
+      {
+        id: 'boundaries',
+        trigger: 'boundary-contract',
+        reason: 'system edges, adapters, dependency direction, or boundary ownership are inside the change set',
+      },
+      {
+        id: 'data-processing',
+        trigger: 'replay-order-time',
+        reason: 'replay, ordering, time, or duplicate processing semantics are inside the change set',
+      },
+      {
+        id: 'distributed-data',
+        trigger: 'distributed-coordination',
+        reason: 'coordination across nodes or stores is inside the change set',
+      },
+      {
+        id: 'test-seams',
+        trigger: 'test-doubles',
+        reason: 'test doubles, substitution, interaction checks, or seam placement are inside the change set',
+      },
+      {
+        id: 'integration-testing',
+        trigger: 'real-boundary-fidelity',
+        reason: 'tests exercise a real process, service, database, or system boundary',
+      },
+      {
+        id: 'solid',
+        trigger: 'object-design',
+        reason: 'class or module responsibilities, substitution, or dependency inversion are inside the change set',
       },
     ],
   },

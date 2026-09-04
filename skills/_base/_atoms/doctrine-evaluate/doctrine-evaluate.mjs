@@ -411,6 +411,17 @@ export function loadSelection(manifestPath, selectors) {
 
     const rules = [];
     for (const selector of idSelectors) {
+      const allRules = document.sections.flatMap((section) => section.rules);
+      const stableReference = selector.section && !selector.rule
+        ? `${id}#${selector.section}`.toLowerCase()
+        : null;
+      const byStableReference = stableReference
+        ? allRules.filter((rule) => rule.ref.toLowerCase() === stableReference)
+        : [];
+      if (byStableReference.length) {
+        rules.push(...byStableReference);
+        continue;
+      }
       const sections = selector.section
         ? document.sections.filter((section) => sectionMatches(section, selector.section))
         : document.sections;

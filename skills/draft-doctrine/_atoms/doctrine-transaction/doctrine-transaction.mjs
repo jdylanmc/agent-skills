@@ -21,7 +21,7 @@ const NOTICE_GRANT = 'approve-notice-write';
 const MAX_PROVENANCE_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_FINDINGS = 100;
 const MAX_FINDING_TEXT_BYTES = 1000;
-const MAX_CREATE_DOCTRINE_WORDS = 499;
+const MAX_DOCTRINE_WORDS = 499;
 
 export class DoctrineTransactionError extends Error {
   constructor(code, message, status = 'blocked', detail = {}) {
@@ -378,16 +378,14 @@ export function prepareDoctrineChange(input, options = {}) {
   if (typeof candidateText !== 'string' || candidateText.length === 0) {
     fail('needs-input', 'candidateText must contain the exact UTF-8 candidate', 'needs-input');
   }
-  if (operation === 'create') {
-    const candidateWords = countWords(candidateText);
-    if (candidateWords > MAX_CREATE_DOCTRINE_WORDS) {
-      fail(
-        'candidate-too-long',
-        `new doctrine candidates must contain fewer than 500 words; received ${candidateWords}`,
-        'needs-input',
-        { candidateWords, maximumWords: MAX_CREATE_DOCTRINE_WORDS },
-      );
-    }
+  const candidateWords = countWords(candidateText);
+  if (candidateWords > MAX_DOCTRINE_WORDS) {
+    fail(
+      'candidate-too-long',
+      `create and update doctrine candidates must contain fewer than 500 words; received ${candidateWords}`,
+      'needs-input',
+      { candidateWords, maximumWords: MAX_DOCTRINE_WORDS },
+    );
   }
   validatePromptCoach(rawPosition, promptCoachEvidence);
   const source = validateProvenance(provenance, noticeText);
