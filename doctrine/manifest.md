@@ -55,6 +55,9 @@ doctrine:
   - id: data-processing
     path: data-processing.doctrine.md
     sha256: 6da7af575c1fb9939c6e4222cd35493d710f69d394ca789b11769de9cec4527e
+  - id: solid
+    path: solid.doctrine.md
+    sha256: 1df4a6a27aae555ad1bfc058a0749bf8a58e73afdcd109e46ca1ae2293ec69e6
 ---
 
 # Doctrine Manifest
