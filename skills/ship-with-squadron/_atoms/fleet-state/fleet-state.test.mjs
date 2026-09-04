@@ -16,6 +16,7 @@ import {
   createFleetState,
   fleetStatePath,
   loadFleetState,
+  mutateFleetState,
   persistFleetState,
   recordSourceRevisionObservation,
   serializeFilesystemIdentity,
@@ -491,11 +492,49 @@ test('persists, rereads, validates schema, and compare-and-swaps run state', (t)
   assert.throws(() => persistFleetState(file, written, 1), /manifest is required/);
 });
 
+test('persists namespaced strategy state through locked compare-and-swap mutations', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const file = fleetStatePath(REPOSITORY, 'strategy-state');
+  const initial = createFleetState(manifest, 'strategy-state', '2026-08-30T00:00:00Z');
+  assert.equal(initial.strategyState, null);
+  const written = persistFleetState(file, initial, 0, manifest, { now: '2026-08-30T00:00:01Z' });
+  const strategyState = {
+    namespace: 'example.strategy',
+    value: { cursor: 3, completed: ['1'], options: { retry: false } },
+  };
+  const mutated = mutateFleetState(file, manifest, written.revision, (state) => ({
+    ...state,
+    strategyState,
+  }), { now: '2026-08-30T00:00:02Z' });
+  assert.equal(mutated.revision, 2);
+  assert.deepEqual(loadFleetState(file, manifest).strategyState, strategyState);
+  assert.throws(
+    () => mutateFleetState(file, manifest, written.revision, (state) => state),
+    /revision conflict/,
+  );
+});
+
+test('rejects unknown and malformed strategy state extensions', () => {
+  const unknown = createFleetState(manifest, 'unknown-strategy-state');
+  unknown.unrecognizedStrategyState = null;
+  assert.throws(() => assertFleetState(unknown, manifest), /fleet state keys differ/);
+
+  const malformedEnvelope = createFleetState(manifest, 'malformed-strategy-state');
+  malformedEnvelope.strategyState = { namespace: 'example.strategy', value: {}, extra: true };
+  assert.throws(() => assertFleetState(malformedEnvelope, manifest), /strategy state keys differ/);
+
+  const malformedValue = createFleetState(manifest, 'malformed-strategy-value');
+  malformedValue.strategyState = { namespace: 'example.strategy', value: { missing: undefined } };
+  assert.throws(() => assertFleetState(malformedValue, manifest), /JSON serializable/);
+});
+
 test('loads legacy canonical state until a strictly bound commit slot exists', (t) => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
   const file = fleetStatePath(REPOSITORY, 'legacy-state');
   const legacy = createFleetState(manifest, 'legacy-state');
+  delete legacy.strategyState;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(legacy, null, 2)}\n`);
   assert.equal(loadFleetState(file, manifest).revision, 0);
