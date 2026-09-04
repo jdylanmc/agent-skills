@@ -14,10 +14,16 @@ directive: ./directive.md
 doctrine-manifest: ../../../../../doctrine/manifest.md
 doctrine:
   - testing
+  - test-seams
+  - integration-testing
   - code
+  - solid
   - domain
+  - boundaries
   - pragmatic
   - data
+  - data-processing
+  - distributed-data
 ---
 
 # The Roastmaster Instructions

@@ -78,6 +78,15 @@ function frontmatterList(document, field) {
   return [...block[1].matchAll(/^  - ([a-z0-9-]+)\s*$/gm)].map((match) => match[1]);
 }
 
+function directiveDoctrineOwners(document) {
+  const heading = /^## Doctrine Arbitration\s*$/m.test(document)
+    ? '## Doctrine Arbitration'
+    : '## Doctrine';
+  return [
+    ...markdownSection(document, heading).matchAll(/^- `([a-z0-9-]+)`\s/gm),
+  ].map((match) => match[1]);
+}
+
 test('the roast skill declares exactly the pinned tool grant', () => {
   const parsed = frontmatter(ENTRY);
   assert.deepEqual(
@@ -247,26 +256,94 @@ test('no predecessor roast skill package survives the consolidation', () => {
   assert.ok(packages.includes('roast'));
 });
 
-test('testing roaster allowed doctrines exactly match its directive owners', () => {
-  const instructions = read('roast/references/bundled-roasters/testing-roaster/instructions.md');
-  const directive = read('roast/references/bundled-roasters/testing-roaster/directive.md');
-  const allowed = frontmatterList(instructions, 'doctrine').sort();
-  const owners = [
-    ...markdownSection(directive, '## Doctrine').matchAll(/^- `([a-z0-9-]+)` owns /gm),
-  ].map((match) => match[1]).sort();
+test('every bundled directive doctrine owner is in its instruction allowlist', () => {
+  const expected = {
+    'security-roaster': [
+      'boundaries',
+      'code',
+      'data',
+      'data-processing',
+      'distributed-data',
+      'domain',
+      'pragmatic',
+    ],
+    'solid-yagni-kiss-roaster': ['code', 'domain', 'laziness', 'pragmatic', 'solid'],
+    'testing-roaster': [
+      'code',
+      'data',
+      'data-processing',
+      'distributed-data',
+      'domain',
+      'integration-testing',
+      'pragmatic',
+      'test-seams',
+      'testing',
+    ],
+    'the-roastmaster': [
+      'boundaries',
+      'code',
+      'data',
+      'data-processing',
+      'distributed-data',
+      'domain',
+      'integration-testing',
+      'pragmatic',
+      'solid',
+      'test-seams',
+      'testing',
+    ],
+  };
 
-  assert.deepEqual(allowed, owners);
-  assert.deepEqual(allowed, [
-    'code',
-    'data',
-    'data-processing',
-    'distributed-data',
-    'domain',
-    'integration-testing',
-    'pragmatic',
-    'test-seams',
-    'testing',
-  ]);
+  for (const [roaster, doctrine] of Object.entries(expected)) {
+    const root = `roast/references/bundled-roasters/${roaster}`;
+    const allowed = frontmatterList(read(`${root}/instructions.md`), 'doctrine').sort();
+    const owners = directiveDoctrineOwners(read(`${root}/directive.md`)).sort();
+    assert.deepEqual(owners, doctrine, `${roaster} directive ownership drifted`);
+    assert.deepEqual(allowed, owners, `${roaster} allowlist does not match its directive owners`);
+  }
+});
+
+test('every code-contract doctrine selection reaches Roastmaster arbitration', () => {
+  const root = 'roast/references/bundled-roasters/the-roastmaster';
+  const allowed = new Set(frontmatterList(read(`${root}/instructions.md`), 'doctrine'));
+  const owners = new Set(directiveDoctrineOwners(read(`${root}/directive.md`)));
+  const selected = [
+    ...GOVERNANCE.code.primary,
+    ...GOVERNANCE.code.conditional,
+  ].map((entry) => entry.id);
+
+  assert.deepEqual(selected.filter((id) => !allowed.has(id)), []);
+  assert.deepEqual(selected.filter((id) => !owners.has(id)), []);
+});
+
+test('split doctrine authority remains assigned to its narrow owner', () => {
+  const roastmaster = markdownSection(
+    read('roast/references/bundled-roasters/the-roastmaster/directive.md'),
+    '## Doctrine Arbitration',
+  );
+  assert.match(roastmaster, /`data-processing` owns replay, ordering, duplicate processing, time/);
+  assert.match(roastmaster, /`distributed-data` owns coordination and consistency across nodes/);
+  assert.match(roastmaster, /`test-seams` owns test doubles, substitution boundaries/);
+  assert.match(roastmaster, /`integration-testing` owns fidelity and evidence at real process/);
+  assert.match(roastmaster, /`boundaries` owns bounded-context boundaries, inter-model relationships/);
+  assert.match(roastmaster, /`solid` owns object-design claims/);
+
+  const security = markdownSection(
+    read('roast/references/bundled-roasters/security-roaster/directive.md'),
+    '## Doctrine',
+  );
+  assert.match(security, /`data-processing` owns replay safety, ordering, duplicate processing, time/);
+  assert.match(security, /`distributed-data` owns cross-node and cross-store coordination/);
+  assert.match(security, /`boundaries` applies only when a domain-model or ownership seam/);
+
+  const solid = markdownSection(
+    read('roast/references/bundled-roasters/solid-yagni-kiss-roaster/directive.md'),
+    '## Doctrine',
+  );
+  assert.match(solid, /`solid` owns object-design claims/);
+  assert.match(solid, /`code` is primary/);
+  assert.match(solid, /`laziness` owns whether a layer, abstraction, wrapper/);
+  assert.match(solid, /`pragmatic` is primary/);
 });
 
 test('legacy doctrine uncertainty markers are absent while real uncertainty still propagates', () => {

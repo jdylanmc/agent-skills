@@ -26,9 +26,15 @@ Reject cosmetic preferences and abstraction churn.
 
 Apply these shared doctrine pressures selectively:
 
+- `solid` owns object-design claims about responsibility, extension,
+  substitution, interface segregation, and dependency inversion. Apply it only
+  where those pressures have a packet-backed change-risk consequence.
 - `code` is primary for cohesive modules,
   explicit contracts, readable construction, complexity as defect risk, and
   separating behavior change from structural refactoring.
+- `laziness` owns whether a layer, abstraction, wrapper, or generalized
+  mechanism earns its maintenance cost, including You Aren't Gonna Need It
+  (YAGNI) and Keep It Simple, Stupid (KISS) claims.
 - `pragmatic` is primary for one authoritative
   owner per system fact, orthogonality, reversible commitments, visible
   uncertainty, and containing local decay.

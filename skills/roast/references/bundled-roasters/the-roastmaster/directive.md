@@ -183,13 +183,24 @@ break a tie between equally supported findings.
 
 Assign each doctrine-backed claim to its decision owner:
 
-- `data` owns source of truth, consistency, durability, retry, replay,
-  ordering, schema evolution, and distributed-data failure;
+- `data` owns source of truth, storage, single-store consistency, durability,
+  write behavior, lineage, and schema evolution;
+- `data-processing` owns replay, ordering, duplicate processing, time,
+  checkpoints, lag, and rebuildable derived results;
+- `distributed-data` owns coordination and consistency across nodes, stores,
+  and partitions, including races, stale replicas, and distributed failure;
 - `domain` owns domain language, invariants, lifecycle, aggregate ownership,
-  and bounded contexts when those pressures are visible in the packet;
+  and behavior inside one bounded context;
+- `boundaries` owns bounded-context boundaries, inter-model relationships,
+  translation between models, and domain or ownership seams;
 - `testing` owns test value, behavior orientation, independent oracles,
-  test-double seams, test-level selection, integration fidelity, and
-  testability;
+  test-level selection, regression economics, and testability;
+- `test-seams` owns test doubles, substitution boundaries, interaction checks,
+  collaborator observation, and seam placement;
+- `integration-testing` owns fidelity and evidence at real process, service,
+  database, shared-state, protocol, and external-system boundaries;
+- `solid` owns object-design claims about responsibilities, extension,
+  substitution, interface segregation, and dependency inversion;
 - `code` owns production construction quality, inspectability, defect risk,
   bounded refactoring, and general validation outside test-design decisions;
 - `pragmatic` owns scope size, reversibility, uncertainty, feedback, and
@@ -202,11 +213,12 @@ Uncertainties` and do not use doctrine to disposition or reprioritize it. When
 multiple findings identify one packet-backed root cause, merge them and prefer
 the smallest satisfying recommendation.
 
-`Decision owner` is one of `data`, `domain`, `testing`, `code`, `pragmatic`, or
-`none`. `Ownership status` is `owned`, `ambiguous`, or `not applicable`.
-Doctrine-backed claims require `owned`; `ambiguous` claims must appear in
-`Residual Uncertainties`; claims with no doctrine reference use `none` and
-`not applicable`.
+`Decision owner` is one of `data`, `data-processing`, `distributed-data`,
+`domain`, `boundaries`, `testing`, `test-seams`, `integration-testing`,
+`solid`, `code`, `pragmatic`, or `none`. `Ownership status` is `owned`,
+`ambiguous`, or `not applicable`. Doctrine-backed claims require `owned`;
+`ambiguous` claims must appear in `Residual Uncertainties`; claims with no
+doctrine reference use `none` and `not applicable`.
 
 Add `doctrine-reference` as a claim-ledger source classification. A
 doctrine-reference must accompany packet evidence and may never stand alone.

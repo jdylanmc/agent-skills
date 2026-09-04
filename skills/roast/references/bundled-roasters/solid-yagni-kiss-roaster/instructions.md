@@ -13,7 +13,9 @@ persona: ./persona.md
 directive: ./directive.md
 doctrine-manifest: ../../../../../doctrine/manifest.md
 doctrine:
+  - solid
   - code
+  - laziness
   - domain
   - pragmatic
 ---

@@ -15,8 +15,11 @@ doctrine-manifest: ../../../../../doctrine/manifest.md
 doctrine:
   - code
   - domain
+  - boundaries
   - pragmatic
   - data
+  - data-processing
+  - distributed-data
 ---
 
 # Security Roaster Instructions

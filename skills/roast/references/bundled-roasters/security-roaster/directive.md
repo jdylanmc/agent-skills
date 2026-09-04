@@ -33,8 +33,16 @@ Apply these shared doctrine pressures selectively:
   impossible-state handling, diagnostic preservation, and errors at the correct
   abstraction.
 - `data` applies to data ownership,
-  durability and visibility, stale reads, conflict handling, replay safety,
-  evolving schemas, retention, and cross-service data boundaries.
+  durability and visibility, conflict handling, evolving schemas, retention,
+  and single-store consistency.
+- `data-processing` owns replay safety, ordering, duplicate processing, time,
+  checkpoints, lag, and rebuildable derived security state.
+- `distributed-data` owns cross-node and cross-store coordination, stale
+  replicas, conflicting writers, distributed retries, failover, and partial
+  outcomes.
+- `boundaries` applies only when a domain-model or ownership seam, context
+  relationship, or cross-model translation is relevant to the security
+  consequence. It does not own general input-validation trust boundaries.
 - `pragmatic` governs explicit contracts,
   resource ownership and cleanup, versioned configuration, automation, and
   hidden assumptions.
