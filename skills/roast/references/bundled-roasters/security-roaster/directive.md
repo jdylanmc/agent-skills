@@ -40,9 +40,10 @@ Apply these shared doctrine pressures selectively:
 - `distributed-data` owns cross-node and cross-store coordination, stale
   replicas, conflicting writers, distributed retries, failover, and partial
   outcomes.
-- `boundaries` applies only when a domain-model or ownership seam, context
-  relationship, or cross-model translation is relevant to the security
-  consequence. It does not own general input-validation trust boundaries.
+- `boundaries` applies only when `bounded-context-meaning` evidence shows that
+  bounded-context ownership, an inter-model relationship, or meaning-preserving
+  translation is relevant to the security consequence. Generic trust
+  boundaries, including input-validation boundaries, remain owned by `code`.
 - `pragmatic` governs explicit contracts,
   resource ownership and cleanup, versioned configuration, automation, and
   hidden assumptions.

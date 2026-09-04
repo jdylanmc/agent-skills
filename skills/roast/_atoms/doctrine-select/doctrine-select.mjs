@@ -59,8 +59,8 @@ export const GOVERNANCE = {
       },
       {
         id: 'boundaries',
-        trigger: 'boundary-contract',
-        reason: 'system edges, dependency direction, adapters, or boundary ownership are central',
+        trigger: 'bounded-context-meaning',
+        reason: 'bounded-context ownership, inter-model relationships, or meaning-preserving translation are central',
       },
       {
         id: 'data-processing',
@@ -95,8 +95,8 @@ export const GOVERNANCE = {
       },
       {
         id: 'boundaries',
-        trigger: 'boundary-contract',
-        reason: 'the request depends on a system edge, adapter, dependency direction, or boundary contract',
+        trigger: 'bounded-context-meaning',
+        reason: 'the request depends on bounded-context ownership, inter-model relationships, or meaning-preserving translation',
       },
       {
         id: 'data-processing',
@@ -139,8 +139,8 @@ export const GOVERNANCE = {
       },
       {
         id: 'boundaries',
-        trigger: 'boundary-contract',
-        reason: 'system edges, adapters, dependency direction, or boundary ownership drive behavior',
+        trigger: 'bounded-context-meaning',
+        reason: 'bounded-context ownership, inter-model relationships, or meaning-preserving translation drive behavior',
       },
       {
         id: 'data-processing',
@@ -193,8 +193,8 @@ export const GOVERNANCE = {
       },
       {
         id: 'boundaries',
-        trigger: 'boundary-contract',
-        reason: 'system edges, adapters, dependency direction, or boundary ownership carry the intention',
+        trigger: 'bounded-context-meaning',
+        reason: 'bounded-context ownership, inter-model relationships, or meaning-preserving translation carry the intention',
       },
       {
         id: 'data-processing',
@@ -244,8 +244,8 @@ export const GOVERNANCE = {
       },
       {
         id: 'boundaries',
-        trigger: 'boundary-contract',
-        reason: 'system edges, adapters, dependency direction, or boundary ownership are inside the change set',
+        trigger: 'bounded-context-meaning',
+        reason: 'bounded-context ownership, inter-model relationships, or meaning-preserving translation are inside the change set',
       },
       {
         id: 'data-processing',
@@ -271,6 +271,11 @@ export const GOVERNANCE = {
         id: 'solid',
         trigger: 'object-design',
         reason: 'class or module responsibilities, substitution, or dependency inversion are inside the change set',
+      },
+      {
+        id: 'laziness',
+        trigger: 'implementation-economy',
+        reason: 'unnecessary features, layers, abstractions, wrappers, or generalized mechanisms are inside the change set',
       },
     ],
   },
@@ -400,6 +405,9 @@ export function selectDoctrine(input = {}) {
         input.artifactType
           ? `The inferred selection for ${input.artifactType} was not used.`
           : 'No artifact type was supplied, so nothing was inferred.',
+        ...available
+          .filter((id) => !requested.includes(id))
+          .map((id) => `Skipped ${id}: it was not included in the caller's explicit selection.`),
       ],
       selectors: requested.map((id) => `--select ${id}`),
     };
@@ -439,12 +447,12 @@ export function selectDoctrine(input = {}) {
   const reasoning = [
     `Artifact type ${artifactType} was classified, so its declared primary doctrine applies.`,
   ];
+  const conditionalById = new Map(
+    governance.conditional.map((entry) => [entry.id, entry]),
+  );
 
   for (const entry of governance.conditional) {
     if (!triggers.includes(entry.trigger)) {
-      reasoning.push(
-        `Skipped ${entry.id}: its trigger ${entry.trigger} was not observed, and selecting it anyway would load doctrine merely because it is available.`,
-      );
       continue;
     }
     if (!available.includes(entry.id)) {
@@ -463,6 +471,19 @@ export function selectDoctrine(input = {}) {
   for (const trigger of unusedTriggers) {
     reasoning.push(
       `Ignored trigger ${trigger}: no doctrine is conditional on it for artifact type ${artifactType}.`,
+    );
+  }
+
+  const selectedIds = new Set(selection.map((entry) => entry.id));
+  for (const id of available) {
+    if (selectedIds.has(id)) {
+      continue;
+    }
+    const conditional = conditionalById.get(id);
+    reasoning.push(
+      conditional
+        ? `Skipped ${id}: its trigger ${conditional.trigger} was not observed, and selecting it anyway would load doctrine merely because it is available.`
+        : `Skipped ${id}: artifact type ${artifactType} declares no governance route for it.`,
     );
   }
 

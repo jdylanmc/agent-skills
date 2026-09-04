@@ -32,9 +32,10 @@ Apply these shared doctrine pressures selectively:
 - `code` is primary for cohesive modules,
   explicit contracts, readable construction, complexity as defect risk, and
   separating behavior change from structural refactoring.
-- `laziness` owns whether a layer, abstraction, wrapper, or generalized
-  mechanism earns its maintenance cost, including You Aren't Gonna Need It
-  (YAGNI) and Keep It Simple, Stupid (KISS) claims.
+- `laziness` owns implementation economy in full: whether any implementation,
+  feature, layer, abstraction, wrapper, or generalized mechanism earns its
+  maintenance cost, including You Aren't Gonna Need It (YAGNI), Keep It Simple,
+  Stupid (KISS), and smallest-sufficient-solution claims.
 - `pragmatic` is primary for one authoritative
   owner per system fact, orthogonality, reversible commitments, visible
   uncertainty, and containing local decay.

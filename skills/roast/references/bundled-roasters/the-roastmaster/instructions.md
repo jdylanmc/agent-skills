@@ -18,6 +18,7 @@ doctrine:
   - integration-testing
   - code
   - solid
+  - laziness
   - domain
   - boundaries
   - pragmatic

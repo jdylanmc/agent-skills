@@ -201,6 +201,10 @@ Assign each doctrine-backed claim to its decision owner:
   database, shared-state, protocol, and external-system boundaries;
 - `solid` owns object-design claims about responsibilities, extension,
   substitution, interface segregation, and dependency inversion;
+- `laziness` owns implementation economy in full: whether any implementation,
+  feature, layer, abstraction, wrapper, or generalized mechanism earns its
+  maintenance cost, including You Aren't Gonna Need It, Keep It Simple, Stupid,
+  and smallest-sufficient-solution claims;
 - `code` owns production construction quality, inspectability, defect risk,
   bounded refactoring, and general validation outside test-design decisions;
 - `pragmatic` owns scope size, reversibility, uncertainty, feedback, and
@@ -215,7 +219,7 @@ the smallest satisfying recommendation.
 
 `Decision owner` is one of `data`, `data-processing`, `distributed-data`,
 `domain`, `boundaries`, `testing`, `test-seams`, `integration-testing`,
-`solid`, `code`, `pragmatic`, or `none`. `Ownership status` is `owned`,
+`solid`, `laziness`, `code`, `pragmatic`, or `none`. `Ownership status` is `owned`,
 `ambiguous`, or `not applicable`. Doctrine-backed claims require `owned`;
 `ambiguous` claims must appear in `Residual Uncertainties`; claims with no
 doctrine reference use `none` and `not applicable`.

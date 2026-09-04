@@ -29,19 +29,7 @@ const REPOSITORY_ROOT = path.resolve(
   '..',
 );
 const MANIFEST = path.join(REPOSITORY_ROOT, 'doctrine', 'manifest.md');
-const AVAILABLE = [
-  'code',
-  'domain',
-  'pragmatic',
-  'data',
-  'testing',
-  'boundaries',
-  'data-processing',
-  'distributed-data',
-  'test-seams',
-  'integration-testing',
-  'solid',
-];
+const AVAILABLE = manifestIds(MANIFEST);
 const SPLIT_DOCTRINES = [
   'boundaries',
   'data-processing',
@@ -49,6 +37,7 @@ const SPLIT_DOCTRINES = [
   'test-seams',
   'integration-testing',
   'solid',
+  'laziness',
 ];
 
 function captureStreams() {
@@ -124,12 +113,13 @@ test('a conditional doctrine is selected only when its trigger was observed', ()
 
 test('each split doctrine is selected only by its evidence trigger', () => {
   const routes = {
-    'boundary-contract': 'boundaries',
+    'bounded-context-meaning': 'boundaries',
     'replay-order-time': 'data-processing',
     'distributed-coordination': 'distributed-data',
     'test-doubles': 'test-seams',
     'real-boundary-fidelity': 'integration-testing',
     'object-design': 'solid',
+    'implementation-economy': 'laziness',
   };
   const without = selectDoctrine({ artifactType: 'code', availableIds: AVAILABLE });
   for (const id of Object.values(routes)) {
@@ -159,6 +149,17 @@ test('reasoning accounts for every doctrine skipped, not only those selected', (
   assert.match(reasoning, /Selected data: its trigger data-contract was observed/);
   assert.match(reasoning, /Skipped domain: its trigger domain-model was not observed/);
   assert.match(reasoning, /merely because it is available/);
+
+  const selected = new Set(ids(result));
+  const expectedSkipped = AVAILABLE.filter((id) => !selected.has(id));
+  const actualSkipped = result.reasoning
+    .filter((entry) => entry.startsWith('Skipped '))
+    .map((entry) => /^Skipped ([a-z0-9-]+):/.exec(entry)?.[1]);
+  assert.deepEqual(actualSkipped, expectedSkipped);
+  assert.match(
+    reasoning,
+    /Skipped documentation: artifact type agent declares no governance route for it\./,
+  );
 });
 
 test('an unrecognised trigger is reported rather than silently dropped', () => {
@@ -183,6 +184,12 @@ test('an explicit caller selection overrides inference and says so', () => {
   assert.equal(result.selection[0].role, 'explicit');
   assert.match(result.reasoning.join('\n'), /overrides inference/);
   assert.match(result.reasoning.join('\n'), /inferred selection for skill was not used/);
+  assert.deepEqual(
+    result.reasoning
+      .filter((entry) => entry.startsWith('Skipped '))
+      .map((entry) => /^Skipped ([a-z0-9-]+):/.exec(entry)?.[1]),
+    AVAILABLE.filter((id) => id !== 'testing'),
+  );
 });
 
 test('a missing artifact type refuses instead of choosing a default doctrine', () => {

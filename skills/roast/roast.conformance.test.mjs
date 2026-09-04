@@ -287,6 +287,7 @@ test('every bundled directive doctrine owner is in its instruction allowlist', (
       'distributed-data',
       'domain',
       'integration-testing',
+      'laziness',
       'pragmatic',
       'solid',
       'test-seams',
@@ -303,17 +304,36 @@ test('every bundled directive doctrine owner is in its instruction allowlist', (
   }
 });
 
-test('every code-contract doctrine selection reaches Roastmaster arbitration', () => {
-  const root = 'roast/references/bundled-roasters/the-roastmaster';
-  const allowed = new Set(frontmatterList(read(`${root}/instructions.md`), 'doctrine'));
-  const owners = new Set(directiveDoctrineOwners(read(`${root}/directive.md`)));
-  const selected = [
+test('code doctrine routes, bundled roasters, and Roastmaster arbitration conform bidirectionally', () => {
+  const selected = new Set([
     ...GOVERNANCE.code.primary,
     ...GOVERNANCE.code.conditional,
-  ].map((entry) => entry.id);
+  ].map((entry) => entry.id));
+  const roasterAllowed = new Set();
+  const roasterOwners = new Set();
+  for (const roaster of ['security-roaster', 'solid-yagni-kiss-roaster', 'testing-roaster']) {
+    const root = `roast/references/bundled-roasters/${roaster}`;
+    for (const id of frontmatterList(read(`${root}/instructions.md`), 'doctrine')) {
+      roasterAllowed.add(id);
+    }
+    for (const id of directiveDoctrineOwners(read(`${root}/directive.md`))) {
+      roasterOwners.add(id);
+    }
+  }
 
-  assert.deepEqual(selected.filter((id) => !allowed.has(id)), []);
-  assert.deepEqual(selected.filter((id) => !owners.has(id)), []);
+  const roastmasterRoot = 'roast/references/bundled-roasters/the-roastmaster';
+  const roastmasterAllowed = new Set(
+    frontmatterList(read(`${roastmasterRoot}/instructions.md`), 'doctrine'),
+  );
+  const roastmasterOwners = new Set(
+    directiveDoctrineOwners(read(`${roastmasterRoot}/directive.md`)),
+  );
+  const sorted = (values) => [...values].sort();
+
+  assert.deepEqual(sorted(roasterAllowed), sorted(selected));
+  assert.deepEqual(sorted(roasterOwners), sorted(selected));
+  assert.deepEqual(sorted(roastmasterAllowed), sorted(selected));
+  assert.deepEqual(sorted(roastmasterOwners), sorted(selected));
 });
 
 test('split doctrine authority remains assigned to its narrow owner', () => {
@@ -327,6 +347,7 @@ test('split doctrine authority remains assigned to its narrow owner', () => {
   assert.match(roastmaster, /`integration-testing` owns fidelity and evidence at real process/);
   assert.match(roastmaster, /`boundaries` owns bounded-context boundaries, inter-model relationships/);
   assert.match(roastmaster, /`solid` owns object-design claims/);
+  assert.match(roastmaster, /`laziness` owns implementation economy in full/);
 
   const security = markdownSection(
     read('roast/references/bundled-roasters/security-roaster/directive.md'),
@@ -334,7 +355,8 @@ test('split doctrine authority remains assigned to its narrow owner', () => {
   );
   assert.match(security, /`data-processing` owns replay safety, ordering, duplicate processing, time/);
   assert.match(security, /`distributed-data` owns cross-node and cross-store coordination/);
-  assert.match(security, /`boundaries` applies only when a domain-model or ownership seam/);
+  assert.match(security, /`boundaries` applies only when `bounded-context-meaning` evidence/);
+  assert.match(security, /Generic trust\s+boundaries, including input-validation boundaries, remain owned by `code`/);
 
   const solid = markdownSection(
     read('roast/references/bundled-roasters/solid-yagni-kiss-roaster/directive.md'),
@@ -342,8 +364,40 @@ test('split doctrine authority remains assigned to its narrow owner', () => {
   );
   assert.match(solid, /`solid` owns object-design claims/);
   assert.match(solid, /`code` is primary/);
-  assert.match(solid, /`laziness` owns whether a layer, abstraction, wrapper/);
+  assert.match(solid, /`laziness` owns implementation economy in full/);
   assert.match(solid, /`pragmatic` is primary/);
+});
+
+test('Boundaries routing is limited to bounded-context and inter-model meaning', () => {
+  for (const governance of Object.values(GOVERNANCE)) {
+    const boundaries = governance.conditional.find((entry) => entry.id === 'boundaries');
+    assert.equal(boundaries.trigger, 'bounded-context-meaning');
+    assert.match(boundaries.reason, /bounded-context/);
+    assert.match(boundaries.reason, /inter-model/);
+    assert.doesNotMatch(
+      boundaries.reason,
+      /trust boundar|system edge|adapter|dependency direction|dependency inversion/i,
+    );
+  }
+
+  const solid = GOVERNANCE.code.conditional.find((entry) => entry.id === 'solid');
+  assert.equal(solid.trigger, 'object-design');
+  assert.match(solid.reason, /dependency inversion/);
+});
+
+test('Laziness is selected only for implementation economy and has total arbitration authority', () => {
+  const laziness = GOVERNANCE.code.conditional.find((entry) => entry.id === 'laziness');
+  assert.equal(laziness.trigger, 'implementation-economy');
+  assert.match(laziness.reason, /unnecessary features, layers, abstractions/);
+
+  const roastmaster = markdownSection(
+    read('roast/references/bundled-roasters/the-roastmaster/directive.md'),
+    '## Doctrine Arbitration',
+  );
+  assert.match(
+    roastmaster,
+    /`laziness` owns implementation economy in full:[\s\S]*smallest-sufficient-solution claims/,
+  );
 });
 
 test('legacy doctrine uncertainty markers are absent while real uncertainty still propagates', () => {

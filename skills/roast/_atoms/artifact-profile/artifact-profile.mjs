@@ -148,7 +148,7 @@ const PROFILES = {
     ].join('\n'),
     doctrineConditional: [
       '- Conditional: `domain` on `domain-model`; `data` on `data-contract`;',
-      '  `boundaries` on `boundary-contract`; `data-processing` on',
+      '  `boundaries` on `bounded-context-meaning`; `data-processing` on',
       '  `replay-order-time`; and `distributed-data` on',
       '  `distributed-coordination`.',
     ].join('\n'),
@@ -317,7 +317,7 @@ const PROFILES = {
     ].join('\n'),
     doctrineConditional: [
       '- Conditional: `domain` on `domain-model`; `data` on `data-contract`;',
-      '  `boundaries` on `boundary-contract`; `data-processing` on',
+      '  `boundaries` on `bounded-context-meaning`; `data-processing` on',
       '  `replay-order-time`; and `distributed-data` on',
       '  `distributed-coordination`.',
     ].join('\n'),
@@ -452,7 +452,7 @@ const PROFILES = {
     ].join('\n'),
     doctrineConditional: [
       '- Conditional: `domain` on `domain-model`; `data` on `data-contract`;',
-      '  `testing` on `validation`; `boundaries` on `boundary-contract`;',
+      '  `testing` on `validation`; `boundaries` on `bounded-context-meaning`;',
       '  `data-processing` on `replay-order-time`; `distributed-data` on',
       '  `distributed-coordination`; `test-seams` on `test-doubles`; and',
       '  `integration-testing` on `real-boundary-fidelity`.',
@@ -656,7 +656,7 @@ const PROFILES = {
     ].join('\n'),
     doctrineConditional: [
       '- Conditional: `domain` on `domain-model`; `data` on `data-contract`;',
-      '  `testing` on `validation`; `boundaries` on `boundary-contract`;',
+      '  `testing` on `validation`; `boundaries` on `bounded-context-meaning`;',
       '  `data-processing` on `replay-order-time`; `distributed-data` on',
       '  `distributed-coordination`; `test-seams` on `test-doubles`; and',
       '  `integration-testing` on `real-boundary-fidelity`.',

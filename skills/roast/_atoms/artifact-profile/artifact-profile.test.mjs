@@ -138,6 +138,16 @@ test('the resolved contract carries every selected doctrine route to the Artifac
   }
 });
 
+test('the resolved contracts use the bounded-context meaning trigger for Boundaries', () => {
+  const template = readShared('roast/_atoms/roast-contract/roast-contract.md');
+
+  for (const type of ARTIFACT_TYPES) {
+    const contract = render(template, type);
+    assert.match(contract, /`boundaries` on `bounded-context-meaning`/);
+    assert.ok(!contract.includes(['boundary', 'contract'].join('-')));
+  }
+});
+
 test('the resolved failure reference states each type-specific status meaning', () => {
   const template = readShared('roast/_atoms/roast-failure-recovery/roast-failure-recovery.md');
   assert.match(render(template, 'agent'), /The agent file or a linked prompt changed/);
