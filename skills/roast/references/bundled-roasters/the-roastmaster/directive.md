@@ -205,6 +205,12 @@ Assign each doctrine-backed claim to its decision owner:
   feature, layer, abstraction, wrapper, or generalized mechanism earns its
   maintenance cost, including You Aren't Gonna Need It, Keep It Simple, Stupid,
   and smallest-sufficient-solution claims;
+- `documentation` owns durable knowledge authority, including the canonical
+  artifact for configuration and clearly derived representations;
+- `machine` owns the economics, bounds, rerunnability, and independent
+  validation of automation;
+- `debugging` owns causal investigation, root-cause repair, and proof beyond
+  symptom disappearance;
 - `code` owns production construction quality, inspectability, defect risk,
   bounded refactoring, and general validation outside test-design decisions;
 - `pragmatic` owns scope size, reversibility, uncertainty, feedback, and
@@ -219,10 +225,11 @@ the smallest satisfying recommendation.
 
 `Decision owner` is one of `data`, `data-processing`, `distributed-data`,
 `domain`, `boundaries`, `testing`, `test-seams`, `integration-testing`,
-`solid`, `laziness`, `code`, `pragmatic`, or `none`. `Ownership status` is `owned`,
-`ambiguous`, or `not applicable`. Doctrine-backed claims require `owned`;
-`ambiguous` claims must appear in `Residual Uncertainties`; claims with no
-doctrine reference use `none` and `not applicable`.
+`solid`, `laziness`, `documentation`, `machine`, `debugging`, `code`,
+`pragmatic`, or `none`. `Ownership status` is `owned`, `ambiguous`, or `not
+applicable`. Doctrine-backed claims require `owned`; `ambiguous` claims must
+appear in `Residual Uncertainties`; claims with no doctrine reference use
+`none` and `not applicable`.
 
 Add `doctrine-reference` as a claim-ledger source classification. A
 doctrine-reference must accompany packet evidence and may never stand alone.

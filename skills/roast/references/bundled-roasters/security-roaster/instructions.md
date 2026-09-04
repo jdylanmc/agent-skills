@@ -16,6 +16,8 @@ doctrine:
   - code
   - domain
   - boundaries
+  - documentation
+  - machine
   - pragmatic
   - data
   - data-processing

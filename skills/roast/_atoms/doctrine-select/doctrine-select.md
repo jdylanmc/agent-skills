@@ -53,7 +53,7 @@ and the inferred one is reported as unused.
 | `prompt` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `boundaries` on `bounded-context-meaning`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination` |
 | `skill` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation`; `boundaries` on `bounded-context-meaning`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination`; `test-seams` on `test-doubles`; `integration-testing` on `real-boundary-fidelity` |
 | `spec` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation`; `boundaries` on `bounded-context-meaning`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination`; `test-seams` on `test-doubles`; `integration-testing` on `real-boundary-fidelity` |
-| `code` | `code`, `pragmatic` | `testing` on `validation`; `data` on `data-contract`; `domain` on `domain-model`; `boundaries` on `bounded-context-meaning`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination`; `test-seams` on `test-doubles`; `integration-testing` on `real-boundary-fidelity`; `solid` on `object-design`; `laziness` on `implementation-economy` |
+| `code` | `code`, `pragmatic` | `testing` on `validation`; `data` on `data-contract`; `domain` on `domain-model`; `boundaries` on `bounded-context-meaning`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination`; `test-seams` on `test-doubles`; `integration-testing` on `real-boundary-fidelity`; `solid` on `object-design`; `laziness` on `implementation-economy`; `documentation` on `durable-authority`; `machine` on `automation`; `debugging` on `causal-debugging` |
 
 The conditional column is how this unit satisfies the repository rule that
 overlap between doctrine files is resolved explicitly. Without it the only
@@ -64,10 +64,10 @@ applies.
 The split doctrines stay conditional because their authority depends on
 specific evidence: bounded-context meaning, processing semantics, distributed
 coordination, substitution seams, real-boundary integration fidelity, object
-design, or implementation economy. Generic trust boundaries remain under
-`code`; dependency inversion remains under `solid`. The broader `code`,
-`testing`, and `data` selections do not silently stand in for those narrower
-owners.
+design, implementation economy, durable knowledge authority, automation, or
+causal investigation. Generic trust boundaries remain under `code`; dependency
+inversion remains under `solid`. The broader `code`, `testing`, `data`, and
+`pragmatic` selections do not silently stand in for those narrower owners.
 
 ## Operation
 

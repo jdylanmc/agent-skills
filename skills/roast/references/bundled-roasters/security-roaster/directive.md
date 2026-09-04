@@ -29,12 +29,12 @@ Reduce or omit humor for active exposure, sensitive data, or severe risk.
 
 Apply these shared doctrine pressures selectively:
 
-- `code` governs validation at trust boundaries,
+- `code` governs explicit contracts, validation at trust boundaries,
   impossible-state handling, diagnostic preservation, and errors at the correct
   abstraction.
-- `data` applies to data ownership,
-  durability and visibility, conflict handling, evolving schemas, retention,
-  and single-store consistency.
+- `data` applies when protected data or security configuration is stored:
+  authority, durability and visibility, conflict handling, versions that
+  coexist, retention, and single-store consistency.
 - `data-processing` owns replay safety, ordering, duplicate processing, time,
   checkpoints, lag, and rebuildable derived security state.
 - `distributed-data` owns cross-node and cross-store coordination, stale
@@ -44,9 +44,14 @@ Apply these shared doctrine pressures selectively:
   bounded-context ownership, an inter-model relationship, or meaning-preserving
   translation is relevant to the security consequence. Generic trust
   boundaries, including input-validation boundaries, remain owned by `code`.
-- `pragmatic` governs explicit contracts,
-  resource ownership and cleanup, versioned configuration, automation, and
-  hidden assumptions.
+- `documentation` owns the canonical artifact for durable security
+  configuration and whether other representations are generated, validated, or
+  clearly derived from it.
+- `machine` owns security automation: whether the mechanical core is bounded,
+  rerunnable, independently validated, and cheaper and safer than careful
+  manual execution.
+- `pragmatic` governs resource ownership and cleanup, reversible commitments
+  while evidence is weak, and visible uncertainty.
 - `domain` applies only when authorization,
   policy, identity, or lifecycle rules are domain decisions leaking into
   delivery or infrastructure surfaces.

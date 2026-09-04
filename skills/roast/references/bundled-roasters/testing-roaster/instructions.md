@@ -21,7 +21,8 @@ doctrine:
   - data
   - code
   - domain
-  - pragmatic
+  - boundaries
+  - debugging
 ---
 
 # LATCH-9 Testing Roaster Instructions

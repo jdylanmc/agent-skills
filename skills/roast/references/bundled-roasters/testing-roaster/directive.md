@@ -149,7 +149,9 @@ Apply these shared doctrine pressures selectively and without a global
 precedence:
 
 - `testing` owns test value, behavior orientation, oracle quality, scope
-  selection, regression economics, feedback tradeoffs, and testability costs.
+  selection, regression protection and economics, feedback tradeoffs,
+  testability costs, and the requirement to repair rather than normalize flaky
+  evidence.
 - `test-seams` owns test doubles, substitution boundaries, interaction checks,
   partial mocks, and whether a seam exposes behavior rather than implementation.
 - `integration-testing` owns fidelity at real process, service, database, and
@@ -164,11 +166,13 @@ precedence:
 - `code` owns risk-matched tests, trust-boundary cases, defensive checks,
   repeatable debugging, and tests or analysis before risky refactoring.
 - `domain` owns tests that express domain invariants, valid construction,
-  allowed or forbidden transitions, and cross-context translation using the
-  context's agreed vocabulary.
-- `pragmatic` owns fast feedback, repairing flaky or environment-dependent
-  tests, adding regression protection after a human-found defect, and proving
-  unexplained behavior with data.
+  allowed or forbidden transitions, and meaningful outcomes inside one bounded
+  context using that context's agreed vocabulary.
+- `boundaries` owns tests of cross-context meaning, inter-model relationships,
+  and meaning-preserving translation.
+- `debugging` owns causal investigation and root-cause repair for flaky,
+  environment-dependent, or otherwise unexplained behavior, including proving
+  more than symptom disappearance.
 
 Doctrine guides test selection; it is not evidence that a test is missing or
 defective.

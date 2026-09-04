@@ -120,6 +120,9 @@ test('each split doctrine is selected only by its evidence trigger', () => {
     'real-boundary-fidelity': 'integration-testing',
     'object-design': 'solid',
     'implementation-economy': 'laziness',
+    'durable-authority': 'documentation',
+    automation: 'machine',
+    'causal-debugging': 'debugging',
   };
   const without = selectDoctrine({ artifactType: 'code', availableIds: AVAILABLE });
   for (const id of Object.values(routes)) {

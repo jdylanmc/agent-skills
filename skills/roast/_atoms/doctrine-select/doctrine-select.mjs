@@ -223,7 +223,7 @@ export const GOVERNANCE = {
       { id: 'code', reason: 'contracts, clarity, bounded complexity, errors, and validation' },
       {
         id: 'pragmatic',
-        reason: 'coupling, reversibility, feedback, and stopping points in the change set',
+        reason: 'reversibility, uncertainty, feedback, and stopping points in the change set',
       },
     ],
     conditional: [
@@ -276,6 +276,21 @@ export const GOVERNANCE = {
         id: 'laziness',
         trigger: 'implementation-economy',
         reason: 'unnecessary features, layers, abstractions, wrappers, or generalized mechanisms are inside the change set',
+      },
+      {
+        id: 'documentation',
+        trigger: 'durable-authority',
+        reason: 'durable knowledge or configuration needs one canonical artifact and clearly derived representations',
+      },
+      {
+        id: 'machine',
+        trigger: 'automation',
+        reason: 'automation economics, bounds, rerunnability, or independent validation are inside the change set',
+      },
+      {
+        id: 'debugging',
+        trigger: 'causal-debugging',
+        reason: 'causal investigation, root-cause repair, or proof beyond symptom disappearance is inside the change set',
       },
     ],
   },

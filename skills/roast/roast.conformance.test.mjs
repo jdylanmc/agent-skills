@@ -79,12 +79,27 @@ function frontmatterList(document, field) {
 }
 
 function directiveDoctrineOwners(document) {
+  return [...directiveDoctrineClaims(document).keys()];
+}
+
+function directiveDoctrineClaims(document) {
   const heading = /^## Doctrine Arbitration\s*$/m.test(document)
     ? '## Doctrine Arbitration'
     : '## Doctrine';
-  return [
-    ...markdownSection(document, heading).matchAll(/^- `([a-z0-9-]+)`\s/gm),
-  ].map((match) => match[1]);
+  const claims = new Map();
+  let owner;
+  for (const line of markdownSection(document, heading).split('\n')) {
+    const start = /^- `([a-z0-9-]+)`\s+(.*)$/.exec(line);
+    if (start) {
+      owner = start[1];
+      claims.set(owner, start[2]);
+      continue;
+    }
+    if (owner && /^\s{2}\S/.test(line)) {
+      claims.set(owner, `${claims.get(owner)} ${line.trim()}`);
+    }
+  }
+  return claims;
 }
 
 test('the roast skill declares exactly the pinned tool grant', () => {
@@ -264,18 +279,30 @@ test('every bundled directive doctrine owner is in its instruction allowlist', (
       'data',
       'data-processing',
       'distributed-data',
+      'documentation',
       'domain',
+      'machine',
       'pragmatic',
     ],
-    'solid-yagni-kiss-roaster': ['code', 'domain', 'laziness', 'pragmatic', 'solid'],
+    'solid-yagni-kiss-roaster': [
+      'boundaries',
+      'code',
+      'data',
+      'documentation',
+      'domain',
+      'laziness',
+      'pragmatic',
+      'solid',
+    ],
     'testing-roaster': [
+      'boundaries',
       'code',
       'data',
       'data-processing',
+      'debugging',
       'distributed-data',
       'domain',
       'integration-testing',
-      'pragmatic',
       'test-seams',
       'testing',
     ],
@@ -284,10 +311,13 @@ test('every bundled directive doctrine owner is in its instruction allowlist', (
       'code',
       'data',
       'data-processing',
+      'debugging',
       'distributed-data',
+      'documentation',
       'domain',
       'integration-testing',
       'laziness',
+      'machine',
       'pragmatic',
       'solid',
       'test-seams',
@@ -348,6 +378,9 @@ test('split doctrine authority remains assigned to its narrow owner', () => {
   assert.match(roastmaster, /`boundaries` owns bounded-context boundaries, inter-model relationships/);
   assert.match(roastmaster, /`solid` owns object-design claims/);
   assert.match(roastmaster, /`laziness` owns implementation economy in full/);
+  assert.match(roastmaster, /`documentation` owns durable knowledge authority/);
+  assert.match(roastmaster, /`machine` owns the economics, bounds, rerunnability/);
+  assert.match(roastmaster, /`debugging` owns causal investigation, root-cause repair/);
 
   const security = markdownSection(
     read('roast/references/bundled-roasters/security-roaster/directive.md'),
@@ -357,6 +390,8 @@ test('split doctrine authority remains assigned to its narrow owner', () => {
   assert.match(security, /`distributed-data` owns cross-node and cross-store coordination/);
   assert.match(security, /`boundaries` applies only when `bounded-context-meaning` evidence/);
   assert.match(security, /Generic trust\s+boundaries, including input-validation boundaries, remain owned by `code`/);
+  assert.match(security, /`documentation` owns the canonical artifact for durable security/);
+  assert.match(security, /`machine` owns security automation/);
 
   const solid = markdownSection(
     read('roast/references/bundled-roasters/solid-yagni-kiss-roaster/directive.md'),
@@ -365,7 +400,65 @@ test('split doctrine authority remains assigned to its narrow owner', () => {
   assert.match(solid, /`solid` owns object-design claims/);
   assert.match(solid, /`code` is primary/);
   assert.match(solid, /`laziness` owns implementation economy in full/);
-  assert.match(solid, /`pragmatic` is primary/);
+  assert.match(solid, /`documentation` owns one canonical artifact for durable system facts/);
+  assert.match(solid, /`data` owns the source of truth, derived copies/);
+  assert.match(solid, /`boundaries` applies only when packet evidence shows a bounded-context/);
+  assert.match(solid, /`pragmatic` owns reversible commitments/);
+});
+
+test('reassigned roaster claims cite doctrine that actually owns the concern', () => {
+  const assignments = [
+    ['security-roaster', 'machine', /security automation/, 'machine', 'Build the smallest trustworthy lever'],
+    ['security-roaster', 'documentation', /durable security configuration/, 'documentation', 'One concern, one authority'],
+    ['security-roaster', 'data', /security configuration is stored/, 'data', 'Evolve contracts while versions coexist'],
+    ['solid-yagni-kiss-roaster', 'solid', /responsibility.*dependency inversion/, 'solid', 'Dependency Inversion Principle'],
+    ['solid-yagni-kiss-roaster', 'code', /cohesive modules/, 'code', 'Keep modules cohesive'],
+    ['solid-yagni-kiss-roaster', 'documentation', /canonical artifact for durable system facts/, 'documentation', 'One concern, one authority'],
+    ['solid-yagni-kiss-roaster', 'data', /source of truth, derived copies/, 'data', 'Own every second copy'],
+    ['solid-yagni-kiss-roaster', 'boundaries', /inter-model relationship.*translation/, 'boundaries', 'Design doors and windows'],
+    ['testing-roaster', 'testing', /regression protection.*flaky evidence/, 'testing', 'Listen to failures'],
+    ['testing-roaster', 'debugging', /causal investigation and root-cause repair/, 'debugging', 'Prove more than disappearance'],
+    ['testing-roaster', 'boundaries', /cross-context meaning.*translation/, 'boundaries', 'Design doors and windows'],
+  ];
+
+  for (const [roaster, owner, claim, doctrine, rule] of assignments) {
+    const claims = directiveDoctrineClaims(
+      read(`roast/references/bundled-roasters/${roaster}/directive.md`),
+    );
+    assert.match(claims.get(owner) ?? '', claim, `${roaster} no longer assigns ${claim} to ${owner}`);
+    assert.match(
+      fs.readFileSync(path.join(REPOSITORY_ROOT, 'doctrine', `${doctrine}.doctrine.md`), 'utf8'),
+      new RegExp(`\\*\\*${rule.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.\\*\\*`),
+      `${owner} cites ${rule}, which its doctrine no longer contains`,
+    );
+  }
+
+  const disputed = /automat|versioned configuration|flaky|regression protection|orthogonality|authoritative owner|single.source|responsibilit|dependenc|cross-context|translation/i;
+  for (const roaster of [
+    'security-roaster',
+    'solid-yagni-kiss-roaster',
+    'testing-roaster',
+  ]) {
+    const claims = directiveDoctrineClaims(
+      read(`roast/references/bundled-roasters/${roaster}/directive.md`),
+    );
+    assert.doesNotMatch(
+      claims.get('pragmatic') ?? '',
+      disputed,
+      `${roaster} still assigns a trimmed concern to pragmatic`,
+    );
+  }
+
+  for (const roaster of ['solid-yagni-kiss-roaster', 'testing-roaster']) {
+    const claims = directiveDoctrineClaims(
+      read(`roast/references/bundled-roasters/${roaster}/directive.md`),
+    );
+    assert.doesNotMatch(
+      claims.get('domain') ?? '',
+      /cross-context|inter-model|translation/i,
+      `${roaster} still assigns cross-context meaning to domain`,
+    );
+  }
 });
 
 test('Boundaries routing is limited to bounded-context and inter-model meaning', () => {

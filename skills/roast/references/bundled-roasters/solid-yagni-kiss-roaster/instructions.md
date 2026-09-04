@@ -16,7 +16,10 @@ doctrine:
   - solid
   - code
   - laziness
+  - documentation
+  - data
   - domain
+  - boundaries
   - pragmatic
 ---
 

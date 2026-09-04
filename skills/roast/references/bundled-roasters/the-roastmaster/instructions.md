@@ -19,6 +19,9 @@ doctrine:
   - code
   - solid
   - laziness
+  - documentation
+  - machine
+  - debugging
   - domain
   - boundaries
   - pragmatic
