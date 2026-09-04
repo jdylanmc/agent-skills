@@ -64,6 +64,9 @@ doctrine:
   - id: test-seams
     path: test-seams.doctrine.md
     sha256: 460b64101c7cc110462da15035220aa17c25da59127b024a695b2f129502925e
+  - id: integration-testing
+    path: integration-testing.doctrine.md
+    sha256: 6b455ee604a67656b9c47515bfe8ecfc079217533f5b6c0a29863c8f45a8e16a
 ---
 
 # Doctrine Manifest
