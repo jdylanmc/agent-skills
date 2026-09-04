@@ -52,6 +52,9 @@ doctrine:
   - id: boundaries
     path: boundaries.doctrine.md
     sha256: 1365a717fb4074d1fce7a3fa74e8dd1cd500acd399d4e1b19cade51798965400
+  - id: data-processing
+    path: data-processing.doctrine.md
+    sha256: 6da7af575c1fb9939c6e4222cd35493d710f69d394ca789b11769de9cec4527e
 ---
 
 # Doctrine Manifest
