@@ -49,6 +49,9 @@ doctrine:
   - id: tactical-strategic
     path: tactical-strategic.doctrine.md
     sha256: b2f91d7a8610ed51bc6160e606e157802da362f4ce8fc39880b6d54f9a06bcf3
+  - id: boundaries
+    path: boundaries.doctrine.md
+    sha256: 1365a717fb4074d1fce7a3fa74e8dd1cd500acd399d4e1b19cade51798965400
 ---
 
 # Doctrine Manifest
