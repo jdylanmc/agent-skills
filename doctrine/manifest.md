@@ -12,7 +12,7 @@ doctrine:
     sha256: 4418c6ef50c2800b2d2410bf9fb5cd2d91514aabea2bd0ef9417e9a9cef23a08
   - id: data
     path: data.doctrine.md
-    sha256: bdc287409bc2cf0890e3e641118919f946732bd4319fe57bd99e6f80fb2bd05d
+    sha256: d7f6ac3a85f1d0409b8f7fa19b7a6f72a358ba53e2121c7a3df914f0fc580eca
   - id: testing
     path: testing.doctrine.md
     sha256: 02661877aa625b3b2bfd1af1c8733550fabe886e19ae82c2d873a5ce020688aa
