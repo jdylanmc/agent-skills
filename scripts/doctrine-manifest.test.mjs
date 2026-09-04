@@ -27,6 +27,15 @@ function digestOf(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
+function wordCount(file) {
+  return fs
+    .readFileSync(file, 'utf8')
+    .replace(/\r\n/g, '\n')
+    .split(/\s+/)
+    .filter((token) => token !== '' && /[\p{L}\p{N}]/u.test(token))
+    .length;
+}
+
 test('the manifest declares at least one doctrine entry', () => {
   // A manifest that parses to nothing would make every other assertion here
   // vacuously true.
@@ -60,6 +69,23 @@ test('every doctrine file on disk is declared in the manifest', () => {
 
   const undeclared = onDisk.filter((name) => !declared.has(name));
   assert.deepEqual(undeclared, [], 'doctrine files present but not declared in the manifest');
+});
+
+test('every doctrine contains fewer than 500 words', () => {
+  const overLimit = manifestEntries()
+    .map((entry) => ({
+      id: entry.id,
+      words: wordCount(path.join(DOCTRINE_ROOT, entry.path)),
+    }))
+    .filter((entry) => entry.words >= 500);
+
+  assert.deepEqual(
+    overLimit,
+    [],
+    `doctrines must contain fewer than 500 words:\n${overLimit
+      .map((entry) => `${entry.id}: ${entry.words}`)
+      .join('\n')}`,
+  );
 });
 
 test('a doctrine path cannot escape the doctrine root or be a symbolic link', () => {
