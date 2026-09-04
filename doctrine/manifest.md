@@ -6,7 +6,7 @@ doctrine:
     sha256: a0a3a11fa5b6a3a44bb0d04cee7b989096f63346c63036705c5c4ad0443a42bf
   - id: domain
     path: domain.doctrine.md
-    sha256: 567b44352a54acb9bd6224de03862f8e49a52de33a7de19ce517de7200528caf
+    sha256: 7ebf52657762e7625aef5a9c71e7012e46b85d42c9724557fa98ba49f55e62b4
   - id: pragmatic
     path: pragmatic.doctrine.md
     sha256: c9c7ebbbbe22b408ded5ef77d630a7ba09c7051040646e3d1c78528d3c1e88d0
