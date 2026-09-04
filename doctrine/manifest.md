@@ -9,7 +9,7 @@ doctrine:
     sha256: 7ebf52657762e7625aef5a9c71e7012e46b85d42c9724557fa98ba49f55e62b4
   - id: pragmatic
     path: pragmatic.doctrine.md
-    sha256: c9c7ebbbbe22b408ded5ef77d630a7ba09c7051040646e3d1c78528d3c1e88d0
+    sha256: 4418c6ef50c2800b2d2410bf9fb5cd2d91514aabea2bd0ef9417e9a9cef23a08
   - id: data
     path: data.doctrine.md
     sha256: bdc287409bc2cf0890e3e641118919f946732bd4319fe57bd99e6f80fb2bd05d
