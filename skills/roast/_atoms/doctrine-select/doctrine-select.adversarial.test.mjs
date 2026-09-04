@@ -23,7 +23,7 @@ const REPOSITORY_ROOT = path.resolve(
 );
 const MANIFEST = path.join(REPOSITORY_ROOT, 'doctrine', 'manifest.md');
 const SANDBOX_ROOT = path.join(REPOSITORY_ROOT, '.test-sandbox');
-const AVAILABLE = ['code', 'domain', 'pragmatic', 'data', 'testing'];
+const AVAILABLE = manifestIds(MANIFEST);
 
 /** Repository-local scratch space; `.test-sandbox/` is git-ignored. */
 function workspace(t, prefix = 'doctrine-select-') {

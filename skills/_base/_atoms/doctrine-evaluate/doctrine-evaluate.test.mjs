@@ -144,21 +144,27 @@ test('parses every manifest entry and rejects a malformed one', () => {
   assert.deepEqual(
     entries.map((entry) => entry.id).sort(),
     [
+      'boundaries',
       'code',
       'context',
       'cyclomatic-complexity',
       'data',
+      'data-processing',
       'debugging',
+      'distributed-data',
       'documentation',
       'domain',
       'idempotency',
+      'integration-testing',
       'laziness',
       'machine',
       'nimble',
       'pragmatic',
       'scout',
       'sequencing',
+      'solid',
       'tactical-strategic',
+      'test-seams',
       'testing',
     ],
   );
@@ -257,6 +263,9 @@ test('a selection narrows to a section, a title, and a rule phrase', (t) => {
 
   const byRef = loadSelection(manifest, ['sample::sample#1.3']);
   assert.deepEqual(byRef.doctrine[0].rules.map((rule) => rule.ref), ['sample#1.3']);
+
+  const byStableSelector = loadSelection(manifest, ['sample#1.3']);
+  assert.deepEqual(byStableSelector.doctrine[0].rules.map((rule) => rule.ref), ['sample#1.3']);
 });
 
 test('two selectors for one doctrine union without duplicating a rule', (t) => {
@@ -537,11 +546,10 @@ test('a relative manifest, packet, or report path is refused', (t) => {
 
 test('the real repository doctrine loads and resolves a real rule', () => {
   const manifest = path.join(REPOSITORY_ROOT, 'doctrine', 'manifest.md');
-  const selection = loadSelection(manifest, ['code#3']);
+  const selection = loadSelection(manifest, ['code#principles.2']);
   assert.equal(selection.doctrine.length, 1, 'only the selected doctrine is loaded');
   assert.equal(selection.doctrine[0].verified, true);
-  assert.ok(selection.doctrine[0].rules.length > 0);
-  assert.ok(selection.doctrine[0].rules.every((rule) => rule.ref.startsWith('code#3.')));
+  assert.deepEqual(selection.doctrine[0].rules.map((rule) => rule.ref), ['code#principles.2']);
 });
 
 test('resolving a doctrine path rejects traversal and an absolute entry', (t) => {

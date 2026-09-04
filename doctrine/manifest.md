@@ -3,19 +3,19 @@ schema-version: 1
 doctrine:
   - id: code
     path: code.doctrine.md
-    sha256: a0a3a11fa5b6a3a44bb0d04cee7b989096f63346c63036705c5c4ad0443a42bf
+    sha256: 0fd2cb0a336cc8ccc1bbc0fa775f92c81c380aa12d22ea9ee15879b610009231
   - id: domain
     path: domain.doctrine.md
-    sha256: 567b44352a54acb9bd6224de03862f8e49a52de33a7de19ce517de7200528caf
+    sha256: 7ebf52657762e7625aef5a9c71e7012e46b85d42c9724557fa98ba49f55e62b4
   - id: pragmatic
     path: pragmatic.doctrine.md
-    sha256: c9c7ebbbbe22b408ded5ef77d630a7ba09c7051040646e3d1c78528d3c1e88d0
+    sha256: 4418c6ef50c2800b2d2410bf9fb5cd2d91514aabea2bd0ef9417e9a9cef23a08
   - id: data
     path: data.doctrine.md
-    sha256: bdc287409bc2cf0890e3e641118919f946732bd4319fe57bd99e6f80fb2bd05d
+    sha256: d7f6ac3a85f1d0409b8f7fa19b7a6f72a358ba53e2121c7a3df914f0fc580eca
   - id: testing
     path: testing.doctrine.md
-    sha256: 02661877aa625b3b2bfd1af1c8733550fabe886e19ae82c2d873a5ce020688aa
+    sha256: 8b6bc36f184349007874ec8cb5aac759689aa553322bd9a84e779b7a641e2e27
   - id: laziness
     path: laziness.doctrine.md
     sha256: b1344f70fb34e840665ba02587e7a1ebff4d734ffd146badecace53b5492135f
@@ -49,6 +49,24 @@ doctrine:
   - id: tactical-strategic
     path: tactical-strategic.doctrine.md
     sha256: b2f91d7a8610ed51bc6160e606e157802da362f4ce8fc39880b6d54f9a06bcf3
+  - id: boundaries
+    path: boundaries.doctrine.md
+    sha256: 1365a717fb4074d1fce7a3fa74e8dd1cd500acd399d4e1b19cade51798965400
+  - id: data-processing
+    path: data-processing.doctrine.md
+    sha256: 6da7af575c1fb9939c6e4222cd35493d710f69d394ca789b11769de9cec4527e
+  - id: solid
+    path: solid.doctrine.md
+    sha256: 1df4a6a27aae555ad1bfc058a0749bf8a58e73afdcd109e46ca1ae2293ec69e6
+  - id: distributed-data
+    path: distributed-data.doctrine.md
+    sha256: 4222f855d023863c274db21cc09a7429f9f2f52ab55fa07dc985aaf81dc0724c
+  - id: test-seams
+    path: test-seams.doctrine.md
+    sha256: 460b64101c7cc110462da15035220aa17c25da59127b024a695b2f129502925e
+  - id: integration-testing
+    path: integration-testing.doctrine.md
+    sha256: 6b455ee604a67656b9c47515bfe8ecfc079217533f5b6c0a29863c8f45a8e16a
 ---
 
 # Doctrine Manifest

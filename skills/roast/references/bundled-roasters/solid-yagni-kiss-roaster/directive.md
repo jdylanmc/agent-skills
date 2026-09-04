@@ -26,19 +26,32 @@ Reject cosmetic preferences and abstraction churn.
 
 Apply these shared doctrine pressures selectively:
 
+- `solid` owns object-design claims about responsibility, extension,
+  substitution, interface segregation, and dependency inversion. Apply it only
+  where those pressures have a packet-backed change-risk consequence.
 - `code` is primary for cohesive modules,
   explicit contracts, readable construction, complexity as defect risk, and
   separating behavior change from structural refactoring.
-- `pragmatic` is primary for one authoritative
-  owner per system fact, orthogonality, reversible commitments, visible
-  uncertainty, and containing local decay.
+- `laziness` owns implementation economy in full: whether any implementation,
+  feature, layer, abstraction, wrapper, or generalized mechanism earns its
+  maintenance cost, including You Aren't Gonna Need It (YAGNI), Keep It Simple,
+  Stupid (KISS), and smallest-sufficient-solution claims.
+- `documentation` owns one canonical artifact for durable system facts carried
+  by documentation or configuration, with other representations generated,
+  validated, or clearly derived.
+- `data` owns the source of truth, derived copies, and authority for stored
+  system facts.
+- `boundaries` applies only when packet evidence shows a bounded-context
+  boundary, an inter-model relationship, or meaning-preserving translation.
+- `pragmatic` owns reversible commitments while evidence is weak and visible
+  uncertainty.
 - `domain` applies only when packet evidence shows domain language, invariants,
-  lifecycle, aggregate ownership, or bounded-context pressure. Reject tactical
-  patterns that add ceremony without
-  protecting model meaning.
+  lifecycle, aggregate ownership, or behavior inside one bounded context.
+  Reject tactical patterns that add ceremony without protecting model meaning.
 
-Do not apply `data` directly from
-this lens. Leave source-of-truth, consistency, replay, ordering, and schema
+Do not infer a storage, documentation, domain, or context-boundary concern from
+structural design alone. Apply those owners only when packet evidence exposes
+that distinct concern. Leave consistency, replay, ordering, and schema
 semantics to the applicable council member and The Roastmaster.
 
 Doctrine guides the review; it is not evidence. Every finding still requires a

@@ -49,17 +49,25 @@ and the inferred one is reported as unused.
 
 | Artifact type | Always selected | Selected only on an observed trigger |
 | --- | --- | --- |
-| `agent` | `code`, `pragmatic` | `domain` on `domain-model`; `data` on `data-contract` |
-| `prompt` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract` |
-| `skill` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation` |
-| `spec` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation` |
-| `code` | `code`, `pragmatic` | `testing` on `validation`; `data` on `data-contract`; `domain` on `domain-model` |
+| `agent` | `code`, `pragmatic` | `domain` on `domain-model`; `data` on `data-contract`; `boundaries` on `bounded-context-meaning`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination` |
+| `prompt` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `boundaries` on `bounded-context-meaning`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination` |
+| `skill` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation`; `boundaries` on `bounded-context-meaning`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination`; `test-seams` on `test-doubles`; `integration-testing` on `real-boundary-fidelity` |
+| `spec` | `pragmatic`, `code` | `domain` on `domain-model`; `data` on `data-contract`; `testing` on `validation`; `boundaries` on `bounded-context-meaning`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination`; `test-seams` on `test-doubles`; `integration-testing` on `real-boundary-fidelity` |
+| `code` | `code`, `pragmatic` | `testing` on `validation`; `data` on `data-contract`; `domain` on `domain-model`; `boundaries` on `bounded-context-meaning`; `data-processing` on `replay-order-time`; `distributed-data` on `distributed-coordination`; `test-seams` on `test-doubles`; `integration-testing` on `real-boundary-fidelity`; `solid` on `object-design`; `laziness` on `implementation-economy`; `documentation` on `durable-authority`; `machine` on `automation`; `debugging` on `causal-debugging` |
 
 The conditional column is how this unit satisfies the repository rule that
 overlap between doctrine files is resolved explicitly. Without it the only
 honest options are to select every plausible doctrine, which is the
 indiscriminate loading that rule forbids, or to drop guidance that genuinely
 applies.
+
+The focused doctrines stay conditional because their authority depends on
+specific evidence: bounded-context meaning, processing semantics, distributed
+coordination, substitution seams, real-boundary integration fidelity, object
+design, implementation economy, durable knowledge authority, automation, or
+causal investigation. Generic trust boundaries remain under `code`; dependency
+inversion remains under `solid`. The broader `code`, `testing`, `data`, and
+`pragmatic` selections do not silently stand in for those narrower owners.
 
 ## Operation
 
@@ -104,7 +112,7 @@ it, which is the one thing this atom exists to make possible.
 | `source` | `inferred` or `caller-override`. |
 | `artifactType` | The type the selection was made for, or `null` under an override with no type. |
 | `selection` | Each chosen doctrine with its `id`, its `role` of `primary`, `conditional`, or `explicit`, its `trigger` when conditional, and its `reason`. |
-| `reasoning` | Ordered statements covering every doctrine chosen **and every one skipped**, with why. |
+| `reasoning` | Ordered statements covering every doctrine chosen **and every manifest doctrine skipped**, with why. Skipped statements follow canonical manifest order. |
 | `selectors` | The exact `--select` arguments to hand to `doctrine-evaluate`. |
 | `category`, `detail` | The refusal reason when refused. |
 
@@ -118,9 +126,11 @@ Refusal categories: `Ambiguous artifact type`, `No governing doctrine`, and
    reader can tell a human choice from an inferred one.
 2. **Only what applies is selected.** A conditional doctrine is selected only
    when its trigger was observed. Availability is never a reason to select.
-3. **Every skip is explained.** `reasoning` names the doctrine that was not
-   selected and why, so a reader can see what the roast was *not* judged
-   against without reading this table.
+3. **Every skip is explained.** `reasoning` names every manifest doctrine that
+   was not selected and why, including doctrine with no route for the artifact
+   type. Skipped statements follow manifest order, so a reader can compare runs
+   deterministically and see what the roast was *not* judged against without
+   reading this table.
 4. **It refuses rather than defaults.** No artifact type, an unrecognised type,
    or an identifier the manifest does not declare returns a refusal. There is
    no fallback doctrine. A roast against the wrong doctrine is worse than a
