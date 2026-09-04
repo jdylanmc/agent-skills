@@ -143,6 +143,13 @@ jobs:
           skills/ship-with-squadron/_atoms/readiness-set/readiness-set.test.mjs
           skills/ship-with-squadron/_atoms/fleet-disposition/fleet-disposition.test.mjs
           skills/ship-with-squadron/ship-with-squadron.conformance.test.mjs
+          skills/_base/_atoms/atomic-transition/atomic-transition.test.mjs
+          skills/bench-squadron/_atoms/bench-epoch/bench-epoch.test.mjs
+          skills/bench-squadron/_atoms/atomic-proposal/atomic-proposal.test.mjs
+          skills/bench-squadron/bench-squadron.conformance.test.mjs
+          skills/tdd-squadron/_atoms/tdd-lifecycle/tdd-lifecycle.test.mjs
+          skills/tdd-squadron/_atoms/atomic-proposal/atomic-proposal.test.mjs
+          skills/tdd-squadron/tdd-squadron.conformance.test.mjs
           skills/eli5/_atoms/explanation-ladder/explanation-ladder.test.mjs
           skills/eli5/_atoms/explanation-ladder/explanation-ladder.adversarial.test.mjs
           skills/eli5/eli5.conformance.test.mjs

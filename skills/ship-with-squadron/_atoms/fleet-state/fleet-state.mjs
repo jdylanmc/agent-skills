@@ -502,6 +502,44 @@ function exactKeys(actual, expected, label) {
   }
 }
 
+function isJsonValue(value, ancestors = new Set()) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (!value || typeof value !== 'object' || ancestors.has(value)) return false;
+
+  ancestors.add(value);
+  let valid;
+  if (Array.isArray(value)) {
+    const keys = Object.keys(value);
+    valid = Object.getOwnPropertySymbols(value).length === 0
+      && keys.length === value.length
+      && keys.every((key, index) => key === String(index)
+        && Object.getOwnPropertyDescriptor(value, key)?.get === undefined
+        && Object.getOwnPropertyDescriptor(value, key)?.set === undefined
+        && isJsonValue(value[index], ancestors));
+  } else {
+    valid = Object.getPrototypeOf(value) === Object.prototype
+      && Object.getOwnPropertySymbols(value).length === 0
+      && Object.values(Object.getOwnPropertyDescriptors(value)).every((descriptor) =>
+        descriptor.enumerable
+          && descriptor.get === undefined
+          && descriptor.set === undefined
+          && isJsonValue(descriptor.value, ancestors));
+  }
+  ancestors.delete(value);
+  return valid;
+}
+
+function assertStrategyState(strategyState) {
+  if (strategyState === null) return;
+  if (!strategyState || typeof strategyState !== 'object' || Array.isArray(strategyState)) {
+    throw new Error('strategy state must be null or an extension envelope');
+  }
+  exactKeys(strategyState, ['namespace', 'value'], 'strategy state');
+  if (!nonEmpty(strategyState.namespace)) throw new Error('strategy state namespace is invalid');
+  if (!isJsonValue(strategyState.value)) throw new Error('strategy state value must be JSON serializable');
+}
+
 function assertStateManifestAuthority(state, manifest, label) {
   assertFleetManifest(manifest);
   if (state?.manifestDigest !== manifest.digest
@@ -1274,6 +1312,7 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
     unresolvedHumanDecisions: [],
     fleetDisposition: exhaustedFields.length ? 'budget-exhausted' : null,
     events: [],
+    strategyState: null,
   };
   return applyFrontier(state, computeFrontier(manifest, state));
 }
@@ -1314,14 +1353,17 @@ function assertSchedulerCollections(state, manifest) {
 export function assertFleetState(state, manifest) {
   assertFleetManifest(manifest);
   if (state?.schemaVersion !== FLEET_STATE_SCHEMA_VERSION) throw new Error('unsupported fleet state schema');
-  exactKeys(state, [
+  const fleetStateFields = [
     'schemaVersion', 'revision', 'runId', 'manifestDigest',
     'providerConfigurationDigest', 'createdAt', 'updatedAt', 'issues',
     'readyFrontier', 'blockedSet', 'activeCapacity', 'completedWork',
     'observedHumanMerges', 'expiredReadinessClaims', 'reShepherdQueue',
     'publications', 'issueSetObservation', 'budgetUse', 'control', 'unresolvedHumanDecisions',
     'fleetDisposition', 'events',
-  ], 'fleet state');
+  ];
+  if (Object.hasOwn(state ?? {}, 'strategyState')) fleetStateFields.push('strategyState');
+  exactKeys(state, fleetStateFields, 'fleet state');
+  if (Object.hasOwn(state, 'strategyState')) assertStrategyState(state.strategyState);
   if (state.manifestDigest !== manifest.digest) throw new Error('fleet state manifest digest mismatch');
   if (state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('fleet state provider configuration digest mismatch');
