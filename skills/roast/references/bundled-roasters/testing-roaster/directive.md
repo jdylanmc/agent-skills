@@ -16,7 +16,7 @@ First determine:
 ## Testing Review Gate
 
 Apply the declared doctrine pressures together without letting an umbrella
-doctrine absorb a split authority. Use `testing` for test value, scope, and
+doctrine absorb another doctrine's authority. Use `testing` for test value, scope, and
 economics; `test-seams` for doubles and substitution; `integration-testing`
 for real-boundary fidelity; `data-processing` for replay, order, and time;
 `distributed-data` for cross-node or cross-store coordination; and `data` for

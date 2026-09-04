@@ -30,7 +30,7 @@ const REPOSITORY_ROOT = path.resolve(
 );
 const MANIFEST = path.join(REPOSITORY_ROOT, 'doctrine', 'manifest.md');
 const AVAILABLE = manifestIds(MANIFEST);
-const SPLIT_DOCTRINES = [
+const FOCUSED_DOCTRINES = [
   'boundaries',
   'data-processing',
   'distributed-data',
@@ -55,7 +55,7 @@ function ids(result) {
   return result.selection.map((entry) => entry.id);
 }
 
-test('every split doctrine has a selective governance route and every governance id exists', () => {
+test('every focused doctrine has a selective governance route and every governance id exists', () => {
   const available = manifestIds(MANIFEST);
   const routed = new Set();
   const primary = new Set();
@@ -71,7 +71,7 @@ test('every split doctrine has a selective governance route and every governance
       );
     }
   }
-  for (const id of SPLIT_DOCTRINES) {
+  for (const id of FOCUSED_DOCTRINES) {
     assert.ok(routed.has(id), `${id} has no governance route`);
     assert.ok(!primary.has(id), `${id} must remain evidence-triggered, not primary`);
   }
@@ -111,7 +111,7 @@ test('a conditional doctrine is selected only when its trigger was observed', ()
   assert.ok(testing.reason.length > 0);
 });
 
-test('each split doctrine is selected only by its evidence trigger', () => {
+test('each focused doctrine is selected only by its evidence trigger', () => {
   const routes = {
     'bounded-context-meaning': 'boundaries',
     'replay-order-time': 'data-processing',

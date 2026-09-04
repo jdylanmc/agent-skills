@@ -61,7 +61,7 @@ honest options are to select every plausible doctrine, which is the
 indiscriminate loading that rule forbids, or to drop guidance that genuinely
 applies.
 
-The split doctrines stay conditional because their authority depends on
+The focused doctrines stay conditional because their authority depends on
 specific evidence: bounded-context meaning, processing semantics, distributed
 coordination, substitution seams, real-boundary integration fidelity, object
 design, implementation economy, durable knowledge authority, automation, or

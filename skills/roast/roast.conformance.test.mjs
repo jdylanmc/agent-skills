@@ -366,7 +366,7 @@ test('code doctrine routes, bundled roasters, and Roastmaster arbitration confor
   assert.deepEqual(sorted(roastmasterOwners), sorted(selected));
 });
 
-test('split doctrine authority remains assigned to its narrow owner', () => {
+test('focused doctrine authority remains assigned to its narrow owner', () => {
   const roastmaster = markdownSection(
     read('roast/references/bundled-roasters/the-roastmaster/directive.md'),
     '## Doctrine Arbitration',
@@ -493,7 +493,7 @@ test('Laziness is selected only for implementation economy and has total arbitra
   );
 });
 
-test('legacy doctrine uncertainty markers are absent while real uncertainty still propagates', () => {
+test('retired doctrine uncertainty markers are absent while real uncertainty still propagates', () => {
   const documents = [
     read('roast/_atoms/code-safeguards/code-safeguards.md'),
     read('roast/_atoms/code-subagent-contract/code-subagent-contract.md'),
