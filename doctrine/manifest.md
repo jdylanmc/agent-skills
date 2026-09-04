@@ -61,6 +61,9 @@ doctrine:
   - id: distributed-data
     path: distributed-data.doctrine.md
     sha256: 4222f855d023863c274db21cc09a7429f9f2f52ab55fa07dc985aaf81dc0724c
+  - id: test-seams
+    path: test-seams.doctrine.md
+    sha256: 460b64101c7cc110462da15035220aa17c25da59127b024a695b2f129502925e
 ---
 
 # Doctrine Manifest
