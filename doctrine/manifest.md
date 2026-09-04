@@ -3,7 +3,7 @@ schema-version: 1
 doctrine:
   - id: code
     path: code.doctrine.md
-    sha256: a0a3a11fa5b6a3a44bb0d04cee7b989096f63346c63036705c5c4ad0443a42bf
+    sha256: 0fd2cb0a336cc8ccc1bbc0fa775f92c81c380aa12d22ea9ee15879b610009231
   - id: domain
     path: domain.doctrine.md
     sha256: 7ebf52657762e7625aef5a9c71e7012e46b85d42c9724557fa98ba49f55e62b4
