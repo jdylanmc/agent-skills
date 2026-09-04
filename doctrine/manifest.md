@@ -15,7 +15,7 @@ doctrine:
     sha256: d7f6ac3a85f1d0409b8f7fa19b7a6f72a358ba53e2121c7a3df914f0fc580eca
   - id: testing
     path: testing.doctrine.md
-    sha256: 02661877aa625b3b2bfd1af1c8733550fabe886e19ae82c2d873a5ce020688aa
+    sha256: 8b6bc36f184349007874ec8cb5aac759689aa553322bd9a84e779b7a641e2e27
   - id: laziness
     path: laziness.doctrine.md
     sha256: b1344f70fb34e840665ba02587e7a1ebff4d734ffd146badecace53b5492135f
