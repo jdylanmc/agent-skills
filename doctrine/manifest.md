@@ -58,6 +58,9 @@ doctrine:
   - id: solid
     path: solid.doctrine.md
     sha256: 1df4a6a27aae555ad1bfc058a0749bf8a58e73afdcd109e46ca1ae2293ec69e6
+  - id: distributed-data
+    path: distributed-data.doctrine.md
+    sha256: 4222f855d023863c274db21cc09a7429f9f2f52ab55fa07dc985aaf81dc0724c
 ---
 
 # Doctrine Manifest
