@@ -15,8 +15,10 @@ import {
 import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
 import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
+  assertFleetState,
   canonicalFilesystemIdentity,
   captureIsolatedGitWorktreeIdentity,
+  isFencedLegacyAssignment,
   mutateFleetState,
   reconcileFrontier,
   verifyActiveAssignmentIdentities,
@@ -758,24 +760,33 @@ export function continueWithFreshWorker(state, manifest, input) {
 export function releaseAfterValidatedHandoff(state, manifest, input) {
   if (!manifest) throw new Error('confirmed manifest is required for handoff release');
   assertManifestAuthority(state, manifest);
-  verifyActiveAssignmentIdentities(state, manifest);
+  verifyActiveAssignmentIdentities(state, manifest, { allowFencedLegacy: true });
   const record = state.issues?.[input.issue];
   const issue = manifestIssue(manifest, input.issue);
   if (!record?.assignment?.active || record.status !== 'active') {
     throw new Error('handoff release requires an active prior assignment');
   }
-  verifyPersistedGitWorktreeIdentity(
-    record.assignment.worktreeIdentity,
-    manifest.repository.root,
-    record.assignment.branch,
-  );
-  verifyPersistedAssignmentRevisions(
-    manifest.repository.root,
-    record.assignment.worktree,
-    manifest.repository.baseBranch,
-    record.assignment.baseSha,
-    record.assignment.headSha,
-  );
+  const fencedLegacy = isFencedLegacyAssignment(state, record);
+  if (fencedLegacy) {
+    assertFleetState(state, manifest);
+    if (state.reShepherdQueue.some((entry) =>
+      entry.issue === input.issue && entry.action === 'await-safe-ownership-transition')) {
+      throw new Error('legacy handoff release requires explicit reconciliation of the queued publication revision');
+    }
+  } else {
+    verifyPersistedGitWorktreeIdentity(
+      record.assignment.worktreeIdentity,
+      manifest.repository.root,
+      record.assignment.branch,
+    );
+    verifyPersistedAssignmentRevisions(
+      manifest.repository.root,
+      record.assignment.worktree,
+      manifest.repository.baseBranch,
+      record.assignment.baseSha,
+      record.assignment.headSha,
+    );
+  }
   if (!['stalled', 'exhausted', 'timed-out', 'crashed', 'cancelled'].includes(input.reason)) {
     throw new Error('handoff release reason is not a terminal worker condition');
   }
@@ -858,9 +869,9 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
   } else if (queuedRevision) {
     next.reShepherdQueue = next.reShepherdQueue.filter((entry) => entry.issue !== input.issue);
   }
-  next.issues[input.issue].status = releaseReason === 'timed-out' ? 'timed-out' : 'blocked';
+  next.issues[input.issue].status = releaseReason === 'timed-out' && !fencedLegacy ? 'timed-out' : 'blocked';
   next.issues[input.issue].statusReason = releaseReason;
-  next.issues[input.issue].terminalDisposition = releaseReason === 'timed-out'
+  next.issues[input.issue].terminalDisposition = releaseReason === 'timed-out' && !fencedLegacy
     ? 'timed-out-with-handoff'
     : 'blocked';
   next.issues[input.issue].nextAction = input.nextAction ?? (queuedRevision && releaseReason !== 'timed-out'
@@ -868,7 +879,7 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
       ? 'consume-fresh-re-shepherd-receipt'
       : 'rerun-quality-and-provider-observation'
     : 'await-human-direction');
-  next.issues[input.issue].checkActivity = null;
+  if (!fencedLegacy) next.issues[input.issue].checkActivity = null;
   next.events.push({
     type: 'assignment-released-after-handoff',
     issue: input.issue,

@@ -26,6 +26,25 @@ import { deriveFleetDisposition } from '../fleet-disposition/fleet-disposition.m
 import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
 
 export const FLEET_STATE_SCHEMA_VERSION = 5;
+const WORKTREE_IDENTITY_FIELDS = [
+  'path', 'key', 'device', 'inode', 'repositoryRoot', 'primaryWorktree',
+  'gitCommonDirectory', 'gitDirectory', 'branchRef',
+];
+
+function assertWorktreeIdentitySchema(identity) {
+  const version = identity?.schemaVersion ?? 1;
+  if (![1, 2].includes(version) || (version === 1 && Object.hasOwn(identity ?? {}, 'schemaVersion'))) {
+    throw new Error('unsupported worktree identity schema');
+  }
+  exactKeys(identity, [
+    ...WORKTREE_IDENTITY_FIELDS,
+    ...(version === 2 ? ['schemaVersion', 'birthtimeNs'] : []),
+  ], 'persisted worktree identity');
+  if (version === 2 && !/^[1-9][0-9]*$/u.test(identity.birthtimeNs)) {
+    throw new Error('persisted worktree birthtimeNs must be an exact positive decimal');
+  }
+  return version;
+}
 const ISSUE_STATUSES = new Set([
   'pending', 'active', 'completed', 'blocked', 'failed', 'timed-out', 'deferred',
 ]);
@@ -337,6 +356,10 @@ export function captureIsolatedGitWorktreeIdentity(repositoryRoot, worktree, bra
   if (!candidateStat.isDirectory() || candidateStat.isSymbolicLink()) {
     throw new Error('assignment worktree must be a real directory');
   }
+  if (typeof candidateStat.birthtimeNs !== 'bigint' || candidateStat.birthtimeNs <= 0n) {
+    throw new Error('assignment worktree filesystem creation time is unavailable');
+  }
+  const candidateBirthtimeNs = candidateStat.birthtimeNs.toString();
 
   const expectedBranch = validatedBranchRef(repository.path, branch);
   const repositoryTop = canonicalFilesystemIdentity(
@@ -398,6 +421,8 @@ export function captureIsolatedGitWorktreeIdentity(repositoryRoot, worktree, bra
     key: candidate.key,
     device: candidate.device,
     inode: candidate.inode,
+    birthtimeNs: candidateBirthtimeNs,
+    schemaVersion: 2,
     repositoryRoot: repositoryTop.path,
     primaryWorktree: primary.path,
     gitCommonDirectory: commonDirectory.path,
@@ -469,10 +494,9 @@ export function verifyPersistedAssignmentRevisions(
 }
 
 export function verifyPersistedGitWorktreeIdentity(identity, repositoryRoot, branch) {
-  exactKeys(identity, [
-    'path', 'key', 'device', 'inode', 'repositoryRoot', 'primaryWorktree',
-    'gitCommonDirectory', 'gitDirectory', 'branchRef',
-  ], 'persisted worktree identity');
+  if (assertWorktreeIdentitySchema(identity) === 1) {
+    throw new Error('legacy worktree identity is untrusted; explicit stopped-owner recovery is required');
+  }
   const current = captureIsolatedGitWorktreeIdentity(repositoryRoot, identity.path, branch);
   if (!same(identity, current)) {
     throw new Error('persisted worktree filesystem or Git identity changed');
@@ -480,12 +504,27 @@ export function verifyPersistedGitWorktreeIdentity(identity, repositoryRoot, bra
   return current;
 }
 
-export function verifyActiveAssignmentIdentities(state, manifest) {
+export function isFencedLegacyAssignment(state, record) {
+  const assignment = record?.assignment;
+  return assignment?.active === true
+    && assertWorktreeIdentitySchema(assignment.worktreeIdentity) === 1
+    && record.statusReason === 'legacy-worktree-identity-fenced'
+    && record.handoffObligation?.reason === 'handoff-required'
+    && state.events.some((event) =>
+      event.type === 'legacy-worktree-identity-fenced'
+      && event.issue === record.identity
+      && event.generation === assignment.generation
+      && event.workerContext === assignment.workerContext
+      && nonEmpty(event.evidence));
+}
+
+export function verifyActiveAssignmentIdentities(state, manifest, { allowFencedLegacy = false } = {}) {
   for (const record of Object.values(state.issues ?? {})) {
     if (record.status !== 'active' && record.assignment?.active !== true) continue;
     if (record.status !== 'active' || record.assignment?.active !== true) {
       throw new Error(`${record.identity} active ownership state is inconsistent`);
     }
+    if (allowFencedLegacy && isFencedLegacyAssignment(state, record)) continue;
     verifyPersistedGitWorktreeIdentity(
       record.assignment.worktreeIdentity,
       manifest.repository.root,
@@ -500,6 +539,44 @@ function exactKeys(actual, expected, label) {
   if (!same(left, right)) {
     throw new Error(`${label} keys differ: expected ${right.join(', ')}, received ${left.join(', ')}`);
   }
+}
+
+function isJsonValue(value, ancestors = new Set()) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (!value || typeof value !== 'object' || ancestors.has(value)) return false;
+
+  ancestors.add(value);
+  let valid;
+  if (Array.isArray(value)) {
+    const keys = Object.keys(value);
+    valid = Object.getOwnPropertySymbols(value).length === 0
+      && keys.length === value.length
+      && keys.every((key, index) => key === String(index)
+        && Object.getOwnPropertyDescriptor(value, key)?.get === undefined
+        && Object.getOwnPropertyDescriptor(value, key)?.set === undefined
+        && isJsonValue(value[index], ancestors));
+  } else {
+    valid = Object.getPrototypeOf(value) === Object.prototype
+      && Object.getOwnPropertySymbols(value).length === 0
+      && Object.values(Object.getOwnPropertyDescriptors(value)).every((descriptor) =>
+        descriptor.enumerable
+          && descriptor.get === undefined
+          && descriptor.set === undefined
+          && isJsonValue(descriptor.value, ancestors));
+  }
+  ancestors.delete(value);
+  return valid;
+}
+
+function assertStrategyState(strategyState) {
+  if (strategyState === null) return;
+  if (!strategyState || typeof strategyState !== 'object' || Array.isArray(strategyState)) {
+    throw new Error('strategy state must be null or an extension envelope');
+  }
+  exactKeys(strategyState, ['namespace', 'value'], 'strategy state');
+  if (!nonEmpty(strategyState.namespace)) throw new Error('strategy state namespace is invalid');
+  if (!isJsonValue(strategyState.value)) throw new Error('strategy state value must be JSON serializable');
 }
 
 function assertStateManifestAuthority(state, manifest, label) {
@@ -517,7 +594,7 @@ function assignmentList(state) {
   ]);
 }
 
-function assertAssignment(assignment, issue, manifest, state, { active }) {
+function assertAssignment(assignment, issue, manifest, state, { active, recoverLegacy = false }) {
   if (!assignment || typeof assignment !== 'object' || Array.isArray(assignment)) {
     throw new Error(`${issue} assignment must be an object`);
   }
@@ -548,7 +625,8 @@ function assertAssignment(assignment, issue, manifest, state, { active }) {
   if (worktreeIdentity.path !== assignment.worktree) {
     throw new Error(`${issue.identity} assignment worktree is not canonical`);
   }
-  if (active) {
+  const identityVersion = assertWorktreeIdentitySchema(assignment.worktreeIdentity);
+  if (active && !(recoverLegacy && identityVersion === 1)) {
     try {
       verifyPersistedGitWorktreeIdentity(
         assignment.worktreeIdentity,
@@ -559,10 +637,6 @@ function assertAssignment(assignment, issue, manifest, state, { active }) {
       throw new Error(`${issue.identity} active assignment worktree changed: ${error.message}`);
     }
   } else {
-    exactKeys(assignment.worktreeIdentity, [
-      'path', 'key', 'device', 'inode', 'repositoryRoot', 'primaryWorktree',
-      'gitCommonDirectory', 'gitDirectory', 'branchRef',
-    ], `${issue.identity} archived worktree identity`);
     if (assignment.worktreeIdentity.path !== assignment.worktree
         || assignment.worktreeIdentity.branchRef !== `refs/heads/${assignment.branch}`) {
       throw new Error(`${issue.identity} archived assignment worktree identity is inconsistent`);
@@ -964,7 +1038,7 @@ function assertPipeline(record, manifest, state) {
   }
 }
 
-function assertIssueRecord(record, issue, manifest, state) {
+function assertIssueRecord(record, issue, manifest, state, recoverLegacy = false) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw new Error(`fleet state issue ${issue.identity} must be an object`);
   }
@@ -1020,7 +1094,9 @@ function assertIssueRecord(record, issue, manifest, state) {
     }
   }
   if (record.status === 'active') {
-    assertAssignment(record.assignment, issue, manifest, state, { active: true });
+    assertAssignment(record.assignment, issue, manifest, state, {
+      active: true, recoverLegacy: recoverLegacy || isFencedLegacyAssignment(state, record),
+    });
     if (record.assignment.branch !== record.branch
         || record.assignment.worktree !== record.worktree
         || record.assignment.baseSha !== record.baseSha
@@ -1099,8 +1175,9 @@ function assertIssueRecord(record, issue, manifest, state) {
         || (record.checkActivity.kind === 'shepherd-check'
           && record.checkActivity.generation !== record.readinessGeneration)
         || (record.checkActivity.state === 'blocked'
-          ? (record.checkActivity.kind !== 'shepherd-check'
-            || record.checkActivity.blocker !== 'sibling-merge-watermark')
+          ? (record.checkActivity.blocker !== 'legacy-worktree-identity-fenced'
+            && (record.checkActivity.kind !== 'shepherd-check'
+              || record.checkActivity.blocker !== 'sibling-merge-watermark'))
           : record.checkActivity.state !== 'active')) {
       throw new Error(`${issue.identity} check activity is malformed`);
     }
@@ -1274,6 +1351,7 @@ export function createFleetState(manifest, runId, now = new Date().toISOString()
     unresolvedHumanDecisions: [],
     fleetDisposition: exhaustedFields.length ? 'budget-exhausted' : null,
     events: [],
+    strategyState: null,
   };
   return applyFrontier(state, computeFrontier(manifest, state));
 }
@@ -1312,16 +1390,23 @@ function assertSchedulerCollections(state, manifest) {
 }
 
 export function assertFleetState(state, manifest) {
+  return validateFleetState(state, manifest);
+}
+
+function validateFleetState(state, manifest, recoverLegacy = false) {
   assertFleetManifest(manifest);
   if (state?.schemaVersion !== FLEET_STATE_SCHEMA_VERSION) throw new Error('unsupported fleet state schema');
-  exactKeys(state, [
+  const fleetStateFields = [
     'schemaVersion', 'revision', 'runId', 'manifestDigest',
     'providerConfigurationDigest', 'createdAt', 'updatedAt', 'issues',
     'readyFrontier', 'blockedSet', 'activeCapacity', 'completedWork',
     'observedHumanMerges', 'expiredReadinessClaims', 'reShepherdQueue',
     'publications', 'issueSetObservation', 'budgetUse', 'control', 'unresolvedHumanDecisions',
     'fleetDisposition', 'events',
-  ], 'fleet state');
+  ];
+  if (Object.hasOwn(state ?? {}, 'strategyState')) fleetStateFields.push('strategyState');
+  exactKeys(state, fleetStateFields, 'fleet state');
+  if (Object.hasOwn(state, 'strategyState')) assertStrategyState(state.strategyState);
   if (state.manifestDigest !== manifest.digest) throw new Error('fleet state manifest digest mismatch');
   if (state.providerConfigurationDigest !== manifest.providerConfigurationDigest) {
     throw new Error('fleet state provider configuration digest mismatch');
@@ -1385,7 +1470,7 @@ export function assertFleetState(state, manifest) {
   if (new Set(publicationInvocationIds).size !== publicationInvocationIds.length) {
     throw new Error('fleet state contains duplicate publication invocation identities');
   }
-  for (const issue of manifest.issues) assertIssueRecord(state.issues[issue.identity], issue, manifest, state);
+  for (const issue of manifest.issues) assertIssueRecord(state.issues[issue.identity], issue, manifest, state, recoverLegacy);
   assertSchedulerCollections(state, manifest);
   for (const issue of manifest.issues) {
     const record = state.issues[issue.identity];
@@ -1619,7 +1704,7 @@ function commitSlotPath(file, revision) {
   return `${file}${COMMIT_SLOT_SUFFIX}${revision}`;
 }
 
-function readStateFile(file, manifest, expectedRevision = null) {
+function readStateFile(file, manifest, expectedRevision = null, recoverLegacy = false) {
   const handle = openVerifiedRegularFile(file);
   try {
     const stat = fs.fstatSync(handle, { bigint: true });
@@ -1627,7 +1712,7 @@ function readStateFile(file, manifest, expectedRevision = null) {
     if (stat.nlink < 1n || stat.nlink > 2n) {
       throw new Error('fleet state file has an unsafe hard-link count');
     }
-    const state = assertFleetState(JSON.parse(fs.readFileSync(handle, 'utf8')), manifest);
+    const state = validateFleetState(JSON.parse(fs.readFileSync(handle, 'utf8')), manifest, recoverLegacy);
     assertFleetStatePath(
       path.join(path.dirname(file), 'fleet-state.json'),
       manifest,
@@ -1644,7 +1729,7 @@ function readStateFile(file, manifest, expectedRevision = null) {
   }
 }
 
-function highestCommitSlot(file, manifest) {
+function highestCommitSlot(file, manifest, recoverLegacy = false) {
   const directory = path.dirname(file);
   let entries;
   try {
@@ -1671,14 +1756,14 @@ function highestCommitSlot(file, manifest) {
   const highest = slots[0];
   return {
     ...highest,
-    state: readStateFile(highest.path, manifest, highest.revision),
+    state: readStateFile(highest.path, manifest, highest.revision, recoverLegacy),
   };
 }
 
-function authoritativeFleetState(file, manifest) {
-  const slot = highestCommitSlot(file, manifest);
+function authoritativeFleetState(file, manifest, recoverLegacy = false) {
+  const slot = highestCommitSlot(file, manifest, recoverLegacy);
   if (slot) return slot;
-  return { path: file, revision: null, state: readStateFile(file, manifest) };
+  return { path: file, revision: null, state: readStateFile(file, manifest, null, recoverLegacy) };
 }
 
 export function loadFleetState(file, manifest) {
@@ -2059,10 +2144,10 @@ function prepareFleetStatePath(file, manifest, runId) {
   return chain;
 }
 
-function readLockedState(file, expectedRevision, manifest) {
+function readLockedState(file, expectedRevision, manifest, recoverLegacy = false) {
   let authoritative;
   try {
-    authoritative = authoritativeFleetState(file, manifest);
+    authoritative = authoritativeFleetState(file, manifest, recoverLegacy);
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
     if (expectedRevision !== 0) {
@@ -2253,6 +2338,10 @@ export function persistFleetState(file, state, expectedRevision, manifest, optio
 }
 
 export function mutateFleetState(file, manifest, expectedRevision, mutate, options = {}) {
+  return mutateFleetStateInternal(file, manifest, expectedRevision, mutate, options);
+}
+
+function mutateFleetStateInternal(file, manifest, expectedRevision, mutate, options, recoverLegacy = false) {
   if (!manifest) throw new Error('manifest is required for every fleet state mutation');
   assertFleetManifest(manifest);
   const runId = path.basename(path.dirname(file));
@@ -2261,7 +2350,7 @@ export function mutateFleetState(file, manifest, expectedRevision, mutate, optio
     throw new Error('expected fleet state revision is invalid');
   }
   if (typeof mutate !== 'function') throw new Error('fleet state mutator is required');
-  if (!readLockedState(file, expectedRevision, manifest)) {
+  if (!readLockedState(file, expectedRevision, manifest, recoverLegacy)) {
     throw new Error('fleet state mutation requires an existing state file');
   }
   return withFleetStateLock(file, manifest, runId, expectedRevision, options, (
@@ -2270,7 +2359,7 @@ export function mutateFleetState(file, manifest, expectedRevision, mutate, optio
     ownership,
     directoryChain,
   ) => {
-    const disk = readLockedState(file, expectedRevision, manifest);
+    const disk = readLockedState(file, expectedRevision, manifest, recoverLegacy);
     if (!disk) throw new Error('fleet state mutation requires an existing state file');
     assertFleetStatePath(file, manifest, disk.runId);
     const next = mutate(structuredClone(disk));
@@ -2290,6 +2379,68 @@ export function mutateFleetState(file, manifest, expectedRevision, mutate, optio
       directoryChain,
     );
   });
+}
+
+export function recoverLegacyAssignmentsPersisted(file, manifest, expectedRevision, stoppedOwners, options = {}) {
+  if (!Array.isArray(stoppedOwners) || stoppedOwners.length === 0) {
+    throw new Error('legacy recovery requires explicit stopped-owner acknowledgments');
+  }
+  return mutateFleetStateInternal(file, manifest, expectedRevision, (state) => {
+    const legacy = Object.values(state.issues).filter((record) =>
+      record.assignment?.active && assertWorktreeIdentitySchema(record.assignment.worktreeIdentity) === 1);
+    if (legacy.length !== stoppedOwners.length) throw new Error('acknowledge exactly every active legacy owner');
+    for (const record of legacy) {
+      const assignment = record.assignment;
+      const acknowledgment = stoppedOwners.filter((entry) => entry.issue === record.identity);
+      if (acknowledgment.length !== 1 || acknowledgment[0].stopped !== true
+          || acknowledgment[0].generation !== assignment.generation
+          || acknowledgment[0].workerContext !== assignment.workerContext
+          || !nonEmpty(acknowledgment[0].evidence)) {
+        throw new Error('legacy recovery requires exact stopped-owner identity and evidence');
+      }
+      const requiredAt = options.now ?? new Date().toISOString();
+      if (!validTimestamp(requiredAt)) throw new Error('legacy recovery time is invalid');
+      const hasObligations = record.pipeline.length || Object.keys(record.qualityEvidence).length
+        || record.changeRequest || record.checkActivity || record.handoffObligation
+        || record.shepherd || record.shepherdDecision || record.setObligation
+        || state.publications.some((entry) => entry.issue === record.identity)
+        || state.reShepherdQueue.some((entry) => entry.issue === record.identity)
+        || state.control.cancelled || state.control.budgetExhausted;
+      if (hasObligations) {
+        // Retain the ownership reservation until its real handoff is captured.
+        record.handoffObligation ??= {
+          state: 'blocked', reason: 'handoff-required',
+          condition: state.control.cancelled ? 'cancelled'
+            : state.control.budgetExhausted ? 'exhausted' : 'stalled',
+          generation: assignment.generation, workerContext: assignment.workerContext,
+          requiredAt,
+        };
+        if (record.checkActivity?.state === 'active') {
+          state.events.push({
+            type: 'legacy-check-activity-fenced', issue: record.identity,
+            activity: structuredClone(record.checkActivity),
+          });
+          record.checkActivity.state = 'blocked';
+          record.checkActivity.blocker = 'legacy-worktree-identity-fenced';
+        }
+        record.nextAction = 'capture-validated-orchestration-handoff';
+      } else {
+        record.continuationChain.push({
+          ...assignment, active: false, endReason: 'blocked', endedAt: requiredAt,
+        });
+        record.assignment = null;
+        record.status = 'pending';
+        record.nextAction = 'assign-fresh-worker-and-worktree';
+      }
+      record.statusReason = 'legacy-worktree-identity-fenced';
+      state.events.push({
+        type: 'legacy-worktree-identity-fenced', issue: record.identity,
+        generation: assignment.generation, workerContext: assignment.workerContext,
+        evidence: acknowledgment[0].evidence,
+      });
+    }
+    return reconcileFrontier(state, manifest, computeFrontier(manifest, state));
+  }, options, true);
 }
 
 export function recordSourceRevisionObservation(state, manifest, issue, receipt, now = new Date().toISOString()) {
@@ -2362,7 +2513,7 @@ export function recordIssueSetObservation(
 
 export function reconcileFrontier(state, manifest, frontier) {
   assertStateManifestAuthority(state, manifest, 'frontier reconciliation state');
-  verifyActiveAssignmentIdentities(state, manifest);
+  verifyActiveAssignmentIdentities(state, manifest, { allowFencedLegacy: true });
   const expected = computeFrontier(manifest, state);
   if (frontier !== undefined && !same(frontier, expected)) {
     throw new Error('caller-supplied scheduler frontier differs from semantic recomputation');

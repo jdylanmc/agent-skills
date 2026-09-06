@@ -8,12 +8,18 @@ import { fileURLToPath } from 'node:url';
 import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
   assertFleetState,
+  cancelFleet,
+  consumeBudget,
   createFleetState,
   fleetStatePath,
   loadFleetState,
   persistFleetState,
   recordSourceRevisionObservation,
+  recoverLegacyAssignmentsPersisted,
+  transitionIssue,
+  startCheckActivity,
 } from '../fleet-state/fleet-state.mjs';
+import { publicationKey } from '../provider-seam/provider-seam.mjs';
 import {
   FORBIDDEN_AUTHORITIES,
   assignFreshWorker,
@@ -443,6 +449,213 @@ test('rejects delete-and-recreate of an assigned worktree at the same path', (t)
     () => assertFleetState(current, manifest),
     /persisted worktree filesystem or Git identity changed/,
   );
+});
+
+test('rejects a recreated worktree even when the filesystem reuses the same device and inode', (t) => {
+  // Some filesystems (observed on Linux ext4 in CI) can hand a freshly (re)created
+  // directory the exact same device/inode pair a deleted directory just released,
+  // especially when the deletion and recreation happen back to back. Device+inode
+  // alone is then insufficient to prove the worktree at a path is still the same
+  // directory instance. This test simulates that exact collision — real device and
+  // inode held constant, only the directory's filesystem creation time advances,
+  // which is what actually happens on a real delete-and-recreate regardless of
+  // whether the OS reuses the inode number — and proves the identity check still
+  // rejects it, independent of whatever inode-reuse behavior the host OS has.
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const current = assigned();
+  const resolvedWorktree = fs.realpathSync.native
+    ? fs.realpathSync.native(WORKTREE_A)
+    : fs.realpathSync(WORKTREE_A);
+  const realLstatSync = fs.lstatSync;
+  t.mock.method(fs, 'lstatSync', (targetPath, options) => {
+    const stat = realLstatSync(targetPath, options);
+    if (!options?.bigint || path.resolve(String(targetPath)) !== resolvedWorktree) return stat;
+    return Object.create(Object.getPrototypeOf(stat), {
+      ...Object.getOwnPropertyDescriptors(stat),
+      birthtimeNs: { value: stat.birthtimeNs + 1_000_000_000n, enumerable: true, configurable: true },
+    });
+  });
+  assert.throws(
+    () => assertFleetState(current, manifest),
+    /persisted worktree filesystem or Git identity changed/,
+  );
+});
+
+test('schema-v5 legacy active ownership is fenced explicitly before a fresh durable assignment', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const legacy = assigned();
+  legacy.revision = 1;
+  delete legacy.issues.a.assignment.worktreeIdentity.birthtimeNs;
+  delete legacy.issues.a.assignment.worktreeIdentity.schemaVersion;
+  const historicalIdentity = structuredClone(legacy.issues.a.assignment.worktreeIdentity);
+  const file = fleetStatePath(REPOSITORY, 'run');
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, JSON.stringify(legacy), { mode: 0o600 });
+  fs.linkSync(file, `${file}.commit-r1`);
+  assert.equal(legacy.schemaVersion, 5);
+  assert.throws(() => loadFleetState(file, manifest), /legacy worktree identity is untrusted/);
+  assert.throws(() => persistFleetState(file, legacy, 1, manifest), /legacy worktree identity is untrusted/);
+  const acknowledgment = {
+    issue: 'a', generation: 1, workerContext: 'worker-1', stopped: true,
+    evidence: 'runtime confirms worker-1 stopped before ownership fencing',
+  };
+  assert.throws(() => recoverLegacyAssignmentsPersisted(file, manifest, 1, [{
+    ...acknowledgment, stopped: false,
+  }]), /stopped-owner identity/);
+  const recovered = recoverLegacyAssignmentsPersisted(file, manifest, 1, [acknowledgment]);
+  assert.equal(recovered.issues.a.status, 'pending');
+  assert.equal(recovered.issues.a.assignment, null);
+  assert.deepEqual(recovered.issues.a.continuationChain[0].worktreeIdentity, historicalIdentity);
+  assert.equal(Object.hasOwn(recovered.issues.a.continuationChain[0].worktreeIdentity, 'birthtimeNs'), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(`${file}.commit-r1`, 'utf8')), legacy);
+  assert.throws(() => recoverLegacyAssignmentsPersisted(file, manifest, 1, [acknowledgment]), /revision conflict/);
+  const reassigned = assignFreshWorkerPersisted(file, manifest, {
+    issue: 'a', branch: 'issue-b', worktree: WORKTREE_B, workerContext: 'worker-fresh',
+    baseSha: currentRevision(), headSha: currentRevision(),
+    packet: packet('a', 'issue-b', WORKTREE_B),
+    schedulerLease: createSchedulerLease(recovered, manifest, 'a'),
+  });
+  assert.equal(reassigned.issues.a.assignment.generation, 2);
+  assert.equal(reassigned.issues.a.assignment.worktreeIdentity.schemaVersion, 2);
+  assert.match(reassigned.issues.a.assignment.worktreeIdentity.birthtimeNs, /^[1-9][0-9]*$/u);
+  assert.deepEqual(loadFleetState(file, manifest), reassigned);
+});
+
+test('schema-v5 archived legacy evidence reloads unchanged without invented birthtime', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const archived = transitionIssue(assigned(), manifest, 'a', 'blocked', {
+    reason: 'pre-change blocked assignment', terminalDisposition: 'blocked',
+    assignmentEnd: { generation: 1, workerContext: 'worker-1', reason: 'blocked' },
+  });
+  const identity = archived.issues.a.continuationChain[0].worktreeIdentity;
+  delete identity.birthtimeNs;
+  delete identity.schemaVersion;
+  const file = fleetStatePath(REPOSITORY, 'run');
+  persistFleetState(file, archived, 0, manifest);
+  const loaded = loadFleetState(file, manifest);
+  assert.deepEqual(loaded.issues.a.continuationChain[0].worktreeIdentity, identity);
+  assert.equal(Object.hasOwn(loaded.issues.a.continuationChain[0].worktreeIdentity, 'birthtimeNs'), false);
+});
+
+test('schema-v5 obligated legacy owners recover without losing provenance', async (t) => {
+  for (const stage of ['quality', 'shepherd-check', 'publication-intent', 'published-handoff', 'timed-out', 'cancelled', 'budget']) {
+    await t.test(stage, (t) => {
+      fs.rmSync(SANDBOX, { recursive: true, force: true });
+      t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+      setRuntimeTemp(t);
+      let legacy = assigned();
+      legacy.issues.a.pipeline = [{
+        stage: 'implementation',
+        evidence: {
+          baseSha: currentRevision(), headSha: currentRevision(),
+          complete: true, terminal: true, status: 'completed',
+          completedAt: '2026-08-30T00:02:10Z',
+        },
+      }];
+      legacy.issues.a.qualityEvidence = { implementation: structuredClone(legacy.issues.a.pipeline[0].evidence) };
+      legacy = startCheckActivity(legacy, manifest, 'a',
+        stage === 'shepherd-check' ? 'shepherd-check' : 'quality-check', '2026-08-30T00:02:11Z');
+      if (stage === 'publication-intent' || stage === 'published-handoff') {
+        const published = stage === 'published-handoff';
+        const publication = {
+          manifestDigest: manifest.digest, providerConfigurationDigest: manifest.providerConfigurationDigest,
+          provider: 'github', repository: 'owner/repo', issue: 'a', sourceRevision: 'r-a',
+          headBranch: 'issue-a', baseBranch: 'main',
+        };
+        publication.key = publicationKey(publication);
+        publication.identifier = published ? 'PR-197' : null;
+        publication.observations = [{
+          baseSha: currentRevision(), headSha: currentRevision(),
+          state: published ? 'confirmed' : 'intent-recorded',
+          intentAt: '2026-08-30T00:02:12Z',
+          confirmedAt: published ? '2026-08-30T00:02:13Z' : null,
+          attempts: published ? [{
+            invocation: { id: 'publish-a', operation: 'publish-change-request', providerKey: publication.key },
+            status: 'published', observedAt: '2026-08-30T00:02:13Z',
+            terminal: true, complete: true, provider: 'github', repository: 'owner/repo',
+            issue: 'a', baseBranch: 'main', headBranch: 'issue-a',
+            baseSha: currentRevision(), headSha: currentRevision(), identifier: 'PR-197',
+          }] : [],
+        }];
+        legacy.publications.push(publication);
+        if (published) {
+          legacy.issues.a.changeRequest = {
+            identifier: 'PR-197', provider: 'github', repository: 'owner/repo',
+            baseBranch: 'main', headBranch: 'issue-a',
+            baseSha: currentRevision(), headSha: currentRevision(), publicationKey: publication.key,
+          };
+          legacy = transitionIssue(legacy, manifest, 'a', 'blocked', {
+            assignmentEnd: { generation: 1, workerContext: 'worker-1', reason: 'crashed' },
+          });
+        }
+      }
+      if (stage === 'cancelled') legacy = cancelFleet(legacy, manifest, 'operator stop');
+      if (stage === 'budget') legacy = consumeBudget(legacy, manifest, { cost: 10 }).state;
+      if (stage === 'timed-out') {
+        legacy = transitionIssue(legacy, manifest, 'a', 'timed-out', {
+          assignmentEnd: { generation: 1, workerContext: 'worker-1', reason: 'timed-out' },
+        });
+      }
+      assertFleetState(legacy, manifest);
+      legacy.revision = 1;
+      const staleWorker = structuredClone(legacy);
+      delete legacy.issues.a.assignment.worktreeIdentity.schemaVersion;
+      delete legacy.issues.a.assignment.worktreeIdentity.birthtimeNs;
+      const before = structuredClone(legacy);
+      const file = fleetStatePath(REPOSITORY, 'run');
+      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+      fs.writeFileSync(file, JSON.stringify(legacy), { mode: 0o600 });
+      const recovered = recoverLegacyAssignmentsPersisted(file, manifest, 1, [{
+        issue: 'a', generation: 1, workerContext: 'worker-1', stopped: true,
+        evidence: 'runtime confirmed stopped legacy worker',
+      }]);
+      assert.deepEqual(loadFleetState(file, manifest), recovered);
+      for (const field of ['pipeline', 'qualityEvidence', 'changeRequest', 'assignment', 'setObligation']) {
+        assert.deepEqual(recovered.issues.a[field], before.issues.a[field], field);
+      }
+      for (const field of ['publications', 'budgetUse', 'control', 'fleetDisposition']) {
+        assert.deepEqual(recovered[field], before[field], field);
+      }
+      assert.equal(recovered.issues.a.statusReason, 'legacy-worktree-identity-fenced');
+      assert.equal(recovered.issues.a.checkActivity.state, 'blocked');
+      assert.equal(recovered.issues.a.nextAction, 'capture-validated-orchestration-handoff');
+      if (before.issues.a.handoffObligation) {
+        assert.deepEqual(recovered.issues.a.handoffObligation, before.issues.a.handoffObligation);
+      }
+      assert.throws(() => persistFleetState(file, before, 1, manifest), /legacy worktree identity/);
+      assert.throws(() => persistFleetState(file, staleWorker, 1, manifest), /revision conflict/);
+      assert.throws(() => continueWithFreshWorker(recovered, manifest, { issue: 'a' }), /legacy worktree identity/);
+      assert.throws(() => transitionIssue(recovered, manifest, 'a', 'failed', {}), /legacy worktree identity/);
+      const payload = handoffPayload('fleet-owner');
+      payload.inputs.find((entry) => entry.name === 'state_revision').value = String(recovered.revision);
+      const handoff = persistOrchestrationHandoff(payload, { now: new Date('2026-08-30T00:04:00Z') });
+      const release = {
+        issue: 'a', reason: 'stalled', targetAgent: 'fleet-owner',
+        handoff, handoffPayload: payload, endedAt: '2026-08-30T00:05:00Z',
+      };
+      assert.throws(() => releaseAfterValidatedHandoff(before, manifest, release), /legacy worktree identity/);
+      assert.throws(() => releaseAfterValidatedHandoff(recovered, manifest, {
+        ...release, handoff: { ...handoff, bytes: handoff.bytes + 1 },
+      }), /invalid orchestration handoff/);
+      const released = releaseAfterValidatedHandoff(recovered, manifest, release);
+      assert.equal(released.issues.a.assignment, null);
+      assert.equal(released.issues.a.handoffObligation, null);
+      assert.equal(released.issues.a.status, 'blocked');
+      assert.deepEqual(released.issues.a.checkActivity, recovered.issues.a.checkActivity);
+      assert.deepEqual(released.issues.a.changeRequest, before.issues.a.changeRequest);
+      assert.deepEqual(released.publications, before.publications);
+      assert.deepEqual(released.budgetUse, before.budgetUse);
+      assert.deepEqual(released.control, before.control);
+      assert.equal(released.fleetDisposition, before.fleetDisposition);
+      assert.deepEqual(released.issues.a.continuationChain.at(-1).worktreeIdentity,
+        before.issues.a.assignment.worktreeIdentity);
+      persistFleetState(file, released, recovered.revision, manifest);
+      assert.equal(loadFleetState(file, manifest).issues.a.status, 'blocked');
+    });
+  }
 });
 
 test('rejects continuation and release after the assigned Git HEAD moves', (t) => {
