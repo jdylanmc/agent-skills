@@ -513,13 +513,14 @@ test('the diff audit rejects a non-array change set', () => {
       fs.writeFileSync(path.join(root, 'CHANGELOG.md'), next);
       const entry = companion('CHANGELOG.md', 'changelog', previous, next);
       assert.equal(auditRepositoryDiff(root, 'existing-skill', base, { companions: [entry] }).clean, true);
-      fs.writeFileSync(path.join(root, 'untracked\nfile.md'), 'untracked');
+      const untrackedPath = process.platform === 'win32' ? 'untracked file.md' : 'untracked\nfile.md';
+      fs.writeFileSync(path.join(root, untrackedPath), 'untracked');
       git(root, 'mv', 'skills/existing-skill/intent.md', 'foreign-intent.md');
       const audit = auditRepositoryDiff(root, 'existing-skill', base, { companions: [entry] });
       assert.equal(audit.clean, false);
       assert.deepEqual(audit.classified.map((item) => item.path), [
         'CHANGELOG.md', 'foreign-intent.md', 'skills/existing-skill/SKILL.md',
-        'skills/existing-skill/intent.md', 'untracked\nfile.md',
+        'skills/existing-skill/intent.md', untrackedPath,
       ]);
       fs.appendFileSync(path.join(root, 'CHANGELOG.md'), 'unrecorded drift\n');
       assert.equal(code(() => auditRepositoryDiff(root, 'existing-skill', base, { companions: [entry] })),
