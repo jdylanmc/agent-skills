@@ -170,9 +170,9 @@ below is unreleased and no comparison links are available.
   handed to `shepherd` as a real invocation the run waits on, naming the branch,
   the commits it was landable against, and when that was observed; a run that
   could not hand it over reports blocked with the target rather than reporting
-  it as delivered. `shepherd` keeps an existing change request landable —
-  mergeable and green — across any git provider, and treats a base that
-  advanced as a rebase trigger when that base requires a change request to
+  it as delivered. `shepherd` keeps an observable existing change request landable —
+  mergeable and green — through its supported hosted adapters, and treats a base that
+  advanced as a maintenance trigger when that base requires a change request to
   contain it.
 - **Quality assurance design.** `qa-design` turns a specification into the
   contract that says how its behavior will be proven: behavior rules with
@@ -328,6 +328,18 @@ below is unreleased and no comparison links are available.
 
 - The four separate roast skills, superseded by the consolidated `roast` entry
   point.
+
+### Fixed
+
+- **Current Shepherd readiness.** Shepherd reads the live base branch rather
+  than historical pull-request metadata and requires complete successful
+  required checks on the current head before reporting readiness. Branch
+  maintenance observes head and base protection and active rulesets, selecting
+  a normal merge update or permitted leased rebase without merging the pull
+  request. Missing Ship provenance permits an explicitly authorized
+  observation-only watch that follows head changes and reports its limits,
+  without acquiring mutation authority or claiming a completed handoff. Green
+  observations keep the watch running. See [#198](https://github.com/jdylanmc/agent-skills/issues/198).
 
 ### Security
 

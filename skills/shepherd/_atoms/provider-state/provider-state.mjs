@@ -55,8 +55,66 @@ export { ProviderCommandError };
  */
 export { normalizeMergeabilitySignal, normalizeUpToDatePolicy, requiresUpToDateBranch };
 
-export const GITHUB_CHECK_IDENTITIES_QUERY = `query($owner: String!, $name: String!, $number: Int!, $head: GitObjectID!) {
+export const GITHUB_LIVE_BASE_QUERY = `query($owner: String!, $name: String!, $ref: String!) {
   repository(owner: $owner, name: $name) {
+    nameWithOwner
+    ref(qualifiedName: $ref) { name prefix target { oid } }
+  }
+}`;
+
+const GITHUB_LIVE_BASE_FIELDS = [
+  '-F', { prefix: 'owner=' },
+  '-F', { prefix: 'name=' },
+  '-F', { prefix: 'ref=' },
+  '-f', { graphqlQueryEquals: `query=${GITHUB_LIVE_BASE_QUERY}` },
+];
+
+const GITHUB_REQUIRED_STATUS_CHECKS_SELECTION = `requiredStatusChecks { context app { databaseId } }`;
+const GITHUB_REQUIRED_STATUS_CHECKS_RULE_PARAMETERS_SELECTION = `... on RequiredStatusChecksParameters {
+  strictRequiredStatusChecksPolicy
+  requiredStatusChecks { context integrationId }
+}`;
+const GITHUB_BRANCH_POLICY_REF_SELECTION = `name prefix target { oid }
+branchProtectionRule {
+  allowsForcePushes requiresLinearHistory requiresStatusChecks
+  requiresStrictStatusChecks lockBranch restrictsPushes requiresApprovingReviews
+  ${GITHUB_REQUIRED_STATUS_CHECKS_SELECTION}
+}
+rules(first: 100) {
+  pageInfo { hasNextPage }
+  nodes {
+    type
+    repositoryRuleset { enforcement }
+    parameters {
+      ${GITHUB_REQUIRED_STATUS_CHECKS_RULE_PARAMETERS_SELECTION}
+    }
+  }
+}`;
+
+export const GITHUB_BRANCH_POLICY_QUERY = `query($owner: String!, $name: String!, $ref: String!) {
+  repository(owner: $owner, name: $name) {
+    nameWithOwner
+    squashMergeAllowed
+    ref(qualifiedName: $ref) {
+      ${GITHUB_BRANCH_POLICY_REF_SELECTION}
+    }
+  }
+}`;
+
+const GITHUB_BRANCH_POLICY_FIELDS = [
+  '-F', { prefix: 'owner=' },
+  '-F', { prefix: 'name=' },
+  '-F', { prefix: 'ref=' },
+  '-f', { graphqlQueryEquals: `query=${GITHUB_BRANCH_POLICY_QUERY}` },
+];
+
+export const GITHUB_CHECK_IDENTITIES_QUERY = `query($owner: String!, $name: String!, $number: Int!, $head: GitObjectID!, $ref: String!) {
+  repository(owner: $owner, name: $name) {
+    nameWithOwner
+    squashMergeAllowed
+    ref(qualifiedName: $ref) {
+      ${GITHUB_BRANCH_POLICY_REF_SELECTION}
+    }
     object(oid: $head) {
       ... on Commit {
         oid
@@ -73,6 +131,7 @@ export const GITHUB_CHECK_IDENTITIES_QUERY = `query($owner: String!, $name: Stri
                 detailsUrl
                 isRequired(pullRequestNumber: $number)
                 checkSuite {
+                  app { databaseId }
                   workflowRun {
                     databaseId
                     runAttempt
@@ -99,6 +158,7 @@ const GITHUB_CHECK_IDENTITY_FIELDS = [
   '-F', { prefix: 'name=' },
   '-F', { prefix: 'number=' },
   '-F', { prefix: 'head=' },
+  '-F', { prefix: 'ref=' },
   '-f', { graphqlQueryEquals: `query=${GITHUB_CHECK_IDENTITIES_QUERY}` },
 ];
 
@@ -119,6 +179,10 @@ export const SANCTIONED_READS = Object.freeze([
   // GitHub provider-native check/run identity from a read-only GraphQL query.
   { tool: 'gh', argv: ['api', 'graphql', ...GITHUB_CHECK_IDENTITY_FIELDS] },
   { tool: 'gh', argv: ['api', 'graphql', '--hostname', { value: true }, ...GITHUB_CHECK_IDENTITY_FIELDS] },
+  { tool: 'gh', argv: ['api', 'graphql', ...GITHUB_LIVE_BASE_FIELDS] },
+  { tool: 'gh', argv: ['api', 'graphql', '--hostname', { value: true }, ...GITHUB_LIVE_BASE_FIELDS] },
+  { tool: 'gh', argv: ['api', 'graphql', ...GITHUB_BRANCH_POLICY_FIELDS] },
+  { tool: 'gh', argv: ['api', 'graphql', '--hostname', { value: true }, ...GITHUB_BRANCH_POLICY_FIELDS] },
 ]);
 
 /** Rejects a command that is not one of this unit's sanctioned reads. */
@@ -151,6 +215,176 @@ function command(detection, operation, tool, args) {
 const GITHUB_TARGET_FIELDS = 'number,url,headRefName,baseRefName,headRefOid,headRepositoryOwner,headRepository,isCrossRepository,isDraft';
 const GITHUB_MERGE_FIELDS = 'number,url,mergeable,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid,headRefOid';
 const GITHUB_CHECK_FIELDS = 'number,url,headRefOid,statusCheckRollup';
+
+function baseRef(branch) {
+  return `refs/heads/${validatedBranchRef(branch)}`;
+}
+
+export function validatedBranchRef(branch) {
+  if (typeof branch !== 'string' || !branch.length
+    || /[\s~^:?*[\]\\]/.test(branch) || branch.includes('..') || branch.includes('@{')
+    || branch.startsWith('-') || branch.startsWith('/') || branch.endsWith('/')
+    || branch.split('/').some((part) => !part || part.startsWith('.') || part.endsWith('.') || part.endsWith('.lock'))) {
+    throw new ProviderCommandError('invalid-branch-ref', 'branch must be a valid short branch name');
+  }
+  return branch;
+}
+
+function requiredCheckDescriptor(name, appId) {
+  if (!present(name)) return null;
+  if (appId !== undefined && appId !== null && (!Number.isInteger(appId) || appId < 1)) {
+    return null;
+  }
+  return { name: String(name), appId: appId ?? null };
+}
+
+function collectRequiredCheckDescriptors(entries, mapEntry) {
+  if (!Array.isArray(entries)) return null;
+  const descriptors = [];
+  const seen = new Set();
+  for (const entry of entries) {
+    const descriptor = mapEntry(entry);
+    if (!descriptor) return null;
+    const key = `${descriptor.name}\u0000${descriptor.appId ?? '*'}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      descriptors.push(descriptor);
+    }
+  }
+  return descriptors;
+}
+
+export function liveBaseCommand(detection, { repository, baseBranch } = {}) {
+  const guard = requireObservableProvider(detection);
+  if (!guard.ok) return refused(guard, 'read-live-base');
+  if (detection.provider !== 'github') {
+    return { ok: false, operation: 'read-live-base', reason: 'live-base-read-unsupported' };
+  }
+  const [owner, name] = normalizeGitHubRepository(repository, detection).split('/').slice(-2);
+  return command(detection, 'read-live-base', 'gh', [
+    'api', 'graphql', ...githubApiHostFlags(detection),
+    '-F', `owner=${owner}`, '-F', `name=${name}`, '-F', `ref=${baseRef(baseBranch)}`,
+    '-f', `query=${GITHUB_LIVE_BASE_QUERY}`,
+  ]);
+}
+
+export function interpretLiveBase(detection, payload, {
+  repository, baseBranch, observedAt = new Date().toISOString(),
+} = {}) {
+  const guard = requireObservableProvider(detection);
+  if (!guard.ok || detection.provider !== 'github') {
+    return unobserved('read-live-base', 'live-base-read-unavailable');
+  }
+  const address = normalizeGitHubRepository(repository, detection);
+  const ref = baseRef(baseBranch);
+  const result = payload?.data?.repository;
+  if (payload?.errors?.length || result?.nameWithOwner !== address.split('/').slice(-2).join('/')
+    || `${result?.ref?.prefix}${result?.ref?.name}` !== ref
+    || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(result?.ref?.target?.oid ?? '')
+    || !Number.isFinite(Date.parse(observedAt))) {
+    return unobserved('read-live-base', 'live-base-identity-or-tip-unobserved');
+  }
+  return {
+    observed: true, identityBound: true, operation: 'read-live-base',
+    repository: address, ref, sha: result.ref.target.oid, observedAt, untrusted: true,
+  };
+}
+
+export function liveBaseIsCurrent(liveBase, target = {}) {
+  return liveBase?.observed === true && liveBase.identityBound === true
+    && typeof target.repository === 'string' && typeof target.baseBranch === 'string'
+    && liveBase.repository === target.repository
+    && liveBase.ref === `refs/heads/${target.baseBranch}`
+    && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(liveBase.sha ?? '')
+    && Number.isFinite(Date.parse(liveBase.observedAt));
+}
+
+export function branchPolicyCommand(detection, { repository, branch } = {}) {
+  const guard = requireObservableProvider(detection);
+  if (!guard.ok) return refused(guard, 'read-branch-policy');
+  if (detection.provider !== 'github') {
+    return { ok: false, operation: 'read-branch-policy', reason: 'branch-policy-read-unsupported' };
+  }
+  const [owner, name] = normalizeGitHubRepository(repository, detection).split('/').slice(-2);
+  return command(detection, 'read-branch-policy', 'gh', [
+    'api', 'graphql', ...githubApiHostFlags(detection),
+    '-F', `owner=${owner}`, '-F', `name=${name}`, '-F', `ref=${baseRef(branch)}`,
+    '-f', `query=${GITHUB_BRANCH_POLICY_QUERY}`,
+  ]);
+}
+
+export function interpretBranchPolicy(detection, payload, {
+  repository, branch, observedAt = new Date().toISOString(),
+} = {}) {
+  const live = interpretLiveBase(detection, payload, { repository, baseBranch: branch, observedAt });
+  const result = payload?.data?.repository;
+  const protection = result?.ref?.branchProtectionRule;
+  const rules = result?.ref?.rules;
+  const protectionFields = [
+    'allowsForcePushes', 'requiresLinearHistory', 'requiresStatusChecks',
+    'requiresStrictStatusChecks', 'lockBranch', 'restrictsPushes', 'requiresApprovingReviews',
+  ];
+  const protectionRequiredChecks = protection === null
+    ? []
+    : collectRequiredCheckDescriptors(
+      protection?.requiredStatusChecks,
+      (check) => requiredCheckDescriptor(check?.context, check?.app?.databaseId),
+    );
+  if (!live.observed || typeof result.squashMergeAllowed !== 'boolean'
+    || (protection !== null && !protectionFields.every((field) => typeof protection?.[field] === 'boolean'))
+    || protectionRequiredChecks === null
+    || rules?.pageInfo?.hasNextPage !== false || !Array.isArray(rules.nodes)
+    || rules.nodes.some((rule) => !rule?.type
+      || !['ACTIVE', 'EVALUATE', 'DISABLED'].includes(rule.repositoryRuleset?.enforcement))) {
+    return unobserved('read-branch-policy', 'branch-policy-incomplete');
+  }
+  const active = rules.nodes.filter((rule) => rule.repositoryRuleset.enforcement === 'ACTIVE');
+  const known = new Set([
+    'CREATION', 'DELETION', 'UPDATE', 'LOCK_BRANCH', 'NON_FAST_FORWARD',
+    'REQUIRED_LINEAR_HISTORY', 'REQUIRED_STATUS_CHECKS', 'REQUIRED_SIGNATURES',
+    'PULL_REQUEST', 'MERGE_QUEUE', 'REQUIRED_DEPLOYMENTS',
+    'REQUIRED_WORKFLOW_STATUS_CHECKS', 'REQUIRED_REVIEW_THREAD_RESOLUTION',
+    'CODE_SCANNING', 'COPILOT_CODE_REVIEW',
+  ]);
+  if (active.some((rule) => !known.has(rule.type) || rule.type === 'REQUIRED_WORKFLOW_STATUS_CHECKS')) {
+    return unobserved('read-branch-policy', 'branch-policy-rule-unsupported');
+  }
+  const ruleRequiredChecks = [];
+  for (const rule of active) {
+    if (rule.type !== 'REQUIRED_STATUS_CHECKS') continue;
+    if (typeof rule.parameters?.strictRequiredStatusChecksPolicy !== 'boolean') {
+      return unobserved('read-branch-policy', 'branch-policy-rule-unsupported');
+    }
+    const descriptors = collectRequiredCheckDescriptors(
+      rule.parameters?.requiredStatusChecks,
+      (check) => requiredCheckDescriptor(check?.context, check?.integrationId),
+    );
+    if (descriptors === null) {
+      return unobserved('read-branch-policy', 'branch-policy-incomplete');
+    }
+    ruleRequiredChecks.push(...descriptors);
+  }
+  const requiredChecks = collectRequiredCheckDescriptors(
+    [...protectionRequiredChecks, ...ruleRequiredChecks],
+    (check) => requiredCheckDescriptor(check?.name, check?.appId),
+  );
+  const has = (type) => active.some((rule) => rule.type === type);
+  return {
+    observed: true, trusted: true, operation: 'read-branch-policy',
+    repository: live.repository, ref: live.ref, sha: live.sha, observedAt,
+    allowForcePushes: (protection === null || protection.allowsForcePushes) && !has('NON_FAST_FORWARD'),
+    requireLinearHistory: protection?.requiresLinearHistory === true || has('REQUIRED_LINEAR_HISTORY'),
+    directUpdatesAllowed: !protection?.lockBranch && !protection?.restrictsPushes
+      && !protection?.requiresApprovingReviews
+      && !['UPDATE', 'LOCK_BRANCH', 'PULL_REQUEST', 'MERGE_QUEUE'].some(has),
+    squashMergeAllowed: result.squashMergeAllowed,
+    requiredChecks,
+    upToDate: (protection?.requiresStatusChecks && protection.requiresStrictStatusChecks)
+      || active.some((rule) => rule.type === 'REQUIRED_STATUS_CHECKS'
+        && rule.parameters.strictRequiredStatusChecksPolicy) ? 'required' : 'not-required',
+    untrusted: true,
+  };
+}
 
 /** Builds the read command that resolves a change request to its branch and base. */
 export function resolveTargetCommand(detection, { changeRequest, repository } = {}) {
@@ -228,87 +462,131 @@ export function validationStatusCommand(detection, { changeRequest, repository }
 }
 
 function gitObjectId(value) {
-    const normalized = String(value ?? '');
-    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(normalized)) {
-      throw new ProviderCommandError('invalid-head-revision', 'head revision must be a full lowercase Git object ID');
-    }
-    return normalized;
+  const normalized = String(value ?? '');
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(normalized)) {
+    throw new ProviderCommandError('invalid-head-revision', 'head revision must be a full lowercase Git object ID');
   }
+  return normalized;
+}
 
-export function githubCheckRunsCommand(detection, { repository, headSha, changeRequest } = {}) {
-    const guard = requireObservableProvider(detection);
-    if (!guard.ok) return refused(guard, 'read-check-identities');
-    if (detection.provider !== 'github') {
-      throw new ProviderCommandError('unsupported-provider-operation', 'provider-native check runs require GitHub');
-    }
-    const repositoryParts = normalizeGitHubRepository(repository, detection).split('/');
-    const [owner, name] = repositoryParts.slice(-2);
-    const id = normalizeChangeRequestId(changeRequest);
-    return command(detection, 'read-check-identities', 'gh', [
-      'api', 'graphql',
-      ...githubApiHostFlags(detection),
-      '-F', `owner=${owner}`,
-      '-F', `name=${name}`,
-      '-F', `number=${id}`,
-      '-F', `head=${gitObjectId(headSha)}`,
-      '-f', `query=${GITHUB_CHECK_IDENTITIES_QUERY}`,
-    ]);
+export function githubCheckRunsCommand(detection, {
+  repository, headSha, changeRequest, baseBranch,
+} = {}) {
+  const guard = requireObservableProvider(detection);
+  if (!guard.ok) return refused(guard, 'read-check-identities');
+  if (detection.provider !== 'github') {
+    throw new ProviderCommandError('unsupported-provider-operation', 'provider-native check runs require GitHub');
   }
+  const repositoryParts = normalizeGitHubRepository(repository, detection).split('/');
+  const [owner, name] = repositoryParts.slice(-2);
+  const id = normalizeChangeRequestId(changeRequest);
+  return command(detection, 'read-check-identities', 'gh', [
+    'api', 'graphql',
+    ...githubApiHostFlags(detection),
+    '-F', `owner=${owner}`,
+    '-F', `name=${name}`,
+    '-F', `number=${id}`,
+    '-F', `head=${gitObjectId(headSha)}`,
+    '-F', `ref=${baseRef(baseBranch)}`,
+    '-f', `query=${GITHUB_CHECK_IDENTITIES_QUERY}`,
+  ]);
+}
 
-  export function interpretGitHubCheckIdentities(payload, { headSha } = {}) {
-    const expectedHead = gitObjectId(headSha);
-    const commit = payload?.data?.repository?.object;
-    const connection = commit?.statusCheckRollup?.contexts;
-    const contexts = Array.isArray(connection?.nodes)
-      ? connection.nodes
-      : [];
-    const incomplete = [];
-    const checks = contexts.map((check) => {
-      if (check?.__typename === 'StatusContext') {
-        const required = check?.isRequired === true;
-        const status = githubCheck({ context: check.context, state: check.state }).status;
-        if (required && status === 'failure') {
-          incomplete.push({ name: check?.context ?? null, reason: 'required-external-check-has-no-ship-identity' });
-        }
-        return {
-          name: check?.context ?? null,
-          nativeId: check?.id ?? null,
-          runId: null,
-          attempt: null,
-          headSha: expectedHead,
-          required,
-          status,
-          url: sanitizeProviderUrl(check?.targetUrl),
-        };
-      }
-      const nativeId = Number.isInteger(check?.databaseId) && check.databaseId > 0 ? String(check.databaseId) : null;
-      const run = check?.checkSuite?.workflowRun;
-      const runId = Number.isInteger(run?.databaseId) && run.databaseId > 0 ? String(run.databaseId) : null;
-      const attempt = Number.isInteger(run?.runAttempt) && run.runAttempt > 0 ? run.runAttempt : null;
-      const testedHead = commit?.oid === expectedHead ? expectedHead : null;
+const GITHUB_OBSERVABLE_DETECTION = Object.freeze({ status: 'supported-provider', provider: 'github', tool: 'gh' });
+
+function checkAppId(value) {
+  if (value === undefined || value === null) return null;
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function sameResponseRequiredChecks(payload, repository, baseBranch) {
+  try {
+    const normalizedRepository = String(repository ?? '').split('/').slice(-2).join('/');
+    const policy = interpretBranchPolicy(GITHUB_OBSERVABLE_DETECTION, payload, {
+      repository: normalizedRepository,
+      branch: baseBranch,
+    });
+    return policy?.observed === true && policy?.trusted === true ? policy.requiredChecks : null;
+  } catch (error) {
+    if (error instanceof ProviderCommandError
+      && ['invalid-branch-ref', 'invalid-repository'].includes(error.code)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function interpretGitHubCheckIdentities(payload, {
+  headSha, repository, baseBranch,
+} = {}) {
+  const expectedHead = gitObjectId(headSha);
+  const commit = payload?.data?.repository?.object;
+  const connection = commit?.statusCheckRollup?.contexts;
+  const contexts = Array.isArray(connection?.nodes)
+    ? connection.nodes
+    : [];
+  const requiredChecks = sameResponseRequiredChecks(payload, repository, baseBranch);
+  const incomplete = [];
+  const checks = contexts.map((check) => {
+    if (check?.__typename === 'StatusContext') {
       const required = check?.isRequired === true;
-      if (required && githubCheck(check).status === 'failure' && (!nativeId || !runId || !attempt || !testedHead)) {
-        incomplete.push({ name: check?.name ?? null, nativeId, runId, attempt, headSha: testedHead });
+      const status = githubCheck({ context: check.context, state: check.state }).status;
+      if (required && status === 'failure') {
+        incomplete.push({ name: check?.context ?? null, reason: 'required-external-check-has-no-ship-identity' });
       }
       return {
-        name: check?.name ?? null,
-        nativeId,
-        runId,
-        attempt,
-        headSha: testedHead,
+        name: check?.context ?? null,
+        nativeId: check?.id ?? null,
+        runId: null,
+        attempt: null,
+        appId: null,
+        headSha: commit?.oid === expectedHead ? expectedHead : null,
         required,
-        status: githubCheck(check).status,
-        url: sanitizeProviderUrl(check?.detailsUrl),
+        status,
+        url: sanitizeProviderUrl(check?.targetUrl),
+        untrusted: true,
       };
-    });
+    }
+    const normalized = githubCheck(check);
+    const nativeId = Number.isInteger(check?.databaseId) && check.databaseId > 0 ? String(check.databaseId) : null;
+    const run = check?.checkSuite?.workflowRun;
+    const runId = Number.isInteger(run?.databaseId) && run.databaseId > 0 ? String(run.databaseId) : null;
+    const attempt = Number.isInteger(run?.runAttempt) && run.runAttempt > 0 ? run.runAttempt : null;
+    const appId = checkAppId(check?.checkSuite?.app?.databaseId);
+    const testedHead = commit?.oid === expectedHead ? expectedHead : null;
+    const required = check?.isRequired === true;
+    if (required && normalized.status === 'failure' && (!nativeId || !runId || !attempt || !testedHead)) {
+      incomplete.push({ name: check?.name ?? null, nativeId, runId, attempt, appId, headSha: testedHead });
+    }
     return {
-      observed: Boolean(connection),
-      complete: Boolean(connection) && connection.pageInfo?.hasNextPage === false && incomplete.length === 0,
-      headSha: expectedHead,
-      checks,
-      incomplete,
+      name: check?.name ?? null,
+      nativeId,
+      runId,
+      attempt,
+      appId,
+      headSha: testedHead,
+      required,
+      status: normalized.status,
+      url: sanitizeProviderUrl(check?.detailsUrl),
+      untrusted: true,
     };
-  }
+  });
+  return {
+    observed: Boolean(connection),
+    complete: Boolean(connection) && Array.isArray(connection.nodes)
+      && connection.pageInfo?.hasNextPage === false && incomplete.length === 0
+      && requiredChecks !== null
+      && !payload?.errors?.length && commit?.oid === expectedHead
+      && typeof repository === 'string'
+      && payload?.data?.repository?.nameWithOwner === repository.split('/').slice(-2).join('/')
+      && contexts.every((check) => ['CheckRun', 'StatusContext'].includes(check?.__typename)
+        && typeof check.isRequired === 'boolean'),
+    headSha: expectedHead,
+    checks,
+    incomplete,
+    requiredChecks: requiredChecks ?? undefined,
+  };
+}
 
 function unobserved(operation, reason, missing = []) {
   return { observed: false, operation, reason, missing: [...missing] };
@@ -396,13 +674,24 @@ export function interpretTarget(detection, payload, { observedAt = new Date().to
   if (missing.length) {
     return unobserved('resolve-target', 'resolution-state-absent', missing);
   }
+  let branch;
+  let base;
+  try {
+    branch = validatedBranchRef(String(fields.branch));
+    base = validatedBranchRef(String(fields.base));
+  } catch (error) {
+    if (error instanceof ProviderCommandError && error.code === 'invalid-branch-ref') {
+      return unobserved('resolve-target', 'invalid-branch-ref');
+    }
+    throw error;
+  }
 
   return {
     observed: true,
     operation: 'resolve-target',
     provider: detection.provider,
-    branch: String(fields.branch),
-    base: String(fields.base),
+    branch,
+    base,
     headSha: String(fields.headSha),
     url: sanitizeProviderUrl(fields.url),
     isDraft: typeof fields.isDraft === 'boolean' ? fields.isDraft : null,
@@ -496,7 +785,7 @@ function azureReviewDecision(payload) {
  * BEHIND`. Azure DevOps' up-to-date requirement is not observable from any read
  * this unit runs, so it is always `unobserved` for Azure.
  */
-export function interpretMergeState(detection, payload) {
+export function interpretMergeState(detection, payload, { liveBase, repository, baseBranch } = {}) {
   const guard = requireObservableProvider(detection);
   if (!guard.ok) {
     return unobserved('read-state', 'provider-state-unobservable');
@@ -564,7 +853,9 @@ export function interpretMergeState(detection, payload) {
     reviewDecision,
     isDraft: typeof payload.isDraft === 'boolean' ? payload.isDraft : null,
     upToDatePolicy,
-    baseSha: present(payload.baseRefOid) ? String(payload.baseRefOid) : null,
+    baseSha: liveBaseIsCurrent(liveBase, { repository, baseBranch })
+      && payload.baseRefName === baseBranch ? liveBase.sha : null,
+    historicalBaseSha: present(payload.baseRefOid) ? String(payload.baseRefOid) : null,
     headSha: present(payload.headRefOid)
       ? String(payload.headRefOid)
       : (present(payload.lastMergeSourceCommit?.commitId) ? String(payload.lastMergeSourceCommit.commitId) : null),
@@ -709,7 +1000,45 @@ export function interpretValidation(detection, payload) {
  */
 export function validationIsGreen(validation = {}) {
   return validation.observed === true
-    && validation.status === 'passing'
-    && Array.isArray(validation.checks)
-    && validation.checks.length > 0;
+    && currentRequiredChecksStatus(validation, validation.headSha).status === 'success';
+}
+
+// Only an attempt of the same named job in the same workflow run proves
+// replacement. A newer unrelated run or a cancellation alone proves nothing.
+export function authoritativeChecks(checks = []) {
+  return checks.filter((check) => !checks.some((newer) => (
+    check.runId && check.nativeId && newer.nativeId && newer.nativeId !== check.nativeId
+    && check.runId === newer.runId && check.name === newer.name
+    && check.headSha === newer.headSha && checkAppId(check?.appId) === checkAppId(newer?.appId)
+    && Number.isInteger(check.attempt) && check.attempt > 0
+    && Number.isInteger(newer.attempt) && newer.attempt > check.attempt
+  )));
+}
+
+export function currentRequiredChecksStatus(evidence, headSha) {
+  if (evidence?.observed !== true || evidence.complete !== true
+    || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(headSha ?? '')
+    || evidence.headSha !== headSha || !Array.isArray(evidence.checks)
+    || !Array.isArray(evidence.requiredChecks)
+    || evidence.checks.some((check) => check.headSha !== headSha || typeof check.required !== 'boolean'
+      || (check?.appId !== undefined && check?.appId !== null
+        && (!Number.isInteger(check.appId) || check.appId < 1)))
+    || evidence.requiredChecks.some((check) => !present(check?.name)
+      || (check?.appId !== undefined && check?.appId !== null
+        && (!Number.isInteger(check.appId) || check.appId < 1)))) {
+    return { status: 'incomplete', reason: 'remote-check-evidence-unobserved-or-stale' };
+  }
+  const checks = authoritativeChecks(evidence.checks).filter((check) => check.required);
+  if (!checks.length) return { status: 'incomplete', reason: 'missing-remote-checks' };
+  if (evidence.requiredChecks.some((expected) => !checks.some((check) => check.name === expected.name
+    && (expected.appId == null || checkAppId(check.appId) === expected.appId)))) {
+    return { status: 'incomplete', reason: 'missing-remote-checks' };
+  }
+  if (checks.some((check) => ['pending', 'queued', 'in_progress', 'waiting', 'requested'].includes(check.status))) {
+    return { status: 'incomplete', reason: 'remote-checks-incomplete' };
+  }
+  if (checks.some((check) => !['passed', 'success'].includes(check.status))) {
+    return { status: 'failure', reason: 'remote-checks-failing' };
+  }
+  return { status: 'success', reason: 'current-required-checks-passed' };
 }

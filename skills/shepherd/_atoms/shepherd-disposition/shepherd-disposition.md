@@ -18,21 +18,25 @@ used-by: ["shepherd/_molecules/pr-shepherding/pr-shepherding.md"]
 
 | Signal | Meaning |
 | --- | --- |
-| `preflight` | Whether pull request and worktree resolution succeeded. |
-| `rebase` | Whether the branch rebased onto the current base. |
+| `authority` | Positive `mode: ship-continuation` for maintenance/readiness. Observation-only, unknown, and absent modes never imply full authority. |
+| `preflight` | Whether pull request and worktree resolution succeeded, plus `capturedRemoteHead`. |
+| `rebase` | Compatibility field for completed maintenance onto the live base; `strategy` distinguishes merge-base-into-head from rebase. |
 | `conflicts` | Conflict classifications and whether any semantic conflict remains. |
 | `localValidation` | Result envelope from the required `run-ci` skill. |
-| `push` | Whether the branch was pushed with `--force-with-lease`. |
+| `push` | Exact `pushReceiptIsValid` receipt: status, strategy, repository/ref, previous/resulting head and captured-head comparison; rewrites also include verified lease ref/expected head. |
 | `remoteChecks` | Provider validation status after the push, normalized by an adapter when available. |
-| `basePolicy` | Whether the base requires a change request to contain it before merging — `required`, `not-required`, or `unobserved`. |
+| `basePolicy` | Normalized `{ upToDate }` decision from base policy or the provider's BEHIND signal — `required`, `not-required`, or `unobserved`; not a substitute for the complete branch-policy packet. |
 | `base` | Whether the base moved, plus git ancestry's `behind` result when available. |
 | `mergeability` | Provider mergeability, draft state, base/head SHAs, and the provider's `behind` result when available. |
+| `target`, `liveBase` | Repository/base branch plus identity-bound live ref tip and observation time. Historical PR base metadata is not sufficient. |
+| `headTarget`, `branchPolicy` | Destination repository/ref and explicitly observed trusted force-push/linear-history policy, bound to that destination with an observation time. |
+| `baseBranchPolicy` | Observed protection and active rulesets for the live base, including its linear-history requirement and available squash-merge method. |
 
 ## Terminal Dispositions
 
 | Disposition | Meaning |
 | --- | --- |
-| `mergeable-and-green` | Preflight succeeded, rebase completed onto the recorded base SHA, regeneration completed or was not applicable, local declared validation passed with complete evidence, push used an explicit SHA-pinned lease, post-push mergeability matches the expected base and head, and every required remote check passed. |
+| `mergeable-and-green` | Preflight and maintenance completed, regeneration and complete local validation passed, a concurrency-safe push succeeded, current provider gate and identity-bound live base match the observed head, and complete required checks for that exact head all passed. |
 | `no-op-mergeable-and-green` | The base advanced, but the pull request is still mergeable and green, no required check expired, and the operator did not ask for a rebase; do not rebase or force-push. |
 | `needs-human` | A semantic or ambiguous conflict, unsafe worktree state, missing policy decision, or permission boundary requires a human. |
 | `provider-unsupported` | The git-level core completed, but no hosted adapter matched the inspected remotes or configuration. |
@@ -43,16 +47,16 @@ used-by: ["shepherd/_molecules/pr-shepherding/pr-shepherding.md"]
 | `blocked` | The run could not proceed because of environment, cancellation, unavailable provider metadata required for the requested action, or another external blocker — including a branch behind a base that requires containing it, an unread up-to-date state under that policy, an unobserved merge-block state (content-mergeable, but the provider has not computed the merge gate, so `blocked` is null), and a green result carrying an incomplete freshness receipt. |
 | `failing` | Rebase completed but local validation or remote continuous integration is red. |
 
-This table is the whole vocabulary, and it is defined once in the shared
+This table is the terminal vocabulary, and it is defined once in the shared
 landability unit rather than restated by each consumer. A disposition missing
 from a consumer's copy is read as no ending at all, which is exactly what
-happened to `provider-tool-unsupported`.
+happened to `provider-tool-unsupported`. Planner-only values such as
+`shepherd-required` and `watch-or-report` are action choices, not terminal results.
 
 ## Planning Classification
 
-Before rebasing, classify whether action is needed. Rebase only on a trigger:
-operator request, genuine conflict or unmergeable state, an expired required
-check, or a base that advanced while its own policy requires the branch to
+Before mutation, classify whether action is needed. Update only on a trigger:
+operator request, genuine conflict or unmergeable state, or a base that advanced while its own policy requires the branch to
 contain it. Base drift alone is not a trigger. When the base moved but the pull
 request is still mergeable and green, return `no-op-mergeable-and-green` and do
 not push — unless a policy/administrative block, a required or changes-requested
@@ -60,6 +64,28 @@ review, or an unobserved merge gate (`blocked` read as null) is reported. None
 of those is cleared by a rebase, so a change request carrying one falls through
 to `watch-or-report`; the terminal classifier then renders it `blocked` or
 `needs-human`.
+
+An expired check triggers revalidation, not rewriting. `branchUpdateStrategy`
+selects `merge-base-into-head` when merge commits are permitted, or `rebase`
+only when linear history requires it and force pushes are allowed. Unknown,
+mismatched, or incompatible policy blocks mutation; never default to rebase.
+Both branch packets come from `branchPolicyCommand` and `interpretBranchPolicy`.
+The head must permit direct updates. If the base requires linear history and
+does not allow squash merging, the head must remain linear too. Main's
+force-push restriction is not a restriction on the PR's head branch.
+This is BASE INTO PR BRANCH maintenance, never PR INTO BASE integration.
+
+Both green gates require a nonempty, complete, observed required-check envelope
+whose head and every check head equal the current observed head. Missing
+evidence, an absent configured required context/application, pending,
+cancellation, failure, unknown or stale-head results cannot
+be ready for human review. Only a higher attempt of the same named job in the
+same workflow run and head, with distinct native check IDs, proves replacement.
+No blanket cancellation exclusion is permitted. Omitted merge-block and draft
+fields no longer count as clearance. These stricter defaults intentionally
+reject old hand-built signals that omitted evidence. Observation-only authority
+always yields blocked, never a green label or mutation plan. Missing or unknown
+authority is also blocked rather than treated as full continuation.
 
 ## The Required Up-To-Date Policy
 
@@ -78,8 +104,9 @@ So `basePolicy.upToDate: required` plus a base that advanced is a trigger, and
 base.
 
 Under that policy the question must be **settled**, not assumed. A boolean
-provider `mergeability.behind` result is preferred; otherwise a boolean
-`base.behind` result from git ancestry settles the same question. `false` is
+provider `mergeability.behind` result or `base.behind` result from git ancestry
+settles the same question. If either proves the base is missing, that evidence
+wins over a conflicting summary. `false` is
 the only answer that clears it; `true` blocks as
 `base-advanced-under-required-up-to-date-policy`, and an absent or non-boolean
 value blocks as `up-to-date-state-unobserved-under-required-policy`. Being

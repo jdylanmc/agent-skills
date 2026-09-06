@@ -41,7 +41,9 @@ with that condition attached rather than returning a result.
 | `resolve-target` | Change-request identifier and repository address. | Branch, base, head commit, change-request URL, draft state when reported, head-repository identity (owner, name, and cross-repository/fork indication) as push-safety metadata, and an observation timestamp. |
 | `read-state` | Change-request identifier and repository address. | Merge state, the blocking `mergeStateStatus` signal, review decision, draft state, the up-to-date policy, base/head commits, and the provider's raw value. |
 | `read-checks` | Change-request identifier and repository address. | Normalized validation results with the raw provider fields preserved. |
-| `read-check-identities` | GitHub repository, change request, and full head SHA. | Provider-native check-run ID, workflow-run ID, requiredness, attempt, and tested head through one read-only `gh api graphql` query. |
+| `read-check-identities` | GitHub repository, change request, full head SHA and base branch. | One GraphQL response containing current base policy and check identities; the atomic envelope includes the configured required-check set, check/run IDs, requiredness, application identity, attempt and tested head. |
+| `read-live-base` | GitHub repository and exact target branch. | Live ref tip, repository/ref identity, and observation time through a sanctioned read-only GraphQL query. |
+| `read-branch-policy` | GitHub repository and exact branch. | Classic protection plus effective active rulesets, bound to repository/ref/tip, including direct-update restrictions, force-push permission, linear history, strict checks, and squash-merge availability. |
 
 Commands are built as argument vectors for the official tool — `gh` for GitHub
 and `az` for Azure DevOps — never as a shell string. A change-request identifier
@@ -99,9 +101,41 @@ workflow-run identity. Azure review
 completeness is already unprovable through the official CLI, so a continuing
 watch stops before it could claim complete continuation evidence there.
 
-Validation is green only when it was observed, its status is `passing`, and at
-least one check was reported. Pending, neutral, skipped, unknown, and mixed
-results are not green.
+Display rollups alone are not readiness evidence. `validationIsGreen` requires
+complete observed nonempty required checks bound to the exact current head.
+The identity query verifies repository, returned commit, requiredness and final
+pagination; errors and truncated evidence are incomplete. Compare configured
+required context/application identities from classic protection and active
+status-check rules with the returned checks. A configured check that has never
+appeared, or came from a different required application, remains missing.
+Policy and checks are read in the same GraphQL response. A previously supplied
+policy packet cannot authorize completeness, even when the base SHA is unchanged.
+Pending, cancellation,
+failure, neutral, skipped and unknown required results are not green. Only a
+higher attempt of the same named job, workflow run and head with distinct native
+check IDs supersedes an older result.
+
+`liveBaseCommand` reads the target ref itself. `interpretLiveBase` verifies
+repository and full ref identity. Pass that evidence and target into
+`interpretMergeState`; `baseSha` is null without it. `baseRefOid` is exposed only
+as `historicalBaseSha`, never as the current branch tip. Azure has no live-base
+adapter here and must report unobserved rather than substitute historical state.
+
+Use `branchPolicyCommand` and `interpretBranchPolicy` for both the destination
+head branch and the base branch. `ref.branchProtectionRule` covers classic
+protection and `ref.rules` covers matching rulesets, including inherited rules.
+Only `ACTIVE` rules apply; `EVALUATE` and `DISABLED` rules do not restrict
+maintenance. Missing fields, GraphQL errors, incomplete pagination and
+unsupported active rules are unobserved rather than permission. A null classic
+protection rule grants nothing without the complete ruleset read.
+
+The head packet supplies `allowForcePushes`, `requireLinearHistory`, and
+`directUpdatesAllowed`. The base packet separately supplies its linear-history
+requirement, `squashMergeAllowed`, and `upToDate`. Do not apply a base branch's
+force-push restriction to a feature branch. The reader assumes no bypass rights.
+Ordinary server-side restrictions still apply to every push; a rejection stops
+the action, never triggers a bypass. Unknown policy blocks mutation, not
+read-only watching.
 
 ## The Required Up-To-Date Policy
 
@@ -115,30 +149,21 @@ here and reaches a caller only as a normalized value.
 | `not-required` | The policy was read, and it imposes no such requirement. |
 | `unobserved` | The policy could not be read. |
 
-The policy is derived only from evidence that actually exists, and only one
-provider surfaces it:
+The policy is derived only from evidence that actually exists:
 
-- **GitHub** reports `mergeStateStatus: BEHIND` when the base's merge gate is
+- **GitHub** `read-branch-policy` reports `required` from classic protection's
+  enabled strict status checks or an active required-status-check rule's
+  `strictRequiredStatusChecksPolicy`. A complete read without either is
+  `not-required`; an incomplete read stays `unobserved`.
+  GitHub also reports `mergeStateStatus: BEHIND` when the base's merge gate is
   refusing the branch for being out of date, which GitHub computes only where
   the base requires the branch to contain it — without that requirement an
   out-of-date branch reads `CLEAN` or `UNSTABLE` and stays mergeable. So
   `BEHIND` on the `read-state` response yields `required`.
 
-  This is a **derivation from a provider-computed merge state, not a reading of
-  the branch-protection record.** The record itself
-  (`requiresStrictStatusChecks`) is not on any response this unit is allowed to
-  fetch — `gh pr view --json` does not carry branch protection, and reading it
-  would need a second command outside the sanctioned reads. The derivation is
-  named here rather than presented as an observation, and its one assumption is
-  stated so it can be checked: if a base ever reported `BEHIND` without such a
-  requirement, this would over-report `required`, whose only consequence is a
-  rebase that was not strictly needed. The alternative — reporting `unobserved`
-  — is worse in a way that is not symmetric: a caller treats a `behind` branch
-  under an unread policy as unlandable, so every out-of-date change request
-  would stop for a person instead of being rebased.
-
   Nothing else on that response proves the policy, so every other GitHub state
-  is `unobserved` there — and GitHub `read-checks` (`statusCheckRollup`) proves
+  is `unobserved` there; use the separate policy read instead of guessing.
+  GitHub `read-checks` (`statusCheckRollup`) proves
   nothing about branch policy, so it stays `unobserved` too.
 - **Azure DevOps** does not surface this requirement at all. There is no
   first-class Azure DevOps branch-policy type equivalent to GitHub's "require
@@ -159,7 +184,8 @@ The vocabulary that normalizes the value is the shared one in
 the mergeability signal the disposition consumes — so a caller keeps a single
 import and the producing and consuming skills cannot disagree about what a value
 means. The GitHub identity read supplements the three provider-neutral
-operations above only when failed-check evidence may enter Ship continuation.
+operations for readiness and failed-check continuation; the live-base read is
+required for every current freshness claim.
 
 ## Read-Only By Allow-List
 
@@ -167,7 +193,8 @@ The read guard is an allow-list, not a deny-list of mutating tokens. A deny-list
 cannot see that `gh api` becomes a POST the moment a field is supplied, or that
 `az repos pr reviewer add` buries a write behind a subcommand nobody listed. So
 this unit declares the exact command shapes it may construct — `gh pr view` with
-`--json`, `az repos pr show`, and `az repos pr policy list` — and the shared
+`--json`, the pinned read-only GraphQL queries, `az repos pr show`, and
+`az repos pr policy list` — and the shared
 guard in `_base/_atoms/provider-detect` refuses anything that does not match one,
 rejects a `gh api` field without an explicit `GET`, and rejects any explicit
 write HTTP method. The refusal is a `ProviderCommandError` at construction time,
