@@ -29,6 +29,7 @@ import {
   renderField,
   run as runProfile,
 } from './artifact-profile.mjs';
+import { GOVERNANCE } from '../doctrine-select/doctrine-select.mjs';
 
 const REPOSITORY_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -115,6 +116,35 @@ test('the resolved contract carries the artifact type into the envelope check', 
   const template = readShared('roast/_atoms/roast-contract/roast-contract.md');
   for (const type of ARTIFACT_TYPES) {
     assert.match(render(template, type), new RegExp('`Artifact type` is `' + type + '`'));
+  }
+});
+
+test('the resolved contract carries every selected doctrine route to the Artifact Roastmaster', () => {
+  const template = readShared('roast/_atoms/roast-contract/roast-contract.md');
+
+  for (const type of ARTIFACT_TYPES) {
+    const contract = render(template, type);
+    for (const entry of GOVERNANCE[type].primary) {
+      assert.match(contract, new RegExp('`' + entry.id + '`'), `${type} omits ${entry.id}`);
+    }
+    for (const entry of GOVERNANCE[type].conditional) {
+      assert.match(contract, new RegExp('`' + entry.id + '`'), `${type} omits ${entry.id}`);
+      assert.match(
+        contract,
+        new RegExp('`' + entry.trigger + '`'),
+        `${type} omits trigger ${entry.trigger} for ${entry.id}`,
+      );
+    }
+  }
+});
+
+test('the resolved contracts use the bounded-context meaning trigger for Boundaries', () => {
+  const template = readShared('roast/_atoms/roast-contract/roast-contract.md');
+
+  for (const type of ARTIFACT_TYPES) {
+    const contract = render(template, type);
+    assert.match(contract, /`boundaries` on `bounded-context-meaning`/);
+    assert.ok(!contract.includes(['boundary', 'contract'].join('-')));
   }
 });
 

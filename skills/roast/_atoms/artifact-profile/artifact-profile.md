@@ -59,7 +59,7 @@ its own units.
 | `severityNote` | How severity is derived when a mandatory lens declares none. |
 | `nativeRemedyRule` | How a write-shaped native remedy converts to a recommendation. |
 | `dynamicSpecialists` | The ordered specialist triggers. |
-| `doctrinePrimary`, `doctrineConditional` | Which doctrine governs this type. |
+| `doctrinePrimary`, `doctrineConditional` | Which doctrine governs this type, mirroring the intake selection and its evidence triggers. |
 | `evidenceSafety` | The type-specific untrusted-evidence rules. |
 | `selfReviewNote` | When the reviewed thing is part of the roast machinery. |
 | `findingRequirement` | What an accepted finding must carry. |

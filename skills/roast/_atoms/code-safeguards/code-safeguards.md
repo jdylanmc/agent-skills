@@ -80,15 +80,13 @@ Alter one doctrine file without updating its manifest digest. Every bundled
 prompt still loads its complete directive, no doctrine content is dispatched,
 and the council summary records the integrity failure.
 
-### Open doctrine uncertainty
+### Unresolved doctrine uncertainty
 
-A test classification depends on the classical/London taxonomy marked
-`**Open:**` in testing doctrine. The testing roaster states its applied
-definition in a stable `Doctrine Uncertainties` record, does not use the open
-statement as evidence, and the Roastmaster preserves its uncertainty ID,
-reviewer ID, related finding IDs, and unresolved consequence in
-`Residual Uncertainties`. Repeat with the contextual fixture-use statement from
-the doctrine checklist; it follows the same propagation rule.
+Selected doctrine contains an explicitly unresolved question that materially
+affects a finding. The reviewer states its applied definition in a stable
+`Doctrine Uncertainties` record, does not use the uncertainty as evidence, and
+the Roastmaster preserves its uncertainty ID, reviewer ID, related finding IDs,
+and unresolved consequence in `Residual Uncertainties`.
 
 ### Malformed repository roaster
 
