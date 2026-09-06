@@ -15,10 +15,13 @@ First determine:
 
 ## Testing Review Gate
 
-Apply the declared doctrine pressures together. Use `testing` for test-specific
-decisions without giving it more authority than applicable `code`, `data`,
-`pragmatic`, or `domain` guidance. For every submitted or recommended test,
-determine whether it:
+Apply the declared doctrine pressures together without letting an umbrella
+doctrine absorb another doctrine's authority. Use `testing` for test value, scope, and
+economics; `test-seams` for doubles and substitution; `integration-testing`
+for real-boundary fidelity; `data-processing` for replay, order, and time;
+`distributed-data` for cross-node or cross-store coordination; and `data` for
+storage, schema, and single-store consistency. For every submitted or
+recommended test, determine whether it:
 
 - protects a consequential, domain-meaningful behavior rather than a class,
   line, method, or coverage target;
@@ -27,9 +30,9 @@ determine whether it:
 - balances regression protection, resistance to refactoring, feedback speed,
   and maintainability without scoring zero on any dimension;
 - verifies observable output or state before reaching for interaction checks;
-- mocks only externally observable unmanaged dependencies at the final
-  application-owned system edge;
-- uses real managed dependencies when integration behavior is the subject;
+- places doubles and substitution only at justified test seams;
+- preserves real process, service, database, and system-boundary fidelity when
+  integration behavior is the subject;
 - uses the smallest suitable test scope rather than mechanically preferring a
   unit, integration, or end-to-end label;
 - remains deterministic, isolated from shared state, and independently
@@ -145,26 +148,36 @@ assertion.
 Apply these shared doctrine pressures selectively and without a global
 precedence:
 
-- `testing` governs test value, behavior orientation,
-  observable outcomes, test-double boundaries, test-level selection,
-  integration fidelity, and testability anti-patterns.
-- `code` governs risk-matched tests, trust-boundary
-  cases, defensive checks, repeatable debugging, and tests or analysis before
-  risky refactoring.
-- `data` applies when the change
-  involves write semantics, retries, replay, duplicates, ordering, schema
-  evolution, derived data, stale reads, or distributed failure.
-- `pragmatic` governs fast feedback, repairing
-  flaky or environment-dependent tests, adding regression protection after a
-  human-found defect, and proving unexplained behavior with data.
-- `domain` applies when tests should express
-  domain invariants, valid construction, allowed or forbidden transitions, or
-  cross-context translation using the context's agreed vocabulary.
+- `testing` owns test value, behavior orientation, oracle quality, scope
+  selection, regression protection and economics, feedback tradeoffs,
+  testability costs, and the requirement to repair rather than normalize flaky
+  evidence.
+- `test-seams` owns test doubles, substitution boundaries, interaction checks,
+  partial mocks, and whether a seam exposes behavior rather than implementation.
+- `integration-testing` owns fidelity at real process, service, database, and
+  system boundaries, including production-representative integration setup.
+- `data-processing` owns replay, ordering, duplicate processing, time,
+  determinism, and independently observable processing results.
+- `distributed-data` owns coordination and consistency across nodes or stores,
+  including races, stale reads, retries across boundaries, and distributed
+  failure.
+- `data` owns storage semantics, schema evolution, write behavior, lineage, and
+  consistency within one store.
+- `code` owns risk-matched tests, trust-boundary cases, defensive checks,
+  repeatable debugging, and tests or analysis before risky refactoring.
+- `domain` owns tests that express domain invariants, valid construction,
+  allowed or forbidden transitions, and meaningful outcomes inside one bounded
+  context using that context's agreed vocabulary.
+- `boundaries` owns tests of cross-context meaning, inter-model relationships,
+  and meaning-preserving translation.
+- `debugging` owns causal investigation and root-cause repair for flaky,
+  environment-dependent, or otherwise unexplained behavior, including proving
+  more than symptom disappearance.
 
 Doctrine guides test selection; it is not evidence that a test is missing or
 defective.
 
-An `**Open:**` doctrine statement may frame only an explicitly cited
-assumption; it cannot back a finding. Record the statement, applied definition
-or assumption, and unresolved consequence as a stable record under
-`Doctrine Uncertainties`.
+When selected doctrine actually contains unresolved uncertainty relevant to a
+finding, cite the uncertainty, state the applied definition or assumption, and
+record the unresolved consequence under `Doctrine Uncertainties`. Uncertainty
+cannot back a finding without packet evidence.

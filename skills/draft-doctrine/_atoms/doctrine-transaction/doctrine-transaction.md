@@ -48,10 +48,9 @@ other transformation. The result displays its exact text, Base64 bytes, byte
 length, SHA-256 digest, and complete result. Update also displays an exact
 line-preserving diff against the verified prior bytes.
 
-A create candidate counts the complete document using deterministic
-whitespace-separated tokens containing a Unicode letter or digit. It must
-contain fewer than 500 words. Updates preserve existing doctrine length and do
-not apply this creation limit.
+Every create or update candidate counts the complete document using
+deterministic whitespace-separated tokens containing a Unicode letter or
+digit. It must contain fewer than 500 words.
 
 Adapted material requires a closed verification record containing source
 locator, pinned revision or digest, author, license identifier or text basis,

@@ -47,8 +47,8 @@ record -> capture one human position -> Prompt Coach exact raw prompt
 4. Show the exact candidate bytes and digest. For update, also show the exact
    diff, complete result, prior doctrine digest/revision, and prior manifest
    digest/revision. Show required NOTICE attribution and its digest/revision as
-   a separate surface. A new doctrine must contain fewer than 500 words across
-   the complete file.
+   a separate surface. Every create or update doctrine candidate must contain
+   fewer than 500 words across the complete file.
 5. Accept only approvals bound to every displayed field. Corrections invalidate
    prior approval. Rejection, silence, unrelated replies, summary approval, and
    approval of another revision do not approve.

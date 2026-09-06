@@ -89,16 +89,16 @@ test('approval binds exact bytes and every prior revision with separate NOTICE a
   assert.match(atom, /summary approval, silence, unrelated text/);
 });
 
-test('new doctrine candidates are bounded below 500 words', () => {
+test('create and update doctrine candidates are bounded below 500 words', () => {
   const skill = flat('skills/draft-doctrine/SKILL.md');
   const molecule = flat('skills/draft-doctrine/_molecules/doctrine-authoring/doctrine-authoring.md');
   const atom = flat('skills/draft-doctrine/_atoms/doctrine-transaction/doctrine-transaction.md');
   const intent = flat('skills/draft-doctrine/intent.md');
   for (const surface of [skill, molecule, atom, intent]) {
     assert.match(surface, /fewer than 500 words/);
+    assert.match(surface, /create or update|create and update/);
   }
   assert.match(atom, /complete document/);
-  assert.match(atom, /Updates preserve existing doctrine length/);
 });
 
 test('persistence is bounded, rollback-aware, reread-verified, and never publishes', () => {

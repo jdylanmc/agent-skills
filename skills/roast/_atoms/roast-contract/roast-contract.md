@@ -140,6 +140,11 @@ surprising selection is visible rather than silent.
 {{doctrinePrimary}}
 {{doctrineConditional}}
 
+These rendered routes mirror the selection made at intake. Carry every selected
+doctrine ID into doctrine evaluation and the Artifact Roastmaster inputs. A
+conditional doctrine remains unloaded unless its named trigger was observed;
+availability alone never selects it.
+
 A standalone install outside the canonical repository layout has no doctrine.
 That is a supported state, recorded as `Doctrine status: unavailable`, not a
 failure.
