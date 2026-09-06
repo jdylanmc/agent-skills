@@ -236,6 +236,15 @@ below is unreleased and no comparison links are available.
 
 ### Changed
 
+- **Complete, bounded skill reinforcement.** Reinforcing one skill can now
+  include its existing changelog entry, necessary caller integration, and
+  generated graph metadata without treating another skill as a second target.
+  Every companion is justified and bound to its exact before/after bytes in
+  the full candidate diff. Protected evidence, reviewers, permissions and
+  repository gates remain outside that allowance; self-reinforcement discloses
+  the original guard's result and relies on the operator's corrective scope,
+  never its own newly changed guard as authority.
+
 - **One review entry point.** Four sibling review skills were replaced by a
   single `roast` that selects applicable doctrine, so a review request no longer
   requires choosing a reviewer first.

@@ -10,6 +10,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,10 +23,12 @@ import {
   WRITE_CLASS,
   assertWorkflowAdditive,
   auditDiff,
+  auditRepositoryDiff,
   classifyWritePath,
   isWritableClass,
   resolveSkillTarget,
 } from './reinforcement-target.mjs';
+import { assertReinforcementChangeSet } from '../reinforce-roast/reinforce-roast.mjs';
 
 const CLI = fileURLToPath(new URL('./reinforcement-target.mjs', import.meta.url));
 
@@ -351,3 +354,213 @@ test('the diff audit rejects a non-array change set', () => {
     assert.equal(code(() => auditDiff(root, 'existing-skill', 'not-an-array')), FAILURES.usage);
   });
 });
+
+  function companion(candidate, kind, previous, next, overrides = {}) {
+    const digest = (text) => createHash('sha256').update(text).digest('hex');
+    return {
+      path: candidate, kind,
+      reason: 'Necessary to complete this one target change.',
+      relationship: 'Existing caller or metadata for the target contract.',
+      previous_sha256: digest(previous), next_sha256: digest(next),
+      ...overrides,
+    };
+  }
+
+  function companionOptions(entry, previous, next) {
+    return { companions: [entry], contents: new Map([[entry.path, { previous, next }]]) };
+  }
+
+  test('an exact changelog companion completes one change without relabelling outside scope', () => {
+    withFixture((root) => {
+      const previous = '# Changelog\n\n## Unreleased\n';
+      const next = `${previous}\n- Reinforced the target.\n`;
+      const entry = companion('CHANGELOG.md', 'changelog', previous, next);
+      const paths = ['skills/existing-skill/SKILL.md', entry.path];
+      assert.equal(auditDiff(root, 'existing-skill', paths).clean, false);
+      const options = companionOptions(entry, previous, next);
+      const audit = auditDiff(root, 'existing-skill', paths, options);
+      assert.equal(audit.clean, true);
+      assert.equal(audit.companions[0].writeClass, WRITE_CLASS.outside);
+      assert.deepEqual(audit.companions[0].companion, entry);
+      assert.equal(isWritableClass(WRITE_CLASS.outside), false);
+      assert.equal(assertReinforcementChangeSet(root, 'existing-skill', paths, options).status, 'intact');
+    });
+  });
+
+  test('a caller fixture can conform to a stricter target while unrelated foreign edits stay refused', () => {
+    withFixture((root) => {
+      const candidate = 'skills/caller/caller.conformance.test.mjs';
+      const previous = "import { ready } from '../existing-skill/readiness.mjs';\nconst fixture = {};\n";
+      const next = previous.replace('{}', '{ current: true }');
+      const entry = companion(candidate, 'caller-integration', previous, next);
+      const options = companionOptions(entry, previous, next);
+      const audit = auditDiff(root, 'existing-skill', [candidate], options);
+      assert.equal(audit.clean, true);
+      assert.equal(audit.companions[0].writeClass, WRITE_CLASS.foreignSkill);
+      assert.equal(assertReinforcementChangeSet(root, 'existing-skill', [candidate], options).status, 'intact');
+      const extra = auditDiff(root, 'existing-skill', [candidate, 'skills/other/SKILL.md'], options);
+      assert.equal(extra.clean, false);
+      assert.deepEqual(extra.refused.map((item) => item.path), ['skills/other/SKILL.md']);
+    });
+  });
+
+  test('companion records refuse omissions, inventions, stale bytes and duplicate or unused paths', () => {
+    withFixture((root) => {
+      const previous = '# Changelog\n';
+      const next = `${previous}- Entry.\n`;
+      const entry = companion('CHANGELOG.md', 'changelog', previous, next);
+      for (const mutation of [
+        { reason: '' }, { relationship: '' }, { kind: 'anything' },
+        { previous_sha256: '0'.repeat(64) }, { next_sha256: '0'.repeat(64) },
+        { approved: true }, { path: '../CHANGELOG.md' }, { path: './CHANGELOG.md' },
+        { path: '/CHANGELOG.md' }, { path: 'CHANGELOG*.md' },
+        { path: 'skills\\caller\\caller.test.mjs' },
+      ]) {
+        const changed = { ...entry, ...mutation };
+        assert.equal(code(() => auditDiff(root, 'existing-skill', [changed.path],
+          companionOptions(changed, previous, next))), FAILURES.invalidCompanion);
+      }
+      for (const bytes of [
+        undefined, { previous: null, next }, { previous, next: null },
+        { previous, next: `${next}drift` }, { previous: next, next },
+      ]) {
+        assert.equal(code(() => auditDiff(root, 'existing-skill', [entry.path], {
+          companions: [entry], contents: new Map([[entry.path, bytes]]),
+        })), FAILURES.invalidCompanion);
+      }
+      assert.equal(code(() => auditDiff(root, 'existing-skill', [entry.path], {
+        ...companionOptions(entry, previous, next), companions: [entry, entry],
+      })), FAILURES.invalidCompanion);
+      assert.equal(code(() => auditDiff(root, 'existing-skill', [],
+        companionOptions(entry, previous, next))), FAILURES.invalidCompanion);
+    });
+  });
+
+  test('a companion cannot rewrite release history or remove the caller relationship', () => {
+    withFixture((root) => {
+      for (const [candidate, kind, previous, next] of [
+        ['CHANGELOG.md', 'changelog', '# History\nold\n', '# History\nreplacement\n'],
+        ['CHANGELOG.md', 'changelog', '# History\none\ntwo\n', '# History\ntwo\none\n'],
+        ['README.md', 'changelog', '# Readme\n', '# Readme\naddition\n'],
+        ['skills/caller/caller.test.mjs', 'caller-integration', 'const x = 1;\n', 'const x = 2;\n'],
+        ['skills/caller/caller.test.mjs', 'caller-integration', "import '../existing-skill/x.mjs';\n", 'const x = 2;\n'],
+        ['skills/caller/SKILL.md', 'caller-integration', "'skills/existing-skill/x.mjs'\n", "'skills/existing-skill/x.mjs'\nnew\n"],
+      ]) {
+        const entry = companion(candidate, kind, previous, next);
+        assert.equal(code(() => auditDiff(root, 'existing-skill', [candidate],
+          companionOptions(entry, previous, next))), FAILURES.invalidCompanion);
+      }
+    });
+  });
+
+  test('a justified ledger never permits doctrine, grants, evidence, reviewers or gate edits', () => {
+    withFixture((root) => {
+      const previous = "'skills/existing-skill/SKILL.md'\n";
+      const next = `${previous}addition\n`;
+      for (const candidate of [
+        'doctrine/code.doctrine.md', 'AGENTS.md', 'skills/caller/AGENTS.md',
+        'skills/caller/intent.md', 'skills/caller/SKILL.md',
+        '.skill-log/evidence.mjs', '.github/workflows/validate-skills.yml',
+        'scripts/validate-skill-graph.mjs', 'agents/skill-reviewer.agent.md',
+        'skills/roast/roast.test.mjs', 'skills/post-mortem/record.mjs',
+        'skills/create-skill/_atoms/roast-round-ledger/roast-round-ledger.mjs',
+        'skills/_base/_atoms/x/x.mjs',
+      ]) {
+        const entry = companion(candidate, 'caller-integration', previous, next);
+        assert.equal(code(() => auditDiff(root, 'existing-skill', [candidate],
+          companionOptions(entry, previous, next))), FAILURES.invalidCompanion, candidate);
+      }
+    });
+  });
+
+  test('derived companions admit exact generated fields and refuse authored text or atom grants', () => {
+    const candidate = 'skills/_base/_molecules/chronicler/chronicler.md';
+    const next = fs.readFileSync(path.join(REPOSITORY_ROOT, candidate), 'utf8');
+    const previous = next.replace(/^used-by: .+$/m, 'used-by: []');
+    const entry = companion(candidate, 'derived-graph', previous, next);
+    assert.equal(auditDiff(REPOSITORY_ROOT, 'reinforce-skill', [candidate],
+      companionOptions(entry, previous, next)).clean, true);
+    const changedProse = previous.replace('# Chronicler', '# Changed prose');
+    const forged = companion(candidate, 'derived-graph', changedProse, next);
+    assert.equal(code(() => auditDiff(REPOSITORY_ROOT, 'reinforce-skill', [candidate],
+      companionOptions(forged, changedProse, next))), FAILURES.invalidCompanion);
+    const atom = 'skills/_base/_atoms/chronicle-append/chronicle-append.md';
+    const atomNext = fs.readFileSync(path.join(REPOSITORY_ROOT, atom), 'utf8');
+    const atomPrevious = atomNext.replace('allowed-tools: ["execute"]', 'allowed-tools: ["read"]');
+    assert.equal(code(() => auditDiff(REPOSITORY_ROOT, 'reinforce-skill', [atom],
+      companionOptions(companion(atom, 'derived-graph', atomPrevious, atomNext), atomPrevious, atomNext))),
+    FAILURES.invalidCompanion);
+  });
+
+  function git(root, ...args) {
+    const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  }
+
+  test('repository audit enumerates committed, staged, unstaged, untracked and renamed paths', () => {
+    withFixture((root) => {
+      git(root, 'init', '-q');
+      const previous = '# Changelog\n';
+      const next = `${previous}- Target change.\n`;
+      fs.writeFileSync(path.join(root, 'CHANGELOG.md'), previous);
+      git(root, 'add', '.');
+      git(root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'base');
+      const base = git(root, 'rev-parse', 'HEAD');
+      fs.appendFileSync(path.join(root, 'skills/existing-skill/SKILL.md'), 'committed\n');
+      git(root, 'add', '.');
+      git(root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'target');
+      fs.writeFileSync(path.join(root, 'CHANGELOG.md'), next);
+      const entry = companion('CHANGELOG.md', 'changelog', previous, next);
+      assert.equal(auditRepositoryDiff(root, 'existing-skill', base, { companions: [entry] }).clean, true);
+      fs.writeFileSync(path.join(root, 'untracked\nfile.md'), 'untracked');
+      git(root, 'mv', 'skills/existing-skill/intent.md', 'foreign-intent.md');
+      const audit = auditRepositoryDiff(root, 'existing-skill', base, { companions: [entry] });
+      assert.equal(audit.clean, false);
+      assert.deepEqual(audit.classified.map((item) => item.path), [
+        'CHANGELOG.md', 'foreign-intent.md', 'skills/existing-skill/SKILL.md',
+        'skills/existing-skill/intent.md', 'untracked\nfile.md',
+      ]);
+      fs.appendFileSync(path.join(root, 'CHANGELOG.md'), 'unrecorded drift\n');
+      assert.equal(code(() => auditRepositoryDiff(root, 'existing-skill', base, { companions: [entry] })),
+        FAILURES.invalidCompanion);
+    });
+  });
+
+  test('repository CLI accepts only exact actual-diff companions and rejects path overrides', () => {
+    withFixture((root) => {
+      git(root, 'init', '-q');
+      git(root, 'add', '.');
+      git(root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'base');
+      for (const args of [
+        ['--companions', 'ledger.json'],
+        ['--base', 'HEAD', '--audit', 'skills/existing-skill/SKILL.md'],
+        ['--base', 'HEAD', '--workflow-previous', 'fake'],
+        ['--base', 'HEAD', '--base', 'HEAD'],
+      ]) {
+        const result = spawnSync(process.execPath, [CLI, '--root', root, '--skill', 'existing-skill', ...args],
+          { encoding: 'utf8' });
+        assert.equal(result.status, 1, result.stdout);
+      }
+      const result = spawnSync(process.execPath,
+        [CLI, '--root', root, '--skill', 'existing-skill', '--base', 'HEAD'], { encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).clean, true);
+      fs.writeFileSync(path.join(root, 'extra.md'), 'extra\n');
+      const refused = spawnSync(process.execPath,
+        [CLI, '--root', root, '--skill', 'existing-skill', '--base', 'HEAD'], { encoding: 'utf8' });
+      assert.equal(refused.status, 2);
+    });
+  });
+
+  test('companions cannot write through symlinks, even into the target', (t) => {
+    if (os.platform() === 'win32') return t.skip('symlinks need Windows privileges');
+    withFixture((root) => {
+      fs.symlinkSync(path.join(root, 'skills/existing-skill/SKILL.md'), path.join(root, 'CHANGELOG.md'));
+      const previous = '# skill\n';
+      const next = `${previous}new\n`;
+      const entry = companion('CHANGELOG.md', 'changelog', previous, next);
+      assert.equal(code(() => auditDiff(root, 'existing-skill', [entry.path],
+        companionOptions(entry, previous, next))), FAILURES.symlinkComponent);
+    });
+  });

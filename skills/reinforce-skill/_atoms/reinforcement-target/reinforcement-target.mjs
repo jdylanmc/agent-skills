@@ -12,7 +12,7 @@
  *   2. It classifies any path the run intends to write, so an out-of-target
  *      edit becomes a *reported* entry in the change ledger rather than a
  *      detail that slips past. A `doctrine/`, `_base/`, or foreign-skill path is
- *      refused; the shared workflow file is the one disclosed cross-touchpoint.
+ *      refused by class alone; exact companions carry separate proof.
  *
  * The classification is not the boundary on its own. The boundary is that the
  * run never merges: the deliverable is a reviewed pull request, continuous
@@ -28,7 +28,10 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { deriveGraph, setFrontmatterField } from '../../../../scripts/derive-skill-graph.mjs';
 
 const FAILURES = {
   usage: 'usage',
@@ -38,6 +41,7 @@ const FAILURES = {
   notASkill: 'not_a_skill',
   notADirectory: 'not_a_directory',
   workflowNotAdditive: 'workflow_not_additive',
+  invalidCompanion: 'invalid_companion',
 };
 
 export class TargetError extends Error {
@@ -76,7 +80,7 @@ export const WRITE_CLASS = {
   outside: 'outside',
 };
 
-/** The one shared file a reinforcement may touch: test registration. */
+/** The shared workflow exception remains additive test registration only. */
 const WORKFLOW_FILE = '.github/workflows/validate-skills.yml';
 
 function requireString(value, name) {
@@ -189,8 +193,8 @@ export function resolveSkillTarget(repositoryRoot, skillName, { mustExist = true
  *
  * The classification is exhaustive: every candidate resolves to exactly one
  * class, so a later ledger can map every unit of the eventual diff back to a
- * decided class. `in-target` and `workflow` are the only classes a
- * reinforcement edits; the rest are reported and refused.
+ * decided class. Only `in-target` and `workflow` are writable by class;
+ * companions are admitted separately without relabelling their original class.
  *
  * Symlinked components are resolved before classifying. A lexical check would
  * classify a symlinked `skills/<target>/intent.md` as `in-target` while the
@@ -337,7 +341,7 @@ export function assertWorkflowAdditive(previousContent, nextContent) {
  * This is the completeness the single-path classifier cannot give on its own. A
  * classifier the model may or may not call proves nothing about paths it was
  * never handed. The diff is enumerable, so every changed path is classified
- * here, and any path outside `in-target` or `workflow` is refused. `workflow`
+ * here, and any path outside `in-target` or `workflow` needs companion proof. `workflow`
  * is reported separately because it is a shared file: it is writable only as an
  * additive test registration and is always surfaced for a human to read, never
  * treated as mechanically safe.
@@ -357,16 +361,24 @@ export function assertWorkflowAdditive(previousContent, nextContent) {
  * a `workflowViolation` and the change set is unclean. An unproven workflow edit
  * is refused, never waved through.
  */
-export function auditDiff(repositoryRoot, skillName, changedPaths, { workflow: workflowDiff } = {}) {
+export function auditDiff(repositoryRoot, skillName, changedPaths, {
+  workflow: workflowDiff, companions = [], contents = new Map(),
+} = {}) {
   requireString(repositoryRoot, 'repositoryRoot');
   requireString(skillName, 'skillName');
   if (!Array.isArray(changedPaths)) {
     throw new TargetError(FAILURES.usage, 'changedPaths must be an array');
   }
 
+  const companionEntries = checkCompanions(repositoryRoot, skillName, changedPaths, companions, contents);
   const classified = changedPaths.map((candidate) => {
     const writeClass = classifyWritePath(repositoryRoot, skillName, candidate);
-    return { path: candidate, writeClass, writable: isWritableClass(writeClass) };
+    const companion = companionEntries.get(candidate);
+    return {
+      path: candidate, writeClass,
+      writable: isWritableClass(writeClass) || Boolean(companion),
+      ...(companion ? { companion } : {}),
+    };
   });
 
   const refused = classified.filter((entry) => !entry.writable);
@@ -409,13 +421,135 @@ export function auditDiff(repositoryRoot, skillName, changedPaths, { workflow: w
     refused,
     workflow,
     workflowViolation,
+    companions: classified.filter((entry) => entry.companion),
     clean: refused.length === 0 && workflowViolation === null,
   };
 }
 
+const sha256 = (content) => createHash('sha256').update(content).digest('hex');
+const COMPANION_FIELDS = ['path', 'kind', 'reason', 'relationship', 'previous_sha256', 'next_sha256'];
+
+function refuseCompanion(message) {
+  throw new TargetError(FAILURES.invalidCompanion, message);
+}
+
+function canonicalCompanionPath(root, candidate) {
+  if (typeof candidate !== 'string' || !candidate || candidate.includes('\\')
+      || /[\x00-\x1f\x7f]/.test(candidate) || path.posix.isAbsolute(candidate)
+      || candidate.split('/').some((part) => !part || part === '.' || part === '..')) {
+    refuseCompanion('companion paths must be exact repository-relative paths, not aliases or patterns');
+  }
+  if (/[*?[\]{}]/.test(candidate)) refuseCompanion('companion path patterns are refused');
+  assertNoSymlinkComponent(fs.realpathSync(root), path.resolve(root, candidate));
+  return candidate;
+}
+
+function referencesTarget(content, candidate, skillName) {
+  const prefix = `skills/${skillName}/`;
+  return [...content.matchAll(/['"`]([^'"`\r\n]+)['"`]/g)].some((match) => {
+    const reference = match[1];
+    const resolved = reference.startsWith('.')
+      ? path.posix.normalize(path.posix.join(path.posix.dirname(candidate), reference))
+      : reference;
+    return resolved.startsWith(prefix);
+  });
+}
+
+function checkCompanions(root, skillName, changedPaths, companions, contents) {
+  if (!Array.isArray(companions) || !(contents instanceof Map)) {
+    refuseCompanion('companions must be an array and contents a Map of actual before/after bytes');
+  }
+  const checked = new Map();
+  let derived;
+  for (const entry of companions) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+        || Object.keys(entry).sort().join() !== [...COMPANION_FIELDS].sort().join()
+        || COMPANION_FIELDS.some((field) => typeof entry[field] !== 'string' || !entry[field].trim())) {
+      refuseCompanion('each companion requires exactly path, kind, reason, relationship and both SHA-256 digests');
+    }
+    const candidate = canonicalCompanionPath(root, entry.path);
+    if (checked.has(candidate) || !changedPaths.includes(candidate)) {
+      refuseCompanion(`duplicate or unused companion: ${candidate}`);
+    }
+    const writeClass = classifyWritePath(root, skillName, candidate);
+    if (isWritableClass(writeClass) || /(^|\/)(?:AGENTS\.md|intent\.md)$/.test(candidate)
+        || /^(?:doctrine|agents|scripts|\.github|\.skill-log|\.user)\//.test(candidate)
+        || /^skills\/(?:roast|post-mortem)\//.test(candidate)
+        || /^skills\/create-skill\/_atoms\/(?:roast-round-ledger|roast-remediation)\//.test(candidate)) {
+      refuseCompanion(`protected or non-companion path: ${candidate}`);
+    }
+    const bytes = contents.get(candidate);
+    if (!bytes || typeof bytes.previous !== 'string' || typeof bytes.next !== 'string'
+        || bytes.previous === bytes.next
+        || sha256(bytes.previous) !== entry.previous_sha256
+        || sha256(bytes.next) !== entry.next_sha256) {
+      refuseCompanion(`missing, created, deleted, unchanged or digest-mismatched companion: ${candidate}`);
+    }
+    if (entry.kind === 'changelog') {
+      if (candidate !== 'CHANGELOG.md') refuseCompanion('only the existing root CHANGELOG.md is a changelog companion');
+      // Existing release history must remain byte-for-byte and in order.
+      const previous = bytes.previous.split('\n');
+      const next = bytes.next.split('\n');
+      let cursor = 0;
+      for (const line of next) if (line === previous[cursor]) cursor += 1;
+      if (cursor !== previous.length) refuseCompanion('a changelog companion may only insert lines');
+    } else if (entry.kind === 'caller-integration') {
+      if (writeClass !== WRITE_CLASS.foreignSkill || !candidate.endsWith('.mjs')
+          || !referencesTarget(bytes.previous, candidate, skillName)
+          || !referencesTarget(bytes.next, candidate, skillName)) {
+        refuseCompanion(`caller integration requires an existing .mjs consumer referencing skills/${skillName}/ before and after`);
+      }
+    } else if (entry.kind === 'derived-graph') {
+      const unit = candidate.match(/^skills\/([^/]+)\/(_atoms|_molecules)\/([^/]+)\/\3\.md$/);
+      if (!unit || ![WRITE_CLASS.base, WRITE_CLASS.foreignSkill].includes(writeClass)) {
+        refuseCompanion('derived companions must be existing unit Markdown, never a skill grant');
+      }
+      derived ??= deriveGraph(root);
+      const relative = candidate.slice('skills/'.length);
+      if (derived.grantViolations.length || derived.updates.length
+          || !derived.parsedByFile.has(relative)) {
+        refuseCompanion('derived graph must validate, have no grant violations, and be current');
+      }
+      let expected = setFrontmatterField(bytes.previous, 'used-by', JSON.stringify(derived.usedBy.get(relative)));
+      if (unit[2] === '_molecules') {
+        expected = setFrontmatterField(expected, 'allowed-tools', JSON.stringify(derived.resolvedTools.get(relative)));
+      }
+      if (expected !== bytes.next) refuseCompanion('a derived companion changes authored bytes or is not the exact deriver output');
+    } else {
+      refuseCompanion(`unknown companion kind: ${entry.kind}`);
+    }
+    checked.set(candidate, { ...entry });
+  }
+  return checked;
+}
+
+/** Enumerate the whole candidate, including untracked files and both sides of renames. */
+export function auditRepositoryDiff(repositoryRoot, skillName, base, { companions = [] } = {}) {
+  resolveSkillTarget(repositoryRoot, skillName);
+  requireString(base, 'base');
+  const root = fs.realpathSync(repositoryRoot);
+  const git = (args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+  const baseCommit = git(['rev-parse', '--verify', '--end-of-options', `${base}^{commit}`]).trim();
+  const changed = git(['diff', '--no-renames', '--name-only', '-z', baseCommit, '--']).split('\0').filter(Boolean);
+  const untracked = git(['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
+  const changedPaths = [...new Set([...changed, ...untracked])].sort();
+  const contents = new Map();
+  const previousFiles = new Set(git(['ls-tree', '-r', '--name-only', '-z', baseCommit]).split('\0'));
+  for (const candidate of changedPaths) {
+    const absolute = path.join(root, candidate);
+    assertNoSymlinkComponent(root, absolute);
+    const previous = previousFiles.has(candidate) ? git(['show', `${baseCommit}:${candidate}`]) : null;
+    const next = fs.existsSync(absolute) && fs.lstatSync(absolute).isFile()
+      ? fs.readFileSync(absolute, 'utf8') : null;
+    contents.set(candidate, { previous, next });
+  }
+  const workflow = contents.get(WORKFLOW_FILE);
+  return { base: baseCommit, ...auditDiff(root, skillName, changedPaths, { workflow, companions, contents }) };
+}
+
 function parseArguments(argv) {
   const args = {};
-  const valueFlags = ['--root', '--skill', '--classify', '--audit', '--workflow-previous', '--workflow-next'];
+  const valueFlags = ['--root', '--skill', '--classify', '--audit', '--base', '--companions', '--workflow-previous', '--workflow-next'];
   const claim = (key, token) => {
     if (Object.prototype.hasOwnProperty.call(args, key)) {
       throw new TargetError(FAILURES.usage, `${token} was given more than once`);
@@ -450,6 +584,18 @@ function main(argv) {
   }
   if (!args.root || !args.skill) {
     throw new TargetError(FAILURES.usage, '--root and --skill are required');
+  }
+  if (args.companions && !args.base) {
+    throw new TargetError(FAILURES.usage, '--companions requires --base so content comes from the actual diff');
+  }
+  if (args.base) {
+    if (args.audit || args.classify || args['workflow-previous'] || args['workflow-next']) {
+      throw new TargetError(FAILURES.usage, '--base enumerates the actual diff; do not supply path or content overrides');
+    }
+    const companions = args.companions ? JSON.parse(fs.readFileSync(args.companions, 'utf8')) : [];
+    const result = auditRepositoryDiff(args.root, args.skill, args.base, { companions });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return result.clean ? 0 : 2;
   }
   if (args.classify) {
     const writeClass = classifyWritePath(args.root, args.skill, args.classify);

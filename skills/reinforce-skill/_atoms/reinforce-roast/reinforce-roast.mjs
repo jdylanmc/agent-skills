@@ -42,7 +42,7 @@ import {
   roastStatus,
   unresolvedFindings,
 } from '../../../create-skill/_atoms/roast-round-ledger/roast-round-ledger.mjs';
-import { auditDiff } from '../reinforcement-target/reinforcement-target.mjs';
+import { auditDiff, auditRepositoryDiff } from '../reinforcement-target/reinforcement-target.mjs';
 
 /**
  * The one validated implementation, re-exported so a reinforcement drives the
@@ -81,7 +81,7 @@ export {
  * with every refused path named, so a reviewer reads what was refused rather
  * than a bare verdict.
  */
-export function assertReinforcementChangeSet(repositoryRoot, skillName, changedPaths, { workflow } = {}) {
+export function assertReinforcementChangeSet(repositoryRoot, skillName, changedPaths, options = {}) {
   if (!Array.isArray(changedPaths)) {
     throw new LedgerError('invalid_change_set', 'changed paths must be an array');
   }
@@ -95,7 +95,11 @@ export function assertReinforcementChangeSet(repositoryRoot, skillName, changedP
   // edit is proven a bare test registration, and refuses an unproven one whose
   // content was not supplied. So a workflow path here fails closed, exactly as
   // an out-of-target path does.
-  const audit = auditDiff(repositoryRoot, skillName, changedPaths, { workflow });
+  const audit = auditDiff(repositoryRoot, skillName, changedPaths, options);
+  return assertCleanAudit(audit, skillName);
+}
+
+function assertCleanAudit(audit, skillName) {
   if (!audit.clean) {
     const refusedPaths = audit.refused
       .map((entry) => `${entry.path} (${entry.writeClass})`)
@@ -105,14 +109,15 @@ export function assertReinforcementChangeSet(repositoryRoot, skillName, changedP
     }
     throw new LedgerError(
       'out_of_target',
-      `a reinforcement remediation stays inside skills/${skillName} and touches the workflow only as a proven test registration; refused: ${refusedPaths.join(', ')}`,
+      `a reinforcement remediation stays inside skills/${skillName}, proven test registrations and justified companions; refused: ${refusedPaths.join(', ')}`,
     );
   }
 
   return {
     status: 'intact',
-    checked: changedPaths.length,
+    checked: audit.classified.length,
     workflow: audit.workflow.map((entry) => entry.path),
+    companions: audit.companions,
   };
 }
 
@@ -162,17 +167,20 @@ export function assertRoastComplete(state) {
 }
 
 export const USAGE = `Usage: reinforce-roast.mjs --root <path> --skill <name> --changed <a,b,c>
+       reinforce-roast.mjs --root <path> --skill <name> --base <commit> [--companions <json>]
 
   --root                Repository root the reinforcement runs against.
   --skill               The one skill being reinforced.
   --changed             Comma-separated change set to audit.
+  --base                Enumerate the whole candidate against this baseline commit.
+  --companions          Exact companion ledger; requires --base.
   --workflow-previous   Path to the validation workflow before the edit.
   --workflow-next       Path to the validation workflow after the edit.
   --probe               Report availability and exit.`;
 
 export function parseArguments(argv) {
   const args = {};
-  const valueFlags = ['--root', '--skill', '--changed', '--workflow-previous', '--workflow-next'];
+  const valueFlags = ['--root', '--skill', '--changed', '--base', '--companions', '--workflow-previous', '--workflow-next'];
   const claim = (key, token) => {
     if (Object.prototype.hasOwnProperty.call(args, key)) {
       throw new LedgerError('usage', `${token} was given more than once\n${USAGE}`);
@@ -203,6 +211,19 @@ export function run(argv, streams = process) {
   const args = parseArguments(argv);
   if (args.probe) {
     streams.stdout.write('reinforce-roast: available\n');
+    return 0;
+  }
+  if (args.companions && !args.base) {
+    throw new LedgerError('usage', '--companions requires --base');
+  }
+  if (args.base) {
+    if (!args.root || !args.skill || args.changed || args['workflow-previous'] || args['workflow-next']) {
+      throw new LedgerError('usage', '--base requires --root and --skill and refuses path/content overrides');
+    }
+    const companions = args.companions ? JSON.parse(fs.readFileSync(args.companions, 'utf8')) : [];
+    const audit = auditRepositoryDiff(args.root, args.skill, args.base, { companions });
+    assertGateIntegrity(audit.classified.map((entry) => entry.path));
+    streams.stdout.write(`${JSON.stringify(assertCleanAudit(audit, args.skill), null, 2)}\n`);
     return 0;
   }
   if (!args.root || !args.skill || !args.changed) {
