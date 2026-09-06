@@ -247,52 +247,52 @@ test('an initial unwatermarked failure dispatches while the initial green state 
     continuation: continuation(),
     observedAt: '2026-08-30T12:00:00.000Z',
   });
-
-  test('mechanical prerequisites precede mixed functional evidence', () => {
-    const raw = observation({
-      pullRequest: { ...observation().pullRequest, behind: true, upToDatePolicy: 'required' },
-      checks: [{ name: 'validate', runId: '91', nativeId: '101', attempt: 1,
-        headSha: 'b'.repeat(40), required: true, status: 'failure' }],
-    });
-    const state = createWatchState({ observation: raw, continuation: continuation(), observedAt: '2026-08-30T12:00:00Z' });
-    assert.equal(watchAction(state).action, 'run-shepherd-cycle');
-    assert.equal(beginShipDispatch(state, { evidence: ['ci:91/101/1'], startedAt: '2026-08-30T12:00:00Z' }).stopReason, 'ship-blocked');
-  });
-
-  test('full watches reject split check payloads, incomplete reads and missing requiredness', () => {
-    for (const change of [
-      (raw) => { raw.checkEvidence = { ...raw.checkEvidence, checks: [] }; },
-      (raw) => { raw.checkEvidence.complete = false; },
-      (raw) => { raw.checkEvidence.observed = false; },
-      (raw) => { raw.checkEvidence.headSha = 'c'.repeat(40); },
-      (raw) => { delete raw.checks[0].required; },
-    ]) {
-      const raw = observation();
-      change(raw);
-      assert.throws(() => createWatchState({ observation: raw, continuation: continuation(),
-        observedAt: '2026-08-30T12:00:00Z' }), /check evidence|check requiredness/);
-    }
-  });
-
-  test('base retargets and head repository changes stop either authority mode', () => {
-    const raw = observation();
-    for (const limited of [false, true]) {
-      const state = createWatchState({
-        observation: raw, observedAt: '2026-08-30T12:00:00Z',
-        ...(limited ? { readAuthority: { source: 'operator-explicit-target', owningParent: 'parent',
-          targetIdentity: raw.identity } } : { continuation: continuation() }),
-      });
-      for (const updated of [
-        observation({ pullRequest: { ...raw.pullRequest, baseBranch: 'release' } }),
-        observation({ identity: { ...raw.identity, headRepository: 'other/repo' } }),
-      ]) {
-        assert.equal(recordObservation(state, { observation: updated,
-          observedAt: '2026-08-30T12:02:00Z' }).stopReason, 'ownership-failure');
-      }
-      assert.equal(watchAction({ ...state, authority: { mode: 'unrecognized' } }).reason, 'ownership-failure');
-    }
-  });
   assert.equal(watchAction(failed).action, 'invoke-ship');
+});
+
+test('mechanical prerequisites precede mixed functional evidence', () => {
+  const raw = observation({
+    pullRequest: { ...observation().pullRequest, behind: true, upToDatePolicy: 'required' },
+    checks: [{ name: 'validate', runId: '91', nativeId: '101', attempt: 1,
+      headSha: 'b'.repeat(40), required: true, status: 'failure' }],
+  });
+  const state = createWatchState({ observation: raw, continuation: continuation(), observedAt: '2026-08-30T12:00:00Z' });
+  assert.equal(watchAction(state).action, 'run-shepherd-cycle');
+  assert.equal(beginShipDispatch(state, { evidence: ['ci:91/101/1'], startedAt: '2026-08-30T12:00:00Z' }).stopReason, 'ship-blocked');
+});
+
+test('full watches reject split check payloads, incomplete reads and missing requiredness', () => {
+  for (const change of [
+    (raw) => { raw.checkEvidence = { ...raw.checkEvidence, checks: [] }; },
+    (raw) => { raw.checkEvidence.complete = false; },
+    (raw) => { raw.checkEvidence.observed = false; },
+    (raw) => { raw.checkEvidence.headSha = 'c'.repeat(40); },
+    (raw) => { delete raw.checks[0].required; },
+  ]) {
+    const raw = observation();
+    change(raw);
+    assert.throws(() => createWatchState({ observation: raw, continuation: continuation(),
+      observedAt: '2026-08-30T12:00:00Z' }), /check evidence|check requiredness/);
+  }
+});
+
+test('base retargets and head repository changes stop either authority mode', () => {
+  const raw = observation();
+  for (const limited of [false, true]) {
+    const state = createWatchState({
+      observation: raw, observedAt: '2026-08-30T12:00:00Z',
+      ...(limited ? { readAuthority: { source: 'operator-explicit-target', owningParent: 'parent',
+        targetIdentity: raw.identity } } : { continuation: continuation() }),
+    });
+    for (const updated of [
+      observation({ pullRequest: { ...raw.pullRequest, baseBranch: 'release' } }),
+      observation({ identity: { ...raw.identity, headRepository: 'other/repo' } }),
+    ]) {
+      assert.equal(recordObservation(state, { observation: updated,
+        observedAt: '2026-08-30T12:02:00Z' }).stopReason, 'ownership-failure');
+    }
+    assert.equal(watchAction({ ...state, authority: { mode: 'unrecognized' } }).reason, 'ownership-failure');
+  }
 });
 
 test('invalid or already terminal baselines never become running watches', () => {
