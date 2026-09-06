@@ -220,8 +220,10 @@ and Ship owns their classification.
    successfully for the exact current head, with complete nonempty required
    evidence; pending, cancelled, failed, skipped, neutral, missing, stale-head
    or unknown results are not green evidence. Ignore an old run only when
-   same-job/run/head identity and a higher attempt with a distinct check ID prove
-   replacement, never merely because it was cancelled. If no adapter is supported, stop because a durable
+   the same job/app/head and distinct check IDs prove a higher attempt in the
+   same run, or a higher provider run number in the same identified workflow.
+   A cancellation or a newer unrelated workflow is not replacement proof.
+   If no adapter is supported, stop because a durable
    watch cannot honestly own state it cannot observe.
 18. Classify each action cycle:
    - `mergeable-and-green` when triggered maintenance, regeneration, local

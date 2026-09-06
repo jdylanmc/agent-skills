@@ -99,6 +99,8 @@ function normalizedChecks(checks = []) {
     name: check.name === undefined || check.name === null ? null : String(check.name),
     nativeId: check.nativeId === undefined || check.nativeId === null ? null : String(check.nativeId),
     runId: check.runId === undefined || check.runId === null ? null : String(check.runId),
+    workflowId: check.workflowId === undefined || check.workflowId === null ? null : String(check.workflowId),
+    runNumber: Number.isInteger(check.runNumber) && check.runNumber > 0 ? check.runNumber : null,
     attempt: Number.isInteger(check.attempt) && check.attempt > 0 ? check.attempt : null,
     headSha: check.headSha === undefined || check.headSha === null ? null : String(check.headSha),
     required: typeof check.required === 'boolean' ? check.required : null,

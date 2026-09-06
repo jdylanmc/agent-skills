@@ -79,8 +79,9 @@ Both green gates require a nonempty, complete, observed required-check envelope
 whose head and every check head equal the current observed head. Missing
 evidence, an absent configured required context/application, pending,
 cancellation, failure, unknown or stale-head results cannot
-be ready for human review. Only a higher attempt of the same named job in the
-same workflow run and head, with distinct native check IDs, proves replacement.
+be ready for human review. Replacement requires the same job/app/head and
+requiredness with distinct native check IDs, plus either a higher attempt in
+the same run or a higher native run number in the same identified workflow.
 No blanket cancellation exclusion is permitted. Omitted merge-block and draft
 fields no longer count as clearance. These stricter defaults intentionally
 reject old hand-built signals that omitted evidence. Observation-only authority

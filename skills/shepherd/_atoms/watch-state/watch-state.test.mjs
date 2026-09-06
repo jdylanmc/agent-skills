@@ -818,6 +818,8 @@ test('provider-native GitHub checks produce Ship-compatible per-attempt identity
     name: 'validate',
     nativeId: '7001',
     runId: '9001',
+    workflowId: null,
+    runNumber: null,
     attempt: 2,
     headSha,
     required: true,

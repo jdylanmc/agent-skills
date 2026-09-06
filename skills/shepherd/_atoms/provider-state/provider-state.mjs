@@ -135,6 +135,8 @@ export const GITHUB_CHECK_IDENTITIES_QUERY = `query($owner: String!, $name: Stri
                   workflowRun {
                     databaseId
                     runAttempt
+                    runNumber
+                    workflow { databaseId }
                   }
                 }
               }
@@ -551,6 +553,9 @@ export function interpretGitHubCheckIdentities(payload, {
     const nativeId = Number.isInteger(check?.databaseId) && check.databaseId > 0 ? String(check.databaseId) : null;
     const run = check?.checkSuite?.workflowRun;
     const runId = Number.isInteger(run?.databaseId) && run.databaseId > 0 ? String(run.databaseId) : null;
+    const workflowId = Number.isInteger(run?.workflow?.databaseId) && run.workflow.databaseId > 0
+      ? String(run.workflow.databaseId) : null;
+    const runNumber = Number.isInteger(run?.runNumber) && run.runNumber > 0 ? run.runNumber : null;
     const attempt = Number.isInteger(run?.runAttempt) && run.runAttempt > 0 ? run.runAttempt : null;
     const appId = checkAppId(check?.checkSuite?.app?.databaseId);
     const testedHead = commit?.oid === expectedHead ? expectedHead : null;
@@ -562,6 +567,8 @@ export function interpretGitHubCheckIdentities(payload, {
       name: check?.name ?? null,
       nativeId,
       runId,
+      workflowId,
+      runNumber,
       attempt,
       appId,
       headSha: testedHead,
@@ -1003,15 +1010,22 @@ export function validationIsGreen(validation = {}) {
     && currentRequiredChecksStatus(validation, validation.headSha).status === 'success';
 }
 
-// Only an attempt of the same named job in the same workflow run proves
-// replacement. A newer unrelated run or a cancellation alone proves nothing.
+// Replacement needs the same job/app/head and provider-ordered execution
+// within the same workflow. Cancellation or a newer unrelated run is not proof.
 export function authoritativeChecks(checks = []) {
   return checks.filter((check) => !checks.some((newer) => (
     check.runId && check.nativeId && newer.nativeId && newer.nativeId !== check.nativeId
-    && check.runId === newer.runId && check.name === newer.name
+    && check.name === newer.name && check.required === newer.required
     && check.headSha === newer.headSha && checkAppId(check?.appId) === checkAppId(newer?.appId)
-    && Number.isInteger(check.attempt) && check.attempt > 0
-    && Number.isInteger(newer.attempt) && newer.attempt > check.attempt
+    && (
+      (check.runId === newer.runId
+        && Number.isInteger(check.attempt) && check.attempt > 0
+        && Number.isInteger(newer.attempt) && newer.attempt > check.attempt)
+      || (check.runId !== newer.runId && newer.runId
+        && check.workflowId && check.workflowId === newer.workflowId && checkAppId(check.appId) !== null
+        && Number.isInteger(check.runNumber) && check.runNumber > 0
+        && Number.isInteger(newer.runNumber) && newer.runNumber > check.runNumber)
+    )
   )));
 }
 

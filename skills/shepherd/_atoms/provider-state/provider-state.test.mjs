@@ -79,6 +79,25 @@ const AZURE_TARGET = {
 
 const ALL_BUILDERS = [resolveTargetCommand, mergeStateCommand, validationStatusCommand];
 
+test('newer execution of the same workflow supersedes a cancelled same-head predecessor only with native order', () => {
+  const headSha = 'b'.repeat(40);
+  const old = { name: 'validate', nativeId: '10', runId: '100', workflowId: '9',
+    runNumber: 1, attempt: 1, appId: 7, required: true, headSha, status: 'failure' };
+  const current = { ...old, nativeId: '11', runId: '101', runNumber: 2, status: 'success' };
+  const status = (next) => currentRequiredChecksStatus({
+    observed: true, complete: true, headSha,
+    requiredChecks: [{ name: 'validate', appId: 7 }], checks: [old, next],
+  }, headSha).status;
+  assert.equal(status(current), 'success');
+  assert.equal(status({ ...current, status: 'pending' }), 'incomplete');
+  for (const change of [
+    { workflowId: 'other' }, { workflowId: null }, { runNumber: null },
+    { runNumber: 1 }, { appId: 8 }, { required: false },
+  ]) {
+    assert.notEqual(status({ ...current, ...change }), 'success');
+  }
+});
+
 function policyPayload({
   repository = 'example/repo',
   branch = 'feature',

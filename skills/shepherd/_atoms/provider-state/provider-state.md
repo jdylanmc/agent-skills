@@ -112,8 +112,11 @@ Policy and checks are read in the same GraphQL response. A previously supplied
 policy packet cannot authorize completeness, even when the base SHA is unchanged.
 Pending, cancellation,
 failure, neutral, skipped and unknown required results are not green. Only a
-higher attempt of the same named job, workflow run and head with distinct native
-check IDs supersedes an older result.
+higher attempt in the same run, or a higher run number in the same identified
+workflow, supersedes an older result. Both require the same named job, app,
+head and requiredness, and distinct native check IDs. Cross-run replacement
+also requires an observed application identity; unrelated workflows do not
+supersede one another.
 
 `liveBaseCommand` reads the target ref itself. `interpretLiveBase` verifies
 repository and full ref identity. Pass that evidence and target into
