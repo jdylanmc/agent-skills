@@ -109,3 +109,34 @@ disposition.
 
 Chronicler records operations. This record owns control decisions. Neither is a
 substitute for the other.
+
+Worktree identity version 2 adds exact positive decimal `birthtimeNs` and
+`schemaVersion: 2` to the existing Git/device/inode identity. Capture fails
+closed when filesystem creation time is unavailable. Recreation remains
+invalid even when a filesystem reuses the device/inode pair.
+
+Schema-v5 archived, unversioned identities remain historical version-1
+evidence, unchanged and without invented birthtime. Active version-1 owners
+are untrusted; unfenced owners cannot load or write, and legacy ownership
+cannot continue or deliver work. Stop the workers first and call
+`recoverLegacyAssignmentsPersisted` with the
+exact expected ledger revision and an acknowledgment for every legacy owner:
+`{issue, generation, workerContext, stopped: true, evidence}`. The recovery
+validates under the existing lock and records fencing evidence. Owners without
+quality, publication, or stop obligations are archived and returned to the
+scheduler for a fresh worker and different worktree at a new generation.
+Other owners remain readable, fenced ownership reservations with an explicit
+blocked handoff obligation. Existing publication identities, quality evidence,
+readiness obligations, cancellation, and budget state are retained. In-flight
+checks become blocked, with their original activity retained in the event log;
+existing merge-watermark blockers are unchanged.
+
+`releaseAfterValidatedHandoff` can retire a fenced legacy reservation using
+the existing exact, revision-bound, reread handoff artifact. This is historical
+retirement, not proof of a current worktree: it neither measures birthtime for
+the old owner nor grants continuation authority. The released issue stays
+blocked, preserves publication and check obligations, and requires human
+direction rather than redispatch. A queued ownership-bound publication
+revision remains blocked until explicitly reconciled; release does not
+silently adopt that revision or discard the current PR binding. Cancellation
+and terminal budget state are never reset by recovery or retirement.

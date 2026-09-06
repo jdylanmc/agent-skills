@@ -10,7 +10,7 @@ import {
   createBenchAtomicCurrent,
   createBenchAtomicTransition,
 } from './atomic-proposal.mjs';
-import { applyProposalToFleetState, createBenchEpoch } from '../bench-epoch/bench-epoch.mjs';
+import { applyProposalToFleetState, createBenchEpoch, benchProposalDigest } from '../bench-epoch/bench-epoch.mjs';
 import { evaluateTransitionCurrentness, validateStrategyTransitionProposal } from '../../../_base/_atoms/atomic-transition/atomic-transition.mjs';
 import {
   createFleetState,
@@ -95,10 +95,11 @@ function benchState(overrides = {}) {
 }
 
 function proposal(overrides = {}) {
-  return {
+  const value = {
     id: 'proposal-1',
     epoch: 0,
     fleetStateRevision: 0,
+    binding: { run: 'bench-run', ...atomicBinding() },
     mutatorId: 'orchestrator',
     turnId: 'orchestrator-turn',
     mutation: { action: 'publish-review-candidate' },
@@ -108,6 +109,10 @@ function proposal(overrides = {}) {
     ],
     ...overrides,
   };
+  value.signatures = value.signatures.map((signature) => ({
+    ...signature, proposalDigest: benchProposalDigest(value),
+  }));
+  return value;
 }
 
 function atomicBinding() {
@@ -235,7 +240,7 @@ test('derives locked leases from persisted authority and rejects invented, repla
   ]);
   assert.throws(() => createBenchAtomicTransition({
     ...fixture,
-    proposal: proposal(),
+    proposal: proposal({ binding: { run: 'bench-run', ...atomicBinding(), lease: 'invented-lease' } }),
     binding: { ...atomicBinding(), lease: 'invented-lease' },
   }), /not reserved/);
   assert.throws(() => createBenchAtomicCurrent({
@@ -264,6 +269,32 @@ test('derives locked leases from persisted authority and rejects invented, repla
     binding: atomicBinding(),
     now: '2026-01-02T00:00:00Z',
   }), /lease is expired/);
+});
+
+test('locked acceptance rejects changed signed mutation and expiry during the wait without invoking callback', (t) => {
+  const sandbox = path.join(ROOT, '.test-sandbox', `bench-expiry-${process.pid}-${randomUUID()}`);
+  const repository = path.join(sandbox, 'repository');
+  fs.mkdirSync(repository, { recursive: true });
+  t.after(() => fs.rmSync(sandbox, { recursive: true, force: true }));
+  const currentManifest = manifest(repository);
+  const file = fleetStatePath(repository, 'bench-run');
+  persistFleetState(file, withBenchStrategyState(createFleetState(currentManifest, 'bench-run')), 0, currentManifest);
+  const fleetState = loadFleetState(file, currentManifest);
+  const signed = proposal({ fleetStateRevision: 1 });
+  assert.throws(() => applyBenchAtomicFleetStateTransition({
+    file, manifest: currentManifest, fleetState,
+    proposal: { ...signed, mutation: { action: 'unsigned' } },
+    binding: atomicBinding(),
+    transition: () => assert.fail('unsigned callback'),
+  }), /signature digest/);
+  let calls = 0;
+  assert.throws(() => applyBenchAtomicFleetStateTransition({
+    file, manifest: currentManifest, fleetState, proposal: signed, binding: atomicBinding(),
+    now: '2026-01-01T00:00:00Z',
+    clock: () => ++calls === 1 ? '2026-01-01T00:00:00Z' : '2099-01-01T00:00:00Z',
+    transition: () => assert.fail('expired callback'),
+  }), /lease is expired/);
+  assert.equal(loadFleetState(file, currentManifest).revision, 1);
 });
 
 test('delegates a compatible Bench transition through the shared Fleet State CAS adapter', (t) => {

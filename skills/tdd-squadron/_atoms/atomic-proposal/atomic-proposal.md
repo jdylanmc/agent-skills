@@ -28,3 +28,11 @@ from its lock-scoped clock for both revalidation and the lifecycle callback;
 the callback receives that timestamp as its fourth argument. A moved Fleet
 State revision, expired proposal, changed TDD projection, or malformed
 successor rejects the proposal without a local write.
+
+The adapter's default transition dispatches the validated lifecycle operation,
+including reservation, recovery, and report-backed Roast approval. For
+coordinator control proposals the runtime must supply `coordinatorAgent`
+matching the persisted coordinator and proposal actor. Control operations
+always use the built-in dispatcher, never a caller transition callback. Their
+control-revision fence is revalidated under the same shared CAS lock; no
+delivery lease is borrowed or fabricated to bootstrap a reservation.

@@ -174,6 +174,10 @@ export function persistedShepherdPasses(issueRecord, state, manifest) {
 }
 
 function revisionMatches(evidence, revision) {
+  if (revision?.candidateId !== undefined) {
+    return evidence?.candidateId === revision.candidateId
+      && evidence?.candidateRevision === revision.candidateRevision;
+  }
   return evidence?.baseSha === revision?.baseSha && evidence?.headSha === revision?.headSha;
 }
 

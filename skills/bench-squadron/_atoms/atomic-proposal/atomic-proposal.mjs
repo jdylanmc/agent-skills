@@ -77,6 +77,13 @@ function assertAtomicBinding(input, benchState, validatedBenchProposal, fleetSta
   const candidate = identifier(input.candidate, 'atomic candidate');
   const lease = identifier(input.lease, 'atomic lease');
   const fence = positiveFence(input.fence);
+  if (JSON.stringify([candidate, lease, fence, fleetState.runId])
+      !== JSON.stringify([
+        validatedBenchProposal.binding.candidate, validatedBenchProposal.binding.lease,
+        validatedBenchProposal.binding.fence, validatedBenchProposal.binding.run,
+      ])) {
+    throw new Error('atomic binding differs from the signed proposal binding');
+  }
   const authoritative = benchState.reservation.leases.find((entry) => entry.lease === lease);
   if (!authoritative) {
     throw new Error('atomic lease is not reserved by the current Bench state');
@@ -251,7 +258,15 @@ export function applyBenchAtomicFleetStateTransition(input) {
   if (typeof input.transition !== 'function') {
     throw new Error('Bench Atomic transition requires a Fleet State transition callback');
   }
-  const built = createBenchAtomicTransition(input);
+  const clock = input.clock ?? (() => new Date().toISOString());
+  if (typeof clock !== 'function') throw new Error('Bench Atomic transition clock must be a function');
+  const now = () => {
+    const value = clock();
+    timestamp(value, 'Bench Atomic trusted clock');
+    return value;
+  };
+  const submitted = structuredClone(input.proposal);
+  const built = createBenchAtomicTransition({ ...input, proposal: submitted, now: now() });
   const fleetState = applyFleetStateTransition({
     file: input.file,
     manifest: input.manifest,
@@ -260,7 +275,7 @@ export function applyBenchAtomicFleetStateTransition(input) {
       fleetState: lockedFleetState,
       manifest: input.manifest,
       proposal: built.proposal,
-      now: input.now,
+      now: now(),
     }),
     transition: (lockedFleetState, sharedProposal) => {
       const lockedBenchState = benchEpochFromFleetState(lockedFleetState);
@@ -268,8 +283,14 @@ export function applyBenchAtomicFleetStateTransition(input) {
         lockedBenchState,
         lockedFleetState,
         input.manifest,
-        input.proposal,
+        submitted,
       );
+      createBenchAtomicCurrent({
+        fleetState: lockedFleetState, manifest: input.manifest, proposal: built.proposal, now: now(),
+      });
+      if (validatedBenchProposal.digest !== built.validatedBenchProposal.digest) {
+        throw new Error('locked proposal digest differs from the collected proposal');
+      }
       const nextBenchEpoch = applyValidatedProposal(lockedBenchState, validatedBenchProposal);
       const transitionedFleetState = input.transition(
         structuredClone(lockedFleetState),

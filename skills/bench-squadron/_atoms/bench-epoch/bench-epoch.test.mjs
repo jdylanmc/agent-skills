@@ -7,6 +7,8 @@ import {
   addDownstreamClaim,
   applyProposalToFleetState,
   createBenchEpoch,
+  benchProposalDigest,
+  assertBenchEpoch,
   validateProposal,
 } from './bench-epoch.mjs';
 import { createFleetState } from '../../../ship-with-squadron/_atoms/fleet-state/fleet-state.mjs';
@@ -85,10 +87,11 @@ function benchState(overrides = {}) {
 }
 
 function proposal(overrides = {}) {
-  return {
+  const value = {
     id: 'proposal-1',
     epoch: 0,
     fleetStateRevision: 0,
+    binding: { run: 'bench-epoch-test', candidate: 'candidate-1', lease: 'bench-lease', fence: 1 },
     mutatorId: 'orchestrator',
     turnId: 'orchestrator-turn',
     mutation: { action: 'publish-review-candidate' },
@@ -98,6 +101,10 @@ function proposal(overrides = {}) {
     ],
     ...overrides,
   };
+  value.signatures = value.signatures.map((signature) => ({
+    ...signature, proposalDigest: benchProposalDigest(value),
+  }));
+  return value;
 }
 
 test('caps the delivery pool, keeps the two control roles separate, and bounds quorum', () => {
@@ -208,4 +215,32 @@ test('refuses a proposal when its supplied Fleet State is not valid', () => {
     manifest,
     proposal(),
   ), /fleet state/i);
+});
+
+test('receipts bind the canonical immutable body and survive accepted-history reload', () => {
+  const state = benchState();
+  const signed = proposal();
+  assert.equal(benchProposalDigest(signed), benchProposalDigest({
+    ...signed, mutation: { ...signed.mutation }, signatures: [],
+  }));
+  assert.equal(benchProposalDigest({ ...signed, mutation: { a: 1, b: { x: 2, y: 3 } } }),
+    benchProposalDigest({ ...signed, mutation: { b: { y: 3, x: 2 }, a: 1 } }));
+  for (const mutation of [{ value: undefined }, { value: NaN }, { value: new Date() }]) {
+    assert.throws(() => benchProposalDigest({ ...signed, mutation }), /JSON data/);
+  }
+  for (const change of [
+    { mutation: { action: 'different-mutation' } },
+    { id: 'another-proposal' },
+    { fleetStateRevision: 1 },
+    { binding: { ...signed.binding, candidate: 'other-candidate' } },
+  ]) {
+    assert.throws(() => validateProposal(state, { ...signed, ...change }), /signature digest/);
+  }
+  const { manifest, fleetState } = currentFleet();
+  const accepted = applyProposalToFleetState(state, fleetState, manifest, signed).nextBenchEpoch;
+  const reloaded = JSON.parse(JSON.stringify(accepted));
+  assertBenchEpoch(reloaded);
+  assert.deepEqual(reloaded.acceptedProposals[0].signatures, signed.signatures);
+  reloaded.acceptedProposals[0].signatures.pop();
+  assert.throws(() => assertBenchEpoch(reloaded), /configured quorum/);
 });

@@ -6,6 +6,7 @@ import { assertFleetState } from '../../../ship-with-squadron/_atoms/fleet-state
 import {
   TDD_STRATEGY,
   assertTddState,
+  applyTddTransitionProposal,
   validateTddTransitionProposal,
 } from '../tdd-lifecycle/tdd-lifecycle.mjs';
 
@@ -161,7 +162,7 @@ export function createTddAtomicCurrent(input) {
  */
 export function applyTddAtomicFleetStateTransition(input) {
   if (!isRecord(input)) throw new Error('TDD Atomic transition input must be an object');
-  if (typeof input.transition !== 'function') {
+  if (input.transition !== undefined && typeof input.transition !== 'function') {
     throw new Error('TDD Atomic transition requires a TDD transition callback');
   }
   const clock = trustedClock(input.clock);
@@ -169,6 +170,12 @@ export function applyTddAtomicFleetStateTransition(input) {
     ...input,
     now: trustedNow(clock),
   });
+  const isControl = ['reserve-pair', 'reserve-roast', 'reclaim-expired'].includes(
+    built.tddProposal.payload.value.type,
+  );
+  if (isControl && input.coordinatorAgent !== input.fleetState.strategyState.value.coordinator.agent) {
+    throw new Error('control transition requires trusted runtime coordinator authority');
+  }
   const fleetState = applyFleetStateTransition({
     file: input.file,
     manifest: input.manifest,
@@ -178,7 +185,7 @@ export function applyTddAtomicFleetStateTransition(input) {
       return createTddAtomicCurrent({
         fleetState: lockedFleetState,
         manifest: input.manifest,
-        proposal: input.proposal,
+        proposal: built.tddProposal,
         atomicProposal: built.proposal,
         now,
       });
@@ -187,15 +194,17 @@ export function applyTddAtomicFleetStateTransition(input) {
       const now = trustedNow(clock);
       const locked = assertFleetBoundTddProposal(
         lockedFleetState,
-        input.proposal,
+        built.tddProposal,
         now,
       );
-      const nextTddState = input.transition(
-        structuredClone(locked.tddState),
-        structuredClone(locked.proposal),
-        structuredClone(sharedProposal),
-        now,
-      );
+      const nextTddState = isControl || !input.transition
+        ? applyTddTransitionProposal(locked.tddState, locked.proposal, now)
+        : input.transition(
+          structuredClone(locked.tddState),
+          structuredClone(locked.proposal),
+          structuredClone(sharedProposal),
+          now,
+        );
       return withTddState(lockedFleetState, nextTddState);
     },
     options: input.options,

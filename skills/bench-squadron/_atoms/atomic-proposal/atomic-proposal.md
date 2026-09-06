@@ -34,3 +34,10 @@ Fleet State compare-and-swap adapter. Its locked callback advances Bench Epoch
 and writes the resulting `bench-squadron/v1` envelope to `strategyState` with
 the Fleet State mutation, so reloading the Fleet State cannot replay prior
 proposals.
+
+The signed proposal binding must match the selected atomic binding. Durable
+acceptance snapshots the submitted proposal and rechecks its body digest and
+receipts while locked. Supply a trusted runtime `clock` function for controlled
+execution; it is evaluated again inside the lock. Caller-supplied `now` is not
+durable lease authority, so a lease that expires while waiting cannot run the
+mutation callback even when the ledger revision has not moved.

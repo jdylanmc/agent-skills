@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   canConsumeSlopSniperAdvice,
+  assertTddState,
   createTddTransitionProposal,
   createTddState,
   freezeReadyCandidate,
@@ -46,6 +47,7 @@ function state() {
     runId: 'run-1',
     candidateId: 'candidate-1',
     publicationAgent: 'publisher-agent',
+    coordinatorAgent: 'coordinator-agent',
   });
 }
 
@@ -70,6 +72,30 @@ function roastRoles() {
     'roaster-1': { owner: 'roaster-one', agent: 'roaster-agent-one', generation: 1 },
     'roaster-2': { owner: 'roaster-two', agent: 'roaster-agent-two', generation: 1 },
     'roaster-3': { owner: 'roaster-three', agent: 'roaster-agent-three', generation: 1 },
+  };
+}
+
+function roastEvidence(roast) {
+  const receipt = (role) => ({
+    invocation: {
+      id: `report-${role}`, skill: 'roast', runId: roast.state.runId,
+      issue: roast.state.candidate.id, agent: roast.leases[role].agent,
+    },
+    candidateId: roast.state.candidate.id,
+    candidateRevision: roast.state.candidate.revision,
+    leaseId: roast.leases[role].id, fence: roast.leases[role].fence,
+    status: 'completed', terminal: true, complete: true, evidenceComplete: true,
+    completedAt: NOW, findings: [],
+    evidence: `${role} report artifact`,
+  });
+  const reports = ['roaster-1', 'roaster-2', 'roaster-3'].map(receipt);
+  return {
+    reports,
+    synthesis: {
+      ...receipt('roastmaster'), reportIds: reports.map((report) => report.invocation.id),
+      evidence: 'independent reports synthesized',
+    },
+    dispositions: [],
   };
 }
 
@@ -159,7 +185,7 @@ test('mutation invalidates current Roast and publication is review-ready agent-o
   });
   const ready = recordRoastApproval(roast.state, {
     leases: roast.leases,
-    synthesisEvidence: 'all three reports synthesized',
+    ...roastEvidence(roast),
     objectiveGates: GATES,
     now: NOW,
   });
@@ -182,6 +208,12 @@ test('mutation invalidates current Roast and publication is review-ready agent-o
   });
   assert.equal(mutated.candidate.phase, 'tdd');
   assert.equal(mutated.candidate.roastEvidence, null);
+  const replacement = pair(mutated);
+  assert.throws(() => freezeReadyCandidate(replacement.state, {
+    leases: replacement.leases,
+    readinessDeclarations: readinessDeclarations(replacement.leases, mutated.candidate.revision),
+    now: NOW,
+  }), /completed RED\/GREEN cycle/);
   assert.equal(
     publicationAuthorization(mutated, { actor: { id: 'publisher-agent' } }).authorized,
     false,
@@ -253,7 +285,7 @@ test('lease-consuming pair and Roast transitions reject a passed expired time', 
   assert.throws(
     () => recordRoastApproval(roast.state, {
       leases: roast.leases,
-      synthesisEvidence: 'too late',
+      ...roastEvidence(roast),
       objectiveGates: GATES,
       now: EXPIRED_NOW,
     }),
@@ -313,4 +345,51 @@ test('reservations reject an expiry at or before trusted now', () => {
     }),
     /Roast reservation expiry must be after trusted now/,
   );
+});
+
+test('RED alone cannot freeze even with both declarations, and ownership remains unchanged', () => {
+  const reserved = pair(state());
+  const afterRed = recordVerticalSlice(reserved.state, {
+    lease: reserved.leases.red, sliceId: 'red-only', evidence: 'failing test', now: NOW,
+  });
+  const before = structuredClone(afterRed);
+  const leases = Object.fromEntries(afterRed.seats.filter((seat) => seat.lease).map((seat) => [seat.lease.role, seat.lease]));
+  assert.throws(() => freezeReadyCandidate(afterRed, {
+    leases, readinessDeclarations: readinessDeclarations(leases, afterRed.candidate.revision), now: NOW,
+  }), /completed RED\/GREEN cycle/);
+  assert.deepEqual(afterRed, before);
+});
+
+test('Roast persists independent reports and synthesis and rejects missing, duplicate, stale, or unresolved evidence', () => {
+  const roast = reserveRoastTeam(readyForRoast(), {
+    reservationId: 'roast-1', roles: roastRoles(), expiresAt: EXPIRY, now: NOW,
+  });
+  for (const corrupt of [
+    (e) => { e.reports.pop(); },
+    (e) => { e.reports[1] = e.reports[0]; },
+    (e) => { e.reports[0].candidateRevision -= 1; },
+    (e) => { delete e.reports[0].evidence; },
+    (e) => { e.reports[0].findings = [{ id: 'bug', Priority: 'Must fix', status: 'open' }]; },
+    (e) => { e.synthesis = null; },
+    (e) => { e.synthesis.reportIds.pop(); },
+    (e) => { e.reports[0].findings = [{ id: 'follow-up', Priority: 'Should fix', status: 'open' }]; },
+  ]) {
+    const evidence = roastEvidence(roast);
+    evidence.reports.reverse();
+    corrupt(evidence);
+    assert.throws(() => recordRoastApproval(roast.state, {
+      leases: roast.leases, ...evidence, objectiveGates: GATES, now: NOW,
+    }), /Roast/);
+    assert.equal(roast.state.candidate.phase, 'roast');
+    assert.equal(roast.state.seats.filter((seat) => seat.lease).length, 4);
+  }
+  const evidence = roastEvidence(roast);
+  const ready = recordRoastApproval(roast.state, {
+    leases: roast.leases, ...evidence, objectiveGates: GATES, now: NOW,
+  });
+  const reloaded = JSON.parse(JSON.stringify(ready));
+  assertTddState(reloaded);
+  assert.deepEqual(reloaded.candidate.roastEvidence.reports, evidence.reports);
+  reloaded.candidate.roastEvidence.reports[0].candidateRevision -= 1;
+  assert.throws(() => publicationAuthorization(reloaded, { actor: { id: 'publisher-agent' } }), /Roast/);
 });

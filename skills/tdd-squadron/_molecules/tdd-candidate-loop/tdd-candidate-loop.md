@@ -22,16 +22,20 @@ allowed-tools: ["execute","read","search","task"]
 ## Operation
 
 1. Bind every dispatched role to full-text doctrine lenses and a canonical
-   manifest revision/digest. Reserve Red and Green as one two-seat transaction.
+   manifest revision/digest. Configure the trusted coordinator and reserve Red
+   and Green through the atomic adapter as one two-seat control transaction.
 2. Dispatch one alternating vertical slice at a time. Each result becomes a
    typed, validated fleet-state proposal. Atomic Proposal derives current TDD
    state from the locked Fleet State envelope and delegates its durable
    transition through the shared compare-and-swap; stale or rejected results
    have no lifecycle effect.
-3. Freeze one pair-declared ready candidate revision and release both leases
-   atomically. Reserve the four distinct Roast roles only after that release.
+3. After a completed RED/GREEN cycle, freeze one pair-declared ready candidate
+   revision and release both leases atomically. Use a coordinator control
+   proposal to reserve the four distinct Roast roles after that release.
 4. Run one Roastmaster synthesis over three independent roaster reports for
-   that frozen revision. Never review an individual vertical slice.
+   that frozen revision. Persist the three revision/lease-bound report receipts,
+   separate synthesis receipt, and exact unresolved-finding dispositions through
+   Atomic Proposal. Never review an individual vertical slice.
 5. Return recommendations to a new pair cycle, or mark only current,
    objectively evidenced Roast approval as review-ready for the publication
    agent. A mutation invalidates Roast evidence and returns to TDD.

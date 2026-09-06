@@ -2,6 +2,7 @@ import {
   FORBIDDEN_AUTHORITIES,
   validateStrategyTransitionProposal,
 } from '../../../_base/_atoms/atomic-transition/atomic-transition.mjs';
+import { adaptRoastEvidence } from '../../../ship-with-squadron/_atoms/quality-evidence/quality-evidence.mjs';
 
 const DELIVERY_SEAT_COUNT = 5;
 const PAIR_ROLES = ['red', 'green'];
@@ -9,11 +10,15 @@ const ROAST_ROLES = ['roastmaster', 'roaster-1', 'roaster-2', 'roaster-3'];
 const OBJECTIVE_GATES = ['scope', 'ownership', 'revision', 'evidence', 'validation', 'budget'];
 const CANDIDATE_PHASES = new Set(['tdd', 'frozen', 'roast', 'review-ready']);
 const TDD_TRANSITION_TYPES = new Set([
+  'reserve-pair',
+  'reserve-roast',
+  'reclaim-expired',
   'vertical-slice',
   'freeze-ready-candidate',
   'roast-approved',
   'recommendations-to-pair',
 ]);
+const CONTROL_TRANSITIONS = new Set(['reserve-pair', 'reserve-roast', 'reclaim-expired']);
 const SLOP_SNIPER_EVENTS = new Set([
   'pre-dispatch',
   'repeated-failure',
@@ -105,7 +110,16 @@ function assertReadinessDeclarations(value, candidateRevision) {
   unique(agents, 'readiness declaration agents');
 }
 
-function assertCandidate(candidate) {
+function hasCompletedTddCycle(candidate) {
+  const [red, green] = candidate.slices.slice(-2);
+  return candidate.nextRole === 'red'
+    && red?.role === 'red'
+    && green?.role === 'green'
+    && green.revision === candidate.revision - 1
+    && red.revision === green.revision - 1;
+}
+
+function assertCandidate(candidate, runId) {
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
     throw new Error('TDD state candidate must be an object');
   }
@@ -178,8 +192,8 @@ function assertCandidate(candidate) {
 
   const needsReadiness = ['frozen', 'roast', 'review-ready'].includes(candidate.phase);
   if (needsReadiness) {
-    if (candidate.slices.length === 0) {
-      throw new Error('frozen candidate must contain at least one vertical slice');
+    if (!hasCompletedTddCycle(candidate)) {
+      throw new Error('frozen candidate requires a completed RED/GREEN cycle');
     }
     if (candidate.frozenRevision !== candidate.revision) {
       throw new Error('frozen candidate revision must equal the current candidate revision');
@@ -197,13 +211,13 @@ function assertCandidate(candidate) {
   if (candidate.phase === 'review-ready') {
     assertExactKeys(
       candidate.roastEvidence,
-      ['candidateRevision', 'synthesisEvidence', 'objectiveGates', 'roles'],
+      ['candidateRevision', 'reports', 'synthesis', 'dispositions', 'leases', 'objectiveGates', 'roles'],
       'candidate Roast evidence',
     );
     if (candidate.roastEvidence.candidateRevision !== candidate.revision) {
       throw new Error('candidate Roast evidence is not bound to the current candidate revision');
     }
-    nonEmpty(candidate.roastEvidence.synthesisEvidence, 'candidate Roast synthesis evidence');
+    assertRoastReports(candidate.roastEvidence, candidate, runId);
     assertExactKeys(candidate.roastEvidence.objectiveGates, OBJECTIVE_GATES, 'candidate objective gates');
     if (!objectiveGatesPassed(candidate.roastEvidence.objectiveGates)) {
       throw new Error('candidate Roast evidence must pass every objective gate');
@@ -224,16 +238,18 @@ function assertCandidate(candidate) {
 export function assertTddState(state) {
   assertExactKeys(
     state,
-    ['schemaVersion', 'strategy', 'runId', 'controlRevision', 'publication', 'seats', 'reservations', 'candidate'],
+    ['schemaVersion', 'strategy', 'runId', 'controlRevision', 'coordinator', 'publication', 'seats', 'reservations', 'candidate'],
     'TDD state',
   );
   if (state.schemaVersion !== 1) throw new Error('unsupported TDD state schemaVersion');
   if (state.strategy !== TDD_STRATEGY) throw new Error('TDD state strategy is invalid');
   nonEmpty(state.runId, 'TDD state runId');
   positiveInteger(state.controlRevision, 'TDD state controlRevision');
+  assertExactKeys(state.coordinator, ['agent'], 'TDD coordinator');
+  nonEmpty(state.coordinator.agent, 'TDD coordinator agent');
   assertExactKeys(state.publication, ['agent'], 'TDD state publication');
   nonEmpty(state.publication.agent, 'TDD state publication agent');
-  assertCandidate(state.candidate);
+  assertCandidate(state.candidate, state.runId);
 
   assertArray(state.seats, 'TDD state seats');
   if (state.seats.length !== DELIVERY_SEAT_COUNT) {
@@ -470,6 +486,16 @@ function sharedLeaseBinding(lease) {
   };
 }
 
+function controlBinding(state, actor) {
+  if (actor !== state.coordinator.agent) throw new Error('control transition requires the trusted coordinator');
+  return {
+    lease: `tdd-control-${state.controlRevision}`,
+    candidate: state.candidate.id,
+    agent: state.coordinator.agent,
+    fence: state.controlRevision,
+  };
+}
+
 function proposalDetails(proposal) {
   const details = proposal?.payload?.value;
   if (!exactKeys(details, ['type', 'evidence', 'leases', 'payload'])
@@ -500,17 +526,20 @@ export function createTddState({
   runId,
   candidateId,
   publicationAgent,
+  coordinatorAgent,
   controlRevision = 1,
 } = {}) {
   nonEmpty(runId, 'runId');
   nonEmpty(candidateId, 'candidateId');
   nonEmpty(publicationAgent, 'publicationAgent');
+  nonEmpty(coordinatorAgent, 'coordinatorAgent');
   positiveInteger(controlRevision, 'controlRevision');
   return {
     schemaVersion: 1,
     strategy: TDD_STRATEGY,
     runId,
     controlRevision,
+    coordinator: { agent: coordinatorAgent },
     publication: {
       agent: publicationAgent,
     },
@@ -634,6 +663,9 @@ export function freezeReadyCandidate(state, {
   }
   const pair = assertLeaseSet(next, leases, PAIR_ROLES, 'pair', now);
   const ready = readinessDeclarations(declarations, pair, next.candidate.revision);
+  if (!hasCompletedTddCycle(next.candidate)) {
+    throw new Error('freeze requires a completed RED/GREEN cycle with no pending GREEN turn');
+  }
   if (pair.some((lease) => lease.reservationId !== next.candidate.pairReservationId)) {
     throw new Error('both leases must belong to the active TDD pair');
   }
@@ -709,9 +741,73 @@ export function reserveRoastTeam(state, {
   return { state: nextControlRevision(next), leases };
 }
 
+function assertRoastReports(evidence, candidate, runId) {
+  const { reports, synthesis, dispositions, leases } = evidence;
+  if (!Array.isArray(reports) || reports.length !== 3) throw new Error('Roast requires three independent reports');
+  assertExactKeys(leases, ROAST_ROLES, 'Roast evidence leases');
+  assertArray(dispositions, 'Roast unresolved finding dispositions');
+  const receipts = [
+    ...ROAST_ROLES.slice(1).map((role) => reports.find((receipt) => receipt?.leaseId === leases[role]?.id)),
+    synthesis,
+  ];
+  const roles = [...ROAST_ROLES.slice(1), 'roastmaster'];
+  const ids = [];
+  const agents = [];
+  for (const [index, receipt] of receipts.entries()) {
+    const role = roles[index];
+    const lease = leases?.[role];
+    if (!lease || lease.role !== role || lease.runId !== runId
+        || lease.candidateId !== candidate.id || lease.candidateRevision !== candidate.revision
+        || receipt?.invocation?.agent !== lease.agent
+        || receipt?.leaseId !== lease.id || receipt?.fence !== lease.fence) {
+      throw new Error('Roast report is not bound to the current independent reviewer lease');
+    }
+    positiveInteger(lease.fence, 'Roast reviewer fence');
+    positiveInteger(lease.generation, 'Roast reviewer generation');
+    nonEmpty(lease.agent, 'Roast reviewer agent');
+    nonEmpty(lease.owner, 'Roast reviewer owner');
+    validTime(lease.expiresAt, 'Roast reviewer expiry');
+    if (lease.id !== `${lease.reservationId}:${role}:${lease.fence}`) {
+      throw new Error('Roast reviewer lease identity is invalid');
+    }
+    if (!Array.isArray(receipt.findings)) throw new Error('Roast report findings must be an array');
+    nonEmpty(receipt.evidence, 'Roast report evidence');
+    const adapted = adaptRoastEvidence(receipt, {
+      candidateId: candidate.id, candidateRevision: candidate.revision,
+    }, { runId, issue: candidate.id });
+    if (!adapted.valid || !adapted.complete) {
+      throw new Error(`Roast report is stale, incomplete, or has unresolved must-fix evidence: ${adapted.defects.join('; ')}`);
+    }
+    unique(receipt.findings.map((finding) => finding.id), 'Roast finding ids');
+    ids.push(receipt.invocation.id);
+    agents.push(receipt.invocation.agent);
+  }
+  unique(ids, 'Roast report identities');
+  unique(agents, 'Roast reviewer agents');
+  if (!Array.isArray(synthesis.reportIds)
+      || JSON.stringify(synthesis.reportIds.slice().sort()) !== JSON.stringify(ids.slice(0, 3).sort())) {
+    throw new Error('Roastmaster synthesis must reference exactly the three independent reports');
+  }
+  nonEmpty(synthesis.evidence, 'Roastmaster synthesis evidence');
+  const unresolved = receipts.flatMap((receipt) => receipt.findings
+    .filter((finding) => finding.status === 'open')
+    .map((finding) => `${receipt.invocation.id}:${finding.id}`)).sort();
+  const disposed = dispositions.map((entry) => {
+    assertExactKeys(entry, ['reportId', 'findingId', 'status', 'evidence'], 'Roast finding disposition');
+    if (entry.status !== 'deferred') throw new Error('unresolved finding disposition must be explicit deferral');
+    nonEmpty(entry.evidence, 'Roast finding disposition evidence');
+    return `${entry.reportId}:${entry.findingId}`;
+  }).sort();
+  if (JSON.stringify(unresolved) !== JSON.stringify(disposed)) {
+    throw new Error('Roast unresolved findings require exact dispositions');
+  }
+}
+
 export function recordRoastApproval(state, {
   leases,
-  synthesisEvidence,
+  reports,
+  synthesis,
+  dispositions,
   objectiveGates,
   now,
 } = {}) {
@@ -719,15 +815,19 @@ export function recordRoastApproval(state, {
   if (next.candidate.phase !== 'roast') {
     throw new Error('Roast approval requires the Roast phase');
   }
-  nonEmpty(synthesisEvidence, 'synthesisEvidence');
   if (!objectiveGatesPassed(objectiveGates)) {
     throw new Error('review readiness requires every objective gate');
   }
   const current = assertLeaseSet(next, leases, ROAST_ROLES, 'roast', now);
+  const authoritativeLeases = Object.fromEntries(current.map((lease) => [lease.role, lease]));
+  assertRoastReports({ reports, synthesis, dispositions, leases: authoritativeLeases }, next.candidate, next.runId);
   const reservationId = current[0].reservationId;
   next.candidate.roastEvidence = {
     candidateRevision: next.candidate.revision,
-    synthesisEvidence,
+    reports: clone(reports),
+    synthesis: clone(synthesis),
+    dispositions: clone(dispositions),
+    leases: clone(authoritativeLeases),
     objectiveGates: clone(objectiveGates),
     roles: [...ROAST_ROLES],
   };
@@ -814,6 +914,7 @@ export function publicationAuthorization(state, { actor } = {}) {
       || !objectiveGatesPassed(evidence.objectiveGates)) {
     return { authorized: false, reason: 'candidate-not-review-ready' };
   }
+  assertTddState(state);
   return {
     authorized: true,
     candidateId: state.candidate.id,
@@ -874,12 +975,14 @@ export function createTddTransitionProposal(state, {
       ? PAIR_ROLES
       : ROAST_ROLES;
   const kind = ['vertical-slice', 'freeze-ready-candidate'].includes(type) ? 'pair' : 'roast';
-  const current = expectedRoles.map((role) => assertLease(state, leases[role], role, kind, now));
+  const current = CONTROL_TRANSITIONS.has(type)
+    ? []
+    : expectedRoles.map((role) => assertLease(state, leases[role], role, kind, now));
   const actorLease = current.find((lease) => lease.agent === actor);
-  if (!actorLease) {
+  if (!actorLease && !CONTROL_TRANSITIONS.has(type)) {
     throw new Error('proposal actor does not hold a bound lease');
   }
-  const primary = sharedLeaseBinding(actorLease);
+  const primary = CONTROL_TRANSITIONS.has(type) ? controlBinding(state, actor) : sharedLeaseBinding(actorLease);
   const proposal = {
     schemaVersion: 1,
     strategy: TDD_STRATEGY,
@@ -931,6 +1034,15 @@ export function validateTddTransitionProposal(state, proposal, { now } = {}) {
   if (JSON.stringify(normalized.transition.from.value) !== JSON.stringify(tddTransitionState(state))) {
     throw new Error('proposal transition source does not match current TDD state');
   }
+  if (CONTROL_TRANSITIONS.has(details.type)) {
+    const primary = controlBinding(state, binding.agent);
+    if (binding.lease !== primary.lease || binding.fence !== primary.fence
+        || JSON.stringify(normalized.reservation.leases) !== JSON.stringify([primary])
+        || Object.keys(details.leases).length !== 0) {
+      throw new Error('control transition fencing binding is stale or invalid');
+    }
+    return clone(normalized);
+  }
   const expectedRoles = details.type === 'vertical-slice'
     ? [state.candidate.nextRole]
     : details.type === 'freeze-ready-candidate'
@@ -960,4 +1072,21 @@ export function validateTddTransitionProposal(state, proposal, { now } = {}) {
     throw new Error('proposal shared lease binding does not match its TDD actor lease');
   }
   return clone(normalized);
+}
+
+export function applyTddTransitionProposal(state, proposal, now) {
+  const details = validateTddTransitionProposal(state, proposal, { now }).payload.value;
+  const input = { ...details.payload, leases: details.leases, now };
+  switch (details.type) {
+    case 'reserve-pair': return reserveTddPair(state, input).state;
+    case 'reserve-roast': return reserveRoastTeam(state, input).state;
+    case 'reclaim-expired': return reclaimExpiredReservations(state, { now });
+    case 'vertical-slice': return recordVerticalSlice(state, {
+      ...input, lease: details.leases[state.candidate.nextRole], evidence: details.evidence,
+    });
+    case 'freeze-ready-candidate': return freezeReadyCandidate(state, input);
+    case 'roast-approved': return recordRoastApproval(state, input);
+    case 'recommendations-to-pair': return returnRecommendationsToPair(state, input);
+    default: throw new Error('unsupported TDD transition');
+  }
 }

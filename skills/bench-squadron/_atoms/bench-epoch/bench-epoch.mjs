@@ -41,18 +41,48 @@ function expiry(value, label) {
   return value;
 }
 
-function stable(value) {
-  if (Array.isArray(value)) return value.map(stable);
-  if (isRecord(value)) {
-    return Object.fromEntries(
-      Object.keys(value).sort().map((key) => [key, stable(value[key])]),
+function stable(value, ancestors = new Set()) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (!value || typeof value !== 'object' || ancestors.has(value)
+      || (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype)
+      || Object.getOwnPropertySymbols(value).length
+      || Object.entries(Object.getOwnPropertyDescriptors(value)).some(([key, descriptor]) =>
+        !(Array.isArray(value) && key === 'length')
+          && (!descriptor.enumerable || descriptor.get || descriptor.set))) {
+    throw new Error('proposal body must be immutable JSON data');
+  }
+  ancestors.add(value);
+  let normalized;
+  if (Array.isArray(value)) {
+    if (Object.keys(value).length !== value.length
+        || !Object.keys(value).every((key, index) => key === String(index))) {
+      throw new Error('proposal body arrays must contain only dense JSON elements');
+    }
+    normalized = value.map((entry) => stable(entry, ancestors));
+  } else {
+    normalized = Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, stable(value[key], ancestors)]),
     );
   }
-  return value;
+  ancestors.delete(value);
+  return normalized;
 }
 
 function digest(value) {
   return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+}
+
+export function benchProposalDigest(proposal) {
+  return digest({
+    id: proposal.id,
+    epoch: proposal.epoch,
+    fleetStateRevision: proposal.fleetStateRevision,
+    binding: proposal.binding,
+    mutatorId: proposal.mutatorId,
+    turnId: proposal.turnId,
+    mutation: proposal.mutation,
+  });
 }
 
 function assertDistinctIdentifiers(values, label) {
@@ -167,6 +197,18 @@ export function assertBenchEpoch(state) {
       throw new Error('accepted proposals must be unique historical epoch records');
     }
     proposalIds.add(proposal.id);
+    if (!proposal.body || proposal.digest !== benchProposalDigest(proposal.body)
+        || proposal.body.id !== proposal.id
+        || proposal.body.epoch !== proposal.acceptedAtEpoch
+        || proposal.body.fleetStateRevision !== proposal.fleetStateRevision) {
+      throw new Error('accepted proposal body digest is invalid');
+    }
+    validateProposal({
+      ...state,
+      epoch: proposal.acceptedAtEpoch,
+      acceptedProposals: [],
+      downstreamClaims: [],
+    }, { ...proposal.body, signatures: proposal.signatures });
   }
   return { ...configuration, reservation };
 }
@@ -182,10 +224,13 @@ function normalizeSignature(signature, state, proposal) {
   }
   const turnId = validIdentifier(signature.turnId, 'signature turnId');
   const value = validIdentifier(signature.value, 'signature value');
+  if (signature.proposalDigest !== benchProposalDigest(proposal)) {
+    throw new Error('proposal signature digest does not bind the immutable proposal body');
+  }
   if (agentId === proposal.mutatorId && turnId === proposal.turnId) {
     throw new Error('a mutator cannot sign a proposal in the same turn');
   }
-  return { agentId, epoch: signature.epoch, turnId, value };
+  return { agentId, epoch: signature.epoch, turnId, value, proposalDigest: signature.proposalDigest };
 }
 
 export function validateProposal(state, proposal) {
@@ -205,6 +250,12 @@ export function validateProposal(state, proposal) {
   }
   const turnId = validIdentifier(proposal.turnId, 'proposal turnId');
   nonNegativeInteger(proposal.fleetStateRevision, 'proposal fleetStateRevision');
+  if (!isRecord(proposal.binding)
+      || Object.keys(proposal.binding).sort().join(',') !== 'candidate,fence,lease,run') {
+    throw new Error('proposal binding must contain run, candidate, lease, and fence');
+  }
+  for (const key of ['run', 'candidate', 'lease']) validIdentifier(proposal.binding[key], `proposal ${key}`);
+  positiveSafeInteger(proposal.binding.fence, 'proposal fence');
   if (!isRecord(proposal.mutation) || !Object.keys(proposal.mutation).length) {
     throw new Error('proposal mutation must be a non-empty object');
   }
@@ -214,7 +265,7 @@ export function validateProposal(state, proposal) {
   const signatures = proposal.signatures.map((signature) => normalizeSignature(
     signature,
     state,
-    { mutatorId, turnId },
+    proposal,
   ));
   if (new Set(signatures.map((signature) => signature.agentId)).size !== signatures.length) {
     throw new Error('proposal signatures must be from distinct delivery-pool agents');
@@ -226,19 +277,12 @@ export function validateProposal(state, proposal) {
     id,
     epoch: state.epoch,
     fleetStateRevision: proposal.fleetStateRevision,
+    binding: structuredClone(proposal.binding),
     mutatorId,
     turnId,
     mutation: structuredClone(proposal.mutation),
     signatures,
-    digest: digest({
-      id,
-      epoch: state.epoch,
-      fleetStateRevision: proposal.fleetStateRevision,
-      mutatorId,
-      turnId,
-      mutation: proposal.mutation,
-      signatures,
-    }),
+    digest: benchProposalDigest(proposal),
   };
 }
 
@@ -248,6 +292,7 @@ export function validateProposalForFleetState(state, fleetState, manifest, propo
   if (validated.fleetStateRevision !== fleetState.revision) {
     throw new Error('proposal fleetStateRevision does not match current Fleet State');
   }
+  if (validated.binding.run !== fleetState.runId) throw new Error('proposal run does not match current Fleet State');
   return validated;
 }
 
@@ -287,6 +332,8 @@ export function applyValidatedProposal(state, validatedProposal) {
     digest: revalidated.digest,
     fleetStateRevision: revalidated.fleetStateRevision,
     acceptedAtEpoch: state.epoch,
+    body: Object.fromEntries(Object.entries(revalidated).filter(([key]) => !['signatures', 'digest'].includes(key))),
+    signatures: structuredClone(revalidated.signatures),
   });
   assertBenchEpoch(next);
   return next;
