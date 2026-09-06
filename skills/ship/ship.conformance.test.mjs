@@ -1735,29 +1735,52 @@ test('the handoff is a nested invocation the run waits for, not a described one'
 });
 
 test('ship accepts the actual terminal result shape shepherd produces', () => {
+  const baseSha = 'a'.repeat(40);
+  const headSha = 'b'.repeat(40);
   const signals = {
+    authority: { mode: 'ship-continuation' },
     observedAt: '2026-08-25T20:36:00Z',
+    target: { repository: 'example/repo', baseBranch: 'main' },
+    liveBase: {
+      observed: true, identityBound: true, repository: 'example/repo',
+      ref: 'refs/heads/main', sha: baseSha, observedAt: '2026-08-25T20:36:00Z',
+    },
     provider: { status: 'supported-provider', provider: 'github' },
-    preflight: { status: 'ok' },
-    rebase: { status: 'completed', baseSha: 'base' },
+    headTarget: { repository: 'example/repo', ref: 'refs/heads/issue-1' },
+    branchPolicy: { observed: true, trusted: true, observedAt: '2026-08-25T20:36:00Z',
+      repository: 'example/repo', ref: 'refs/heads/issue-1', allowForcePushes: true,
+      requireLinearHistory: true, directUpdatesAllowed: true },
+    baseBranchPolicy: { observed: true, trusted: true, observedAt: '2026-08-25T20:36:00Z',
+      repository: 'example/repo', ref: 'refs/heads/main', sha: baseSha,
+      allowForcePushes: false, requireLinearHistory: false, squashMergeAllowed: true },
+    preflight: { status: 'ok', capturedRemoteHead: 'c'.repeat(40) },
+    rebase: { status: 'completed', baseSha, strategy: 'rebase' },
     regeneration: { status: 'not-applicable' },
     localValidation: { status: 'passed', evidenceComplete: true },
-    push: { status: 'pushed-with-lease', headSha: 'head' },
+    push: { status: 'pushed-with-lease', headSha, previousHead: 'c'.repeat(40),
+      repository: 'example/repo', ref: 'refs/heads/issue-1', strategy: 'rebase',
+      capturedHeadVerified: true, leaseVerified: true,
+      lease: { ref: 'refs/heads/issue-1', expectedHead: 'c'.repeat(40) } },
     basePolicy: { upToDate: 'required' },
     mergeability: {
       state: 'mergeable',
       isDraft: false,
-      baseSha: 'base',
-      headSha: 'head',
+      blocked: false,
+      baseSha,
+      headSha,
       behind: false,
     },
-    remoteChecks: { checks: [{ name: 'validate', status: 'passed' }] },
   };
 
-  for (const [remoteChecks, disposition] of [
-    [{ checks: [{ name: 'validate', status: 'passed' }] }, 'mergeable-and-green'],
-    [{ checks: [{ name: 'validate', status: 'failed' }] }, 'failing'],
+  for (const [status, disposition] of [
+    ['passed', 'mergeable-and-green'],
+    ['failed', 'failing'],
   ]) {
+    const remoteChecks = {
+      observed: true, complete: true, headSha,
+      requiredChecks: [{ name: 'validate', appId: null }],
+      checks: [{ name: 'validate', status, required: true, headSha }],
+    };
     const shepherdResult = classifyTerminalDisposition({ ...signals, remoteChecks });
     const evaluation = evaluateHandoff({
       intent: 'yes',
@@ -1779,8 +1802,8 @@ test('ship accepts the actual terminal result shape shepherd produces', () => {
       result: shepherdResult,
       observedBase: {
         observedAt: '2026-08-25T20:36:01Z',
-        baseSha: 'base',
-        headSha: 'head',
+        baseSha,
+        headSha,
       },
     });
 

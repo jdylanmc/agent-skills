@@ -35,7 +35,7 @@ is authored or ambiguous and the run stops.
 
 ## Operation
 
-1. After a rebase stops, list conflicted paths from Git's index.
+1. After a policy-permitted base-into-head merge or rebase stops, list conflicted paths from Git's index.
 2. For each conflicted path, classify it with the helper and the supplied
    configuration:
    - `derived` means resolve by checking out neither side as final truth;
@@ -46,9 +46,9 @@ is authored or ambiguous and the run stops.
    - `authored` means do not auto-resolve. Capture both sides and stop with
      `needs-human`.
 3. If any authored or ambiguous conflict remains, stop before continuing the
-   rebase. Report the path, ours/theirs source refs, and a concise description
+   maintenance operation. Report the path, ours/theirs source refs, and a concise description
    of the competing changes.
-4. Continue the rebase only when every conflicted path has a configured,
+4. Continue the selected maintenance operation only when every conflicted path has a configured,
    validated mechanical resolution and the index is clean.
 
 ## Additive Validation Registration Rule
@@ -83,4 +83,4 @@ not by hand-merging conflict markers.
 - Never widen another skill's permissions or modify another skill's
   `allowed-tools` to make a run pass.
 - Never remove, weaken, skip, or narrow validation as a conflict resolution.
-- Never continue a rebase with conflict markers present.
+- Never continue maintenance with conflict markers present.

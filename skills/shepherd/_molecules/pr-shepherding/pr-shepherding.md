@@ -24,8 +24,8 @@ allowed-tools: ["edit","execute","read","search","task"]
 
 ## Layers
 
-1. Provider-independent core: plain git comparison, trigger-based rebase,
-   generated conflict regeneration, repository-declared validation, and leased
+1. Provider-independent core: plain git comparison, policy-selected maintenance,
+   generated conflict regeneration, repository-declared validation, and concurrency-safe
    push. This layer is [Git shepherd core](../../_atoms/git-shepherd-core/git-shepherd-core.md).
 2. Provider adapter seam: optional detection of a supported provider and its
    official command-line tool, then optional resolution of a hosted
@@ -58,9 +58,40 @@ consumes, and the translation shapes live in the shared
   the policy/administrative block, and the review decision in separate fields,
   so a blocked or review-required change request reaches `needs-human` rather
   than a green disposition, and a review block never triggers a rebase.
-- **Base up-to-date policy.** Only GitHub surfaces this policy, from the
-  `read-state` result (`mergeStateStatus: BEHIND`); source `basePolicy.upToDate`
-  from there. Azure DevOps' up-to-date requirement is not observable — there is
+- **Target identity.** Project the `interpretTarget` result with
+  `projectWatchIdentity`, supplying detection, base repository, PR and issue
+  identifiers. Persist its canonical head-repository string and base branch in
+  both watch identity and the supplied continuation's change-request identity.
+  The provider's rich head-repository metadata remains separate.
+- **Live base.** Each watch cycle uses `watchBaseCommand` and
+  `interpretLiveBase`, passing repository and target branch into
+  `interpretMergeState`. Supply the result as `observation.liveBase` and as
+  disposition `liveBase`, with `target: { repository, baseBranch }`. The
+  canonical PR base and freshness receipt use only that verified live tip.
+  Never compare ancestry to historical `baseRefOid`. Re-read head/target after
+  dependent reads; a changed identity requires a new observation.
+- **Required checks.** Call `githubCheckRunsCommand` for the exact current head
+  and `baseBranch`, then `interpretGitHubCheckIdentities` with that head,
+  repository and base branch. Policy and checks must come from the same response,
+  not a cached policy packet. Supply its full envelope as disposition
+  `remoteChecks` and watch `checkEvidence`; any separate `checks` must match it.
+  Compare the configured required context/application set with returned nodes,
+  so an absent required check cannot disappear from readiness.
+  Display-only rollups cannot prove readiness. Missing/truncated/stale-head
+  evidence and pending, cancelled or failed required runs never produce green.
+- **Maintenance policy.** Use `branchPolicyCommand` and `interpretBranchPolicy`
+  twice: once for the resolved head repository/branch, once for the base
+  repository/branch. Supply the resulting packets as `branchPolicy` and
+  `baseBranchPolicy`, with `headTarget: { repository, ref }`. The query reads
+  classic protection and effective rulesets; only active rules count. Missing,
+  truncated, unsupported or mismatched policy blocks mutation. Re-observe policy
+  and refs before an update; the base packet SHA must match `liveBase.sha`.
+  Do not infer policy from mergeability or historical push success.
+- **Base up-to-date policy.** Use the base branch policy's `upToDate` and
+  freshly fetched ancestry for `base.behind`. GitHub's `read-state` result
+  (`mergeStateStatus: BEHIND`) independently proves a required-current gate;
+  it never overrides ancestry that proves the live base is missing.
+  Azure DevOps' up-to-date requirement is not observable — there is
   no first-class branch-policy type equivalent to GitHub's "require branches to
   be up to date", and neither a pull-request-show response nor the policy list
   carries it — so `basePolicy.upToDate` is `unobserved` for Azure, and an
@@ -98,7 +129,11 @@ push, or Ship invocation.
    branch/base refs otherwise. [PR intake](../../_atoms/pr-intake/pr-intake.md)
    records the normalized target and worktree safety facts.
 3. Always run [Git shepherd core](../../_atoms/git-shepherd-core/git-shepherd-core.md)
-   when enough git refs are known, even when provider state was not observed.
+   when authorized for maintenance and enough git refs are known, even when provider state was not observed.
+   Without Ship continuation context, explicit operator target read authority
+   and an owning parent permit only a durable observation-only watch. Declare
+   authority/provenance in state and receipt; never synthesize continuation
+   evidence. Supplied context still undergoes strict validation.
 4. Create or resume [Watch state](../../_atoms/watch-state/watch-state.md), then
    repeat the cheap observation until a stop condition occurs. Green persists
    and waits; it is not terminal for the watch.
@@ -108,8 +143,11 @@ push, or Ship invocation.
    leave the worker running. A dispatch without an acceptance receipt is
    invocation failure with no terminal Shepherd disposition, not `blocked` and
    not a completed handoff.
-5. On a meaningful mechanical change, fetch the current base and head, then
-   classify the required action. Rebase only for operator request, genuine
+   A limited watch instead returns `status: observation-only` with blocked
+   disposition and authority provenance; it is not a full remediation handoff.
+   Pass the explicit state authority into both disposition classifiers.
+5. On a meaningful mechanical change in maintenance mode, fetch the current base and head, then
+   classify the required action. Update only for operator request, genuine
    conflict or unmergeable state, or an advanced base whose own policy requires
    the branch to contain it. Expired required validation triggers validation,
    not a rebase. Base drift alone is not a trigger.
@@ -119,7 +157,7 @@ push, or Ship invocation.
    ancestry says it does not. That branch is already unlandable, so it is a
    trigger rather than a no-op. An `unobserved` policy is not a requirement.
    The green no-op also requires three exclusions the disposition planner
-   applies: the change request is **not explicitly blocked** (`blocked !== true`
+   applies: the change request is **not explicitly blocked** (`blocked === false`
    — a policy or administrative block no rebase can clear), its **merge-block
    state was observed** (not `unobserved`/`null`), and **no review decision
    blocks it** (the review is `approved` or `unobserved`, never
@@ -127,21 +165,26 @@ push, or Ship invocation.
    explicitly blocked, its merge-block state is unobserved, or a review decision
    blocks it, do not return a green no-op; fall through to observe state so the
    terminal classifier renders `blocked`/`needs-human`.
-7. When a trigger exists, rebase the branch onto the fetched base SHA and report
-   the commits that moved.
-8. If the rebase stops, use [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md).
+7. Select `branchUpdateStrategy`: merge BASE INTO PR BRANCH when merge commits
+   are permitted, otherwise rebase only if linear history and allowed force push
+   support it. A linear-history base also requires a linear head unless squash
+   merging is available. A head requiring a separate PR or forbidding direct
+   updates blocks maintenance. Unknown/incompatible policy blocks mutation. Never merge PR INTO
+   BASE. Report the live base, selected strategy, policy and moved commits.
+8. If maintenance stops, use [Conflict policy](../../_atoms/conflict-policy/conflict-policy.md).
    Regenerate configured derived conflicts, apply only configured and validated
    structured rules, and stop on authored or ambiguous conflicts.
-9. After a completed rebase, regenerate repository-declared derived metadata
+9. After completed maintenance, regenerate repository-declared derived metadata
    using configured commands. Do not invent or weaken those commands.
 10. Invoke the required `run-ci` skill for local validation. Shepherd relies on
    that skill's provider discovery and evidence envelope instead of duplicating
    validation discovery.
-11. If local validation is complete and green after a triggered rebase, re-check
-   that the remote head ref still equals the captured remote head SHA. Push the
-   branch with an explicit lease pinned to that SHA:
+11. If local validation is complete and green after maintenance, re-check
+   that the remote head ref still equals the captured remote head SHA. After a
+   merge update, normal `git push <head-remote> HEAD:refs/heads/<head>` rejects
+   concurrent non-fast-forward changes. After a permitted rebase use:
    `git push --force-with-lease=refs/heads/<head>:<captured-sha> <head-remote> HEAD:refs/heads/<head>`.
-   No other force-push form is allowed.
+   No other force-push form is allowed. Never retry a rejection by force.
 12. Ask [Provider state](../../_atoms/provider-state/provider-state.md)
    for hosted merge state and validation status when detection reports
    `supported-provider`. Prefer one blocking wait when the tool supports it; do
@@ -149,23 +192,28 @@ push, or Ship invocation.
    was not observed, report the detection condition beside the git-level result
    and never substitute an empty or clean provider result for it.
 13. When a changed review digest, blocking review decision, or failed required
-   check may require functional code or test work, invoke
+   check may require functional code or test work, notify the owning parent in
+   observation-only mode, without mutation or dispatch. In full-continuation mode invoke
    [Ship continuation](../../_atoms/ship-continuation/ship-continuation.md).
    Wait for its bounded result, verify the returned identity and head, persist
    that head and the handled evidence watermarks, and resume observation. Ship
    re-reads complete provider-native evidence; Shepherd's fingerprint is only a
-   change signal. Pure rebase, regeneration, and configured
+   change signal. Policy-permitted merge update, pure rebase, regeneration, and configured
    mechanical conflict repair remain local.
 14. Classify the action-cycle disposition with
    [Shepherd disposition](../../_atoms/shepherd-disposition/shepherd-disposition.md).
    Every disposition carries the freshness receipt it was observed against:
    observation time, base SHA, head SHA, up-to-date policy, and provider status.
+   Only current provider gate/head/live-base and complete successful required
+   check evidence can support "ready for human review". Never label a pending
+   or failed CI result ready, even after successful worker acceptance.
 
 ## Stop Conditions
 
 Stop on merge or close, explicit operator stop, semantic conflict, a Ship
 human-owned or blocked result, unavailable provider or ownership evidence, or
-incomplete evidence required for safe action. Process or session loss simply
+incomplete evidence required for safe action. Observation-only mode reports
+missing remediation evidence without stopping actual check monitoring. Process or session loss simply
 ends observation; the durable state remains resumable and records the gap later.
 
 ## Concurrency
@@ -178,7 +226,7 @@ shared scratch directories, global mutable state, or another `as-wt-*` worktree.
 
 Return the pull request URL, branch, durable state path, watch start, latest
 observation, next poll, observation gaps, meaningful-change ledger, base SHA,
-rebased head SHA, moved commit summary, conflict policy decisions, regeneration
+resulting head SHA, moved commit summary, conflict policy decisions, regeneration
 commands run, Ship continuation result when invoked, local validation envelope
-from `run-ci`, push receipt confirming `--force-with-lease`, remote check table,
+from `run-ci`, policy and push receipt confirming normal push or `--force-with-lease`, remote check table,
 stop reason when stopped, and any Chronicler log path or recording defect.

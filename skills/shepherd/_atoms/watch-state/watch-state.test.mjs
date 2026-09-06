@@ -14,18 +14,25 @@ import {
   probeReviewChange,
   recordShipResult,
   recordObservation,
+  recordMaintainedHead,
   resumeWatch,
   stopWatch,
   watchAction,
+  watchBaseCommand,
+  projectWatchIdentity,
 } from './watch-state.mjs';
 import { digestConfirmedLedger } from '../../../ship/_atoms/continuation-remediation/continuation-remediation.mjs';
 import { evaluateHandoff } from '../../../ship/_atoms/shepherd-handoff/shepherd-handoff.mjs';
 import {
   githubCheckRunsCommand,
   interpretGitHubCheckIdentities,
+  interpretLiveBase,
+  interpretTarget,
 } from '../provider-state/provider-state.mjs';
 
 function observation(overrides = {}) {
+  const checks = overrides.checks ?? [{ name: 'validate', runId: '91', nativeId: '101', attempt: 1,
+    headSha: 'b'.repeat(40), required: true, status: 'success' }];
   return {
     identity: {
       provider: 'github',
@@ -33,6 +40,8 @@ function observation(overrides = {}) {
       changeRequest: '157',
       issue: '102',
       branch: 'feature',
+      baseBranch: 'main',
+      headRepository: 'jdylanmc/agent-skills',
     },
     pullRequest: {
       state: 'open',
@@ -53,9 +62,13 @@ function observation(overrides = {}) {
       identityBound: true,
       observationDigest: '1'.repeat(64),
     },
-    checks: [{ name: 'validate', runId: '91', nativeId: '101', attempt: 1, headSha: 'b'.repeat(40), required: true, status: 'success' }],
+    checks,
+    liveBase: { observed: true, identityBound: true, repository: 'jdylanmc/agent-skills',
+      ref: 'refs/heads/main', sha: 'a'.repeat(40), observedAt: '2026-08-30T12:00:00.000Z' },
     ownership: { branchOwned: true, providerAvailable: true, evidenceComplete: true },
     ...overrides,
+    checkEvidence: { observed: true, complete: true, headSha: overrides.pullRequest?.headSha ?? 'b'.repeat(40),
+      requiredChecks: [{ name: 'validate', appId: null }], checks, ...overrides.checkEvidence },
   };
 }
 
@@ -74,6 +87,8 @@ function continuation(overrides = {}) {
       branch: 'feature',
       provider: 'github',
       repository: 'jdylanmc/agent-skills',
+      headRepository: 'jdylanmc/agent-skills',
+      baseBranch: 'main',
     },
     ledger,
     priorDeliveryEvidence: {
@@ -101,6 +116,35 @@ function continuation(overrides = {}) {
   };
 }
 
+test('resolved provider metadata projects to canonical immutable watch and continuation identity', () => {
+  const detection = { status: 'supported-provider', provider: 'github', tool: 'gh' };
+  const resolved = interpretTarget(detection, {
+    headRefName: 'feature', baseRefName: 'main', headRefOid: 'b'.repeat(40),
+    headRepositoryOwner: { login: 'jdylanmc' },
+    headRepository: { name: 'agent-skills', nameWithOwner: 'jdylanmc/agent-skills' },
+    isCrossRepository: false, isDraft: false,
+  });
+  const identity = projectWatchIdentity(resolved, {
+    detection, repository: 'jdylanmc/agent-skills', changeRequest: '157', issue: '102',
+  });
+  const state = createWatchState({
+    observation: observation({ identity }), continuation: continuation(),
+    observedAt: '2026-08-30T12:00:00Z',
+  });
+  assert.deepEqual(state.targetIdentity, identity);
+  assert.equal(typeof state.continuation.changeRequest.headRepository, 'string');
+  assert.equal(state.targetIdentity.headRepository, 'jdylanmc/agent-skills');
+  const enterprise = projectWatchIdentity(resolved, {
+    detection: { ...detection, host: 'github.example.com' },
+    repository: 'jdylanmc/agent-skills', changeRequest: '157',
+  });
+  assert.equal(enterprise.repository, 'github.example.com/jdylanmc/agent-skills');
+  assert.equal(enterprise.headRepository, 'github.example.com/jdylanmc/agent-skills');
+  assert.throws(() => projectWatchIdentity({ ...resolved, headRepository: {} }, {
+    detection, repository: 'jdylanmc/agent-skills', changeRequest: '157',
+  }), /resolved head repository/);
+});
+
 test('polling decay follows the approved five-hour schedule', () => {
   const start = '2026-08-30T12:00:00.000Z';
   const at = (minutes) => new Date(Date.parse(start) + minutes * 60_000).toISOString();
@@ -110,6 +154,59 @@ test('polling decay follows the approved five-hour schedule', () => {
   assert.equal(pollingDelayMs(start, at(180)), 15 * 60_000);
   assert.equal(pollingDelayMs(start, at(240)), 30 * 60_000);
   assert.equal(pollingDelayMs(start, at(300)), 60 * 60_000);
+});
+
+test('watch observations use the live ref rather than historical PR base metadata', () => {
+  const detection = { status: 'supported-provider', provider: 'github', tool: 'gh' };
+  const raw = observation();
+  assert.ok(watchBaseCommand(detection, raw).args.includes('ref=refs/heads/main'));
+  const liveBase = interpretLiveBase(detection, { data: { repository: {
+    nameWithOwner: raw.identity.repository,
+    ref: { name: 'main', prefix: 'refs/heads/', target: { oid: 'c'.repeat(40) } },
+  } } }, { repository: raw.identity.repository, baseBranch: 'main', observedAt: '2026-08-30T12:00:00.000Z' });
+  const state = createWatchState({ observation: { ...raw, liveBase }, continuation: continuation(), observedAt: '2026-08-30T12:00:00.000Z' });
+  assert.equal(state.observation.pullRequest.baseSha, 'c'.repeat(40));
+  const unchanged = recordObservation(state, { observation: { ...raw, liveBase: { ...liveBase, observedAt: '2026-08-30T12:02:00.000Z' } }, observedAt: '2026-08-30T12:02:00.000Z' });
+  assert.equal(unchanged.lastChange.meaningful, false, 'read timestamps alone do not trigger maintenance');
+  const moved = recordObservation(unchanged, { observation: { ...raw, liveBase: { ...liveBase, sha: 'd'.repeat(40) } }, observedAt: '2026-08-30T12:04:00.000Z' });
+  assert.ok(moved.lastChange.fields.includes('liveBase'));
+});
+
+test('normal maintenance push retains captured-head and continuation guards', () => {
+  const state = createWatchState({ observation: observation(), continuation: continuation(), observedAt: '2026-08-30T12:00:00.000Z' });
+  const receipt = {
+    previousHead: state.expectedHead, resultingHead: 'c'.repeat(40),
+    pushReceipt: { status: 'pushed', capturedHeadVerified: true,
+      repository: 'jdylanmc/agent-skills', ref: 'refs/heads/feature',
+      previousHead: state.expectedHead, headSha: 'c'.repeat(40), strategy: 'merge-base-into-head' },
+    continuation: continuation({ priorDeliveryEvidence: { head: 'c'.repeat(40) } }),
+    recordedAt: '2026-08-30T12:02:00.000Z',
+  };
+  const maintained = recordMaintainedHead(state, receipt);
+  assert.equal(maintained.expectedHead, receipt.resultingHead);
+  assert.equal(maintained.maintenanceReceipt.pushReceipt.status, 'pushed');
+  assert.equal(maintained.maintenanceReceipt.pushReceipt.capturedHeadVerified, true);
+  assert.equal(recordMaintainedHead(state, { ...receipt,
+    pushReceipt: { ...receipt.pushReceipt, capturedHeadVerified: false } }).stopReason, 'ownership-failure');
+  assert.equal(recordMaintainedHead(state, { ...receipt, previousHead: 'd'.repeat(40) }).stopReason, 'ownership-failure');
+});
+
+test('leased maintenance requires the actual successful destination-bound receipt', () => {
+  const state = createWatchState({ observation: observation(), continuation: continuation(), observedAt: '2026-08-30T12:00:00Z' });
+  const receipt = {
+    previousHead: state.expectedHead, resultingHead: 'c'.repeat(40),
+    continuation: continuation({ priorDeliveryEvidence: { head: 'c'.repeat(40) } }),
+    recordedAt: '2026-08-30T12:02:00Z',
+    pushReceipt: { status: 'pushed-with-lease', strategy: 'rebase',
+      repository: 'jdylanmc/agent-skills', ref: 'refs/heads/feature',
+      previousHead: state.expectedHead, headSha: 'c'.repeat(40),
+      capturedHeadVerified: true, leaseVerified: true,
+      lease: { ref: 'refs/heads/feature', expectedHead: state.expectedHead } },
+  };
+  assert.equal(recordMaintainedHead(state, receipt).expectedHead, 'c'.repeat(40));
+  assert.equal(recordMaintainedHead(state, { ...receipt, pushReceipt: undefined, leaseVerified: true }).stopReason, 'ownership-failure');
+  assert.equal(recordMaintainedHead(state, { ...receipt,
+    pushReceipt: { ...receipt.pushReceipt, status: 'failed' } }).stopReason, 'ownership-failure');
 });
 
 test('green observations persist and wait instead of ending ownership', () => {
@@ -128,6 +225,20 @@ test('green observations persist and wait instead of ending ownership', () => {
   assert.equal(watchAction(started).action, 'wait');
 });
 
+test('an already behind or conflicted initial branch starts maintenance without waiting for drift', () => {
+  for (const change of [
+    { behind: true, upToDatePolicy: 'required' },
+    { mergeState: 'conflicted', mergeStateStatus: 'dirty' },
+  ]) {
+    const state = createWatchState({
+      observation: observation({ pullRequest: { ...observation().pullRequest, ...change } }),
+      continuation: continuation(),
+      observedAt: '2026-08-30T12:00:00.000Z',
+    });
+    assert.equal(watchAction(state).action, 'run-shepherd-cycle');
+  }
+});
+
 test('an initial unwatermarked failure dispatches while the initial green state does not', () => {
   const failed = createWatchState({
     observation: observation({
@@ -139,6 +250,51 @@ test('an initial unwatermarked failure dispatches while the initial green state 
   assert.equal(watchAction(failed).action, 'invoke-ship');
 });
 
+test('mechanical prerequisites precede mixed functional evidence', () => {
+  const raw = observation({
+    pullRequest: { ...observation().pullRequest, behind: true, upToDatePolicy: 'required' },
+    checks: [{ name: 'validate', runId: '91', nativeId: '101', attempt: 1,
+      headSha: 'b'.repeat(40), required: true, status: 'failure' }],
+  });
+  const state = createWatchState({ observation: raw, continuation: continuation(), observedAt: '2026-08-30T12:00:00Z' });
+  assert.equal(watchAction(state).action, 'run-shepherd-cycle');
+  assert.equal(beginShipDispatch(state, { evidence: ['ci:91/101/1'], startedAt: '2026-08-30T12:00:00Z' }).stopReason, 'ship-blocked');
+});
+
+test('full watches reject split check payloads, incomplete reads and missing requiredness', () => {
+  for (const change of [
+    (raw) => { raw.checkEvidence = { ...raw.checkEvidence, checks: [] }; },
+    (raw) => { raw.checkEvidence.complete = false; },
+    (raw) => { raw.checkEvidence.observed = false; },
+    (raw) => { raw.checkEvidence.headSha = 'c'.repeat(40); },
+    (raw) => { delete raw.checks[0].required; },
+  ]) {
+    const raw = observation();
+    change(raw);
+    assert.throws(() => createWatchState({ observation: raw, continuation: continuation(),
+      observedAt: '2026-08-30T12:00:00Z' }), /check evidence|check requiredness/);
+  }
+});
+
+test('base retargets and head repository changes stop either authority mode', () => {
+  const raw = observation();
+  for (const limited of [false, true]) {
+    const state = createWatchState({
+      observation: raw, observedAt: '2026-08-30T12:00:00Z',
+      ...(limited ? { readAuthority: { source: 'operator-explicit-target', owningParent: 'parent',
+        targetIdentity: raw.identity } } : { continuation: continuation() }),
+    });
+    for (const updated of [
+      observation({ pullRequest: { ...raw.pullRequest, baseBranch: 'release' } }),
+      observation({ identity: { ...raw.identity, headRepository: 'other/repo' } }),
+    ]) {
+      assert.equal(recordObservation(state, { observation: updated,
+        observedAt: '2026-08-30T12:02:00Z' }).stopReason, 'ownership-failure');
+    }
+    assert.equal(watchAction({ ...state, authority: { mode: 'unrecognized' } }).reason, 'ownership-failure');
+  }
+});
+
 test('invalid or already terminal baselines never become running watches', () => {
   assert.throws(() => createWatchState({
     observation: observation({
@@ -147,13 +303,15 @@ test('invalid or already terminal baselines never become running watches', () =>
     continuation: continuation(),
     observedAt: '2026-08-30T12:00:00.000Z',
   }), /only for an open change request/);
-  assert.throws(() => createWatchState({
+  const unreadBase = createWatchState({
     observation: observation({
-      pullRequest: { ...observation().pullRequest, baseSha: null },
+      liveBase: null,
     }),
     continuation: continuation(),
     observedAt: '2026-08-30T12:00:00.000Z',
-  }), /base head/);
+  });
+  assert.equal(unreadBase.observation.pullRequest.baseSha, null);
+  assert.equal(watchAction(unreadBase).reason, 'evidence-failure');
   assert.throws(() => createWatchState({
     observation: observation({
       checks: [{ name: 'validate', required: true, status: 'failure', headSha: 'b'.repeat(40) }],
@@ -294,6 +452,7 @@ test('per-check watermarks do not replay an unchanged sibling failure', () => {
         { name: 'a', runId: '92', nativeId: '201', attempt: 1, headSha: 'b'.repeat(40), required: true, status: 'failure' },
         { name: 'b', runId: '93', nativeId: '202', attempt: 1, headSha: 'b'.repeat(40), required: true, status: 'failure' },
       ],
+      checkEvidence: { requiredChecks: [{ name: 'a', appId: null }, { name: 'b', appId: null }] },
     }),
     observedAt: '2026-08-30T12:02:00.000Z',
   });
@@ -328,6 +487,7 @@ test('per-check watermarks do not replay an unchanged sibling failure', () => {
         { name: 'a', runId: '92', nativeId: '201', attempt: 1, headSha: 'b'.repeat(40), required: true, status: 'success' },
         { name: 'b', runId: '93', nativeId: '202', attempt: 1, headSha: 'b'.repeat(40), required: true, status: 'failure' },
       ],
+      checkEvidence: { requiredChecks: [{ name: 'a', appId: null }, { name: 'b', appId: null }] },
     }),
     observedAt: '2026-08-30T12:04:00.000Z',
   });
@@ -592,6 +752,7 @@ test('provider-native GitHub checks produce Ship-compatible per-attempt identity
   const headSha = 'b'.repeat(40);
   assert.equal(githubCheckRunsCommand(detection, {
     repository: 'jdylanmc/agent-skills',
+    baseBranch: 'main',
     headSha,
     changeRequest: 157,
   }).operation, 'read-check-identities');
@@ -602,6 +763,7 @@ test('provider-native GitHub checks produce Ship-compatible per-attempt identity
     host: 'github.example.com',
   }, {
     repository: 'jdylanmc/agent-skills',
+    baseBranch: 'main',
     headSha,
     changeRequest: 157,
   });
@@ -611,6 +773,18 @@ test('provider-native GitHub checks produce Ship-compatible per-attempt identity
   const interpreted = interpretGitHubCheckIdentities({
     data: {
       repository: {
+        nameWithOwner: 'jdylanmc/agent-skills',
+        squashMergeAllowed: true,
+        ref: {
+          name: 'main', prefix: 'refs/heads/', target: { oid: 'a'.repeat(40) },
+          branchProtectionRule: {
+            allowsForcePushes: false, requiresLinearHistory: false,
+            requiresStatusChecks: true, requiresStrictStatusChecks: true,
+            lockBranch: false, restrictsPushes: false, requiresApprovingReviews: false,
+            requiredStatusChecks: [{ context: 'validate', app: null }],
+          },
+          rules: { pageInfo: { hasNextPage: false }, nodes: [] },
+        },
         object: {
           oid: headSha,
           statusCheckRollup: {
@@ -637,17 +811,115 @@ test('provider-native GitHub checks produce Ship-compatible per-attempt identity
         },
       },
     },
-  }, { headSha });
+  }, { headSha, repository: 'jdylanmc/agent-skills', baseBranch: 'main' });
 
   assert.equal(interpreted.complete, true);
   assert.deepEqual(interpreted.checks[0], {
     name: 'validate',
     nativeId: '7001',
     runId: '9001',
+    workflowId: null,
+    runNumber: null,
     attempt: 2,
     headSha,
     required: true,
+    appId: null,
+    untrusted: true,
     status: 'failure',
     url: 'https://github.com/jdylanmc/agent-skills/actions/runs/9001/job/8001',
   });
+});
+
+test('missing Ship context permits durable observation only, never a remediation handoff', () => {
+    const initial = observation({
+      identity: { ...observation().identity, issue: null },
+      liveBase: null,
+      review: {},
+      checks: [{ name: 'ci', status: 'failure', required: true, headSha: 'b'.repeat(40) }],
+      ownership: { providerAvailable: true },
+    });
+    const args = {
+      observation: initial, observedAt: '2026-08-30T12:00:00.000Z',
+      readAuthority: { source: 'operator-explicit-target', owningParent: 'parent-session', targetIdentity: initial.identity },
+    };
+    const state = createWatchState(args);
+    assert.equal(state.authority.mode, 'observation-only');
+    assert.equal(state.continuation, null);
+    assert.equal(watchAction(state).action, 'notify-parent');
+    assert.equal(beginShipDispatch(state, { evidence: ['ci:1/2/1'], startedAt: args.observedAt }).stopReason, 'ship-blocked');
+    assert.throws(() => createWatchState({ ...args, observation: observation(), continuation: {} }), /continuation context/);
+    assert.throws(() => createWatchState({ ...args, readAuthority: undefined }), /read authority/);
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shepherd-limited-'));
+    try {
+      const file = path.join(root, 'watch.json');
+      persistWatchState(file, state);
+      const loaded = loadWatchState(file);
+      const resumed = resumeWatch(loaded, { resumedAt: '2026-08-30T13:00:00.000Z' });
+      assert.equal(resumed.gaps.length, 1);
+      const unchanged = recordObservation(resumed, { observation: initial, observedAt: '2026-08-30T13:00:00.000Z' });
+      assert.equal(watchAction(unchanged).action, 'wait');
+      const changed = recordObservation(unchanged, { observation: { ...initial, review: { observationDigest: '2'.repeat(64) } }, observedAt: '2026-08-30T13:05:00.000Z' });
+      assert.equal(watchAction(changed).action, 'notify-parent');
+      assert.equal(recordObservation(changed, { observation: { ...initial, pullRequest: { ...initial.pullRequest, state: 'merged' } }, observedAt: '2026-08-30T13:10:00.000Z' }).stopReason, 'change-request-merged');
+      const accepted = bootstrapAcceptance(state, {
+        workerStatus: 'running', acceptedIdentity: state.targetIdentity,
+        acceptedStateDigest: state.integrityDigest, disposition: 'mergeable-and-green',
+      });
+      assert.equal(accepted.status, 'observation-only');
+      assert.equal(accepted.result.disposition, 'blocked');
+      assert.equal(accepted.result.authority.provenance, 'operator-explicit-target');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+test('observation-only watch follows a new PR head without acquiring mutation authority', () => {
+  const initial = observation();
+  const state = createWatchState({
+    observation: initial,
+    observedAt: '2026-08-30T12:00:00.000Z',
+    readAuthority: {
+      source: 'operator-explicit-target', owningParent: 'parent-session',
+      targetIdentity: initial.identity,
+    },
+  });
+  const headSha = 'c'.repeat(40);
+  const updated = {
+    ...initial,
+    pullRequest: { ...initial.pullRequest, headSha },
+    checks: [{ ...initial.checks[0], headSha, status: 'pending' }],
+    checkEvidence: { observed: true, complete: true, headSha },
+  };
+  const changed = recordObservation(state, {
+    observation: updated, observedAt: '2026-08-30T12:02:00.000Z',
+  });
+  assert.equal(changed.status, 'running');
+  assert.equal(changed.expectedHead, headSha);
+  assert.equal(changed.continuation, null);
+  assert.equal(watchAction(changed).action, 'notify-parent');
+  assert.equal(beginShipDispatch(changed, {
+    evidence: ['ci:91/101/1'], startedAt: changed.lastObservedAt,
+  }).stopReason, 'ship-blocked');
+  const merged = recordObservation(changed, {
+    observation: { ...updated, pullRequest: { ...updated.pullRequest, state: 'merged' } },
+    observedAt: '2026-08-30T12:04:00.000Z',
+  });
+  assert.equal(merged.stopReason, 'change-request-merged');
+});
+
+test('bootstrap refuses optimistic green labels for failed or unobserved current checks', () => {
+    for (const overrides of [
+      { checks: [{ ...observation().checks[0], status: 'pending' }] },
+      { checks: [{ ...observation().checks[0], status: 'failure' }] },
+      { checks: [{ ...observation().checks[0], status: 'cancelled' }] },
+      { checks: [] }, { liveBase: null },
+    ]) {
+      const state = createWatchState({ observation: observation(overrides), continuation: continuation(), observedAt: '2026-08-30T12:00:00.000Z' });
+      const result = bootstrapAcceptance(state, {
+        workerStatus: 'running', acceptedIdentity: state.targetIdentity, acceptedStateDigest: state.integrityDigest,
+        disposition: 'mergeable-and-green', receipt: { observedAt: state.lastObservedAt, baseSha: 'a'.repeat(40),
+          headSha: state.expectedHead, upToDatePolicy: 'not-required', complete: true },
+      });
+      assert.equal(result.status, 'failed');
+    }
 });

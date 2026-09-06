@@ -45,15 +45,31 @@ function flat(relativePath) {
 
 function greenSignals(overrides = {}) {
   return {
+    authority: { mode: 'ship-continuation' },
     provider: { status: 'supported-provider', provider: 'example' },
     observedAt: '2026-08-25T22:05:00Z',
-    preflight: { status: 'ok' },
-    rebase: { status: 'completed', baseSha: 'base-sha' },
+    target: { repository: 'example/repo', baseBranch: 'main' },
+    liveBase: { observed: true, identityBound: true, repository: 'example/repo', ref: 'refs/heads/main',
+      sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', observedAt: '2026-08-25T22:05:00Z' },
+    headTarget: { repository: 'example/repo', ref: 'refs/heads/feature' },
+    branchPolicy: { observed: true, trusted: true, observedAt: '2026-08-25T22:05:00Z',
+      repository: 'example/repo', ref: 'refs/heads/feature', allowForcePushes: true,
+      requireLinearHistory: true, directUpdatesAllowed: true },
+    baseBranchPolicy: { observed: true, trusted: true, observedAt: '2026-08-25T22:05:00Z',
+      repository: 'example/repo', ref: 'refs/heads/main', allowForcePushes: false,
+      requireLinearHistory: false, squashMergeAllowed: true, sha: 'a'.repeat(40) },
+    preflight: { status: 'ok', capturedRemoteHead: 'c'.repeat(40) },
+    rebase: { status: 'completed', baseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', strategy: 'rebase' },
     regeneration: { status: 'completed' },
     localValidation: { status: 'passed', evidenceComplete: true },
-    push: { status: 'pushed-with-lease', headSha: 'head-sha' },
-    remoteChecks: { checks: [{ name: 'validate', status: 'success' }] },
-    mergeability: { state: 'mergeable', isDraft: false, baseSha: 'base-sha', headSha: 'head-sha' },
+    push: { status: 'pushed-with-lease', headSha: 'b'.repeat(40), previousHead: 'c'.repeat(40),
+      repository: 'example/repo', ref: 'refs/heads/feature', strategy: 'rebase',
+      capturedHeadVerified: true, leaseVerified: true,
+      lease: { ref: 'refs/heads/feature', expectedHead: 'c'.repeat(40) } },
+    remoteChecks: { observed: true, complete: true, headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      requiredChecks: [{ name: 'validate', appId: null }],
+      checks: [{ name: 'validate', status: 'success', required: true, headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }] },
+    mergeability: { state: 'mergeable', blocked: false, isDraft: false, baseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
     ...overrides,
   };
 }
@@ -446,9 +462,10 @@ test('an advanced base is a trigger when the base requires the branch to contain
     basePolicy: { upToDate: 'required' },
     mergeability: {
       state: 'mergeable',
+      blocked: false,
       isDraft: false,
-      baseSha: 'base-sha',
-      headSha: 'head-sha',
+      baseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       behind: false,
     },
     operatorRequest: { rebase: false },
@@ -457,8 +474,8 @@ test('an advanced base is a trigger when the base requires the branch to contain
   assert.equal(alreadyContains.disposition, 'no-op-mergeable-and-green');
   assert.equal(alreadyContains.shouldRebase, false);
   assert.equal(alreadyContains.receipt.complete, true);
-  assert.equal(alreadyContains.receipt.baseSha, 'base-sha');
-  assert.equal(alreadyContains.receipt.headSha, 'head-sha');
+  assert.equal(alreadyContains.receipt.baseSha, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.equal(alreadyContains.receipt.headSha, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
   assert.ok(isTerminalDisposition(alreadyContains.disposition));
 
   const gitAlreadyContains = classifyShepherdPlan(greenSignals({
@@ -466,9 +483,10 @@ test('an advanced base is a trigger when the base requires the branch to contain
     basePolicy: { upToDate: 'required' },
     mergeability: {
       state: 'mergeable',
+      blocked: false,
       isDraft: false,
-      baseSha: 'base-sha',
-      headSha: 'head-sha',
+      baseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     },
     operatorRequest: { rebase: false },
     requiredChecks: [{ name: 'validate', expired: false }],
@@ -494,9 +512,10 @@ test('an advanced base is a trigger when the base requires the branch to contain
 test('under a required policy the branch must be known to contain the base', () => {
   const mergeability = (behind) => ({
     state: 'mergeable',
+    blocked: false,
     isDraft: false,
-    baseSha: 'base-sha',
-    headSha: 'head-sha',
+    baseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     ...(behind === undefined ? {} : { behind }),
   });
 
@@ -538,7 +557,7 @@ test('under a required policy the branch must be known to contain the base', () 
 
   for (const [providerBehind, gitBehind, expectedPlan, expectedTerminal] of [
     [true, false, 'shepherd-required', 'blocked'],
-    [false, true, 'no-op-mergeable-and-green', 'mergeable-and-green'],
+    [false, true, 'shepherd-required', 'blocked'],
   ]) {
     const conflictingSignals = greenSignals({
       base: { moved: true, behind: gitBehind },
@@ -548,12 +567,12 @@ test('under a required policy the branch must be known to contain the base', () 
     assert.equal(
       classifyShepherdPlan(conflictingSignals).disposition,
       expectedPlan,
-      `provider behind=${providerBehind} must override git behind=${gitBehind} in planning`,
+      `known behind evidence must block a green plan when provider=${providerBehind}, git=${gitBehind}`,
     );
     assert.equal(
       classifyTerminalDisposition(conflictingSignals).disposition,
       expectedTerminal,
-      `provider behind=${providerBehind} must override git behind=${gitBehind} at the terminal gate`,
+      `known behind evidence must block readiness when provider=${providerBehind}, git=${gitBehind}`,
     );
   }
 
@@ -581,14 +600,14 @@ test('an unobserved up-to-date policy is never treated as not-required', () => {
 test('every terminal disposition carries the snapshot it was observed against', () => {
   const result = classifyTerminalDisposition(greenSignals({
     basePolicy: { upToDate: 'required' },
-    mergeability: { state: 'mergeable', isDraft: false, baseSha: 'base-sha', headSha: 'head-sha', behind: false },
+    mergeability: { state: 'mergeable', blocked: false, isDraft: false, baseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', behind: false },
   }));
 
   assert.equal(result.disposition, 'mergeable-and-green');
   assert.deepEqual(result.receipt, {
     observedAt: '2026-08-25T22:05:00Z',
-    baseSha: 'base-sha',
-    headSha: 'head-sha',
+    baseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     upToDatePolicy: 'required',
     provider: 'supported-provider',
     complete: true,
@@ -630,7 +649,7 @@ test('the terminal vocabulary is the shared one, including every provider condit
   for (const signals of [
     greenSignals(),
     greenSignals({ localValidation: { status: 'failed', evidenceComplete: true } }),
-    greenSignals({ push: { status: 'pushed-without-lease', headSha: 'head-sha' } }),
+    greenSignals({ push: { status: 'pushed-without-lease', headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' } }),
     greenSignals({ conflicts: [{ kind: 'authored', path: 'src/a.ts' }] }),
     {},
   ]) {
@@ -644,7 +663,7 @@ test('the terminal vocabulary is the shared one, including every provider condit
 test('every non-green terminal result names the next human action', () => {
   for (const signals of [
     greenSignals({ localValidation: { status: 'failed', evidenceComplete: true } }),
-    greenSignals({ push: { status: 'pushed-without-lease', headSha: 'head-sha' } }),
+    greenSignals({ push: { status: 'pushed-without-lease', headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' } }),
     greenSignals({ conflicts: [{ kind: 'authored', path: 'src/a.ts' }] }),
   ]) {
     const result = classifyTerminalDisposition(signals);
@@ -697,7 +716,7 @@ test('operator request, expired required check, or unmergeable state are action 
   assert.equal(expired.shouldRebase, false);
 
   assert.equal(classifyShepherdPlan(greenSignals({
-    mergeability: { state: 'dirty', isDraft: false, baseSha: 'base-sha', headSha: 'head-sha' },
+    mergeability: { state: 'dirty', isDraft: false, baseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
   })).shouldRebase, true);
 });
 
@@ -713,15 +732,17 @@ test('missing required evidence, stale mergeability, draft PRs, and skipped chec
   assert.equal(classifyTerminalDisposition(missingRebase).disposition, 'blocked');
 
   assert.equal(classifyTerminalDisposition(greenSignals({
-    mergeability: { state: 'mergeable', isDraft: false, baseSha: 'old-base', headSha: 'head-sha' },
+    mergeability: { state: 'mergeable', isDraft: false, baseSha: 'old-base', headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
   })).disposition, 'blocked');
 
   assert.equal(classifyTerminalDisposition(greenSignals({
-    mergeability: { state: 'mergeable', isDraft: true, baseSha: 'base-sha', headSha: 'head-sha' },
+    mergeability: { state: 'mergeable', isDraft: true, baseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
   })).disposition, 'needs-human');
 
   assert.equal(classifyTerminalDisposition(greenSignals({
-    remoteChecks: { checks: [{ name: 'validate', status: 'skipped' }] },
+    remoteChecks: { observed: true, complete: true, headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      requiredChecks: [{ name: 'validate', appId: null }],
+      checks: [{ name: 'validate', status: 'skipped', required: true, headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }] },
   })).disposition, 'failing');
 });
 
@@ -753,7 +774,7 @@ test('unsupported or unavailable provider tools still complete the git core inst
 
 test('plain force push or missing checks are blocked', () => {
   assert.equal(classifyTerminalDisposition(greenSignals({
-    push: { status: 'pushed-without-lease', headSha: 'head-sha' },
+    push: { status: 'pushed-without-lease', headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
   })).disposition, 'blocked');
 
   assert.equal(classifyTerminalDisposition(greenSignals({
