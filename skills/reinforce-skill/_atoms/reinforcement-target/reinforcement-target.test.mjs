@@ -505,11 +505,11 @@ test('the diff audit rejects a non-array change set', () => {
       const next = `${previous}- Target change.\n`;
       fs.writeFileSync(path.join(root, 'CHANGELOG.md'), previous);
       git(root, 'add', '.');
-      git(root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'base');
+      git(root, '-c', 'user.name=Fixture', '-c', 'user.email=test-identity', 'commit', '-qm', 'base');
       const base = git(root, 'rev-parse', 'HEAD');
       fs.appendFileSync(path.join(root, 'skills/existing-skill/SKILL.md'), 'committed\n');
       git(root, 'add', '.');
-      git(root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'target');
+      git(root, '-c', 'user.name=Fixture', '-c', 'user.email=test-identity', 'commit', '-qm', 'target');
       fs.writeFileSync(path.join(root, 'CHANGELOG.md'), next);
       const entry = companion('CHANGELOG.md', 'changelog', previous, next);
       assert.equal(auditRepositoryDiff(root, 'existing-skill', base, { companions: [entry] }).clean, true);
@@ -531,7 +531,7 @@ test('the diff audit rejects a non-array change set', () => {
     withFixture((root) => {
       git(root, 'init', '-q');
       git(root, 'add', '.');
-      git(root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'base');
+      git(root, '-c', 'user.name=Fixture', '-c', 'user.email=test-identity', 'commit', '-qm', 'base');
       for (const args of [
         ['--companions', 'ledger.json'],
         ['--base', 'HEAD', '--audit', 'skills/existing-skill/SKILL.md'],
