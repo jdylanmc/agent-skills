@@ -42,7 +42,7 @@ import {
   roastStatus,
   unresolvedFindings,
 } from '../../../create-skill/_atoms/roast-round-ledger/roast-round-ledger.mjs';
-import { auditDiff, auditRepositoryDiff } from '../reinforcement-target/reinforcement-target.mjs';
+import { auditDiff, auditRepositoryDiff, readAuditSnapshot } from '../reinforcement-target/reinforcement-target.mjs';
 
 /**
  * The one validated implementation, re-exported so a reinforcement drives the
@@ -107,6 +107,7 @@ function assertCleanAudit(audit, skillName) {
     if (audit.workflowViolation) {
       refusedPaths.push(`${audit.workflowViolation.path} (${audit.workflowViolation.message})`);
     }
+    if (audit.snapshotViolation) refusedPaths.push(audit.snapshotViolation);
     throw new LedgerError(
       'out_of_target',
       `a reinforcement remediation stays inside skills/${skillName}, proven test registrations and justified companions; refused: ${refusedPaths.join(', ')}`,
@@ -167,20 +168,24 @@ export function assertRoastComplete(state) {
 }
 
 export const USAGE = `Usage: reinforce-roast.mjs --root <path> --skill <name> --changed <a,b,c>
-       reinforce-roast.mjs --root <path> --skill <name> --base <commit> [--companions <json>]
+       reinforce-roast.mjs --root <path> --skill <name> --base <commit>
+         --snapshot <json> --snapshot-digest <sha256> [--companions <json>]
 
   --root                Repository root the reinforcement runs against.
   --skill               The one skill being reinforced.
   --changed             Comma-separated change set to audit.
   --base                Enumerate the whole candidate against this baseline commit.
   --companions          Exact companion ledger; requires --base.
+  --snapshot            Recorded immutable candidate and baseline evidence.
+  --snapshot-digest     Snapshot digest pinned in the caller's run context.
   --workflow-previous   Path to the validation workflow before the edit.
   --workflow-next       Path to the validation workflow after the edit.
   --probe               Report availability and exit.`;
 
 export function parseArguments(argv) {
   const args = {};
-  const valueFlags = ['--root', '--skill', '--changed', '--base', '--companions', '--workflow-previous', '--workflow-next'];
+  const valueFlags = ['--root', '--skill', '--changed', '--base', '--companions',
+    '--snapshot', '--snapshot-digest', '--workflow-previous', '--workflow-next'];
   const claim = (key, token) => {
     if (Object.prototype.hasOwnProperty.call(args, key)) {
       throw new LedgerError('usage', `${token} was given more than once\n${USAGE}`);
@@ -213,15 +218,18 @@ export function run(argv, streams = process) {
     streams.stdout.write('reinforce-roast: available\n');
     return 0;
   }
-  if (args.companions && !args.base) {
-    throw new LedgerError('usage', '--companions requires --base');
+  if ((args.companions || args.snapshot || args['snapshot-digest']) && !args.base) {
+    throw new LedgerError('usage', 'companions and snapshots require --base');
   }
   if (args.base) {
-    if (!args.root || !args.skill || args.changed || args['workflow-previous'] || args['workflow-next']) {
-      throw new LedgerError('usage', '--base requires --root and --skill and refuses path/content overrides');
+    if (!args.root || !args.skill || args.changed || args['workflow-previous'] || args['workflow-next']
+      || !args.snapshot || !args['snapshot-digest']) {
+      throw new LedgerError('usage', '--base requires a pinned snapshot and refuses path/content overrides');
     }
     const companions = args.companions ? JSON.parse(fs.readFileSync(args.companions, 'utf8')) : [];
-    const audit = auditRepositoryDiff(args.root, args.skill, args.base, { companions });
+    const snapshot = readAuditSnapshot(args.root, args.snapshot, args['snapshot-digest']);
+    const audit = auditRepositoryDiff(args.root, args.skill, args.base,
+      { companions, snapshot, snapshotDigest: args['snapshot-digest'] });
     assertGateIntegrity(audit.classified.map((entry) => entry.path));
     streams.stdout.write(`${JSON.stringify(assertCleanAudit(audit, args.skill), null, 2)}\n`);
     return 0;

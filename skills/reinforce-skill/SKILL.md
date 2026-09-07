@@ -109,14 +109,21 @@ approves that exact digest and that one target for this run.
 
 4. Open the pull request. Create a review branch, commit the target's changed
    files together with the changelog patch, and run the write-boundary guard's
-   repository diff audit against the recorded base commit, with the exact
-   companion ledger described by the reinforcement-target guard. It reads
-   before/after content from Git and disk, includes untracked paths and both
-   sides of renames, and proves workflow edits are bare test registrations.
+   repository diff audit against the recorded base commit and a caller-pinned
+   snapshot of the committed candidate, with the exact companion ledger
+   described by the reinforcement-target guard. It reads before/after content
+   from immutable Git objects, includes untracked paths and both sides of
+   renames, refuses any staged/unstaged residue, and proves workflow edits are
+   insertion-only test registrations with order and multiplicity preserved.
    The audit exits non-zero when it is not clean: any unaccounted path, stale
-   companion digest, protected companion, or non-additive workflow edit stops
+   companion digest, changed candidate, protected companion, or non-additive workflow edit stops
    publication. Preserve the original write classes, including `outside` for
    the changelog; a justified companion is not relabelled `in-target`.
+   Self-reinforcement must supply the preserved baseline guard/audit and exact
+   corrective scope in that snapshot; the helper reproduces the old audit from
+   the original Git revision. Its refusals remain separate from the new guard's
+   result, and the operator's explicit corrective instruction remains the
+   authority for any intentional boundary change.
    Run the intent-decision release check
    (`intent-decision.mjs --state <path> --require-decision`) over the recorded
    decision; a `blocked` result — a `changes-intent` decision that never reached

@@ -42,6 +42,7 @@ const FAILURES = {
   notADirectory: 'not_a_directory',
   workflowNotAdditive: 'workflow_not_additive',
   invalidCompanion: 'invalid_companion',
+  invalidSnapshot: 'invalid_snapshot',
 };
 
 export class TargetError extends Error {
@@ -284,11 +285,10 @@ export function isWritableClass(writeClass) {
  * continuous integration re-running the gates over the diff and by the human who
  * reads it, not by this function.
  *
- * Lines are compared with trailing whitespace trimmed, so a reflowed or
- * re-indented tail does not read as a removal; a genuinely removed or rewritten
- * registration, or a re-indented one, does.
+ * Preserve every original line, including whitespace, order and multiplicity.
+ * Only new canonical paths inside an existing registration block may be inserted.
  */
-const REGISTRATION_LINE = /^\S+\.test\.mjs$/;
+const REGISTRATION_LINE = /^([ ]+)((?:skills|scripts)\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.test\.mjs)(\r?\n)?$/;
 
 export function assertWorkflowAdditive(previousContent, nextContent) {
   if (typeof previousContent !== 'string' || typeof nextContent !== 'string') {
@@ -297,23 +297,37 @@ export function assertWorkflowAdditive(previousContent, nextContent) {
       'assertWorkflowAdditive requires the previous and next workflow contents',
     );
   }
-  const previousLines = previousContent.split('\n').map((line) => line.trimEnd());
-  const nextLines = nextContent.split('\n').map((line) => line.trimEnd());
-  const previousSet = new Set(previousLines);
-  const nextSet = new Set(nextLines);
-
-  const removed = previousLines
-    .filter((line) => line.trim() !== '')
-    .filter((line) => !nextSet.has(line));
-
-  // Every added non-blank line must be a test-registration path. This is the
-  // positive bound: a weakening that only *adds* lines — `if: false`, a moved or
-  // re-indented registration, a new step — leaves every previous line in place
-  // and would pass a removal-only check, so it is refused here instead.
-  const added = nextLines
-    .filter((line) => line.trim() !== '')
-    .filter((line) => !previousSet.has(line))
-    .filter((line) => !REGISTRATION_LINE.test(line.trim()));
+  const lines = (text) => text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+  const previousLines = lines(previousContent);
+  const nextLines = lines(nextContent);
+  const registered = new Set(previousLines.map((line) => line.match(REGISTRATION_LINE)?.[2]).filter(Boolean));
+  let cursor = 0;
+  let preceding = '';
+  let registrationIndent = null;
+  const added = [];
+  for (const line of nextLines) {
+    if (line === previousLines[cursor]) {
+      cursor += 1;
+    } else {
+      const registration = line.match(REGISTRATION_LINE);
+      if (!registration || registration[1] !== registrationIndent || registered.has(registration[2])) {
+        added.push(line);
+      } else {
+        registered.add(registration[2]);
+      }
+    }
+    if (line.trim()) {
+      const runner = line.match(/^([ ]*)(run: )?node scripts\/run-registered-tests\.mjs\r?\n?$/);
+      const registration = line.match(REGISTRATION_LINE);
+      if (runner && (runner[2] || /^\s*run: >[-+]?\r?\n?$/.test(preceding))) {
+        registrationIndent = `${runner[1]}${runner[2] ? '  ' : ''}`;
+      } else if (!registration || registration[1] !== registrationIndent) {
+        registrationIndent = null;
+      }
+      preceding = line;
+    }
+  }
+  const removed = previousLines.slice(cursor);
 
   if (removed.length || added.length) {
     const reasons = [];
@@ -446,11 +460,22 @@ function canonicalCompanionPath(root, candidate) {
 
 function referencesTarget(content, candidate, skillName) {
   const prefix = `skills/${skillName}/`;
-  return [...content.matchAll(/['"`]([^'"`\r\n]+)['"`]/g)].some((match) => {
-    const reference = match[1];
-    const resolved = reference.startsWith('.')
-      ? path.posix.normalize(path.posix.join(path.posix.dirname(candidate), reference))
-      : reference;
+  // Parse ESM imports without linking or evaluating the consumer's code.
+  const parser = `import fs from 'node:fs'; import vm from 'node:vm';
+    const module = new vm.SourceTextModule(fs.readFileSync(0, 'utf8'));
+    process.stdout.write(JSON.stringify(module.dependencySpecifiers));`;
+  let references;
+  try {
+    references = JSON.parse(execFileSync(process.execPath,
+      ['--experimental-vm-modules', '--input-type=module', '-e', parser],
+      { input: content, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }));
+  } catch (error) {
+    if (typeof error.status === 'number') refuseCompanion('caller integration must be parseable ECMAScript module source');
+    throw error;
+  }
+  return references.some((reference) => {
+    if (!/^\.{1,2}\//.test(reference) || /[\\%?#\x00-\x20]/.test(reference)) return false;
+    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(candidate), reference));
     return resolved.startsWith(prefix);
   });
 }
@@ -501,8 +526,8 @@ function checkCompanions(root, skillName, changedPaths, companions, contents) {
       }
     } else if (entry.kind === 'derived-graph') {
       const unit = candidate.match(/^skills\/([^/]+)\/(_atoms|_molecules)\/([^/]+)\/\3\.md$/);
-      if (!unit || ![WRITE_CLASS.base, WRITE_CLASS.foreignSkill].includes(writeClass)) {
-        refuseCompanion('derived companions must be existing unit Markdown, never a skill grant');
+      if (!unit || writeClass !== WRITE_CLASS.base) {
+        refuseCompanion('derived companions must be existing shared unit Markdown, never a foreign local unit or skill grant');
       }
       derived ??= deriveGraph(root);
       const relative = candidate.slice('skills/'.length);
@@ -523,33 +548,206 @@ function checkCompanions(root, skillName, changedPaths, companions, contents) {
   return checked;
 }
 
-/** Enumerate the whole candidate, including untracked files and both sides of renames. */
-export function auditRepositoryDiff(repositoryRoot, skillName, base, { companions = [] } = {}) {
+const COMMIT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const BASELINE_GUARD = 'skills/reinforce-skill/_atoms/reinforcement-target/reinforcement-target.mjs';
+const gitAt = (root, args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+const nulPaths = (text) => text.split('\0').filter(Boolean);
+const samePaths = (a, b) => Array.isArray(a) && new Set(a).size === a.length
+  && JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+
+function requireCommit(root, value, label) {
+  if (!COMMIT_ID.test(value ?? '')
+    || gitAt(root, ['rev-parse', '--verify', `${value}^{commit}`]).trim() !== value) {
+    throw new TargetError(FAILURES.invalidSnapshot, `${label} must be an exact commit ID, not a mutable ref`);
+  }
+}
+
+/** Bind a final committed candidate to the base already recorded by the caller. */
+export function captureAuditSnapshot(repositoryRoot, skillName, base, { selfReview } = {}) {
   resolveSkillTarget(repositoryRoot, skillName);
-  requireString(base, 'base');
   const root = fs.realpathSync(repositoryRoot);
-  const git = (args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
-  const baseCommit = git(['rev-parse', '--verify', '--end-of-options', `${base}^{commit}`]).trim();
-  const changed = git(['diff', '--no-renames', '--name-only', '-z', baseCommit, '--']).split('\0').filter(Boolean);
-  const untracked = git(['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
-  const changedPaths = [...new Set([...changed, ...untracked])].sort();
+  requireCommit(root, base, 'recorded base');
+  const head = gitAt(root, ['rev-parse', 'HEAD']).trim();
+  if (base === head || gitAt(root, ['merge-base', base, head]).trim() !== base) {
+    throw new TargetError(FAILURES.invalidSnapshot, 'the recorded base must precede the candidate');
+  }
+  return {
+    version: 1, repositoryRoot: root, skill: skillName, base, head,
+    tree: gitAt(root, ['rev-parse', `${head}^{tree}`]).trim(),
+    ...(selfReview ? { selfReview } : {}),
+  };
+}
+
+export function auditSnapshotDigest(snapshot) {
+  return sha256(JSON.stringify(snapshot));
+}
+
+export function readAuditSnapshot(repositoryRoot, snapshotPath, expectedDigest) {
+  const resolved = path.resolve(snapshotPath);
+  assertNoSymlinkComponent(path.parse(resolved).root, resolved);
+  const stat = fs.statSync(resolved);
+  if (!stat.isFile() || stat.size > 1024 * 1024) {
+    throw new TargetError(FAILURES.invalidSnapshot, 'audit snapshot must be a bounded regular file');
+  }
+  const root = fs.realpathSync(repositoryRoot);
+  const relative = path.relative(root, resolved);
+  if (!relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
+    try {
+      gitAt(root, ['check-ignore', '--quiet', '--', relative]);
+    } catch (error) {
+      if (error.status === 1) {
+        throw new TargetError(FAILURES.invalidSnapshot, 'audit snapshots must be unpublished run state');
+      }
+      throw error;
+    }
+  }
+  const snapshot = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+  if (auditSnapshotDigest(snapshot) !== expectedDigest) {
+    throw new TargetError(FAILURES.invalidSnapshot, 'audit snapshot does not match the caller-pinned digest');
+  }
+  return snapshot;
+}
+
+/** Execute the preserved guard and its imports from Git objects, never the edited guard on disk. */
+export function captureBaselineAudit(repositoryRoot, skillName, base, head) {
+  const root = fs.realpathSync(repositoryRoot);
+  requireCommit(root, base, 'baseline guard revision');
+  requireCommit(root, head, 'candidate revision');
+  const changedPaths = nulPaths(gitAt(root, ['diff', '--no-renames', '--name-only', '-z', base, head, '--'])).sort();
+  const runner = `
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import vm from 'node:vm';
+    import { execFileSync } from 'node:child_process';
+    import { pathToFileURL, fileURLToPath } from 'node:url';
+    const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+    const git = args => execFileSync('git', ['-C', input.root, ...args], { encoding: 'utf8' });
+    const cache = new Map();
+    async function load(specifier, parent) {
+      if (specifier.startsWith('node:')) {
+        if (!cache.has(specifier)) {
+          const value = await import(specifier);
+          cache.set(specifier, new vm.SyntheticModule(Object.keys(value), function () {
+            for (const name of Object.keys(value)) this.setExport(name, value[name]);
+          }));
+        }
+        return cache.get(specifier);
+      }
+      const file = parent ? path.resolve(path.dirname(fileURLToPath(parent.identifier)), specifier)
+        : path.resolve(input.root, specifier);
+      const relative = path.relative(input.root, file);
+      if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('baseline import escaped repository');
+      const key = relative.split(path.sep).join('/');
+      if (!cache.has(key)) {
+        const module = new vm.SourceTextModule(git(['show', input.base + ':' + key]), {
+          identifier: pathToFileURL(file).href,
+          initializeImportMeta: meta => { meta.url = pathToFileURL(file).href; },
+        });
+        cache.set(key, module);
+        await module.link(load);
+      }
+      return cache.get(key);
+    }
+    const guard = await load(input.guard);
+    await guard.evaluate();
+    const workflow = input.changedPaths.includes(input.workflow) ? {
+      previous: git(['show', input.base + ':' + input.workflow]),
+      next: git(['show', input.head + ':' + input.workflow]),
+    } : undefined;
+    process.stdout.write(JSON.stringify(guard.namespace.auditDiff(input.root, input.skill,
+      input.changedPaths, { workflow })));
+  `;
+  const baselineAudit = JSON.parse(execFileSync(process.execPath,
+    ['--experimental-vm-modules', '--input-type=module', '-e', runner], {
+      input: JSON.stringify({ root, skill: skillName, base, head, changedPaths,
+        guard: BASELINE_GUARD, workflow: WORKFLOW_FILE }),
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }));
+  return {
+    base, head,
+    baselineGuardSha256: sha256(gitAt(root, ['show', `${base}:${BASELINE_GUARD}`])),
+    baselineAudit,
+    correctiveScope: changedPaths,
+  };
+}
+
+function assertSelfReview(root, snapshot, changedPaths) {
+  if (snapshot.skill !== 'reinforce-skill') return;
+  const proof = snapshot.selfReview;
+  const audit = proof?.baselineAudit;
+  const guardDigest = sha256(gitAt(root, ['show', `${snapshot.base}:${BASELINE_GUARD}`]));
+  if (!proof || proof.base !== snapshot.base || proof.head !== snapshot.head
+    || proof.baselineGuardSha256 !== guardDigest
+    || !samePaths(proof.correctiveScope, changedPaths)
+    || !Array.isArray(audit?.classified) || !Array.isArray(audit?.refused)
+    || !samePaths(audit.classified.map((entry) => entry.path), changedPaths)
+    || audit.classified.some((entry) => typeof entry.writable !== 'boolean')
+    || !samePaths(audit.refused.map((entry) => entry.path),
+      audit.classified.filter((entry) => !entry.writable).map((entry) => entry.path))
+    || audit.clean !== (audit.refused.length === 0 && audit.workflowViolation === null)) {
+    throw new TargetError(FAILURES.invalidSnapshot,
+      'self-reinforcement requires preserved baseline guard/audit evidence and exact corrective scope');
+  }
+  const reproduced = captureBaselineAudit(root, snapshot.skill, snapshot.base, snapshot.head);
+  if (sha256(JSON.stringify(audit)) !== sha256(JSON.stringify(reproduced.baselineAudit))) {
+    throw new TargetError(FAILURES.invalidSnapshot, 'preserved baseline audit does not reproduce from the original guard');
+  }
+}
+
+/** Enumerate immutable candidate bytes; any staged, unstaged or untracked residue blocks publication. */
+export function auditRepositoryDiff(repositoryRoot, skillName, base, {
+  companions = [], snapshot, snapshotDigest,
+} = {}) {
+  resolveSkillTarget(repositoryRoot, skillName);
+  const root = fs.realpathSync(repositoryRoot);
+  const git = (args) => gitAt(root, args);
+  requireCommit(root, base, 'recorded base');
+  if (!snapshot || snapshot.version !== 1 || snapshot.repositoryRoot !== root
+    || snapshot.skill !== skillName || snapshot.base !== base
+    || auditSnapshotDigest(snapshot) !== snapshotDigest) {
+    throw new TargetError(FAILURES.invalidSnapshot, 'a caller-pinned repository/target/base/head snapshot is required');
+  }
+  requireCommit(root, snapshot.head, 'reviewed head');
+  if (base === snapshot.head || git(['merge-base', base, snapshot.head]).trim() !== base
+    || git(['rev-parse', 'HEAD']).trim() !== snapshot.head
+    || git(['rev-parse', `${snapshot.head}^{tree}`]).trim() !== snapshot.tree) {
+    throw new TargetError(FAILURES.invalidSnapshot, 'recorded base, candidate or reviewed tree has drifted');
+  }
+  const changed = nulPaths(git(['diff', '--no-ext-diff', '--no-textconv', '--no-renames',
+    '--name-only', '-z', base, snapshot.head, '--']));
+  const pendingPaths = [...new Set([
+    ...nulPaths(git(['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--cached', '--name-only', '-z', '--'])),
+    ...nulPaths(git(['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--name-only', '-z', '--'])),
+    ...nulPaths(git(['ls-files', '--others', '--exclude-standard', '-z'])),
+  ])].sort();
+  const changedPaths = [...new Set([...changed, ...pendingPaths])].sort();
   const contents = new Map();
-  const previousFiles = new Set(git(['ls-tree', '-r', '--name-only', '-z', baseCommit]).split('\0'));
+  const previousFiles = new Set(nulPaths(git(['ls-tree', '-r', '--name-only', '-z', base])));
+  const candidateFiles = new Set(nulPaths(git(['ls-tree', '-r', '--name-only', '-z', snapshot.head])));
   for (const candidate of changedPaths) {
-    const absolute = path.join(root, candidate);
-    assertNoSymlinkComponent(root, absolute);
-    const previous = previousFiles.has(candidate) ? git(['show', `${baseCommit}:${candidate}`]) : null;
-    const next = fs.existsSync(absolute) && fs.lstatSync(absolute).isFile()
-      ? fs.readFileSync(absolute, 'utf8') : null;
+    assertNoSymlinkComponent(root, path.join(root, candidate));
+    const previous = previousFiles.has(candidate) ? git(['show', `${base}:${candidate}`]) : null;
+    const next = candidateFiles.has(candidate) ? git(['show', `${snapshot.head}:${candidate}`]) : null;
     contents.set(candidate, { previous, next });
   }
+  assertSelfReview(root, snapshot, changed);
   const workflow = contents.get(WORKFLOW_FILE);
-  return { base: baseCommit, ...auditDiff(root, skillName, changedPaths, { workflow, companions, contents }) };
+  const audit = auditDiff(root, skillName, changedPaths, { workflow, companions, contents });
+  const drifted = git(['rev-parse', 'HEAD']).trim() !== snapshot.head
+    || git(['status', '--porcelain', '--untracked-files=all']).length > 0;
+  return {
+    ...audit, base, head: snapshot.head, tree: snapshot.tree, snapshotDigest,
+    baselineAudit: snapshot.selfReview?.baselineAudit ?? null,
+    pendingPaths,
+    snapshotViolation: pendingPaths.length || drifted ? 'candidate has uncommitted or changed state' : null,
+    clean: audit.clean && pendingPaths.length === 0 && !drifted,
+  };
 }
 
 function parseArguments(argv) {
   const args = {};
-  const valueFlags = ['--root', '--skill', '--classify', '--audit', '--base', '--companions', '--workflow-previous', '--workflow-next'];
+  const valueFlags = ['--root', '--skill', '--classify', '--audit', '--base', '--companions',
+    '--snapshot', '--snapshot-digest', '--workflow-previous', '--workflow-next'];
   const claim = (key, token) => {
     if (Object.prototype.hasOwnProperty.call(args, key)) {
       throw new TargetError(FAILURES.usage, `${token} was given more than once`);
@@ -585,15 +783,18 @@ function main(argv) {
   if (!args.root || !args.skill) {
     throw new TargetError(FAILURES.usage, '--root and --skill are required');
   }
-  if (args.companions && !args.base) {
-    throw new TargetError(FAILURES.usage, '--companions requires --base so content comes from the actual diff');
+  if ((args.companions || args.snapshot || args['snapshot-digest']) && !args.base) {
+    throw new TargetError(FAILURES.usage, 'companions and snapshots require --base');
   }
   if (args.base) {
-    if (args.audit || args.classify || args['workflow-previous'] || args['workflow-next']) {
+    if (args.audit || args.classify || args['workflow-previous'] || args['workflow-next']
+      || !args.snapshot || !args['snapshot-digest']) {
       throw new TargetError(FAILURES.usage, '--base enumerates the actual diff; do not supply path or content overrides');
     }
     const companions = args.companions ? JSON.parse(fs.readFileSync(args.companions, 'utf8')) : [];
-    const result = auditRepositoryDiff(args.root, args.skill, args.base, { companions });
+    const snapshot = readAuditSnapshot(args.root, args.snapshot, args['snapshot-digest']);
+    const result = auditRepositoryDiff(args.root, args.skill, args.base,
+      { companions, snapshot, snapshotDigest: args['snapshot-digest'] });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return result.clean ? 0 : 2;
   }

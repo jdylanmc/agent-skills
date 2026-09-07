@@ -38,15 +38,21 @@ Change the implementation to match the intent, and change nothing more.
    doctrine-digest step, and adds nothing but a `*.test.mjs` registration line.
 3. Before handing the change over for a pull request, audit the **actual**
    change set with the guard's `auditRepositoryDiff` against the recorded base
-   commit (`--base <commit> --companions <ledger.json>`), and
+   commit and final committed head (`--base <full-commit> --snapshot <run-state.json>
+   --snapshot-digest <pinned-sha256> --companions <ledger.json>`), and
    cross-check it against the recorded intent decision with
    `assertDiffMatchesDecision`, passing the repository root so an absolute path
    to `intent.md` cannot slip past. When the change set touches the validation
-   workflow, the repository audit reads its actual before/after bytes and
-   proves a bare registration. It also enumerates untracked files and both
+   workflow, the repository audit reads immutable before/after Git bytes and
+   proves an insertion-only registration without reordering or duplication.
+   It also enumerates untracked files and both
    sides of renames, so the companion ledger cannot hide omitted paths.
    A path outside `in-target` or `workflow` needs a checked companion entry;
-   every other path stops publication. An unclean audit exits non-zero.
+   every other path stops publication. Staged or unstaged residue and head/tree
+   drift also stop publication, even if the path classes would be writable.
+   For self-reinforcement, include and reproduce the preserved baseline-guard
+   evidence rather than letting the changed guard authorize itself.
+   An unclean audit exits non-zero.
    A change scoped as `preserves-intent` whose diff edits
    `intent.md` is refused on the same gate, which is what stops a narrow change
    from widening into a change to what the skill is for. A change scoped as
@@ -55,12 +61,16 @@ Change the implementation to match the intent, and change nothing more.
    so a hand-written intent never publishes. Run the intent-decision release
    check, `intent-decision.mjs --state <path> --require-decision`, as the
    publication precondition; a `blocked` result stops the pull request.
-4. When the change adds or removes a unit, re-derive the graph with
+4. When the change adds or removes a unit or changes composition on an existing
+   skill or unit, re-derive the graph with
    `node scripts/derive-skill-graph.mjs --write`, so `used-by` and molecule
    `allowed-tools` are regenerated and committed rather than hand-edited.
-5. Run the repository's real validation:
-   `node scripts/validate-skill-graph.mjs`, the deriver check, and the full
-   registered test list. Report the exact commands and their output. A change
+5. Run every locally executable command declared by the repository's CI workflow,
+   including graph validation, the deriver check, the sensitive-content scan
+   and the full registered test list. Use the existing `run-ci` discovery and
+   result envelope; report configured-policy degradation exactly as that gate
+   reports it, never omit the scan or silently invent replacement commands.
+   Report the exact commands and their output. A change
    that cannot pass them is the thing to fix.
 
 ## Widening a Grant Is a Deliberate, Called-Out Change

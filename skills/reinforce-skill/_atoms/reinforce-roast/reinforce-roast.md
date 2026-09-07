@@ -100,9 +100,13 @@ and a halted loop.
 
 Remediation uses the same companion contract as the final publication audit.
 Use `reinforce-roast.mjs --root <root> --skill <target> --base <commit>
---companions <ledger.json>` for actual Git enumeration; low-level callers pass
+--snapshot <run-state.json> --snapshot-digest <pinned-sha256>
+--companions <ledger.json>` for immutable Git enumeration and residue detection; low-level callers pass
 the same `companions` and actual `contents` through to the shared audit.
 Companions never bypass `assertGateIntegrity` or authorize a reviewer edit.
+The publication audit requires preserved baseline evidence for self-reinforcement.
+An uncommitted candidate or a head/tree that differs from the pinned snapshot
+cannot complete that audit.
 
 This atom invokes review and coordinates resolution. It never weakens a gate,
 the validator, the deriver, or `AGENTS.md` to silence a finding; never edits

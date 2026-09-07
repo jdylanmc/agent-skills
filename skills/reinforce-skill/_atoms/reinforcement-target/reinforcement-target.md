@@ -47,18 +47,33 @@ detail nobody sees.
    classification is exhaustive — every candidate resolves to exactly one class
    — and it resolves a symlinked component to its real location before judging,
    so a symlinked path lexically inside the target cannot read as `in-target`.
-6. Before the pull request opens, use `auditRepositoryDiff` to enumerate the
-   **actual** candidate against a recorded base commit: committed, staged,
-   unstaged and untracked changes, with renames expanded into both paths.
+6. Record the full baseline commit in the root run context before implementation;
+   never replace it with a post-change `HEAD` merely to obtain an empty diff.
+   Before publication, use `captureAuditSnapshot` to bind that base, the target,
+   repository, committed candidate head and tree. Preserve the snapshot as
+   unpublished run state and pin `auditSnapshotDigest(snapshot)` in the caller's
+   context. A rebase deliberately changes the recorded base and requires a fresh
+   snapshot, companion bindings and review evidence.
+7. Use `auditRepositoryDiff` with that snapshot and pinned digest to enumerate the
+   **actual** candidate. Read before/after bytes from the immutable Git commits,
+   never from an unreviewed working copy. Enumerate staged, unstaged and untracked
+   residue separately, with renames expanded into both paths; any residue makes
+   publication unclean, even when staged and unstaged changes cancel on disk.
    Every path keeps its original class. A path outside `in-target` or
    `workflow` requires an exact checked companion under the contract below.
-   Workflow content comes from the base and disk; the edit must still be a bare
-   test registration. Use `--base <commit> [--companions <ledger.json>]`.
+   Workflow content comes from the base and candidate commits; the edit must
+   preserve every original byte-line in order and multiplicity, inserting only
+   unique canonical test paths at the existing registration indentation.
+   Comments, shell tokens, reordered or duplicated entries are not registrations.
+   Use `--base <full-commit> --snapshot <run-state.json>
+   --snapshot-digest <pinned-sha256> [--companions <ledger.json>]`.
    The lower-level `auditDiff` and `--audit <paths>` remain for callers that
    already hold a complete diff (with
    `--workflow-previous <path> --workflow-next <path>` when the workflow is
    touched). The CLI **exits 2 when the audit is unclean and 0 when it is clean**, so a
    refusal is never a success-shaped exit that publication could step past.
+   The path-list API is a scope predicate, not the publication check; it does
+   not establish a reviewed candidate or baseline identity.
 
 ## Write Classes
 
@@ -111,13 +126,16 @@ Only these kinds exist:
 | Kind | Mechanical bound | Human review still owes |
 | --- | --- | --- |
 | `changelog` | Existing root `CHANGELOG.md`; insertions only, old lines retained in order. | Entry concerns this target and follows the existing format. Invoke `changelog`; its caller applies the proposed patch. |
-| `caller-integration` | Existing foreign `.mjs` file with a quoted reference resolving into this target before and after. | The caller code or fixture adapts only to the changed contract; assertions, coverage and failure cases are not weakened. |
-| `derived-graph` | Existing unit Markdown outside the target; exact deriver output from its prior bytes, touching only `used-by` and molecule `allowed-tools`; current validated graph without grant violations. | The derived change is caused by this target's composition change, not unrelated drift. |
+| `caller-integration` | Existing foreign `.mjs` file with a parsed static relative ESM import/export resolving into this target before and after. The parser does not link or evaluate that code. | The caller code or fixture adapts only to the changed contract; assertions, coverage and failure cases are not weakened. |
+| `derived-graph` | Existing shared `_base` unit Markdown; exact deriver output from prior bytes, touching only `used-by` and molecule `allowed-tools`; current validated graph without grant violations. Foreign local units cannot be affected through legal composition. | The derived change is caused by this target's composition change, not unrelated drift. |
 
 No wildcards, duplicate or unused entries, aliases, new/deleted companions,
 unknown fields or kinds, missing proof, or stale digests are accepted.
-`--companions` requires `--base`, so the CLI never accepts caller-invented
-before/after contents. In-process callers of `auditDiff` must supply the
+`--companions` requires the snapshot-bound `--base` audit, so the CLI never accepts caller-invented
+before/after contents. Arbitrary quoted text, comments, bare package names and
+path traversal do not establish caller relationships. Dynamic-only consumers
+are outside this supported companion proof rather than silently treated as
+statically linked. In-process callers of `auditDiff` must supply the
 equivalent complete path list and a `contents` Map of actual bytes; only the
 repository wrapper establishes that provenance itself.
 
@@ -138,18 +156,28 @@ target change, never by treating a foreign recommendation as permission.
 
 ## Self-Reinforcement Uses the Baseline, Not Its Own New Rule
 
-Record the base commit and preserve its guard bytes, digest and actual-diff
-audit before changing the scope mechanism. Run that original guard over the
-final path set too. If the correction changes what the guard admits, its new
+Record the base commit and preserve its guard identity and actual-diff audit
+before changing the scope mechanism. For the final committed candidate,
+`captureBaselineAudit(root, target, base, head)` executes the original guard and
+its relative imports from that base's immutable Git objects, not edited source.
+Include its base/head binding, guard digest, baseline audit and exact corrective
+path set as `snapshot.selfReview`. `auditRepositoryDiff` requires this evidence
+for self-reinforcement and reproduces the baseline audit from those Git objects;
+missing, altered, substituted or incomplete evidence is refused. Original
+refusals remain in the returned `baselineAudit`, separate from the candidate
+result. If the correction changes what the guard admits, its new
 clean result is regression evidence, not authority for this run.
 
-Publication requires the operator's explicit instruction for the exact
+Publication still requires the operator's explicit instruction for the exact
 corrective scope. Disclose that instruction, the original audit's refusals,
 and the candidate audit separately; never call an unclean baseline clean or
 invent an approval token. Without that instruction, stop and name the decision
 needed. Retain the baseline review contracts and use independent reviewers:
 changing the target cannot relax the review or evidence required to publish it.
 No version of this guard approves, merges, or waives a repository gate.
+The snapshot digest binds bytes and revisions, not who chose the baseline or
+whether a person approved the corrective scope. The caller records and checks
+that human decision separately; captured path lists are not approval tokens.
 
 ## What This Guard Does and Does Not Do
 
