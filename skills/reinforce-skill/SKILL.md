@@ -109,11 +109,21 @@ approves that exact digest and that one target for this run.
 
 4. Open the pull request. Create a review branch, commit the target's changed
    files together with the changelog patch, and run the write-boundary guard's
-   diff audit over the actual change set — supplying the validation workflow's
-   before/after content whenever the diff touches it, so the edit is proven a
-   bare test registration. The audit exits non-zero when it is not clean: if any
-   changed path is outside `in-target` or `workflow`, or a workflow edit cannot
-   be proven additive, stop and report it rather than opening a pull request.
+   repository diff audit against the recorded base commit and a caller-pinned
+   snapshot of the committed candidate, with the exact companion ledger
+   described by the reinforcement-target guard. It reads before/after content
+   from immutable Git objects, includes untracked paths and both sides of
+   renames, refuses any staged/unstaged residue, and proves workflow edits are
+   insertion-only test registrations with order and multiplicity preserved.
+   The audit exits non-zero when it is not clean: any unaccounted path, stale
+   companion digest, changed candidate, protected companion, or non-additive workflow edit stops
+   publication. Preserve the original write classes, including `outside` for
+   the changelog; a justified companion is not relabelled `in-target`.
+   Self-reinforcement must supply the preserved baseline guard/audit and exact
+   corrective scope in that snapshot; the helper reproduces the old audit from
+   the original Git revision. Its refusals remain separate from the new guard's
+   result, and the operator's explicit corrective instruction remains the
+   authority for any intentional boundary change.
    Run the intent-decision release check
    (`intent-decision.mjs --state <path> --require-decision`) over the recorded
    decision; a `blocked` result — a `changes-intent` decision that never reached
@@ -215,8 +225,9 @@ Return:
   `preserves-intent` with the reasoning the intent was reviewed and left intact
   (or the note that no intent existed to review and this change does not create
   one);
-- the smallest-complete change, with every file classified `in-target` or
-  `workflow`, and the diff-audit result;
+- the smallest-complete change, with every file's original write class, every
+  companion's exact justification and before/after digests, and the complete
+  repository diff-audit result;
 - the exact validation commands run and their verbatim output;
 - the full roast account: what was found, what was fixed, every rubber-duck
   verdict with its reasoning, and anything unresolved with a bounded way forward;
@@ -320,7 +331,9 @@ because reviewing the writing is optional by choice.
 
 - **One existing skill per run.** It reinforces a single package and never
   refactors the library. A report with opinions about several skills changes
-  one of them; the rest are reported and left alone.
+  one of them; the rest are reported and left alone. One target behavior is not
+  one directory: necessary companions follow the guard's bounded contract,
+  never a blanket allowance for another skill.
 - **Never creates a skill.** Authoring a new package is `create-skill`'s job. A
   missing target is refused, not created.
 - **At most one report, and only when the operator approves it.** The report is
@@ -366,7 +379,9 @@ because reviewing the writing is optional by choice.
 `read` and `search` gather the target skill, its intent, its units, repository
 context, and any report the operator supplied. `edit` changes the target skill's
 own files — its `SKILL.md`, its units, its `intent.md` on confirmation, and its
-tests — and registers a new test in the validation workflow. `execute` runs
+tests — plus justified existing changelog, caller-integration and generated
+graph companions, and registers a new test in the validation workflow. No tool
+grant widens. `execute` runs
 Chronicler recording, the deterministic report intake and its release check, the
 write-boundary guard, the deriver and validator, the test suite, and the git
 commands that create the review branch, commit the change, and open the pull
@@ -385,8 +400,8 @@ skill paid to learn is not a boundary. What is bounded is what can *land*: the
 run never merges, so the deliverable is a diff a human reviews in full; before
 the pull request opens, the write-boundary guard audits the **actual** change
 set from the version-control diff and refuses to open a pull request while any
-changed path is outside the target skill or the one additive workflow
-registration; continuous integration then re-runs the validator, the deriver,
+changed path lacks target scope, an additive workflow registration, or an exact,
+checked companion entry; continuous integration then re-runs the validator, the deriver,
 the doctrine-manifest digest test, and the whole suite over that diff, so a
 corrupted graph, a doctrine edit, or an inconsistent permission fails
 mechanically; and the repository already refuses to widen any skill's grant
