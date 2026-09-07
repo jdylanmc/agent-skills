@@ -78,6 +78,28 @@ test('pins TDD choreography, authority, full-text doctrine, and advisory audit b
   assert.match(advisory, /only at a later safe transition/);
 });
 
+test('assigns current eligible full-strength models without weakening TDD choreography', () => {
+  const lenses = flat('tdd-squadron/_atoms/doctrine-lenses/doctrine-lenses.md');
+
+  for (const model of ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
+    assert.match(lenses, new RegExp(model.replaceAll('.', '\\.')));
+  }
+  assert.match(lenses, /inspect the exact model IDs the current runtime advertises/i);
+  assert.match(lenses, /latest two major generations that the operator has confirmed/i);
+  assert.match(lenses, /Red \| `gpt-5\.6-sol` \| `high` \| `default`/i);
+  assert.match(lenses, /Green \| `gpt-6-astra` \| `high` \| `default`/i);
+  assert.match(lenses, /Roastmaster \| `gpt-6-astra` \| `xhigh` \| `default`/i);
+  assert.match(lenses, /Roaster seats 1 through 3 \| `gpt-5\.6-sol`, `gpt-5\.6-terra`, `gpt-5\.6-luna`/i);
+  assert.match(lenses, /one persistent two-person Red\/Green pair and one four-seat Roast/i);
+  assert.match(lenses, /three GPT-5\.6 aliases do not prove three independent model families/i);
+  assert.match(lenses, /Never silently use a mini, flash, older-generation, runtime-default, or otherwise unproven model/i);
+  assert.match(lenses, /stop before dispatch and return the observed IDs and the exact human choice required/i);
+  assert.match(lenses, /ordinary context tier by default/i);
+  assert.match(lenses, /Never truncate, summarize, or omit a lens/i);
+  assert.match(lenses, /fixed pair, the fixed four-seat Roast, and one-shot audits/i);
+  assert.match(lenses, /future integration seam is the recorded runtime inventory and per-role selection/i);
+});
+
 test('derived unit fields and skill grant remain valid', () => {
   const derived = deriveGraph(REPOSITORY_ROOT);
   const required = new Set();
