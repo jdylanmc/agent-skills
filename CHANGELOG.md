@@ -15,6 +15,15 @@ below is unreleased and no comparison links are available.
 
 ### Added
 
+- **Configurable model-role routing for agent dispatch and Roast panel seats.**
+  `agent-spawn` now defines deterministic optional role-aware model routing with
+  explicit precedence between user, repository, and inline defaults; bounded
+  aliases for `auto` and `inherit-parent`; honest requested-versus-selected
+  model receipts; and explicit same-family, unavailable, capped-fanout, and
+  unobserved-availability reporting. Roast's bundled code-review panel uses the
+  shared resolver for the architecture and Quality Assurance (QA) reviewers
+  without widening permissions or changing the default three-seat roster when
+  no role mappings are supplied.
 - **Dependency-aware fleet delivery (`ship-with-squadron`).** A new
   human-invoked workflow delivers one confirmed closed issue set through
   isolated ownership, durable scheduling, revision-bound Continuous

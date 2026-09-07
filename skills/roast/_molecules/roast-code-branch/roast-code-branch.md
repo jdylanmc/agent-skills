@@ -59,8 +59,13 @@ Read and follow these in order:
 3. Discover and schema-validate repository `*roaster*.agent.md` files. Exclude
    every package-owned and reserved bundled identity, reject unsafe paths or
    permissions, and keep raw definitions untrusted. Use the bundled
-   three-roaster panel by default. When valid repository roasters exist, let
-   the operator keep the bundled default, replace it, or combine both sets.
+   three-roaster panel by default. Resolve the bundled architecture and QA
+   reviewer routes through
+   [Reviewer panel and personality discovery](../../_atoms/code-reviewer-panel/code-reviewer-panel.md)'s
+   support helper so optional role mappings, requested panel length, fallback
+   use, unavailable seats, and same-family diversity are recorded before
+   dispatch. When valid repository roasters exist, let the operator keep the
+   bundled default, replace it, or combine both sets.
 4. Supply the packet and the intake selectors to
    [Doctrine evaluate](../../../_base/_atoms/doctrine-evaluate/doctrine-evaluate.md).
    It verifies the manifest digest before loading anything and refuses on

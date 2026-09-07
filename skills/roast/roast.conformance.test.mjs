@@ -25,6 +25,8 @@ import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import { ARTIFACT_TYPES } from './_atoms/artifact-profile/artifact-profile.mjs';
 import { classifyArtifact } from '../_base/_atoms/artifact-classify/artifact-classify.mjs';
 import { GOVERNANCE } from './_atoms/doctrine-select/doctrine-select.mjs';
+import { MODEL_ROLE_KEYS } from '../_base/_atoms/agent-spawn/agent-spawn.mjs';
+import { resolveBundledRoastRoster } from './_atoms/code-reviewer-panel/code-reviewer-panel.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -234,6 +236,35 @@ test('the roastmaster contract admits the spec pair record it stages', () => {
   assert.match(specInput, /verified guidance about the structure of the pair/);
   assert.match(specInput, /never as a finding/);
   assert.match(specInput, /never carrying a severity/);
+});
+
+test('agent-spawn exposes the bounded model-role vocabulary and keeps direct routing available', () => {
+  assert.deepEqual(MODEL_ROLE_KEYS, [
+    'implementer',
+    'cleanup',
+    'architecture-candidate',
+    'architecture-judge',
+    'qa-reviewer',
+    'qa-judge',
+    'decision-trail-reviewer',
+  ]);
+  const atom = read('_base/_atoms/agent-spawn/agent-spawn.md');
+  assert.match(atom, /`user-model-roles`, then `repository-model-roles`, then the caller's inline/);
+  assert.match(atom, /A plain call that omits\s+`model-role` keeps the existing direct-routing behavior/);
+});
+
+test('the bundled code roast roster resolves through shared model-role routing without changing security routing', () => {
+  const resolved = resolveBundledRoastRoster({ root: REPOSITORY_ROOT });
+  const ids = resolved.roster.map((entry) => entry.reviewerId);
+  assert.deepEqual(ids, ['SOLID-ROASTER', 'SECURITY-ROASTER', 'TESTING-ROASTER']);
+  assert.equal(resolved.roster.find((entry) => entry.reviewerId === 'SOLID-ROASTER').role, 'architecture-candidate');
+  assert.equal(resolved.roster.find((entry) => entry.reviewerId === 'TESTING-ROASTER').role, 'qa-reviewer');
+  assert.equal(resolved.roster.find((entry) => entry.reviewerId === 'SECURITY-ROASTER').role, null);
+
+  const panel = read('roast/_atoms/code-reviewer-panel/code-reviewer-panel.md');
+  assert.match(panel, /`SOLID-ROASTER` uses role `architecture-candidate`/);
+  assert.match(panel, /`TESTING-ROASTER` uses role `qa-reviewer`/);
+  assert.match(panel, /`SECURITY-ROASTER` keeps its current explicit inline route/);
 });
 
 test('a spec pair reaches the artifact branch end to end, and never the code branch', (t) => {
