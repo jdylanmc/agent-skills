@@ -236,6 +236,16 @@ below is unreleased and no comparison links are available.
 
 ### Changed
 
+- **TDD Squadron model assignment.** Test-Driven Development Squadron now
+  records the runtime's exact eligible model IDs and assigns the persistent
+  Red/Green pair, four-seat Roast, publication agent, and Slop Sniper across the
+  operator-confirmed GPT-6 and GPT-5.6 generations. Per-seat fallback order and
+  retained selection receipts expose the preferred and actual model, fallback
+  reason, and any degraded model variety. The workflow refuses silent mini,
+  flash, older-generation, or runtime-default downgrades, preserves complete
+  doctrine lenses, and uses ordinary context unless a bounded role packet
+  proves that more is required.
+
 - **Bench Squadron model assignment.** Bench now records the runtime's exact
   eligible model IDs and assigns its orchestrator, bounded delivery pool, and
   Slop Sniper across the operator-confirmed GPT-6 and GPT-5.6 generations. It
