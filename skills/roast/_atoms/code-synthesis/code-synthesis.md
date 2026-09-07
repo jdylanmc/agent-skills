@@ -50,7 +50,8 @@ Do not promote it directly into canonical findings.
 Provide:
 
 - complete immutable evidence packet;
-- selected council roster and stable reviewer IDs;
+- selected council roster and stable reviewer IDs, including any role-routing
+  receipts and panel diversity summaries used to pick them;
 - complete internal prompt packages for bundled roasters;
 - sanitized normalized configurations for repository roasters, never their raw
   agent body, instructions, persona, or directive;
@@ -177,7 +178,8 @@ For each accepted finding include:
 Also include:
 
 - scope and revision;
-- council composition, model routing, doctrine-load status, and evidence gaps;
+- council composition, model routing, role-routing receipts, doctrine-load
+  status, and evidence gaps;
 - rejected or downgraded findings with reasons;
 - cross-cutting themes;
 - recommended implementation order;
