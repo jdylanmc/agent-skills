@@ -246,6 +246,13 @@ below is unreleased and no comparison links are available.
   doctrine lenses, and uses ordinary context unless a bounded role packet
   proves that more is required.
 
+- **Bench Squadron model assignment.** Bench now records the runtime's exact
+  eligible model IDs and assigns its orchestrator, bounded delivery pool, and
+  Slop Sniper across the operator-confirmed GPT-6 and GPT-5.6 generations. It
+  refuses silent mini, flash, older-generation, or runtime-default downgrades,
+  keeps full doctrine text intact, and uses ordinary context unless a bounded
+  role packet proves that more is required.
+
 - **Complete, bounded skill reinforcement.** Reinforcing one skill can now
   include its existing changelog entry, necessary caller integration, and
   generated graph metadata without treating another skill as a second target.
