@@ -121,11 +121,13 @@ This rule is what makes a persona safe to swap.
 | --- | --- |
 | `response` | The agent's response, returned byte for byte as received. |
 | `model-status` | `Requested`, `Fallback: <model>`, `Runtime default`, or `Unavailable`. |
+| `actual-model` | Provider-observed model identity when the transport reports it; otherwise `null`. |
+| `actual-model-status` | `matched-selection`, `mismatched-selection`, `observed-runtime-default`, `unobserved`, or `not-launched`. |
 | `routing-receipt` | When role-aware routing was used, the resolved role, precedence source, alias use, requested route, availability status, selected model, panel fanout, and diversity status. |
 | `status` | `Complete`, or a named failure category. |
 
 Failure categories: `Prompt unreadable`, `Persona unreadable`,
-`Spawn unavailable`, `No model available`, `Empty response`.
+`Spawn unavailable`, `No model available`, `Unexpected model`, `Empty response`.
 
 ## Guarantees
 
@@ -148,6 +150,9 @@ Failure categories: `Prompt unreadable`, `Persona unreadable`,
   into "requested."
 - A selected available model is the model supplied to transport. An unavailable
   seat never calls transport.
+- Provider-observed model identity is recorded separately when available. A
+  mismatch is explicit and never rewrites the requested or selected receipt;
+  absent provider metadata remains `unobserved`.
 
 ## Boundaries
 

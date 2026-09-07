@@ -282,10 +282,12 @@ test('dispatch boundary launches the selected fallback with exact bounded argume
     receipt: resolved.receipt,
     transport: async (launch) => {
       calls.push(launch);
-      return 'done';
+      return { response: 'done', actualModel: 'gpt-5.6-sol' };
     },
   });
   assert.equal(result.status, 'Complete');
+  assert.equal(result.actualModel, 'gpt-5.6-sol');
+  assert.equal(result.actualModelStatus, 'matched-selection');
   assert.deepEqual(calls, [{
     prompt: 'Implement the bounded change.',
     persona: 'Be concise.',
@@ -336,7 +338,30 @@ test('dispatch boundary preserves an unknown runtime default honestly', async ()
   });
   assert.equal(result.modelStatus, 'Runtime default');
   assert.equal(result.routingReceipt.selectedModel, null);
+  assert.equal(result.actualModel, null);
+  assert.equal(result.actualModelStatus, 'unobserved');
   assert.equal(calls[0].model, null);
+});
+
+test('dispatch boundary records a transport model mismatch without rewriting the receipt', async () => {
+  const resolved = resolveModelRoleRoute({
+    role: 'qa-reviewer',
+    inlineDefault: { model: 'gpt-5.6-sol' },
+    runtimeAvailableModels: ['gpt-5.6-sol'],
+  });
+  const result = await dispatchResolvedAgent({
+    prompt: 'Review.',
+    tools: ['read'],
+    route: resolved.route,
+    receipt: resolved.receipt,
+    transport: async () => ({
+      response: 'review',
+      actualModel: 'claude-opus-5',
+    }),
+  });
+  assert.equal(result.status, 'Unexpected model');
+  assert.equal(result.actualModelStatus, 'mismatched-selection');
+  assert.equal(result.routingReceipt.selectedModel, 'gpt-5.6-sol');
 });
 
 test('the generic dispatch seam is callable for every declared role', async () => {

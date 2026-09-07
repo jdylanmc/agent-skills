@@ -600,6 +600,8 @@ export async function dispatchResolvedAgent({
       status: 'No model available',
       response: null,
       modelStatus: 'Unavailable',
+      actualModel: null,
+      actualModelStatus: 'not-launched',
       routingReceipt: receipt,
       launch: null,
     });
@@ -614,19 +616,40 @@ export async function dispatchResolvedAgent({
     contextTier: route.contextTier,
   });
   const response = await transport(launch);
-  if (typeof response !== 'string' || response.length === 0) {
+  const transportResponse = typeof response === 'string'
+    ? { response, actualModel: null }
+    : response;
+  if (!transportResponse || typeof transportResponse !== 'object' || Array.isArray(transportResponse)) {
+    throw new ModelRouteResolutionError(
+      'invalid_transport_result',
+      'transport must return a response string or { response, actualModel }',
+    );
+  }
+  const actualModel = optionalString(transportResponse.actualModel, 'transport.actualModel');
+  const actualModelStatus = actualModel === null
+    ? 'unobserved'
+    : route.model === null
+      ? 'observed-runtime-default'
+      : actualModel === route.model
+        ? 'matched-selection'
+        : 'mismatched-selection';
+  if (typeof transportResponse.response !== 'string' || transportResponse.response.length === 0) {
     return immutable({
       status: 'Empty response',
-      response: response ?? null,
+      response: transportResponse.response ?? null,
       modelStatus: receipt.modelStatus,
+      actualModel,
+      actualModelStatus,
       routingReceipt: receipt,
       launch,
     });
   }
   return immutable({
-    status: 'Complete',
-    response,
+    status: actualModelStatus === 'mismatched-selection' ? 'Unexpected model' : 'Complete',
+    response: transportResponse.response,
     modelStatus: receipt.modelStatus,
+    actualModel,
+    actualModelStatus,
     routingReceipt: receipt,
     launch,
   });
