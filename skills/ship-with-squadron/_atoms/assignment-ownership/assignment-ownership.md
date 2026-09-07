@@ -24,6 +24,11 @@ supported validation policy; workers cannot silently omit or invent checks. The
 packet rejects unknown fields and seals the complete task contract: goal, scope,
 context, acceptance, verification, timebox, forbidden authority, report, and
 standing instruction. Workers never select more backlog work.
+
+When an issue opts into tiered review, its exact normalized `reviewPolicy` is
+copied into the assignment packet. Full-review packets omit the field.
+Continuation requires the unchanged original packet, so replacement cannot
+silently enable, disable, or reroute tiering.
 Assignment also consumes a scheduler lease bound to the confirmed manifest,
 provider configuration, exact fleet-state revision, recomputed dependency
 frontier, current `capacity.dispatch`, and active count. The compare-and-swap

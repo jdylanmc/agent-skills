@@ -12,13 +12,20 @@ import {
   reconcileFleetDiff,
   recordStage,
   remediationDecision,
+  reviewPolicyDigest,
+  runSquadronTieredReview,
+  validateReviewLineage,
 } from './quality-evidence.mjs';
+import {
+  CORRECTION_REVIEW_ROUTE,
+  DEEP_REVIEW_ROUTE,
+} from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 const revision = { baseSha: 'base', headSha: 'head' };
 const identity = { runId: 'run', issue: '1' };
 const REPOSITORY_ROOT = path.resolve('test-fixtures', 'quality-evidence-repository');
 
-function manifest(shepherdIntent = 'yes', humanDecisions = []) {
+function manifest(shepherdIntent = 'yes', humanDecisions = [], reviewPolicy = null) {
   return normalizeFleetManifest({
     confirmation: 'confirmed',
     goal: 'deliver',
@@ -36,6 +43,7 @@ function manifest(shepherdIntent = 'yes', humanDecisions = []) {
       acceptanceCriteria: [{ id: 'C1', description: 'done' }],
       scope: [],
       allowedPaths: ['src/**'],
+      ...(reviewPolicy ? { reviewPolicy } : {}),
     }],
     dependencies: [],
     concurrency: 1,
@@ -47,6 +55,56 @@ function manifest(shepherdIntent = 'yes', humanDecisions = []) {
     humanBoundaries: ['human merge'],
     shepherdIntent,
   });
+}
+
+function tieredManifest() {
+  return manifest('yes', [], {
+    mode: 'tiered',
+    policyVersion: 1,
+    evaluationMode: 'shadow',
+    deepRoute: DEEP_REVIEW_ROUTE,
+    correctionRoute: CORRECTION_REVIEW_ROUTE,
+    promotionDecision: null,
+  });
+}
+
+function routing(kind) {
+  const seats = kind === 'full'
+    ? ['architecture-candidate', 'qa-reviewer', 'security-reviewer',
+      'roastmaster-coordinate', 'roastmaster-synthesize']
+    : ['qa-reviewer'];
+  const model = kind === 'full' ? 'gpt-6-astra' : 'gpt-5.6-sol';
+  return seats.map((seat) => ({
+    seat,
+    role: seat,
+    requestedModel: model,
+    selectedModel: model,
+    actualModel: model,
+    actualModelStatus: 'matched-selection',
+    reasoningEffort: 'high',
+    contextTier: 'default',
+  }));
+}
+
+function reviewTier(kind, overrides = {}) {
+  const currentManifest = tieredManifest();
+  return {
+    kind,
+    policyDigest: reviewPolicyDigest(currentManifest.issues[0].reviewPolicy),
+    packetDigest: 'b'.repeat(64),
+    scopeDigest: 'c'.repeat(64),
+    sourceRevision: 'r1',
+    assignmentGeneration: 1,
+    modelRouting: routing(kind),
+    ...(kind === 'correction' ? {
+      lastDeepHead: 'head',
+      latestDeltaDigest: 'd'.repeat(64),
+      cumulativeDeltaDigest: 'e'.repeat(64),
+      affectedConsumers: ['consumer-a'],
+      escalation: 'none',
+    } : {}),
+    ...overrides,
+  };
 }
 
 function ci(overrides = {}) {
@@ -363,6 +421,133 @@ test('enforces workflow order, conditional Shepherd intent, invalidation, and bo
   assert.equal(invalidated.terminalDisposition, null);
   assert.equal(remediationDecision({ attempt: 0, limit: 1, defects: ['failed-check'] }).action, 'dispatch-fresh-remediation-worker');
   assert.equal(remediationDecision({ attempt: 1, limit: 1, defects: ['roast-blocker'] }).action, 'hand-back');
+});
+
+test('tiered review lineage survives head invalidation and validates after replay', () => {
+  const currentManifest = tieredManifest();
+  const issueDefinition = currentManifest.issues[0];
+  let record = {
+    identity: '1',
+    assignment: { generation: 1 },
+    continuationChain: [],
+    baseSha: 'base',
+    headSha: 'head',
+    qualityEvidence: {},
+    pipeline: [
+      { stage: 'implementation', evidence: { ...revision } },
+      { stage: 'diff-reconciliation', evidence: { ...revision } },
+      { stage: 'run-ci', evidence: ci() },
+    ],
+  };
+  const full = roast({ reviewTier: reviewTier('full') });
+  record = recordStage(record, 'roast', full, revision, currentManifest);
+  assert.equal(record.qualityEvidence.reviewLineage.lastDeep.headSha, 'head');
+
+  const nextRevision = { baseSha: 'base', headSha: 'head-2' };
+  record = invalidateRevisionEvidence(record, nextRevision);
+  assert.equal(record.qualityEvidence.reviewLineage.lastDeep.headSha, 'head');
+  assert.equal(record.qualityEvidence.reviewLineage.latestCorrection, null);
+  record.pipeline = [
+    { stage: 'implementation', evidence: { ...nextRevision } },
+    { stage: 'diff-reconciliation', evidence: { ...nextRevision } },
+    { stage: 'run-ci', evidence: ci(nextRevision) },
+  ];
+  const correction = roast({
+    ...nextRevision,
+    reviewTier: reviewTier('correction'),
+  });
+
+  record = recordStage(record, 'roast', correction, nextRevision, currentManifest);
+  const replayed = JSON.parse(JSON.stringify(record));
+  assert.equal(
+    validateReviewLineage(replayed.qualityEvidence.reviewLineage, replayed, issueDefinition, currentManifest),
+    true,
+  );
+  assert.equal(replayed.qualityEvidence.reviewLineage.latestCorrection.headSha, 'head-2');
+
+  const staleGeneration = structuredClone(replayed);
+  staleGeneration.assignment.generation = 2;
+  assert.throws(() => validateReviewLineage(
+    staleGeneration.qualityEvidence.reviewLineage,
+    staleGeneration,
+    issueDefinition,
+    currentManifest,
+  ), /authority binding/);
+  const staleHead = structuredClone(replayed);
+  staleHead.headSha = 'head-3';
+  assert.throws(() => validateReviewLineage(
+    staleHead.qualityEvidence.reviewLineage,
+    staleHead,
+    issueDefinition,
+    currentManifest,
+  ), /correction revision is stale/);
+});
+
+test('Squadron callable path consumes correction transport without a second full review', async () => {
+  const currentManifest = tieredManifest();
+  const policy = currentManifest.issues[0].reviewPolicy;
+  const current = {
+    baseSha: 'base',
+    headSha: 'head-2',
+    packetDigest: 'a'.repeat(64),
+    scopeDigest: 'b'.repeat(64),
+    sourceRevision: 'r1',
+  };
+  const calls = [];
+  const result = await runSquadronTieredReview({
+    input: {
+      policy: {
+        ...policy,
+        evaluationMode: 'operational',
+        promotionDecision: {
+          approved: true,
+          actor: 'human',
+          decisionId: 'promotion',
+          decidedAt: '2026-09-07T00:00:00Z',
+        },
+      },
+      current,
+      lastDeep: { ...current, headSha: 'head-1' },
+      previousHead: 'head-1',
+      latestDelta: {
+        baseSha: 'head-1', headSha: 'head-2', paths: ['src/a.js'], semanticSignals: [],
+      },
+      cumulativeDelta: {
+        baseSha: 'head-1', headSha: 'head-2', paths: ['src/a.js'], semanticSignals: [],
+      },
+      requirements: ['done'],
+      originalFindingIds: ['F-1'],
+      affectedConsumers: ['consumer-a'],
+      validation: { headSha: 'head-2', complete: true },
+      remediationAttempt: 1,
+    },
+    runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
+    correctionTransport: async () => {
+      calls.push('correction');
+      return JSON.stringify({
+        schemaVersion: 1,
+        status: 'complete',
+        headSha: 'head-2',
+        findingDispositions: [{
+          findingId: 'F-1',
+          disposition: 'addressed',
+          evidence: 'current evidence',
+          reasoning: 'requirement satisfied',
+        }],
+        requirementChecks: ['done: satisfied'],
+        affectedConsumersReviewed: ['consumer-a'],
+        regressions: [],
+        newFindings: [],
+        uncertainties: [],
+      });
+    },
+    fullReview: async () => {
+      calls.push('full');
+      return { status: 'complete' };
+    },
+  });
+  assert.deepEqual(calls, ['correction']);
+  assert.equal(result.authoritative, 'correction');
 });
 
 test('reuses deterministic hunk reconciliation without composing ship units', () => {

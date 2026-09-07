@@ -117,7 +117,10 @@ function validateBoundedPacket(packet, state, manifest, issue, input) {
   if (!packet || typeof packet !== 'object' || Array.isArray(packet)) {
     return { valid: false, defects: ['implementation packet is absent'] };
   }
-  if (!exactObjectKeys(packet, PACKET_FIELDS)) {
+  const expectedPacketFields = issue.reviewPolicy
+    ? [...PACKET_FIELDS, 'reviewPolicy']
+    : PACKET_FIELDS;
+  if (!exactObjectKeys(packet, expectedPacketFields)) {
     defects.push('implementation packet schema is not exact');
   }
   if (packet.schemaVersion !== 1) defects.push('packet schema version is invalid');
@@ -130,6 +133,13 @@ function validateBoundedPacket(packet, state, manifest, issue, input) {
   if (!same(packet.scope, issue.scope)) defects.push('packet scope does not match manifest');
   if (!same(packet.exclusions, manifest.exclusions)) defects.push('packet exclusions do not match manifest');
   if (!same(packet.allowedPaths, issue.allowedPaths)) defects.push('packet allowed paths do not match manifest');
+  if (issue.reviewPolicy) {
+    if (!same(packet.reviewPolicy, issue.reviewPolicy)) {
+      defects.push('packet review policy does not match manifest');
+    }
+  } else if (Object.hasOwn(packet, 'reviewPolicy')) {
+    defects.push('full-review packet must not invent a review policy');
+  }
   if (!same(packet.verification, manifest.validationPolicy)) {
     defects.push('packet verification contract does not exactly match confirmed validation policy');
   }

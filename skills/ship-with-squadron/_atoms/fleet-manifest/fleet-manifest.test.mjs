@@ -8,6 +8,10 @@ import {
   normalizeFleetManifest,
   validateSourceRevisionReceipt,
 } from './fleet-manifest.mjs';
+import {
+  CORRECTION_REVIEW_ROUTE,
+  DEEP_REVIEW_ROUTE,
+} from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 function sourceReceipt(issue, revision, overrides = {}) {
   return {
@@ -70,11 +74,37 @@ test('normalizes a confirmed closed manifest and provider-bound source receipts'
   assert.match(result.providerConfigurationDigest, /^[a-f0-9]{64}$/);
   assert.deepEqual(result.humanDecisions, []);
   assert.deepEqual(result.exclusions, []);
+  assert.equal(Object.hasOwn(result.issues[0], 'reviewPolicy'), false);
   assert.equal(validateSourceRevisionReceipt(
     sourceReceipt('1', 'r1', { observedAt: '2026-08-30T00:01:00Z' }),
     result,
     '1',
   ).revision, 'r1');
+});
+
+test('normalizes an explicit per-issue tiered policy while absent policy remains full', () => {
+  const tiered = issue('1', 'r1');
+  tiered.reviewPolicy = {
+    mode: 'tiered',
+    policyVersion: 1,
+    evaluationMode: 'shadow',
+    deepRoute: DEEP_REVIEW_ROUTE,
+    correctionRoute: CORRECTION_REVIEW_ROUTE,
+    promotionDecision: null,
+  };
+  const result = normalizeFleetManifest(manifest({ issues: [tiered, issue('2', 'r2')] }));
+  assert.equal(result.issues[0].reviewPolicy.mode, 'tiered');
+  assert.equal(Object.hasOwn(result.issues[1], 'reviewPolicy'), false);
+  assert.equal(assertFleetManifest(result), result);
+  assert.throws(() => normalizeFleetManifest(manifest({
+    issues: [{
+      ...tiered,
+      reviewPolicy: {
+        ...tiered.reviewPolicy,
+        correctionRoute: { ...CORRECTION_REVIEW_ROUTE, model: 'gpt-5-mini' },
+      },
+    }],
+  })), /human-confirmed full-strength route/);
 });
 
 test('refuses source and query observations unless their provider reads are allow-listed', () => {

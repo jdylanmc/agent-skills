@@ -194,6 +194,13 @@ The technical details are the source of truth. After freezing, no downstream
 summary process may edit, reorder priorities within a tier, remove accepted
 findings, or introduce claims.
 
+For correction verification, preserve the tier, last deep-reviewed revision,
+latest and cumulative footprints, original finding dispositions, affected
+consumers, regressions, uncertainties, escalation outcome, and model-routing
+receipts. Prior findings are evidence, not authority. An unresolved regression
+or uncertainty requires deep review or human direction rather than a complete
+correction result.
+
 ## Pre-Freeze Canonical Gate
 
 Before freezing:

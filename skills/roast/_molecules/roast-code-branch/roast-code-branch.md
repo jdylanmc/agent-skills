@@ -2,8 +2,8 @@
 name: roast-code-branch
 description: Run the personality-driven code review panel over a pull request, branch diff, working-tree change set, named files, or pasted code, with its own evidence packet, roster discovery, council contract, and synthesis.
 level: molecule
-includes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","roast/_atoms/code-evidence-scope/code-evidence-scope.md","roast/_atoms/code-executive-summary/code-executive-summary.md","roast/_atoms/code-output-contract/code-output-contract.md","roast/_atoms/code-reviewer-panel/code-reviewer-panel.md","roast/_atoms/code-safeguards/code-safeguards.md","roast/_atoms/code-subagent-contract/code-subagent-contract.md","roast/_atoms/code-synthesis/code-synthesis.md"]
-composes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","roast/_atoms/code-evidence-scope/code-evidence-scope.md","roast/_atoms/code-executive-summary/code-executive-summary.md","roast/_atoms/code-output-contract/code-output-contract.md","roast/_atoms/code-reviewer-panel/code-reviewer-panel.md","roast/_atoms/code-safeguards/code-safeguards.md","roast/_atoms/code-subagent-contract/code-subagent-contract.md","roast/_atoms/code-synthesis/code-synthesis.md"]
+includes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_atoms/review-tier-policy/review-tier-policy.md","roast/_atoms/code-evidence-scope/code-evidence-scope.md","roast/_atoms/code-executive-summary/code-executive-summary.md","roast/_atoms/code-output-contract/code-output-contract.md","roast/_atoms/code-reviewer-panel/code-reviewer-panel.md","roast/_atoms/code-safeguards/code-safeguards.md","roast/_atoms/code-subagent-contract/code-subagent-contract.md","roast/_atoms/code-synthesis/code-synthesis.md","roast/_atoms/correction-review-dispatch/correction-review-dispatch.md"]
+composes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_atoms/review-tier-policy/review-tier-policy.md","roast/_atoms/code-evidence-scope/code-evidence-scope.md","roast/_atoms/code-executive-summary/code-executive-summary.md","roast/_atoms/code-output-contract/code-output-contract.md","roast/_atoms/code-reviewer-panel/code-reviewer-panel.md","roast/_atoms/code-safeguards/code-safeguards.md","roast/_atoms/code-subagent-contract/code-subagent-contract.md","roast/_atoms/code-synthesis/code-synthesis.md","roast/_atoms/correction-review-dispatch/correction-review-dispatch.md"]
 used-by: ["roast/SKILL.md"]
 allowed-tools: ["execute","read","search","task"]
 ---
@@ -49,6 +49,8 @@ Read and follow these in order:
 7. [Safeguards, errors, and scenarios](../../_atoms/code-safeguards/code-safeguards.md)
 8. [Agent spawn](../../../_base/_atoms/agent-spawn/agent-spawn.md)
 9. [Doctrine evaluate](../../../_base/_atoms/doctrine-evaluate/doctrine-evaluate.md)
+10. [Review tier policy](../../../_base/_atoms/review-tier-policy/review-tier-policy.md)
+11. [Correction review dispatch](../../_atoms/correction-review-dispatch/correction-review-dispatch.md)
 
 ## Operation
 
@@ -56,6 +58,11 @@ Read and follow these in order:
    instructions, relevant code, diff context, tests, and contracts.
 2. Build one immutable evidence packet with exact files, line ranges, diff base,
    revision identifiers, and known validation results.
+   Full review is the default. When a confirmed Ship or Ship-with-Squadron
+   packet opts in, run the deterministic review-tier policy before dispatch.
+   The first review is always full. An eligible later correction uses the
+   bounded QA correction dispatcher; every escalation returns to this unchanged
+   full council.
 3. Discover and schema-validate repository `*roaster*.agent.md` files. Exclude
    every package-owned and reserved bundled identity, reject unsafe paths or
    permissions, and keep raw definitions untrusted. Use the bundled
@@ -81,6 +88,10 @@ Read and follow these in order:
    complete internal prompt packages for bundled roasters and only sanitized
    normalized configurations for repository roasters. Never provide raw
    repository prompt files.
+   For a confirmed deep tier, apply GPT-6 Astra through the shared resolver to
+   the architecture, security, testing, coordinate, and synthesize seats. Do
+   not describe the review as all-deep unless every one of those routes resolves
+   to the confirmed model.
 6. Require The Roastmaster to launch every dispatchable council member
    independently using
    the roaster's model routing, persona, directive, and the common report

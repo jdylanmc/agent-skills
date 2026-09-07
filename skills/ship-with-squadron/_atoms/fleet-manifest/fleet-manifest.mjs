@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { normalizeReviewPolicy } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 const ISSUE_STATUSES = new Set([
   'pending', 'completed', 'blocked', 'failed', 'timed-out', 'deferred',
@@ -358,7 +359,7 @@ export function normalizeFleetManifest(input = {}) {
   const issues = input.issues.map((issue, index) => {
     assertOnlyKeys(issue, new Set([
       'identity', 'sourceRevision', 'sourceReceipt', 'acceptanceCriteria',
-      'scope', 'allowedPaths', 'status',
+      'scope', 'allowedPaths', 'status', 'reviewPolicy',
     ]), `issues[${index}]`);
     const identity = nonEmpty(issue?.identity, `issues[${index}].identity`);
     if (identities.has(identity)) throw new Error(`duplicate issue identity: ${identity}`);
@@ -376,6 +377,7 @@ export function normalizeFleetManifest(input = {}) {
       revision: sourceRevision,
       issueStatus: status,
     }, `${identity}.sourceReceipt`);
+    const reviewPolicy = normalizeReviewPolicy(issue.reviewPolicy);
     return {
       identity,
       sourceRevision,
@@ -385,6 +387,7 @@ export function normalizeFleetManifest(input = {}) {
       allowedPaths,
       status,
       order: index,
+      ...(reviewPolicy.mode === 'tiered' ? { reviewPolicy } : {}),
     };
   });
 
@@ -611,6 +614,7 @@ function manifestInput(manifest) {
       scope: structuredClone(issue.scope),
       allowedPaths: structuredClone(issue.allowedPaths),
       status: issue.status,
+      ...(issue.reviewPolicy ? { reviewPolicy: structuredClone(issue.reviewPolicy) } : {}),
     })),
     issueSet,
     dependencies: structuredClone(manifest.dependencies),

@@ -15,6 +15,7 @@ import {
   deliveryStagesForManifest,
   persistedPipelinePasses,
   persistedShepherdPasses,
+  validateReviewLineage,
   validateReadinessObligation,
 } from '../quality-evidence/quality-evidence.mjs';
 import {
@@ -646,8 +647,11 @@ function assertAssignment(assignment, issue, manifest, state, { active, recoverL
     throw new Error(`${issue.identity} assignment requires exact base and head revisions`);
   }
   const packet = assignment.packet;
+  const expectedPacketFields = issue.reviewPolicy
+    ? [...PACKET_FIELDS, 'reviewPolicy']
+    : PACKET_FIELDS;
   if (!packet || typeof packet !== 'object'
-      || !same(Object.keys(packet).sort(), [...PACKET_FIELDS].sort())
+      || !same(Object.keys(packet).sort(), [...expectedPacketFields].sort())
       || packet.schemaVersion !== 1
       || packet.manifestDigest !== manifest.digest
       || packet.issue !== issue.identity
@@ -656,6 +660,9 @@ function assertAssignment(assignment, issue, manifest, state, { active, recoverL
       || !same(packet.scope, issue.scope)
       || !same(packet.exclusions, manifest.exclusions)
       || !same(packet.allowedPaths, issue.allowedPaths)
+      || (issue.reviewPolicy
+        ? !same(packet.reviewPolicy, issue.reviewPolicy)
+        : Object.hasOwn(packet, 'reviewPolicy'))
       || !same(packet.forbiddenAuthorities, FORBIDDEN_AUTHORITIES)
       || packet.branch !== assignment.branch
       || packet.worktree !== assignment.worktree
@@ -1071,7 +1078,23 @@ function assertIssueRecord(record, issue, manifest, state, recoverLegacy = false
       || Array.isArray(record.qualityEvidence)) {
     throw new Error(`invalid evidence or continuation shape for ${issue.identity}`);
   }
+  if (Object.hasOwn(record.qualityEvidence, 'reviewLineage')) {
+    validateReviewLineage(record.qualityEvidence.reviewLineage, record, issue, manifest);
+  }
   assertPipeline(record, manifest, state);
+  const roastStage = record.pipeline.find((entry) => entry.stage === 'roast');
+  if (issue.reviewPolicy && roastStage) {
+    const lineage = record.qualityEvidence.reviewLineage;
+    if (!lineage) throw new Error(`${issue.identity} tiered Roast stage lacks review lineage`);
+    const expectedDigest = lineage.latestCorrection?.headSha === record.headSha
+      ? lineage.latestCorrection.receiptDigest
+      : lineage.lastDeep.headSha === record.headSha
+        ? lineage.lastDeep.receiptDigest
+        : null;
+    if (expectedDigest === null || digest(roastStage.evidence) !== expectedDigest) {
+      throw new Error(`${issue.identity} tiered Roast stage does not match review lineage`);
+    }
+  }
   if (record.sourceObservation !== null) {
     const source = validateSourceRevisionReceipt(record.sourceObservation, manifest, issue.identity);
     if (record.sourceObservation.manifestDigest !== manifest.digest

@@ -70,6 +70,11 @@ branch/worktree, base/head, implementation and quality evidence, change
 request, Shepherd receipt, set obligation, disposition, and next action. Fleet
 state retains frontier, blockers, capacity, completions, merges, expiry,
 re-Shepherd queue, budget use, and unresolved human decisions.
+Tiered issues persist exact review lineage inside the existing
+`qualityEvidence` container. State validation rechecks its policy, source,
+assignment generation, digests, deep anchor, and current correction revision
+after every reload. The optional field does not reinterpret or migrate legacy
+full-review success.
 It also persists exact query-membership reobservations, revision-specific
 publication observations, full normalized merge records, and explicit check
 activity, including merge-watermark blocking state, plus a persistent

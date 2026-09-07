@@ -2,8 +2,8 @@
 name: candidate-delivery
 description: Drive each ready issue through revision-bound quality evidence, provider-neutral publication, real Shepherd ownership, and set-wide readiness expiry.
 level: molecule
-includes: ["ship-with-squadron/_atoms/quality-evidence/quality-evidence.md","ship-with-squadron/_atoms/provider-seam/provider-seam.md","ship-with-squadron/_atoms/readiness-set/readiness-set.md","ship-with-squadron/_atoms/fleet-disposition/fleet-disposition.md"]
-composes: ["ship-with-squadron/_atoms/quality-evidence/quality-evidence.md","ship-with-squadron/_atoms/provider-seam/provider-seam.md","ship-with-squadron/_atoms/readiness-set/readiness-set.md","ship-with-squadron/_atoms/fleet-disposition/fleet-disposition.md"]
+includes: ["_base/_atoms/review-tier-policy/review-tier-policy.md","ship-with-squadron/_atoms/quality-evidence/quality-evidence.md","ship-with-squadron/_atoms/provider-seam/provider-seam.md","ship-with-squadron/_atoms/readiness-set/readiness-set.md","ship-with-squadron/_atoms/fleet-disposition/fleet-disposition.md"]
+composes: ["_base/_atoms/review-tier-policy/review-tier-policy.md","ship-with-squadron/_atoms/quality-evidence/quality-evidence.md","ship-with-squadron/_atoms/provider-seam/provider-seam.md","ship-with-squadron/_atoms/readiness-set/readiness-set.md","ship-with-squadron/_atoms/fleet-disposition/fleet-disposition.md"]
 used-by: ["ship-with-squadron/SKILL.md"]
 allowed-tools: ["execute","read","search","task"]
 ---
@@ -14,11 +14,13 @@ allowed-tools: ["execute","read","search","task"]
 
 For each ready issue:
 
-1. run [Quality evidence](../../_atoms/quality-evidence/quality-evidence.md);
-2. publish through [Provider seam](../../_atoms/provider-seam/provider-seam.md);
-3. validate real Shepherd ownership and manage expiry through
+1. apply [Review tier policy](../../../_base/_atoms/review-tier-policy/review-tier-policy.md)
+   only when the issue's confirmed manifest packet opts in;
+2. run [Quality evidence](../../_atoms/quality-evidence/quality-evidence.md);
+3. publish through [Provider seam](../../_atoms/provider-seam/provider-seam.md);
+4. validate real Shepherd ownership and manage expiry through
    [Readiness set](../../_atoms/readiness-set/readiness-set.md);
-4. update [Fleet disposition](../../_atoms/fleet-disposition/fleet-disposition.md).
+5. update [Fleet disposition](../../_atoms/fleet-disposition/fleet-disposition.md).
 
 Persist and reread after every step that changes control state. Publication uses
 intent-before-call and reconciliation. Shepherd intent `no` follows the

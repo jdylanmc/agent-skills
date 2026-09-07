@@ -55,6 +55,14 @@ failure rather than permission to silently omit one. Report every dropped seat
 and every same-family collapse as a diversity receipt rather than flattening
 them into "requested."
 
+An explicitly validated deep-tier route applies to every bundled council seat,
+not only the two role-aware reviewers. Resolve the architecture, security, and
+testing reviewers plus both Roastmaster invocations to GPT-6 Astra through the
+shared resolver before calling the runtime. If any seat cannot resolve that
+route or its sole confirmed GPT-5.6 Sol fallback, the run is not an all-deep
+review and must report the unavailable seat rather than silently using its
+ordinary inline default.
+
 Bundled definitions live under:
 
 `skills/roast/references/bundled-roasters/<agent-name>/`

@@ -33,6 +33,11 @@ import {
 import {
   persistOrchestrationHandoff,
 } from '../../../_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.mjs';
+import { reviewPolicyDigest } from '../quality-evidence/quality-evidence.mjs';
+import {
+  CORRECTION_REVIEW_ROUTE,
+  DEEP_REVIEW_ROUTE,
+} from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SANDBOX = path.join(ROOT, '.test-sandbox', 'ship-with-squadron-handoff');
@@ -178,6 +183,169 @@ function assigned() {
     startedAt: '2026-08-30T00:02:00Z',
   });
 }
+
+test('tiered manifest policy is bound into the assignment packet', () => {
+  ensureGitWorktrees();
+  const tieredInput = {
+    confirmation: 'confirmed',
+    goal: 'deliver',
+    acceptedScope: [],
+    exclusions: ['unrelated files'],
+    humanDecisions: [],
+    issues: [{
+      identity: 'a',
+      sourceRevision: 'r-a',
+      sourceReceipt: source('a'),
+      acceptanceCriteria: ['done'],
+      scope: ['issue a'],
+      allowedPaths: ['src/a/**'],
+      reviewPolicy: {
+        mode: 'tiered',
+        policyVersion: 1,
+        evaluationMode: 'shadow',
+        deepRoute: DEEP_REVIEW_ROUTE,
+        correctionRoute: CORRECTION_REVIEW_ROUTE,
+        promotionDecision: null,
+      },
+    }],
+    dependencies: [],
+    concurrency: 1,
+    budget: { cost: 10, timeMinutes: 60, retries: 2 },
+    repository: { id: 'owner/repo', root: REPOSITORY, baseBranch: 'main' },
+    provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
+    validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
+    stopConditions: ['cancelled'],
+    humanBoundaries: ['human merge'],
+    shepherdIntent: 'yes',
+  };
+  const tieredManifest = normalizeFleetManifest(tieredInput);
+  let current = createFleetState(tieredManifest, 'tiered-run');
+  current = recordSourceRevisionObservation(
+    current,
+    tieredManifest,
+    'a',
+    source('a', '2026-08-30T00:01:00Z'),
+    '2026-08-30T00:01:01Z',
+  );
+  const basePacket = packet('a', 'issue-a', WORKTREE_A);
+  const tieredPacket = {
+    ...basePacket,
+    manifestDigest: tieredManifest.digest,
+    reviewPolicy: tieredManifest.issues[0].reviewPolicy,
+  };
+  const schedulerLease = createSchedulerLease(current, tieredManifest, 'a');
+  assert.throws(() => assignFreshWorker(current, tieredManifest, {
+    issue: 'a',
+    branch: 'issue-a',
+    worktree: WORKTREE_A,
+    workerContext: 'tiered-worker-missing-policy',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
+    packet: { ...tieredPacket, reviewPolicy: undefined },
+    schedulerLease,
+  }), /packet schema is not exact|review policy/);
+  const assignedState = assignFreshWorker(current, tieredManifest, {
+    issue: 'a',
+    branch: 'issue-a',
+    worktree: WORKTREE_A,
+    workerContext: 'tiered-worker',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
+    packet: tieredPacket,
+    schedulerLease,
+  });
+  assert.deepEqual(
+    assignedState.issues.a.assignment.packet.reviewPolicy,
+    tieredManifest.issues[0].reviewPolicy,
+  );
+  assignedState.issues.a.qualityEvidence.reviewLineage = {
+    policyDigest: reviewPolicyDigest(tieredManifest.issues[0].reviewPolicy),
+    packetDigest: 'a'.repeat(64),
+    scopeDigest: 'b'.repeat(64),
+    sourceRevision: 'r-a',
+    assignmentGeneration: 1,
+    cumulativeDiffBase: currentRevision(),
+    lastDeep: {
+      baseSha: currentRevision(),
+      headSha: currentRevision(),
+      receiptDigest: 'c'.repeat(64),
+      modelRouting: [
+        'architecture-candidate',
+        'qa-reviewer',
+        'security-reviewer',
+        'roastmaster-coordinate',
+        'roastmaster-synthesize',
+      ].map((seat) => ({
+        seat,
+        role: seat,
+        requestedModel: 'gpt-6-astra',
+        selectedModel: 'gpt-6-astra',
+        actualModel: 'gpt-6-astra',
+        actualModelStatus: 'matched-selection',
+        reasoningEffort: 'high',
+        contextTier: 'default',
+      })),
+    },
+    latestCorrection: null,
+  };
+  const file = fleetStatePath(REPOSITORY, 'tiered-run');
+  const persisted = persistFleetState(file, assignedState, 0, tieredManifest);
+  const replayed = loadFleetState(file, tieredManifest);
+  assert.deepEqual(
+    replayed.issues.a.qualityEvidence.reviewLineage,
+    persisted.issues.a.qualityEvidence.reviewLineage,
+  );
+  const forged = structuredClone(replayed);
+  forged.issues.a.pipeline = [{
+    stage: 'implementation',
+    evidence: {
+      baseSha: currentRevision(),
+      headSha: currentRevision(),
+      status: 'completed',
+      complete: true,
+      terminal: true,
+      completedAt: '2026-08-30T00:02:00Z',
+    },
+  }, {
+    stage: 'diff-reconciliation',
+    evidence: {
+      baseSha: currentRevision(),
+      headSha: currentRevision(),
+      verdict: 'reconciled',
+      complete: true,
+      terminal: true,
+      completedAt: '2026-08-30T00:03:00Z',
+    },
+  }, {
+    stage: 'run-ci',
+    evidence: {
+      invocation: { skill: 'run-ci', id: 'ci', runId: 'tiered-run', issue: 'a' },
+      baseSha: currentRevision(),
+      headSha: currentRevision(),
+      status: 'passed',
+      complete: true,
+      terminal: true,
+      evidenceComplete: true,
+      completedAt: '2026-08-30T00:04:00Z',
+      steps: [{ name: 'tests', status: 'passed' }],
+    },
+  }, {
+    stage: 'roast',
+    evidence: {
+      invocation: { skill: 'roast', id: 'roast', runId: 'tiered-run', issue: 'a' },
+      baseSha: currentRevision(),
+      headSha: currentRevision(),
+      status: 'completed',
+      complete: true,
+      terminal: true,
+      evidenceComplete: true,
+      completedAt: '2026-08-30T00:05:00Z',
+      findings: [],
+    },
+  }];
+  forged.issues.a.qualityEvidence = {};
+  assert.throws(() => assertFleetState(forged, tieredManifest), /lacks review lineage/);
+});
 
 function handoffPayload(target = 'worker-2') {
   const original = packet('a', 'issue-a', WORKTREE_A);

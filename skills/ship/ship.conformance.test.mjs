@@ -32,6 +32,13 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import {
+  CORRECTION_REVIEW_ROUTE,
+  DEEP_REVIEW_ROUTE,
+} from '../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
+import {
+  runTieredCodeReview,
+} from '../roast/_atoms/correction-review-dispatch/correction-review-dispatch.mjs';
 import { classifyTerminalDisposition } from '../shepherd/_atoms/shepherd-disposition/shepherd-disposition.mjs';
 import { MERGE_GRANT_TOKEN, evaluateMergeGate, mayMerge } from './_atoms/merge-gate/merge-gate.mjs';
 import { reconcile as reconcileDiff } from './_atoms/diff-reconciliation/diff-reconciliation.mjs';
@@ -165,6 +172,101 @@ function defaultThreadEvidence() {
 function read(relativePath) {
   return fs.readFileSync(path.join(SKILLS_ROOT, ...relativePath.split('/')), 'utf8');
 }
+
+function tieredInput(semanticSignals = []) {
+  const policy = {
+    mode: 'tiered',
+    policyVersion: 1,
+    evaluationMode: 'operational',
+    deepRoute: DEEP_REVIEW_ROUTE,
+    correctionRoute: CORRECTION_REVIEW_ROUTE,
+    promotionDecision: {
+      approved: true,
+      actor: 'human',
+      decisionId: 'ship-tier-pilot',
+      decidedAt: '2026-09-07T00:00:00Z',
+    },
+  };
+  const identity = (headSha) => ({
+    baseSha: 'base',
+    headSha,
+    packetDigest: REVIEW_DIGEST,
+    scopeDigest: PRIOR_REVIEW_DIGEST,
+    sourceRevision: 'source',
+  });
+  return {
+    policy,
+    current: identity(RESULTING_HEAD),
+    lastDeep: identity(HEAD),
+    previousHead: HEAD,
+    latestDelta: {
+      baseSha: HEAD,
+      headSha: RESULTING_HEAD,
+      paths: ['src/fix.js'],
+      semanticSignals,
+    },
+    cumulativeDelta: {
+      baseSha: HEAD,
+      headSha: RESULTING_HEAD,
+      paths: ['src/fix.js'],
+      semanticSignals,
+    },
+    requirements: ['preserve the confirmed behavior'],
+    originalFindingIds: ['F-1'],
+    affectedConsumers: ['consumer-a'],
+    validation: { headSha: RESULTING_HEAD, complete: true },
+    remediationAttempt: 1,
+  };
+}
+
+test('Ship opt-in calls one correction review after the initial full review and escalates to full', async () => {
+  const calls = [];
+  const fast = await runTieredCodeReview({
+    input: tieredInput(),
+    runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
+    correctionTransport: async () => {
+      calls.push('correction');
+      return JSON.stringify({
+        schemaVersion: 1,
+        status: 'complete',
+        headSha: RESULTING_HEAD,
+        findingDispositions: [{
+          findingId: 'F-1',
+          disposition: 'addressed',
+          evidence: 'the current assertion passes',
+          reasoning: 'the original requirement is satisfied',
+        }],
+        requirementChecks: ['confirmed behavior: satisfied'],
+        affectedConsumersReviewed: ['consumer-a'],
+        regressions: [],
+        newFindings: [],
+        uncertainties: [],
+      });
+    },
+    fullReview: async () => {
+      calls.push('full');
+      return { status: 'complete' };
+    },
+  });
+  assert.deepEqual(calls, ['correction']);
+  assert.equal(fast.authoritative, 'correction');
+
+  calls.length = 0;
+  const escalated = await runTieredCodeReview({
+    input: tieredInput(['public-contract']),
+    runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
+    correctionTransport: async () => {
+      calls.push('correction');
+      return '{}';
+    },
+    fullReview: async () => {
+      calls.push('full');
+      return { status: 'complete' };
+    },
+  });
+  assert.deepEqual(calls, ['full']);
+  assert.equal(escalated.authoritative, 'full');
+});
 
 function continuationInput(overrides = {}) {
   const entries = [{ id: 'L1', classification: 'in-scope' }];

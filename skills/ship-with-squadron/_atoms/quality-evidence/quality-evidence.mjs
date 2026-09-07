@@ -1,4 +1,6 @@
+import crypto from 'node:crypto';
 import { reconcile } from '../../../ship/_atoms/diff-reconciliation/diff-reconciliation.mjs';
+import { runTieredCodeReview } from '../../../roast/_atoms/correction-review-dispatch/correction-review-dispatch.mjs';
 import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 
 export const DELIVERY_STAGES = Object.freeze([
@@ -26,6 +28,10 @@ export const READINESS_OBLIGATION_FIELDS = Object.freeze([
   'generation', 'createdAt',
 ]);
 
+export async function runSquadronTieredReview(input) {
+  return runTieredCodeReview(input);
+}
+
 const CI_STATUSES = new Set([
   'passed', 'failed', 'intermittent', 'environment-failed',
   'cancelled', 'incomplete', 'unsupported-provider',
@@ -52,6 +58,153 @@ function exactObjectKeys(value, expected) {
     && typeof value === 'object'
     && !Array.isArray(value)
     && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
+}
+
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+  }
+  return value;
+}
+
+function digest(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+}
+
+export function reviewPolicyDigest(policy) {
+  return digest(policy);
+}
+
+function exactDigest(value, field) {
+  if (!/^[a-f0-9]{64}$/u.test(value ?? '')) throw new Error(`${field} must be a SHA-256 digest`);
+  return value;
+}
+
+const DEEP_ROUTE_SEATS = Object.freeze([
+  'architecture-candidate',
+  'qa-reviewer',
+  'security-reviewer',
+  'roastmaster-coordinate',
+  'roastmaster-synthesize',
+]);
+
+function validateModelRouting(routes, kind) {
+  if (!Array.isArray(routes)) throw new Error('review tier modelRouting must be an array');
+  const expectedSeats = kind === 'full' ? DEEP_ROUTE_SEATS : ['qa-reviewer'];
+  if (routes.length !== expectedSeats.length) throw new Error('review tier modelRouting seat count is invalid');
+  for (const [index, route] of routes.entries()) {
+    if (!exactObjectKeys(route, [
+      'seat', 'role', 'requestedModel', 'selectedModel', 'actualModel',
+      'actualModelStatus', 'reasoningEffort', 'contextTier',
+    ])) {
+      throw new Error(`review tier modelRouting[${index}] schema is not exact`);
+    }
+    if (route.seat !== expectedSeats[index] || !nonEmpty(route.role)) {
+      throw new Error(`review tier modelRouting[${index}] seat or role is invalid`);
+    }
+    const requestedModel = kind === 'full' ? 'gpt-6-astra' : 'gpt-5.6-sol';
+    const allowedSelected = kind === 'full'
+      ? new Set(['gpt-6-astra', 'gpt-5.6-sol'])
+      : new Set(['gpt-5.6-sol', 'gpt-6-astra']);
+    if (route.requestedModel !== requestedModel || !allowedSelected.has(route.selectedModel)
+        || !['matched-selection', 'unobserved'].includes(route.actualModelStatus)
+        || (route.actualModel !== null && route.actualModel !== route.selectedModel)
+        || route.reasoningEffort !== 'high' || route.contextTier !== 'default') {
+      throw new Error(`review tier modelRouting[${index}] violates the confirmed model policy`);
+    }
+  }
+  return structuredClone(routes);
+}
+
+function validateReviewTierReceipt(receipt, issueRecord, issue, manifest) {
+  if (!issue.reviewPolicy) throw new Error('review tier receipt is not authorized by the manifest');
+  const common = [
+    'kind', 'policyDigest', 'packetDigest', 'scopeDigest', 'sourceRevision',
+    'assignmentGeneration', 'modelRouting',
+  ];
+  const expected = receipt?.kind === 'correction'
+    ? [...common, 'lastDeepHead', 'latestDeltaDigest', 'cumulativeDeltaDigest',
+      'affectedConsumers', 'escalation']
+    : common;
+  if (!exactObjectKeys(receipt, expected)) throw new Error('review tier receipt schema is not exact');
+  if (!['full', 'correction'].includes(receipt.kind)) throw new Error('review tier kind is invalid');
+  if (receipt.policyDigest !== reviewPolicyDigest(issue.reviewPolicy)) throw new Error('review tier policy digest does not match');
+  exactDigest(receipt.packetDigest, 'review tier packetDigest');
+  exactDigest(receipt.scopeDigest, 'review tier scopeDigest');
+  if (receipt.sourceRevision !== issue.sourceRevision) throw new Error('review tier source revision does not match');
+  if (!Number.isInteger(receipt.assignmentGeneration) || receipt.assignmentGeneration < 1
+      || receipt.assignmentGeneration !== issueRecord.assignment?.generation) {
+    throw new Error('review tier assignment generation does not match');
+  }
+  const normalized = {
+    ...structuredClone(receipt),
+    modelRouting: validateModelRouting(receipt.modelRouting, receipt.kind),
+  };
+  if (receipt.kind === 'correction') {
+    if (!nonEmpty(receipt.lastDeepHead)) throw new Error('correction review lastDeepHead is absent');
+    exactDigest(receipt.latestDeltaDigest, 'review tier latestDeltaDigest');
+    exactDigest(receipt.cumulativeDeltaDigest, 'review tier cumulativeDeltaDigest');
+    if (!Array.isArray(receipt.affectedConsumers) || receipt.affectedConsumers.length === 0
+        || receipt.affectedConsumers.some((entry) => !nonEmpty(entry))) {
+      throw new Error('correction review affected consumers are incomplete');
+    }
+    if (receipt.escalation !== 'none') throw new Error('escalated correction review cannot satisfy Roast');
+  }
+  return normalized;
+}
+
+export function validateReviewLineage(lineage, issueRecord, issue, manifest) {
+  if (lineage === undefined) return true;
+  if (!issue.reviewPolicy) throw new Error('full-review issue cannot carry tiered review lineage');
+  if (!exactObjectKeys(lineage, [
+    'policyDigest', 'packetDigest', 'scopeDigest', 'sourceRevision',
+    'assignmentGeneration', 'cumulativeDiffBase', 'lastDeep', 'latestCorrection',
+  ])) {
+    throw new Error('review lineage schema is not exact');
+  }
+  const assignmentGeneration = issueRecord.assignment?.generation
+    ?? issueRecord.continuationChain?.at(-1)?.generation
+    ?? null;
+  if (lineage.policyDigest !== reviewPolicyDigest(issue.reviewPolicy)
+      || lineage.sourceRevision !== issue.sourceRevision
+      || lineage.assignmentGeneration !== assignmentGeneration) {
+    throw new Error('review lineage authority binding does not match');
+  }
+  exactDigest(lineage.packetDigest, 'review lineage packetDigest');
+  exactDigest(lineage.scopeDigest, 'review lineage scopeDigest');
+  if (!nonEmpty(lineage.cumulativeDiffBase)) throw new Error('review lineage cumulativeDiffBase is absent');
+  if (!exactObjectKeys(lineage.lastDeep, ['baseSha', 'headSha', 'receiptDigest', 'modelRouting'])) {
+    throw new Error('review lineage lastDeep schema is not exact');
+  }
+  exactDigest(lineage.lastDeep.receiptDigest, 'review lineage lastDeep.receiptDigest');
+  validateModelRouting(lineage.lastDeep.modelRouting, 'full');
+  if (lineage.lastDeep.baseSha !== issueRecord.baseSha
+      || lineage.cumulativeDiffBase !== lineage.lastDeep.headSha) {
+    throw new Error('review lineage deep revision binding does not match');
+  }
+  if (lineage.latestCorrection !== null) {
+    if (!exactObjectKeys(lineage.latestCorrection, [
+      'headSha', 'lastDeepHead', 'receiptDigest', 'latestDeltaDigest',
+      'cumulativeDeltaDigest', 'affectedConsumers', 'modelRouting',
+    ])) {
+      throw new Error('review lineage latestCorrection schema is not exact');
+    }
+    if (lineage.latestCorrection.headSha !== issueRecord.headSha
+        || lineage.latestCorrection.lastDeepHead !== lineage.lastDeep.headSha) {
+      throw new Error('review lineage correction revision is stale');
+    }
+    exactDigest(lineage.latestCorrection.receiptDigest, 'review lineage correction receiptDigest');
+    exactDigest(lineage.latestCorrection.latestDeltaDigest, 'review lineage latestDeltaDigest');
+    exactDigest(lineage.latestCorrection.cumulativeDeltaDigest, 'review lineage cumulativeDeltaDigest');
+    if (!Array.isArray(lineage.latestCorrection.affectedConsumers)
+        || lineage.latestCorrection.affectedConsumers.length === 0
+        || lineage.latestCorrection.affectedConsumers.some((entry) => !nonEmpty(entry))) {
+      throw new Error('review lineage affected consumers are incomplete');
+    }
+    validateModelRouting(lineage.latestCorrection.modelRouting, 'correction');
+  }
+  return true;
 }
 
 export function validateReadinessObligation(
@@ -641,6 +794,53 @@ export function recordStage(issueRecord, stage, evidence, revision, manifest) {
   const expected = stages[completed.length];
   if (stage !== expected) throw new Error(`workflow order violation: expected ${expected}, received ${stage}`);
   const next = structuredClone(issueRecord);
+  if (stage === 'roast') {
+    const issue = manifest.issues.find((entry) => entry.identity === issueRecord.identity);
+    if (issue.reviewPolicy) {
+      const tier = validateReviewTierReceipt(evidence.reviewTier, issueRecord, issue, manifest);
+      const receiptDigest = digest(evidence);
+      if (tier.kind === 'full') {
+        next.qualityEvidence.reviewLineage = {
+          policyDigest: tier.policyDigest,
+          packetDigest: tier.packetDigest,
+          scopeDigest: tier.scopeDigest,
+          sourceRevision: tier.sourceRevision,
+          assignmentGeneration: tier.assignmentGeneration,
+          cumulativeDiffBase: evidence.headSha,
+          lastDeep: {
+            baseSha: evidence.baseSha,
+            headSha: evidence.headSha,
+            receiptDigest,
+            modelRouting: tier.modelRouting,
+          },
+          latestCorrection: null,
+        };
+      } else {
+        const lineage = next.qualityEvidence.reviewLineage;
+        validateReviewLineage(lineage, issueRecord, issue, manifest);
+        if (tier.lastDeepHead !== lineage.lastDeep.headSha) {
+          throw new Error('correction review does not bind the last deep head');
+        }
+        if (tier.packetDigest !== lineage.packetDigest
+            || tier.scopeDigest !== lineage.scopeDigest
+            || tier.sourceRevision !== lineage.sourceRevision
+            || tier.assignmentGeneration !== lineage.assignmentGeneration) {
+          throw new Error('correction review lineage identity does not match');
+        }
+        lineage.latestCorrection = {
+          headSha: evidence.headSha,
+          lastDeepHead: tier.lastDeepHead,
+          receiptDigest,
+          latestDeltaDigest: tier.latestDeltaDigest,
+          cumulativeDeltaDigest: tier.cumulativeDeltaDigest,
+          affectedConsumers: tier.affectedConsumers,
+          modelRouting: tier.modelRouting,
+        };
+      }
+    } else if (Object.hasOwn(evidence, 'reviewTier')) {
+      throw new Error('full-review issue cannot submit tiered Roast evidence');
+    }
+  }
   next.pipeline = [...completed, { stage, evidence }];
   return next;
 }
@@ -651,7 +851,13 @@ export function invalidateRevisionEvidence(issueRecord, revision) {
   next.headSha = revision.headSha;
   next.pipeline = (next.pipeline ?? []).filter((entry) =>
     entry.stage === 'implementation' && revisionMatches(entry.evidence, revision));
-  next.qualityEvidence = {};
+  const reviewLineage = next.qualityEvidence?.reviewLineage
+    ? {
+      ...next.qualityEvidence.reviewLineage,
+      latestCorrection: null,
+    }
+    : null;
+  next.qualityEvidence = reviewLineage ? { reviewLineage } : {};
   next.changeRequest = null;
   next.shepherd = null;
   next.shepherdDecision = null;
