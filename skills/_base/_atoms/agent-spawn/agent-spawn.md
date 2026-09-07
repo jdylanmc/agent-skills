@@ -25,7 +25,7 @@ internal steps of that operation and never split it.
 
 ## Required Files
 
-1. [Model-route resolver](./agent-spawn.mjs)
+1. [Model-route resolver and dispatch adapter](./agent-spawn.mjs)
 
 ## Inputs
 
@@ -63,6 +63,19 @@ Role-aware routing does not invent storage, read machine-local files, or change
 authority. The mapping objects are explicit inputs. A plain call that omits
 `model-role` keeps the existing direct-routing behavior.
 
+Every supplied mapping entry is validated before any role resolves, including
+entries for roles a caller has not reached yet. This prevents a malformed
+configuration from failing only after a partial orchestration run.
+
+The seven role keys are a shared dispatch vocabulary, not a claim that seven
+workflows already exist. `dispatchModelRoleAgent` makes every key callable
+through one caller-supplied transport seam. Current repository consumers opt in
+only where they own the role: Roast currently uses `architecture-candidate`
+and `qa-reviewer`. No current cleanup, architecture-judge, QA-judge, or
+decision-trail workflow is invented by this atom, and an override for one of
+those roles has no effect until such a caller explicitly dispatches through the
+shared seam.
+
 ## Precedence
 
 The prompt is authoritative. The persona governs voice and nothing else.
@@ -88,9 +101,17 @@ This rule is what makes a persona safe to swap.
    ordered fallbacks before launch. Use only the requested model or a listed
    fallback. If none are available, stop as `No model available`; do not
    quietly substitute another slug.
-4. Launch one fresh agent with `tools` and the declared routing, carrying no
+4. Convert the resolution into a dispatch route. An observed fallback becomes
+   the actual model argument and has no remaining fallback list. An unavailable
+   route is `null` and cannot reach transport. When availability was not
+   observed, preserve the requested route and report that uncertainty.
+5. Call `dispatchResolvedAgent`, or the convenience
+   `dispatchModelRoleAgent`, with a caller-supplied transport function. The
+   adapter passes the prompt, persona, tools, selected model, remaining fallback
+   list, effort, and context tier as one immutable launch request.
+6. Launch one fresh agent with `tools` and the resolved routing, carrying no
    context from any earlier run.
-5. Return the agent's response unchanged, with the model status observed and,
+7. Return the agent's response unchanged, with the model status observed and,
    when role-aware routing was used, the routing receipt that explains what was
    requested and what degraded.
 
@@ -118,11 +139,15 @@ Failure categories: `Prompt unreadable`, `Persona unreadable`,
   model is an evidence gap for the caller to record.
 - Role-aware routing is deterministic: the same inputs resolve to the same
   request order, the same fallback order, and the same cap behavior.
+- Resolved routes, receipts, panel summaries, dropped-seat records, launch
+  requests, and dispatch results are deeply immutable snapshots.
 - `inherit-parent` copies only an already resolved route. It never re-resolves
   from a parent mapping and never widens authority.
 - Same-family panels, fallback convergence, capped fanout, unavailable seats,
   and unobserved availability are reported explicitly rather than flattened
   into "requested."
+- A selected available model is the model supplied to transport. An unavailable
+  seat never calls transport.
 
 ## Boundaries
 

@@ -23,7 +23,11 @@ below is unreleased and no comparison links are available.
   unobserved-availability reporting. Roast's bundled code-review panel uses the
   shared resolver for the architecture and Quality Assurance (QA) reviewers
   without widening permissions or changing the default three-seat roster when
-  no role mappings are supplied.
+  no role mappings are supplied. Resolved routes now cross an immutable,
+  injectable dispatch boundary: selected fallbacks become the actual launch
+  model, unavailable seats cannot launch, all configured roles validate up
+  front, and the total Roast cap includes the mandatory security reviewer while
+  identifying omitted seats.
 - **Dependency-aware fleet delivery (`ship-with-squadron`).** A new
   human-invoked workflow delivers one confirmed closed issue set through
   isolated ownership, durable scheduling, revision-bound Continuous

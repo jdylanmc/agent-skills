@@ -3,7 +3,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { resolveBundledRoastRoster } from './code-reviewer-panel.mjs';
+import {
+  CodeReviewerPanelError,
+  dispatchBundledRoastRoster,
+  resolveBundledRoastRoster,
+} from './code-reviewer-panel.mjs';
 
 const REPOSITORY_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -32,7 +36,7 @@ test('role-aware roster routing fans out bundled architecture reviewers under th
     panelLengthByRole: {
       'architecture-candidate': 3,
     },
-    fanoutCap: 2,
+    fanoutCap: 4,
     runtimeAvailableModels: ['gpt-5.6-sol', 'claude-opus-5'],
   });
   assert.deepEqual(
@@ -41,7 +45,14 @@ test('role-aware roster routing fans out bundled architecture reviewers under th
   );
   assert.equal(resolved.panels['architecture-candidate'].fanoutRequested, 3);
   assert.equal(resolved.panels['architecture-candidate'].fanoutApplied, 2);
-  assert.deepEqual(resolved.panels['architecture-candidate'].reasons, ['fanout-capped']);
+  assert.deepEqual(
+    resolved.panels['architecture-candidate'].reasons,
+    ['fanout-capped', 'same-family'],
+  );
+  assert.deepEqual(
+    resolved.omittedSeats.map((entry) => entry.reviewerId),
+    ['SOLID-ROASTER-03'],
+  );
 });
 
 test('user mappings override repository mappings for bundled QA reviewers', () => {
@@ -71,9 +82,12 @@ test('same-family and unavailable panel outcomes stay explicit in the roster rec
   const panel = resolved.panels['qa-reviewer'];
   assert.equal(panel.status, 'same-family');
   assert.equal(panel.degraded, true);
-  assert.deepEqual(panel.reasons, ['unavailable-seat']);
-  const unavailable = resolved.roster.find((entry) => entry.routeReceipt.modelStatus === 'Unavailable');
+  assert.deepEqual(panel.reasons, ['unavailable-seat', 'same-family']);
+  const unavailable = resolved.blockedSeats.find(
+    (entry) => entry.routeReceipt.modelStatus === 'Unavailable',
+  );
   assert.equal(unavailable.role, 'qa-reviewer');
+  assert.equal(resolved.roster.some((entry) => entry.routeReceipt.modelStatus === 'Unavailable'), false);
 });
 
 test('security reviewer stays on the explicit inline route and does not join role-aware fanout', () => {
@@ -83,11 +97,92 @@ test('security reviewer stays on the explicit inline route and does not join rol
       'architecture-candidate': 2,
       'qa-reviewer': 2,
     },
-    fanoutCap: 2,
+    fanoutCap: 3,
     runtimeAvailableModels: ['claude-opus-5', 'gpt-5.6-sol'],
   });
   const security = resolved.roster.filter((entry) => entry.agentName === 'security-roaster');
   assert.equal(security.length, 1);
   assert.equal(security[0].role, null);
   assert.equal(security[0].route.model, 'gpt-5.6-sol');
+  assert.equal(resolved.fanoutApplied, 3);
+});
+
+test('global panel cap refuses to omit a mandatory bundled reviewer', () => {
+  assert.throws(
+    () => resolveBundledRoastRoster({
+      root: REPOSITORY_ROOT,
+      fanoutCap: 2,
+    }),
+    (error) => error instanceof CodeReviewerPanelError
+      && error.code === 'panel_cap_too_small',
+  );
+});
+
+test('global panel cap includes security and identifies every omitted seat', () => {
+  const resolved = resolveBundledRoastRoster({
+    root: REPOSITORY_ROOT,
+    panelLengthByRole: {
+      'architecture-candidate': 3,
+      'qa-reviewer': 2,
+    },
+    fanoutCap: 4,
+  });
+  assert.equal(resolved.fanoutRequested, 6);
+  assert.equal(resolved.fanoutApplied, 4);
+  assert.deepEqual(
+    resolved.roster.map((entry) => entry.reviewerId),
+    ['SOLID-ROASTER', 'SOLID-ROASTER-02', 'SECURITY-ROASTER', 'TESTING-ROASTER'],
+  );
+  assert.deepEqual(
+    resolved.omittedSeats.map((entry) => entry.reviewerId),
+    ['SOLID-ROASTER-03', 'TESTING-ROASTER-02'],
+  );
+});
+
+test('bundled dispatch uses the selected route and never launches blocked seats', async () => {
+  const resolved = resolveBundledRoastRoster({
+    root: REPOSITORY_ROOT,
+    userModelRoles: {
+      'architecture-candidate': {
+        model: 'missing',
+        fallbackModels: ['gpt-5.6-sol'],
+      },
+      'qa-reviewer': 'missing-too',
+    },
+    runtimeAvailableModels: ['gpt-5.6-sol'],
+  });
+  const calls = [];
+  const dispatched = await dispatchBundledRoastRoster({
+    resolvedRoster: resolved,
+    promptForReviewer: (seat) => `Review as ${seat.reviewerId}.`,
+    transport: async (seat, launch) => {
+      calls.push({ seat: seat.reviewerId, launch });
+      return `${seat.reviewerId} complete`;
+    },
+  });
+  assert.deepEqual(
+    calls.map((entry) => [entry.seat, entry.launch.model]),
+    [
+      ['SOLID-ROASTER', 'gpt-5.6-sol'],
+      ['SECURITY-ROASTER', 'gpt-5.6-sol'],
+    ],
+  );
+  assert.deepEqual(
+    dispatched.blocked.map((entry) => entry.reviewerId),
+    ['TESTING-ROASTER'],
+  );
+});
+
+test('roster receipts and shared panel snapshots are deeply immutable', () => {
+  const resolved = resolveBundledRoastRoster({
+    root: REPOSITORY_ROOT,
+    panelLengthByRole: { 'qa-reviewer': 2 },
+  });
+  const qa = resolved.roster.filter((entry) => entry.role === 'qa-reviewer');
+  assert.equal(Object.isFrozen(resolved.roster), true);
+  assert.equal(Object.isFrozen(qa[0].routeReceipt), true);
+  assert.equal(Object.isFrozen(qa[0].panelReceipt), true);
+  assert.throws(() => {
+    qa[0].panelReceipt.reasons.push('changed');
+  }, TypeError);
 });

@@ -66,7 +66,12 @@ function normalizeRoleMappings(value, field) {
       `${field} contains unknown roles: ${unknown.sort().join(', ')}`,
     );
   }
-  return value;
+  return Object.fromEntries(Object.entries(value).map(([role, mapping]) => [
+    role,
+    Array.isArray(mapping)
+      ? normalizeRouteList(mapping, `${field}.${role}`)
+      : normalizeRouteSpec(mapping, `${field}.${role}`),
+  ]));
 }
 
 function normalizePositiveInteger(value, field, { allowNull = true } = {}) {
@@ -196,6 +201,58 @@ function cloneRoute(route) {
   };
 }
 
+function immutable(value) {
+  const snapshot = structuredClone(value);
+  const freeze = (entry) => {
+    if (entry && typeof entry === 'object' && !Object.isFrozen(entry)) {
+      Object.freeze(entry);
+      for (const child of Object.values(entry)) freeze(child);
+    }
+    return entry;
+  };
+  return freeze(snapshot);
+}
+
+function dispatchRoute(route, availability) {
+  if (availability.availabilityStatus === 'unavailable') {
+    return null;
+  }
+  if (availability.availabilityStatus === 'observed') {
+    return {
+      ...cloneRoute(route),
+      model: availability.selectedModel,
+      fallbackModels: [],
+    };
+  }
+  return cloneRoute(route);
+}
+
+function routeReceipt({
+  role,
+  resolutionSource,
+  alias,
+  route,
+  availability,
+  panelIndex = null,
+}) {
+  return {
+    role,
+    resolutionSource,
+    alias,
+    requestedModel: route.model,
+    requestedFamily: modelFamily(route.model),
+    fallbackModels: [...route.fallbackModels],
+    reasoningEffort: route.reasoningEffort,
+    contextTier: route.contextTier,
+    availabilityStatus: availability.availabilityStatus,
+    selectedModel: availability.selectedModel,
+    modelStatus: availability.modelStatus,
+    selectedFamily: modelFamily(availability.selectedModel),
+    family: modelFamily(availability.selectedModel),
+    ...(panelIndex === null ? {} : { panelIndex }),
+  };
+}
+
 function defaultAt(defaults, index) {
   return cloneRoute(defaults[Math.min(index, defaults.length - 1)]);
 }
@@ -301,24 +358,16 @@ export function resolveDirectSpawnRoute({
     contextTier: optionalString(contextTier, 'contextTier'),
   };
   const availability = resolveAvailability(route, normalizeRuntimeAvailableModels(runtimeAvailableModels));
-  return {
-    route,
-    receipt: {
+  return immutable({
+    route: dispatchRoute(route, availability),
+    receipt: routeReceipt({
       role: null,
       resolutionSource: 'direct-input',
       alias: null,
-      requestedModel: route.model,
-      requestedFamily: modelFamily(route.model),
-      fallbackModels: [...route.fallbackModels],
-      reasoningEffort: route.reasoningEffort,
-      contextTier: route.contextTier,
-      availabilityStatus: availability.availabilityStatus,
-      selectedModel: availability.selectedModel,
-      modelStatus: availability.modelStatus,
-      selectedFamily: modelFamily(availability.selectedModel),
-      family: modelFamily(availability.selectedModel),
-    },
-  };
+      route,
+      availability,
+    }),
+  });
 }
 
 export function resolveInlineModelRoute({
@@ -335,24 +384,16 @@ export function resolveInlineModelRoute({
     );
   }
   const availability = resolveAvailability(route, normalizeRuntimeAvailableModels(runtimeAvailableModels));
-  return {
-    route: cloneRoute(route),
-    receipt: {
+  return immutable({
+    route: dispatchRoute(route, availability),
+    receipt: routeReceipt({
       role,
       resolutionSource,
       alias: null,
-      requestedModel: route.model,
-      requestedFamily: modelFamily(route.model),
-      fallbackModels: [...route.fallbackModels],
-      reasoningEffort: route.reasoningEffort,
-      contextTier: route.contextTier,
-      availabilityStatus: availability.availabilityStatus,
-      selectedModel: availability.selectedModel,
-      modelStatus: availability.modelStatus,
-      selectedFamily: modelFamily(availability.selectedModel),
-      family: modelFamily(availability.selectedModel),
-    },
-  };
+      route,
+      availability,
+    }),
+  });
 }
 
 export function resolveModelRoleRoute({
@@ -392,27 +433,22 @@ export function resolveModelRoleRoute({
     position: 0,
   });
   const availability = resolveAvailability(resolved.route, runtime);
-  return {
-    route: resolved.route,
-    receipt: {
+  return immutable({
+    route: dispatchRoute(resolved.route, availability),
+    receipt: routeReceipt({
       role: normalizedRole,
       resolutionSource: resolved.resolutionSource,
       alias: resolved.alias,
-      requestedModel: resolved.route.model,
-      requestedFamily: modelFamily(resolved.route.model),
-      fallbackModels: [...resolved.route.fallbackModels],
-      reasoningEffort: resolved.route.reasoningEffort,
-      contextTier: resolved.route.contextTier,
-      availabilityStatus: availability.availabilityStatus,
-      selectedModel: availability.selectedModel,
-      modelStatus: availability.modelStatus,
-      selectedFamily: modelFamily(availability.selectedModel),
-      family: modelFamily(availability.selectedModel),
-    },
-  };
+      route: resolved.route,
+      availability,
+    }),
+  });
 }
 
-export function summarizeModelDiversity(receipts, { fanoutRequested, fanoutApplied } = {}) {
+export function summarizeModelDiversity(
+  receipts,
+  { fanoutRequested, fanoutApplied, droppedSeats = [] } = {},
+) {
   const requested = normalizePositiveInteger(fanoutRequested ?? receipts.length, 'fanoutRequested', { allowNull: false });
   const applied = normalizePositiveInteger(fanoutApplied ?? receipts.length, 'fanoutApplied', { allowNull: false });
   if (applied > requested) {
@@ -444,7 +480,10 @@ export function summarizeModelDiversity(receipts, { fanoutRequested, fanoutAppli
   } else if (selectedFamilies.length <= 1) {
     status = 'same-family';
   }
-  return {
+  if (status === 'same-family') {
+    reasons.push('same-family');
+  }
+  return immutable({
     status,
     degraded: reasons.length > 0,
     reasons,
@@ -453,7 +492,8 @@ export function summarizeModelDiversity(receipts, { fanoutRequested, fanoutAppli
     unavailableSeats: receipts.filter((entry) => entry.modelStatus === 'Unavailable').length,
     fanoutRequested: requested,
     fanoutApplied: applied,
-  };
+    droppedSeats,
+  });
 }
 
 export function resolveModelRolePanel({
@@ -489,9 +529,9 @@ export function resolveModelRolePanel({
 
   const fanoutRequested = specs.length;
   const fanoutApplied = cap === null ? fanoutRequested : Math.min(fanoutRequested, cap);
-  const receipts = [];
-  const routes = [];
-  for (let index = 0; index < fanoutApplied; index += 1) {
+  const allReceipts = [];
+  const allRoutes = [];
+  for (let index = 0; index < fanoutRequested; index += 1) {
     const resolved = resolveAlias(specs[index], {
       role: normalizedRole,
       source: selected.source,
@@ -500,28 +540,124 @@ export function resolveModelRolePanel({
       position: index,
     });
     const availability = resolveAvailability(resolved.route, runtime);
-    routes.push(resolved.route);
-    receipts.push({
+    allRoutes.push(dispatchRoute(resolved.route, availability));
+    allReceipts.push(routeReceipt({
       role: normalizedRole,
       resolutionSource: resolved.resolutionSource,
       alias: resolved.alias,
-      requestedModel: resolved.route.model,
-      requestedFamily: modelFamily(resolved.route.model),
-      fallbackModels: [...resolved.route.fallbackModels],
-      reasoningEffort: resolved.route.reasoningEffort,
-      contextTier: resolved.route.contextTier,
-      availabilityStatus: availability.availabilityStatus,
-      selectedModel: availability.selectedModel,
-      modelStatus: availability.modelStatus,
-      selectedFamily: modelFamily(availability.selectedModel),
-      family: modelFamily(availability.selectedModel),
+      route: resolved.route,
+      availability,
       panelIndex: index + 1,
-    });
+    }));
   }
-  return {
+  const routes = allRoutes.slice(0, fanoutApplied);
+  const receipts = allReceipts.slice(0, fanoutApplied);
+  const droppedSeats = allReceipts.slice(fanoutApplied).map((receipt) => ({
+    panelIndex: receipt.panelIndex,
+    requestedModel: receipt.requestedModel,
+    fallbackModels: receipt.fallbackModels,
+    resolutionSource: receipt.resolutionSource,
+    alias: receipt.alias,
+  }));
+  return immutable({
     role: normalizedRole,
     routes,
     receipts,
-    panel: summarizeModelDiversity(receipts, { fanoutRequested, fanoutApplied }),
-  };
+    panel: summarizeModelDiversity(receipts, {
+      fanoutRequested,
+      fanoutApplied,
+      droppedSeats,
+    }),
+  });
+}
+
+function normalizeTools(value) {
+  if (!Array.isArray(value)) {
+    throw new ModelRouteResolutionError('invalid_input', 'tools must be an array');
+  }
+  return value.map((entry, index) => nonEmpty(entry, `tools[${index}]`));
+}
+
+export async function dispatchResolvedAgent({
+  prompt,
+  persona = null,
+  tools,
+  route,
+  receipt,
+  transport,
+} = {}) {
+  const normalizedPrompt = nonEmpty(prompt, 'prompt');
+  const normalizedPersona = optionalString(persona, 'persona');
+  const normalizedTools = normalizeTools(tools);
+  if (typeof transport !== 'function') {
+    throw new ModelRouteResolutionError('invalid_input', 'transport must be a function');
+  }
+  if (!receipt || typeof receipt !== 'object') {
+    throw new ModelRouteResolutionError('invalid_input', 'routing receipt is required');
+  }
+  if (route === null || receipt.modelStatus === 'Unavailable') {
+    return immutable({
+      status: 'No model available',
+      response: null,
+      modelStatus: 'Unavailable',
+      routingReceipt: receipt,
+      launch: null,
+    });
+  }
+  const launch = immutable({
+    prompt: normalizedPrompt,
+    persona: normalizedPersona,
+    tools: normalizedTools,
+    model: route.model,
+    fallbackModels: route.fallbackModels,
+    reasoningEffort: route.reasoningEffort,
+    contextTier: route.contextTier,
+  });
+  const response = await transport(launch);
+  if (typeof response !== 'string' || response.length === 0) {
+    return immutable({
+      status: 'Empty response',
+      response: response ?? null,
+      modelStatus: receipt.modelStatus,
+      routingReceipt: receipt,
+      launch,
+    });
+  }
+  return immutable({
+    status: 'Complete',
+    response,
+    modelStatus: receipt.modelStatus,
+    routingReceipt: receipt,
+    launch,
+  });
+}
+
+export async function dispatchModelRoleAgent({
+  role,
+  inlineDefault,
+  repositoryModelRoles = {},
+  userModelRoles = {},
+  parentModelRoute = null,
+  runtimeAvailableModels = null,
+  prompt,
+  persona = null,
+  tools,
+  transport,
+} = {}) {
+  const resolved = resolveModelRoleRoute({
+    role,
+    inlineDefault,
+    repositoryModelRoles,
+    userModelRoles,
+    parentModelRoute,
+    runtimeAvailableModels,
+  });
+  return dispatchResolvedAgent({
+    prompt,
+    persona,
+    tools,
+    route: resolved.route,
+    receipt: resolved.receipt,
+    transport,
+  });
 }

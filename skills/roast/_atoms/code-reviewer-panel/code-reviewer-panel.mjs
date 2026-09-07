@@ -5,9 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  dispatchResolvedAgent,
   ModelRouteResolutionError,
   resolveInlineModelRoute,
   resolveModelRolePanel,
+  summarizeModelDiversity,
 } from '../../../_base/_atoms/agent-spawn/agent-spawn.mjs';
 
 export class CodeReviewerPanelError extends Error {
@@ -96,6 +98,7 @@ function readBundledInstruction(root, agentName) {
     fallbackModels: Array.isArray(parsed['fallback-models']) ? parsed['fallback-models'] : [],
     reasoningEffort: typeof parsed['reasoning-effort'] === 'string' ? parsed['reasoning-effort'] : null,
     contextTier: typeof parsed['context-tier'] === 'string' ? parsed['context-tier'] : null,
+    tools: Array.isArray(parsed.tools) ? parsed.tools : [],
   };
 }
 
@@ -105,6 +108,17 @@ function pad(index) {
 
 function stableReviewerId(base, index) {
   return index === 1 ? base : `${base}-${pad(index)}`;
+}
+
+function immutable(value) {
+  const freeze = (entry) => {
+    if (entry && typeof entry === 'object' && !Object.isFrozen(entry)) {
+      Object.freeze(entry);
+      for (const child of Object.values(entry)) freeze(child);
+    }
+    return entry;
+  };
+  return freeze(value);
 }
 
 function normalizePanelLengths(value) {
@@ -126,8 +140,7 @@ export function resolveBundledRoastRoster({
   fanoutCap = null,
 } = {}) {
   const lengths = normalizePanelLengths(panelLengthByRole);
-  const roster = [];
-  const panels = {};
+  const resolvedByReviewer = [];
   for (const reviewer of BUNDLED_REVIEWERS) {
     const instruction = readBundledInstruction(root, reviewer.agentName);
     const inlineRoute = {
@@ -142,40 +155,125 @@ export function resolveBundledRoastRoster({
         runtimeAvailableModels,
         resolutionSource: 'inline-default',
       });
-      roster.push({
-        reviewerId: reviewer.reviewerId,
-        agentName: reviewer.agentName,
-        role: null,
-        instructionPath: instruction.instructionPath,
-        route: resolved.route,
-        routeReceipt: resolved.receipt,
-        panelReceipt: null,
-      });
+      resolvedByReviewer.push({ reviewer, instruction, resolved });
       continue;
     }
-    const panel = resolveModelRolePanel({
+    const resolved = resolveModelRolePanel({
       role: reviewer.role,
       inlineDefaults: [inlineRoute],
       repositoryModelRoles,
       userModelRoles,
       runtimeAvailableModels,
       panelLength: lengths[reviewer.role] ?? null,
-      fanoutCap,
     });
-    panels[reviewer.role] = panel.panel;
-    for (const [index, route] of panel.routes.entries()) {
-      roster.push({
+    resolvedByReviewer.push({ reviewer, instruction, resolved });
+  }
+
+  const requestedTotal = resolvedByReviewer.reduce((count, entry) =>
+    count + (entry.reviewer.role === null ? 1 : entry.resolved.routes.length), 0);
+  if (fanoutCap !== null && (!Number.isInteger(fanoutCap) || fanoutCap < BUNDLED_REVIEWERS.length)) {
+    throw new CodeReviewerPanelError(
+      'panel_cap_too_small',
+      `fanoutCap must fit all ${BUNDLED_REVIEWERS.length} mandatory bundled reviewers`,
+    );
+  }
+  let remaining = fanoutCap === null
+    ? Number.POSITIVE_INFINITY
+    : fanoutCap - BUNDLED_REVIEWERS.length;
+  const appliedByRole = new Map();
+  for (const entry of resolvedByReviewer) {
+    if (entry.reviewer.role === null) continue;
+    const requested = entry.resolved.routes.length;
+    const applied = 1 + Math.min(Math.max(requested - 1, 0), remaining);
+    appliedByRole.set(entry.reviewer.role, applied);
+    remaining -= applied - 1;
+  }
+
+  const roster = [];
+  const blockedSeats = [];
+  const omittedSeats = [];
+  const panels = {};
+  for (const entry of resolvedByReviewer) {
+    const { reviewer, instruction, resolved } = entry;
+    const routes = reviewer.role === null ? [resolved.route] : resolved.routes;
+    const receipts = reviewer.role === null ? [resolved.receipt] : resolved.receipts;
+    const applied = reviewer.role === null ? 1 : appliedByRole.get(reviewer.role);
+    if (reviewer.role !== null) {
+      const keptReceipts = receipts.slice(0, applied);
+      const dropped = receipts.slice(applied).map((receipt) => ({
+        reviewerId: stableReviewerId(reviewer.reviewerId, receipt.panelIndex),
+        panelIndex: receipt.panelIndex,
+        requestedModel: receipt.requestedModel,
+        fallbackModels: receipt.fallbackModels,
+        resolutionSource: receipt.resolutionSource,
+        alias: receipt.alias,
+      }));
+      omittedSeats.push(...dropped);
+      panels[reviewer.role] = summarizeModelDiversity(keptReceipts, {
+        fanoutRequested: receipts.length,
+        fanoutApplied: applied,
+        droppedSeats: dropped,
+      });
+    }
+    for (let index = 0; index < applied; index += 1) {
+      const seat = {
         reviewerId: stableReviewerId(reviewer.reviewerId, index + 1),
         agentName: reviewer.agentName,
         role: reviewer.role,
         instructionPath: instruction.instructionPath,
-        route,
-        routeReceipt: panel.receipts[index],
-        panelReceipt: panel.panel,
-      });
+        tools: instruction.tools,
+        route: routes[index],
+        routeReceipt: receipts[index],
+        panelReceipt: reviewer.role === null ? null : panels[reviewer.role],
+      };
+      if (seat.route === null || seat.routeReceipt.modelStatus === 'Unavailable') {
+        blockedSeats.push(seat);
+      } else {
+        roster.push(seat);
+      }
     }
   }
-  return { roster, panels };
+  return immutable({
+    roster,
+    blockedSeats,
+    omittedSeats,
+    panels,
+    fanoutRequested: requestedTotal,
+    fanoutApplied: roster.length + blockedSeats.length,
+  });
+}
+
+export async function dispatchBundledRoastRoster({
+  resolvedRoster,
+  promptForReviewer,
+  personaForReviewer = () => null,
+  transport,
+} = {}) {
+  if (!resolvedRoster || !Array.isArray(resolvedRoster.roster)) {
+    throw new CodeReviewerPanelError('invalid_input', 'resolvedRoster is required');
+  }
+  if (typeof promptForReviewer !== 'function' || typeof personaForReviewer !== 'function') {
+    throw new CodeReviewerPanelError(
+      'invalid_input',
+      'promptForReviewer and personaForReviewer must be functions',
+    );
+  }
+  const launched = [];
+  for (const seat of resolvedRoster.roster) {
+    launched.push(await dispatchResolvedAgent({
+      prompt: promptForReviewer(seat),
+      persona: personaForReviewer(seat),
+      tools: seat.tools,
+      route: seat.route,
+      receipt: seat.routeReceipt,
+      transport: (launch) => transport(seat, launch),
+    }));
+  }
+  return immutable({
+    launched,
+    blocked: resolvedRoster.blockedSeats,
+    omitted: resolvedRoster.omittedSeats,
+  });
 }
 
 export { ModelRouteResolutionError };

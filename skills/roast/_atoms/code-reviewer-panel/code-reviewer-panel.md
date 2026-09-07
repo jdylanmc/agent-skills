@@ -48,10 +48,12 @@ shared resolver instead of inventing Roast-local model logic.
 The instructions file remains the inline default for each bundled roaster's
 requested model, fallback list, reasoning effort, and context tier. A single
 resolved route may be repeated to satisfy a caller-supplied panel length, and a
-role-mapping list controls its own fanout. Either way, cap the applied fanout
-at the caller's confirmed runtime limit and report every dropped seat and every
-same-family collapse as a diversity receipt rather than flattening them into
-"requested."
+role-mapping list controls its own fanout. Apply the caller's confirmed cap
+once to the complete bundled council, including the mandatory security seat. A
+cap smaller than the three mandatory reviewers is an explicit configuration
+failure rather than permission to silently omit one. Report every dropped seat
+and every same-family collapse as a diversity receipt rather than flattening
+them into "requested."
 
 Bundled definitions live under:
 
@@ -116,6 +118,11 @@ Use [Bundled roster resolver](./code-reviewer-panel.mjs) to read the bundled
 instructions frontmatter, preserve those inline defaults, apply optional user
 and repository role mappings in the shared precedence order, and return one
 stable roster receipt before The Roastmaster dispatches anything.
+The resolver puts unavailable reviewers in `blockedSeats`, never in the
+dispatchable `roster`, and identifies cap-omitted reviewers in `omittedSeats`.
+Use `dispatchBundledRoastRoster` with the caller's bounded task transport so
+the selected available model becomes the actual launch argument and blocked
+reviewers cannot launch.
 
 ## Repository Roaster Discovery
 

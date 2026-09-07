@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  dispatchModelRoleAgent,
+  dispatchResolvedAgent,
   MODEL_ROLE_KEYS,
   ModelRouteResolutionError,
   modelFamily,
@@ -42,6 +44,8 @@ test('direct routing records a fallback only from the declared list', () => {
   assert.equal(resolved.receipt.modelStatus, 'Fallback: gpt-5.6-sol');
   assert.equal(resolved.receipt.selectedModel, 'gpt-5.6-sol');
   assert.equal(resolved.receipt.family, 'gpt');
+  assert.equal(resolved.route.model, 'gpt-5.6-sol');
+  assert.deepEqual(resolved.route.fallbackModels, []);
 });
 
 test('user role mappings override repository mappings, which override the inline default', () => {
@@ -148,10 +152,17 @@ test('panel fanout repeats a single mapped route, caps deterministically, and re
   assert.equal(resolved.panel.fanoutRequested, 3);
   assert.equal(resolved.panel.fanoutApplied, 2);
   assert.equal(resolved.panel.degraded, true);
-  assert.deepEqual(resolved.panel.reasons, ['fanout-capped']);
+  assert.deepEqual(resolved.panel.reasons, ['fanout-capped', 'same-family']);
   assert.equal(resolved.panel.status, 'same-family');
   assert.equal(resolved.receipts[0].requestedModel, 'gemini-3.8-flash');
   assert.equal(resolved.receipts[1].panelIndex, 2);
+  assert.deepEqual(resolved.panel.droppedSeats, [{
+    panelIndex: 3,
+    requestedModel: 'gemini-3.8-flash',
+    fallbackModels: [],
+    resolutionSource: 'repository-model-roles',
+    alias: null,
+  }]);
 });
 
 test('panel fanout also honors an explicit route list and surfaces unavailable seats', () => {
@@ -177,6 +188,7 @@ test('panel fanout also honors an explicit route list and surfaces unavailable s
   assert.equal(resolved.panel.degraded, true);
   assert.deepEqual(resolved.panel.reasons, ['unavailable-seat']);
   assert.equal(resolved.receipts[2].modelStatus, 'Unavailable');
+  assert.equal(resolved.routes[2], null);
 });
 
 test('unobserved availability is explicit rather than pretending a verified launch', () => {
@@ -208,7 +220,138 @@ test('summarizeModelDiversity distinguishes distinct and same-family panels hone
   ]);
   assert.equal(same.status, 'same-family');
   assert.equal(same.degraded, true);
-  assert.deepEqual(same.reasons, ['fallback-used']);
+  assert.deepEqual(same.reasons, ['fallback-used', 'same-family']);
+});
+
+test('same-family diversity is informative degradation even without fallback', () => {
+  const same = summarizeModelDiversity([
+    { family: 'gpt', availabilityStatus: 'observed', modelStatus: 'Requested' },
+    { family: 'gpt', availabilityStatus: 'observed', modelStatus: 'Requested' },
+  ]);
+  assert.equal(same.status, 'same-family');
+  assert.equal(same.degraded, true);
+  assert.deepEqual(same.reasons, ['same-family']);
+});
+
+test('all configured role mappings are validated before the selected role resolves', () => {
+  assert.throws(
+    () => resolveModelRoleRoute({
+      role: 'qa-reviewer',
+      inlineDefault: { model: 'gpt-5.6-sol' },
+      repositoryModelRoles: {
+        implementer: { bogus: true },
+        'qa-reviewer': 'gpt-5.6-sol',
+      },
+    }),
+    (error) => error instanceof ModelRouteResolutionError && error.code === 'invalid_input',
+  );
+});
+
+test('resolved outputs are immutable snapshots', () => {
+  const resolved = resolveModelRolePanel({
+    role: 'qa-reviewer',
+    inlineDefaults: [{ model: 'gpt-5.6-sol' }],
+    panelLength: 2,
+  });
+  assert.equal(Object.isFrozen(resolved), true);
+  assert.equal(Object.isFrozen(resolved.routes), true);
+  assert.equal(Object.isFrozen(resolved.receipts[0]), true);
+  assert.equal(Object.isFrozen(resolved.panel), true);
+  assert.throws(() => {
+    resolved.receipts[0].requestedModel = 'changed';
+  }, TypeError);
+});
+
+test('dispatch boundary launches the selected fallback with exact bounded arguments', async () => {
+  const resolved = resolveModelRoleRoute({
+    role: 'implementer',
+    inlineDefault: {
+      model: 'missing-model',
+      fallbackModels: ['gpt-5.6-sol'],
+      reasoningEffort: 'high',
+      contextTier: 'long_context',
+    },
+    runtimeAvailableModels: ['gpt-5.6-sol'],
+  });
+  const calls = [];
+  const result = await dispatchResolvedAgent({
+    prompt: 'Implement the bounded change.',
+    persona: 'Be concise.',
+    tools: ['read', 'execute'],
+    route: resolved.route,
+    receipt: resolved.receipt,
+    transport: async (launch) => {
+      calls.push(launch);
+      return 'done';
+    },
+  });
+  assert.equal(result.status, 'Complete');
+  assert.deepEqual(calls, [{
+    prompt: 'Implement the bounded change.',
+    persona: 'Be concise.',
+    tools: ['read', 'execute'],
+    model: 'gpt-5.6-sol',
+    fallbackModels: [],
+    reasoningEffort: 'high',
+    contextTier: 'long_context',
+  }]);
+});
+
+test('dispatch boundary never launches an unavailable seat', async () => {
+  const resolved = resolveModelRoleRoute({
+    role: 'qa-reviewer',
+    inlineDefault: {
+      model: 'missing-model',
+      fallbackModels: ['also-missing'],
+    },
+    runtimeAvailableModels: [],
+  });
+  let calls = 0;
+  const result = await dispatchResolvedAgent({
+    prompt: 'Review.',
+    tools: ['read'],
+    route: resolved.route,
+    receipt: resolved.receipt,
+    transport: async () => {
+      calls += 1;
+      return 'should not run';
+    },
+  });
+  assert.equal(result.status, 'No model available');
+  assert.equal(calls, 0);
+});
+
+test('dispatch boundary preserves an unknown runtime default honestly', async () => {
+  const resolved = resolveDirectSpawnRoute();
+  const calls = [];
+  const result = await dispatchResolvedAgent({
+    prompt: 'Use the runtime default.',
+    tools: [],
+    route: resolved.route,
+    receipt: resolved.receipt,
+    transport: async (launch) => {
+      calls.push(launch);
+      return 'default response';
+    },
+  });
+  assert.equal(result.modelStatus, 'Runtime default');
+  assert.equal(result.routingReceipt.selectedModel, null);
+  assert.equal(calls[0].model, null);
+});
+
+test('the generic dispatch seam is callable for every declared role', async () => {
+  for (const role of MODEL_ROLE_KEYS) {
+    const result = await dispatchModelRoleAgent({
+      role,
+      inlineDefault: { model: 'gpt-5.6-sol' },
+      prompt: `Run ${role}.`,
+      tools: [],
+      runtimeAvailableModels: ['gpt-5.6-sol'],
+      transport: async () => role,
+    });
+    assert.equal(result.response, role);
+    assert.equal(result.routingReceipt.role, role);
+  }
 });
 
 test('modelFamily keeps the current runtime vendors grouped stably', () => {
