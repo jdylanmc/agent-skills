@@ -541,8 +541,8 @@ test('a physically empty Resolved section is unreadable in cold-start and matchi
 
 test('unsupported or missing schemas remain unreadable rather than inventing resolutions', () => {
   for (const [label, mutate] of [
-    ['unsupported schema', (bytes) => bytes.replace('- Schema: 1', '- Schema: 2')],
-    ['missing schema', (bytes) => bytes.replace('- Schema: 1\n', '')],
+    ['unsupported schema', (bytes) => bytes.replace('- Schema: 2', '- Schema: 999')],
+    ['missing schema', (bytes) => bytes.replace('- Schema: 2\n', '')],
   ]) {
     const root = freshRepo();
     seed(root, {

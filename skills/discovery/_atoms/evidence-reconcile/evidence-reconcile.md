@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["read","search"]
 includes: []
 composes: []
-used-by: ["discovery/_molecules/discovery-loop/discovery-loop.md"]
+used-by: ["discovery/_molecules/cycle-controller/cycle-controller.md","discovery/_molecules/discovery-loop/discovery-loop.md"]
 ---
 
 # Evidence Reconcile

@@ -10,6 +10,7 @@ import {
   FOUNDATION_FIELDS,
   FoundationPersistError,
   PERSISTABLE_ALIGNMENT,
+  alignedFindingsDigestOf,
   alignedPayloadDigestOf,
   parseFoundation,
   persistFoundation,
@@ -86,6 +87,18 @@ function intake(overrides = {}) {
   return { ...payload, expectedPriorRevision, alignedPayloadDigest: alignedPayloadDigestOf(payload) };
 }
 
+function derivationIntake(overrides = {}) {
+  const payload = intake(overrides);
+  delete payload.alignedPayloadDigest;
+  const alignedFindingsDigest = alignedFindingsDigestOf(payload);
+  return {
+    ...payload,
+    alignedFindingsDigest,
+    domainModelBasisDigest: alignedFindingsDigest,
+    frontierBasisDigest: alignedFindingsDigest,
+  };
+}
+
 function code(fn) {
   try {
     fn();
@@ -108,6 +121,45 @@ test('render and parse are exact inverses for the documents the renderer produce
   assert.equal(renderFoundation(parsed), bytes);
 });
 
+test('schema 1 foundations written before domain modeling remain readable', () => {
+  const root = freshRepo();
+  persistFoundation(intake({ repositoryRoot: root }), { io: realIo() });
+  const current = fs.readFileSync(destIn(root), 'utf8');
+  const legacy = [
+    'Source Claims',
+    'Relationship Claims',
+    'Boundary Claims',
+    'Risks',
+    'Domain Model',
+  ].reduce(
+    (bytes, title) => bytes.replace(new RegExp(`\\n## ${title}\\n\\n_None recorded\\._\\n`), ''),
+    current.replace('- Schema: 2', '- Schema: 1'),
+  );
+  const parsed = parseFoundation(legacy);
+  assert.deepEqual(parsed.domainModel, []);
+  assert.deepEqual(parsed.sourceClaims, []);
+  assert.deepEqual(parsed.relationshipClaims, []);
+  assert.deepEqual(parsed.boundaryClaims, []);
+  assert.deepEqual(parsed.risks, []);
+  assert.deepEqual(parsed.confirmedFacts, ['Discovery rereads its own handoff today.']);
+});
+
+test('schema 2 refuses deletion of any aligned-claims or domain-model section', () => {
+  const root = freshRepo();
+  persistFoundation(intake({ repositoryRoot: root }), { io: realIo() });
+  const current = fs.readFileSync(destIn(root), 'utf8');
+  for (const title of [
+    'Source Claims',
+    'Relationship Claims',
+    'Boundary Claims',
+    'Risks',
+    'Domain Model',
+  ]) {
+    const missing = current.replace(new RegExp(`\\n## ${title}\\n\\n_None recorded\\._\\n`), '');
+    assert.equal(code(() => parseFoundation(missing)), 'invalid-input', title);
+  }
+});
+
 test('CRLF input is normalized on read, so render(parse(crlf)) is not the crlf bytes', () => {
   const root = freshRepo();
   persistFoundation(intake({ repositoryRoot: root }), { io: realIo() });
@@ -123,7 +175,7 @@ test('revisionOf is the SHA-256 of the exact bytes', () => {
   assert.notEqual(revisionOf('a'), revisionOf('b'));
 });
 
-test('a persisted foundation records alignment: confirmed, a schema line, and the eleven distinct fields', () => {
+test('a persisted foundation records alignment, schema, and every distinct field', () => {
   const root = freshRepo();
   const result = persistFoundation(intake({ repositoryRoot: root }), { io: realIo() });
   assert.equal(result.status, 'persisted');
@@ -132,7 +184,7 @@ test('a persisted foundation records alignment: confirmed, a schema line, and th
   assert.equal(result.alignment, CONFIRMED);
 
   const bytes = fs.readFileSync(destIn(root), 'utf8');
-  assert.match(bytes, /^- Schema: 1$/m);
+  assert.match(bytes, /^- Schema: 2$/m);
   const parsed = parseFoundation(bytes);
   assert.equal(parsed.alignment, CONFIRMED);
   for (const field of FOUNDATION_FIELDS) {
@@ -168,6 +220,62 @@ test('the aligned payload digest is a binding, not a token', () => {
   const a = alignedPayloadDigestOf({ subject: { id: 'x', slug: 'y' }, confirmedFacts: ['f'], evidenceReferences: [], decisions: [], constraints: [], assumptions: [], contradictions: [], openQuestions: [], scope: [], exclusions: [], frontier: [], nextAction: 'go', resolved: [] });
   const b = alignedPayloadDigestOf({ resolved: [], nextAction: 'go', frontier: [], exclusions: [], scope: [], openQuestions: [], contradictions: [], assumptions: [], constraints: [], decisions: [], evidenceReferences: [], confirmedFacts: ['f'], subject: { slug: 'y', id: 'x' } });
   assert.equal(a, b);
+});
+
+test('every documented-findings field changes the aligned findings digest', () => {
+  const base = intake();
+  const first = alignedFindingsDigestOf(base);
+  for (const field of ['sourceClaims', 'relationshipClaims', 'boundaryClaims', 'risks']) {
+    const changed = alignedFindingsDigestOf({ ...base, [field]: [`changed-${field}`] });
+    assert.notEqual(changed, first, `${field} must participate in the alignment binding`);
+  }
+});
+
+test('post-alignment domain and frontier derivations bind to the aligned findings', () => {
+  const root = freshRepo();
+  const payload = {
+    ...intake({ repositoryRoot: root }),
+    domainModel: [
+      'actor: operator',
+      'system: Discovery',
+      'relationship: operator aligns documented findings',
+      'boundary: Discovery retains persistence authority',
+    ],
+    frontier: ['ready: specification'],
+    nextAction: 'Hand the reread compact handoff to specification.',
+  };
+  delete payload.alignedPayloadDigest;
+  const alignedFindingsDigest = alignedFindingsDigestOf(payload);
+  const derived = {
+    ...payload,
+    alignedFindingsDigest,
+    domainModelBasisDigest: alignedFindingsDigest,
+    frontierBasisDigest: alignedFindingsDigest,
+  };
+
+  persistFoundation(derived, { io: realIo() });
+  const parsed = parseFoundation(fs.readFileSync(destIn(root), 'utf8'));
+  assert.deepEqual(parsed.domainModel, payload.domainModel);
+  assert.deepEqual(parsed.frontier, payload.frontier);
+  assert.equal(parsed.nextAction, payload.nextAction);
+
+  assert.equal(
+    code(() => persistFoundation({
+      ...derived,
+      repositoryRoot: freshRepo(),
+      domainModelBasisDigest: '0'.repeat(64),
+    }, { io: realIo() })),
+    'derivation-unbound',
+  );
+
+  const legacyBypass = {
+    ...intake({ repositoryRoot: freshRepo() }),
+    domainModel: ['actor: operator'],
+  };
+  assert.equal(
+    code(() => persistFoundation(legacyBypass, { io: realIo() })),
+    'derivation-unbound',
+  );
 });
 
 test('persisting a different subject over an existing foundation is refused', () => {
@@ -228,9 +336,9 @@ test('an unknown schema on parse is refused with a named code', () => {
   const root = freshRepo();
   persistFoundation(intake({ repositoryRoot: root }), { io: realIo() });
   const bytes = fs.readFileSync(destIn(root), 'utf8');
-  const bumped = bytes.replace('- Schema: 1', '- Schema: 2');
+  const bumped = bytes.replace('- Schema: 2', '- Schema: 999');
   assert.equal(code(() => parseFoundation(bumped)), 'unsupported-schema');
-  const removed = bytes.replace('- Schema: 1\n', '');
+  const removed = bytes.replace('- Schema: 2\n', '');
   assert.equal(code(() => parseFoundation(removed)), 'unsupported-schema');
 });
 
@@ -267,8 +375,9 @@ test('an entry moved to Resolved is retained, not dropped', () => {
 test('every durable set participates in retention', () => {
   for (const field of DURABLE_SETS) {
     const root = freshRepo();
-    persistFoundation(intake({ repositoryRoot: root, [field]: [`entry-for-${field}`] }), { io: realIo() });
-    const dropped = code(() => persistFoundation(intake({
+    const makeIntake = field === 'domainModel' ? derivationIntake : intake;
+    persistFoundation(makeIntake({ repositoryRoot: root, [field]: [`entry-for-${field}`] }), { io: realIo() });
+    const dropped = code(() => persistFoundation(makeIntake({
       repositoryRoot: root,
       cycle: 'c-0002',
       timestamp: '2026-08-29T02:00:00Z',
@@ -677,7 +786,7 @@ test('MF-3: a metadata line moved into a section no longer parses as the header'
   // Move the metadata lines out of the header and into Confirmed Facts, as list
   // items. The positional header parse must refuse rather than recover subject.
   const laundered = bytes
-    .replace('- Schema: 1\n- Subject: issue-119\n- Slug: discovery-rehydration\n- Alignment: confirmed\n', '- Schema: 1\n')
+    .replace('- Schema: 2\n- Subject: issue-119\n- Slug: discovery-rehydration\n- Alignment: confirmed\n', '- Schema: 2\n')
     .replace('## Confirmed Facts\n\n- Discovery rereads its own handoff today.',
       '## Confirmed Facts\n\n- Subject: issue-119\n- Slug: discovery-rehydration\n- Alignment: confirmed\n- Discovery rereads its own handoff today.');
   assert.equal(code(() => parseFoundation(laundered)), 'invalid-input');

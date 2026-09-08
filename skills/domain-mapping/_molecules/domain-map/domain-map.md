@@ -1,9 +1,9 @@
 ---
 name: domain-map
-description: Combine a domain inventory and relationship map into one evidence-grounded domain model handoff.
+description: Produce one read-only evidence-grounded domain model for the explicit-human domain-mapping wrapper.
 level: molecule
-includes: ["domain-mapping/_atoms/domain-inventory/domain-inventory.md","domain-mapping/_atoms/relationship-map/relationship-map.md"]
-composes: ["domain-mapping/_atoms/domain-inventory/domain-inventory.md","domain-mapping/_atoms/relationship-map/relationship-map.md"]
+includes: ["domain-mapping/_atoms/domain-inventory/domain-inventory.md","_base/_atoms/relationship-map/relationship-map.md"]
+composes: ["domain-mapping/_atoms/domain-inventory/domain-inventory.md","_base/_atoms/relationship-map/relationship-map.md"]
 used-by: ["domain-mapping/SKILL.md"]
 allowed-tools: ["read","search"]
 ---
@@ -15,7 +15,7 @@ Produce one bounded domain map from evidence.
 ## Required References
 
 1. [Domain inventory](../../_atoms/domain-inventory/domain-inventory.md)
-2. [Relationship map](../../_atoms/relationship-map/relationship-map.md)
+2. [Relationship map](../../../_base/_atoms/relationship-map/relationship-map.md)
 
 ## Workflow
 
@@ -23,7 +23,7 @@ Produce one bounded domain map from evidence.
    sentence, ask for that sentence before mapping.
 2. Build the [Domain inventory](../../_atoms/domain-inventory/domain-inventory.md)
    from supplied sources and repository evidence.
-3. Build the [Relationship map](../../_atoms/relationship-map/relationship-map.md)
+3. Build the [Relationship map](../../../_base/_atoms/relationship-map/relationship-map.md)
    from the inventory.
 4. Check the map for:
    - entities with no definition;
@@ -55,6 +55,8 @@ Choose exactly one primary recommendation:
 
 - No tracker mutation.
 - No discovery loop state.
+- No routing authority. This molecule is local to the model-disabled,
+  user-invocable wrapper.
 - No requirements, acceptance criteria, or implementation tasks.
 - No invented ownership or relationship confidence.
 - No silent collapse of contested terms into one preferred name.

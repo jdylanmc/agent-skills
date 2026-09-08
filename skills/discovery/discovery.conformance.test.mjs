@@ -47,10 +47,12 @@ test('the routing description merges discovery-loop while excluding neighbors', 
 
   assert.match(description, /Use when/);
   assert.match(description, /discovery loop/);
-  assert.match(description, /maintain discovery state/);
+  assert.match(description, /aligned domain model/);
   assert.match(description, /Do not use/);
   assert.match(description, /interrogate/);
-  assert.match(description, /map a domain/);
+  assert.match(description, /terminology.*relationships are unclear/);
+  assert.match(description, /GitHub issues/);
+  assert.match(description, /critical paths/);
   assert.match(description, /write a spec/);
 });
 
@@ -69,7 +71,10 @@ test('the skill composes chronicler, the rehydrate atom, the cycle controller, a
     '_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md',
     'discovery/_molecules/cycle-controller/cycle-controller.md',
     'discovery/_molecules/discovery-loop/discovery-loop.md',
+    'discovery/_atoms/documented-findings/documented-findings.md',
     'discovery/_atoms/alignment-check/alignment-check.md',
+    'discovery/_molecules/aligned-domain-model/aligned-domain-model.md',
+    'discovery/_atoms/aligned-domain-inventory/aligned-domain-inventory.md',
     'discovery/_atoms/evidence-reconcile/evidence-reconcile.md',
     'discovery/_atoms/frontier-ledger/frontier-ledger.md',
     'discovery/_atoms/foundation-rehydrate/foundation-rehydrate.md',
@@ -107,7 +112,7 @@ test('tracker mutation is isolated to exactly one approval-gated unit', () => {
 
   const loop = flat('discovery/_molecules/discovery-loop/discovery-loop.md');
   assert.match(loop, /Read-only body/);
-  assert.match(loop, /cannot perform one/);
+  assert.match(loop, /No alignment, domain modeling, frontier mapping/);
 });
 
 test('alignment is mandatory before every discovery handoff', () => {
@@ -116,27 +121,118 @@ test('alignment is mandatory before every discovery handoff', () => {
   const alignment = flat('discovery/_atoms/alignment-check/alignment-check.md');
 
   assert.match(entry, /No handoff is written before an offered interactive alignment check/);
-  assert.match(entry, /Only a verified shared understanding can be persisted/);
+  assert.match(entry, /Only aligned context can be modeled or persisted/);
   assert.match(entry, /Every cycle handoff is read back/);
   assert.match(controller, /The goal is shared understanding with the human/);
   assert.match(controller, /A handoff cannot be written until the human verifies or corrects/);
-  assert.match(controller, /Compact the reread handoff into the continuation focus/);
+  assert.match(controller, /Use the reread compact handoff as the continuation focus/);
   assert.match(alignment, /Summarize what was found and uncovered/);
   assert.match(alignment, /Offer an interactive alignment check/);
   assert.match(alignment, /Do not treat silence, a status report,\s+or an unrelated response as alignment/);
-  assert.match(alignment, /mandatory before every discovery handoff/);
+  assert.match(alignment, /mandatory before domain modeling, frontier mapping, foundation\s+persistence, and every discovery handoff/);
 });
 
-test('discovery routes bounded prototype questions to proof-of-concept', () => {
+test('the canonical cycle order is mechanically pinned by composition and workflow order', () => {
+  const controllerPath = 'discovery/_molecules/cycle-controller/cycle-controller.md';
+  const controller = flat(controllerPath);
+  const parsed = frontmatter(controllerPath);
+
+  assert.ok(parsed.composes.includes('discovery/_atoms/alignment-check/alignment-check.md'));
+  assert.ok(parsed.composes.includes('discovery/_molecules/aligned-domain-model/aligned-domain-model.md'));
+  assert.ok(parsed.composes.includes('discovery/_atoms/frontier-ledger/frontier-ledger.md'));
+  assert.ok(parsed.composes.includes('discovery/_atoms/foundation-persist/foundation-persist.md'));
+  assert.ok(parsed.composes.includes('_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md'));
+
+  const ordered = [
+    'Begin knowledge acquisition with',
+    'identifies a bounded external-knowledge gap',
+    'When acquisition includes a not-yet-attempted human-supplied URI or path',
+    'After all acquisition routes for this pass return',
+    'Offer and run [Alignment check]',
+    'Only after alignment is `verified` or `corrected`',
+    'Feed the aligned domain model into',
+    'Record the next action selected from the resulting frontier',
+    'First, persist the durable foundation',
+    'Reread the full persisted foundation',
+    'Persist the compact handoff and read back',
+    'continue or exit according to the next action',
+  ];
+  let cursor = -1;
+  for (const marker of ordered) {
+    const next = controller.indexOf(marker);
+    assert.ok(next > cursor, `${marker} must appear after the prior cycle stage`);
+    cursor = next;
+  }
+});
+
+test('domain modeling is structurally limited and preserves Discovery authority', () => {
+  const domainMap = frontmatter('discovery/_molecules/aligned-domain-model/aligned-domain-model.md');
+  assert.deepEqual(domainMap.usedBy, [
+    'discovery/_molecules/cycle-controller/cycle-controller.md',
+  ]);
+  assert.deepEqual(domainMap.allowedTools, []);
+  assert.deepEqual(
+    frontmatter('discovery/_atoms/aligned-domain-inventory/aligned-domain-inventory.md').allowedTools,
+    [],
+  );
+
+  const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+  assert.match(controller, /The map receives no alignment, persistence, tracker, specification, implementation,\s+handoff, compaction, or next-cycle authority/);
+  assert.match(controller, /Do not dispatch,\s+hand off, continue, or exit yet/);
+  const inventory = flat('discovery/_atoms/aligned-domain-inventory/aligned-domain-inventory.md');
+  const model = flat('discovery/_molecules/aligned-domain-model/aligned-domain-model.md');
+  assert.match(inventory, /Preserve the aligned relationship claims and boundary claims/);
+  assert.match(inventory, /source, target, verb, direction, evidence citation,\s+confidence, and notes/);
+  assert.match(model, /inventory's preserved relationship and boundary claims/);
+  assert.match(model, /Entity\s+co-occurrence alone never produces a relationship/);
+});
+
+test('every post-persistence continuation action has an authorized mechanism', () => {
+  const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+  const entry = flat(ENTRY);
+
+  assert.match(controller, /Discovery dispatches only the research route/);
+  assert.match(controller, /does not dispatch\s+`interrogate` or `proof-of-concept`/);
+  assert.match(controller, /named terminal handoffs after\s+persistence and both rereads/);
+  assert.match(entry, /`task` exists for one purpose: dispatching to the runtime \*\*research route\*\*/);
+});
+
+test('backlog and dependency prompts cannot route to domain mapping', () => {
+  const discoveryDescription = frontmatter(ENTRY).description;
+  const domainDescription = frontmatter('domain-mapping/SKILL.md').description;
+  for (const term of [
+    'GitHub issues',
+    'tickets',
+    'work items',
+    'backlog',
+    'dependencies',
+    'critical paths',
+    'delivery sequencing',
+    'roadmaps',
+    'ready work',
+  ]) {
+    assert.match(discoveryDescription, new RegExp(term));
+    const domainTerm = term === 'dependencies'
+      ? 'dependency chains'
+      : term === 'ready work'
+        ? 'readiness decisions'
+        : term;
+    assert.match(domainDescription, new RegExp(domainTerm));
+  }
+  assert.equal(frontmatter('domain-mapping/SKILL.md').disableModelInvocation, true);
+  assert.equal(frontmatter('domain-mapping/SKILL.md').userInvocable, true);
+});
+
+test('discovery records bounded prototype questions for a post-persistence handoff', () => {
   const entry = flat(ENTRY);
   const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
   const frontier = flat('discovery/_atoms/frontier-ledger/frontier-ledger.md');
 
   assert.match(entry, /needs-proof-of-concept/);
   assert.match(entry, /Use `proof-of-concept` when a small bounded prototype/);
-  assert.match(controller, /frontier is `needs-proof-of-concept`/);
-  assert.match(controller, /route the scoped prototype\s+question to `proof-of-concept`/);
-  assert.match(controller, /Discovery owns alignment, handoff, compaction,\s+and next-cycle selection/);
+  assert.match(controller, /Record the next action selected from the resulting frontier:\s+`interrogate`, `proof-of-concept`/);
+  assert.match(controller, /exit with a handoff recommendation to `interrogate`,\s+`proof-of-concept`/);
+  assert.match(controller, /The map receives no alignment, persistence/);
   assert.match(frontier, /small bounded prototype is the cheapest way/);
 });
 
@@ -144,7 +240,8 @@ test('discovery explicitly refuses neighboring jobs', () => {
   const entry = flat(ENTRY);
 
   assert.match(entry, /Not interrogate\./);
-  assert.match(entry, /Not domain mapping\./);
+  assert.match(entry, /Domain modeling is a Discovery-owned post-alignment step\./);
+  assert.match(entry, /Not backlog or delivery graphing\./);
   assert.match(entry, /Not specification\./);
   assert.match(entry, /Not ticketing or implementation\./);
 });
@@ -169,7 +266,9 @@ test('the package carries a plain human-readable intent', () => {
   assert.ok(!intent.startsWith('---'));
   const normalized = intent.replace(/\s+/g, ' ');
   assert.match(normalized, /evidence-preserving loop/);
-  assert.match(normalized, /must not absorb interrogation, domain mapping, specification, ticketing, or implementation/);
+  assert.match(normalized, /Discovery must not absorb interrogation, specification, ticketing, or implementation/);
+  assert.match(normalized, /Every cycle preserves this exact order/);
+  assert.match(normalized, /user-attachments\/assets\/8e735137-b759-422b-bf31-4852e5eb1b62/);
 });
 
 test('the workflow registers the discovery conformance suite explicitly', () => {
@@ -204,7 +303,7 @@ test('the frontier can say that external knowledge is the blocker', () => {
   const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
 
   assert.match(entry, /`needs-research`/);
-  assert.match(controller, /If the frontier is `needs-research`, route the blocking external-knowledge\s+question/);
+  assert.match(controller, /identifies a bounded external-knowledge\s+gap, route the blocking question/);
 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
   assert.ok(
@@ -380,7 +479,7 @@ test('the controller routes needs-uri-seed to the uri-seed atom, which is reacha
 
   assert.match(
     controller,
-    /If the frontier is `needs-uri-seed`, route each not-yet-attempted human-supplied URI or path to/,
+    /When acquisition includes a not-yet-attempted human-supplied URI or path, route each seed to/,
   );
 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
@@ -625,7 +724,9 @@ test('AC1/AC2: rehydration precedes the cycle and reads the artifact, not memory
   const entry = flat(ENTRY);
   assert.match(entry, /Before selecting or beginning any cycle, run/);
   assert.match(entry, /rehydrate Discovery state from the artifact rather than from conversation\s+memory/);
-  assert.match(entry, /record -> rehydrate foundation -> cycle -> align -> persist foundation -> reread -> compact/);
+  assert.match(entry, /record -> rehydrate foundation -> acquire knowledge -> document findings -> align/);
+  assert.match(entry, /model aligned domain -> map frontier -> persist full foundation/);
+  assert.match(entry, /reread full foundation -> compact and persist handoff/);
 });
 
 test('the new atoms are well-formed and grant no more than the pinned set', () => {
@@ -665,7 +766,7 @@ test('AC5: cold-start rehydration reads real bytes and returns the complete pers
 
   assert.equal(result.status, REHYDRATED);
   assert.equal(result.mode, MODES.coldStart);
-  assert.equal(FOUNDATION_FIELDS.length, 11);
+  assert.equal(FOUNDATION_FIELDS.length, 16);
   for (const field of FOUNDATION_FIELDS) {
     assert.ok(Object.prototype.hasOwnProperty.call(result, field), `${field} must be a distinct field`);
   }
