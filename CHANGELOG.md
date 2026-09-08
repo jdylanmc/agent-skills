@@ -80,6 +80,12 @@ below is unreleased and no comparison links are available.
   other bytes, named a candidate this run did not ask for, or came from a run
   that refused or needed a split is refused and never presented.
 
+- **Objective status reports (`status-report`).** Get a concise, on-demand
+  overview of a long-running agent objective: its goal, completed and remaining
+  work, elapsed wall-clock time, available tool-call counts, and running
+  descendants with their assignments. Ticket references include titles. Missing
+  or partial evidence remains explicit rather than becoming guessed totals.
+  Reporting does not advance the work, control agents, or change tickets.
 - **Dependency-aware fleet delivery (`ship-with-squadron`).** A new
   human-invoked workflow delivers one confirmed closed issue set through
   isolated ownership, durable scheduling, revision-bound Continuous
