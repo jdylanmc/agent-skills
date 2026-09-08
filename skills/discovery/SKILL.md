@@ -98,8 +98,9 @@ Return:
   invocation's rehydration;
 - the exact ordered `resolved` list of `{ field, entry, resolution }` records,
   including duplicates, or an empty list when none exist;
-- the structured aligned `domainModel` and its
-  `domainModelBasisDigest`/`aligned-findings-digest` basis receipt;
+- the structured aligned `domainModel`, its canonical `domainModelDigest`,
+  its `domainModelBasisDigest`/`aligned-findings-digest` receipt, and the
+  frontier's `frontierBasisDigest`/`domainModelDigest` receipt;
 - evidence inspected and evidence still missing;
 - confirmed facts with source references;
 - assumptions, contradictions, ambiguities, and risks;
@@ -201,7 +202,8 @@ mechanical, not the missing `edit` grant: the destination rule (exactly
 `docs/agent/discovery/<slug>.md`, refused when any path component is a symbolic
 link), the alignment gate (only a `verified` or `corrected` result persists,
 recorded as `confirmed`) bound by the canonical findings digest and matching
-domain/frontier basis receipts the caller must supply (the write refuses as
+domain/frontier receipt chain the caller must supply — aligned findings bind
+the domain model, and the canonical domain-model digest binds the frontier (the write refuses as
 `alignment-unbound` or `derivation-unbound` when those bindings do not match),
 and the retention check (no previously recorded durable entry, per field and
 including the frontier, is dropped, moved between sections, or un-resolved

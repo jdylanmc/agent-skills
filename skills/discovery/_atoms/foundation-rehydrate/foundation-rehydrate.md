@@ -164,19 +164,24 @@ separate field, never merged into prose:
 `relationshipClaims`, `boundaryClaims`, `risks`, `scope`, `exclusions`,
 `domainModel`, `frontier`, and `nextAction`.
 
-`relationshipClaims`, `boundaryClaims`, and `domainModel` remain structured
-JSON-compatible record arrays exactly as parsed; scalar fields remain scalar
-text or text arrays. It also returns `resolved` as the exact parsed ordered list
+`relationshipClaims` and `boundaryClaims` remain structured record arrays
+exactly as parsed. A schema-2 `domainModel` contains exactly one aggregate record
+with the required actors, concepts, systems, terms, states, events,
+relationships, boundaries, confidence, and unsettled-seams categories; nested
+relationships and boundaries retain their validated claim shapes. Scalar fields
+remain scalar text or text arrays. It also returns `resolved` as the exact parsed ordered list
 of `{ field, entry, resolution }` records. Duplicate records remain duplicate,
 field qualification is preserved, structured entries remain structured, and
 the empty `Resolved` marker returns `resolved: []`; neither cold-start nor
 compacted-session rehydration drops, rewrites, reorders, or invents a
 resolution.
 
-When a genuine schema-1 foundation is read, the fields introduced later —
+When a genuine schema-1 foundation is read, all sections introduced later —
 `sourceClaims`, `relationshipClaims`, `boundaryClaims`, `risks`, and
-`domainModel` — are returned as empty arrays. All schema-1 fields retain their
-parsed values. Plus:
+`domainModel` — must be absent and are returned as empty arrays. If any one of
+those sections is present, the artifact is not a genuine schema-1 foundation
+and rehydration fails closed as `foundation-unreadable` in both cold-start and
+compacted-session modes. All schema-1 fields retain their parsed values. Plus:
 
 - `foundation`: `{ locator, revision, subjectId, alignment: 'confirmed' }`;
 - `continuation`: `{ locator, revision }` — exactly what the next compaction must

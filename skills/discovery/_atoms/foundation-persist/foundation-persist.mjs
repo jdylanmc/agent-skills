@@ -35,10 +35,13 @@
  *
  * The alignment gate is bound, not asserted. Every new write must carry the
  * complete canonical findings packet, `alignedFindingsDigest`, an explicit
- * `domainModel`, and domain/frontier basis receipts equal to that digest. The
- * helper recomputes the findings digest and refuses (`alignment-unbound`) on
- * mismatch. The binding proves the persisted findings are byte-for-byte the
- * findings that were digested; it does NOT prove a human understood them.
+ * `domainModel`, and a receipt chain. `domainModelBasisDigest` must equal the
+ * aligned-findings digest, `domainModelDigest` must equal the canonical digest
+ * of the validated domain model, and `frontierBasisDigest` must equal that
+ * domain-model digest. The helper recomputes both content digests and refuses
+ * (`alignment-unbound` or `derivation-unbound`) on mismatch. The binding proves
+ * the persisted findings and model are byte-for-byte the values that were
+ * digested; it does NOT prove a human understood them.
  *
  * Persistence is bound to the revision the cycle rehydrated. The intake carries
  * `expectedPriorRevision` (`null` only for a genuine first cycle). It is checked
@@ -159,14 +162,15 @@ export const DOCUMENTED_FINDINGS_FIELDS = Object.freeze([
   'resolved',
 ]);
 
-/** Fields introduced by issue #156; absent schema-1 artifacts read as empty. */
-const OPTIONAL_SCHEMA_1_FIELDS = new Set([
+/** Fields introduced by issue #156; genuine schema-1 artifacts omit all five. */
+const POST_SCHEMA_1_FIELDS = Object.freeze([
   'sourceClaims',
   'relationshipClaims',
   'boundaryClaims',
   'risks',
   'domainModel',
 ]);
+const POST_SCHEMA_1_FIELD_SET = new Set(POST_SCHEMA_1_FIELDS);
 
 /** The token the persisted artifact records, matching what discovery-source requires. */
 export const CONFIRMED = 'confirmed';
@@ -266,6 +270,7 @@ const INTAKE_FIELDS = Object.freeze([
   'alignment',
   'alignedFindingsDigest',
   'domainModelBasisDigest',
+  'domainModelDigest',
   'frontierBasisDigest',
   'expectedPriorRevision',
   'cycle',
@@ -295,6 +300,10 @@ const SECTION_TITLES = Object.freeze({
 });
 
 const LIST_SECTIONS = Object.freeze([...DURABLE_SETS, 'frontier']);
+const SCHEMA_1_LIST_SECTIONS = Object.freeze(
+  LIST_SECTIONS.filter((field) => !POST_SCHEMA_1_FIELD_SET.has(field)),
+);
+const SCHEMA_1_RETAINED_FIELD_SET = new Set(SCHEMA_1_LIST_SECTIONS);
 
 const NONE_MARKER = '_None recorded._';
 const HEADING = '# Discovery Foundation';
@@ -534,9 +543,127 @@ function assertBoundaryClaim(value, label) {
   return assertClaimRecord(value, label, 'boundary claim');
 }
 
+export const DOMAIN_MODEL_KEYS = Object.freeze([
+  'actors',
+  'concepts',
+  'systems',
+  'terms',
+  'states',
+  'events',
+  'relationships',
+  'boundaries',
+  'confidence',
+  'unsettledSeams',
+]);
+
+const DOMAIN_ITEM_KEYS = Object.freeze([
+  'kind',
+  'name',
+  'aliases',
+  'evidence',
+  'confidence',
+  'notes',
+]);
+const DOMAIN_ITEM_KIND_BY_FIELD = Object.freeze({
+  actors: 'actor',
+  concepts: 'concept',
+  systems: 'system',
+});
+const TERM_KEYS = Object.freeze([...DOMAIN_ITEM_KEYS, 'contested']);
+const STATE_KEYS = Object.freeze([...DOMAIN_ITEM_KEYS, 'transitionsTo']);
+const EVENT_KEYS = Object.freeze([...DOMAIN_ITEM_KEYS, 'emittedBy']);
+const UNSETTLED_SEAM_KEYS = Object.freeze([
+  'kind',
+  'question',
+  'evidence',
+  'confidence',
+  'notes',
+]);
+
+function assertDomainItem(value, label, expectedKind, requiredKeys = DOMAIN_ITEM_KEYS) {
+  if (!isPlainObject(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new FoundationPersistError('invalid-input', `${label} must be a ${expectedKind} object record`);
+  }
+  assertExactKeys(value, requiredKeys, label);
+  const kind = assertSingleLine(value.kind, `${label}.kind`);
+  if (kind !== expectedKind) {
+    throw new FoundationPersistError('invalid-input', `${label}.kind must be ${expectedKind}`);
+  }
+  const record = {
+    kind,
+    name: assertSingleLine(value.name, `${label}.name`),
+    aliases: assertStringList(value.aliases, `${label}.aliases`),
+    evidence: assertEvidenceList(value.evidence, `${label}.evidence`),
+    confidence: assertEnum(value.confidence, CONFIDENCE_VALUES, `${label}.confidence`),
+    notes: assertStringList(value.notes, `${label}.notes`),
+  };
+  if (expectedKind === 'term') {
+    if (typeof value.contested !== 'boolean') {
+      throw new FoundationPersistError('invalid-input', `${label}.contested must be a boolean`);
+    }
+    record.contested = value.contested;
+  } else if (expectedKind === 'state') {
+    record.transitionsTo = assertStringList(value.transitionsTo, `${label}.transitionsTo`);
+  } else if (expectedKind === 'event') {
+    record.emittedBy = assertSingleLine(value.emittedBy, `${label}.emittedBy`);
+  }
+  return record;
+}
+
+function assertDomainItemList(value, label, expectedKind, requiredKeys = DOMAIN_ITEM_KEYS) {
+  if (!Array.isArray(value)) {
+    throw new FoundationPersistError('invalid-input', `${label} must be an array`);
+  }
+  return value.map((entry, index) => assertDomainItem(entry, `${label}[${index}]`, expectedKind, requiredKeys));
+}
+
+function assertUnsettledSeams(value, label) {
+  if (!Array.isArray(value)) {
+    throw new FoundationPersistError('invalid-input', `${label} must be an array`);
+  }
+  return value.map((entry, index) => {
+    const itemLabel = `${label}[${index}]`;
+    if (!isPlainObject(entry) || Object.getPrototypeOf(entry) !== Object.prototype) {
+      throw new FoundationPersistError('invalid-input', `${itemLabel} must be an unsettled-seam object record`);
+    }
+    assertExactKeys(entry, UNSETTLED_SEAM_KEYS, itemLabel);
+    const kind = assertSingleLine(entry.kind, `${itemLabel}.kind`);
+    if (kind !== 'unsettled-seam') {
+      throw new FoundationPersistError('invalid-input', `${itemLabel}.kind must be unsettled-seam`);
+    }
+    return {
+      kind,
+      question: assertSingleLine(entry.question, `${itemLabel}.question`),
+      evidence: assertEvidenceList(entry.evidence, `${itemLabel}.evidence`),
+      confidence: assertEnum(entry.confidence, CONFIDENCE_VALUES, `${itemLabel}.confidence`),
+      notes: assertStringList(entry.notes, `${itemLabel}.notes`),
+    };
+  });
+}
+
+function assertDomainModelAggregate(value, label) {
+  if (!isPlainObject(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new FoundationPersistError('invalid-input', `${label} must be an aggregate domain-model object record`);
+  }
+  assertExactKeys(value, DOMAIN_MODEL_KEYS, label);
+  return {
+    actors: assertDomainItemList(value.actors, `${label}.actors`, DOMAIN_ITEM_KIND_BY_FIELD.actors),
+    concepts: assertDomainItemList(value.concepts, `${label}.concepts`, DOMAIN_ITEM_KIND_BY_FIELD.concepts),
+    systems: assertDomainItemList(value.systems, `${label}.systems`, DOMAIN_ITEM_KIND_BY_FIELD.systems),
+    terms: assertDomainItemList(value.terms, `${label}.terms`, 'term', TERM_KEYS),
+    states: assertDomainItemList(value.states, `${label}.states`, 'state', STATE_KEYS),
+    events: assertDomainItemList(value.events, `${label}.events`, 'event', EVENT_KEYS),
+    relationships: assertStructuredRecordList(value.relationships, 'relationshipClaims', `${label}.relationships`),
+    boundaries: assertStructuredRecordList(value.boundaries, 'boundaryClaims', `${label}.boundaries`),
+    confidence: assertEnum(value.confidence, CONFIDENCE_VALUES, `${label}.confidence`),
+    unsettledSeams: assertUnsettledSeams(value.unsettledSeams, `${label}.unsettledSeams`),
+  };
+}
+
 function assertStructuredRecordForField(value, field, label) {
   if (field === 'relationshipClaims') return assertRelationshipClaim(value, label);
   if (field === 'boundaryClaims') return assertBoundaryClaim(value, label);
+  if (field === 'domainModel') return assertDomainModelAggregate(value, label);
   return assertStructuredRecord(value, label);
 }
 
@@ -544,7 +671,16 @@ function assertStructuredRecordList(value, field, label) {
   if (!Array.isArray(value)) {
     throw new FoundationPersistError('invalid-input', `${label} must be an array`);
   }
+  if (field === 'domainModel' && value.length !== 1) {
+    throw new FoundationPersistError('invalid-input', `${label} must contain exactly one aggregate domain-model record`);
+  }
   return value.map((entry, index) => assertStructuredRecordForField(entry, field, `${label}[${index}]`));
+}
+
+/** SHA-256 of the canonical, validated aggregate domain model. */
+export function domainModelDigestOf(domainModel) {
+  const validated = assertStructuredRecordList(domainModel, 'domainModel', 'domainModel');
+  return createHash('sha256').update(canonicalize(validated), 'utf8').digest('hex');
 }
 
 function assertFieldEntries(value, field) {
@@ -553,7 +689,7 @@ function assertFieldEntries(value, field) {
     : assertStringList(value, field);
 }
 
-function assertResolved(value, { allowLegacyStructuredText = false } = {}) {
+function assertResolved(value) {
   if (!Array.isArray(value)) {
     throw new FoundationPersistError('invalid-input', 'resolved must be an array');
   }
@@ -572,9 +708,7 @@ function assertResolved(value, { allowLegacyStructuredText = false } = {}) {
     }
     let resolvedEntry;
     if (STRUCTURED_RECORD_FIELD_SET.has(field)) {
-      resolvedEntry = allowLegacyStructuredText && !isPlainObject(entry.entry)
-        ? assertSingleLine(entry.entry, `resolved[${index}].entry`)
-        : assertStructuredRecordForField(entry.entry, field, `resolved[${index}].entry`);
+      resolvedEntry = assertStructuredRecordForField(entry.entry, field, `resolved[${index}].entry`);
     } else {
       resolvedEntry = assertSingleLine(entry.entry, `resolved[${index}].entry`);
     }
@@ -619,9 +753,6 @@ function renderStructuredEntry(entry) {
 
 function parseStructuredEntry(value, field, schema, label) {
   if (!value.startsWith(STRUCTURED_ENTRY_PREFIX)) {
-    if (schema === '1') {
-      return assertNoControlChars(value, label);
-    }
     throw new FoundationPersistError('invalid-input', `${label} must use the "${STRUCTURED_ENTRY_PREFIX}" structured encoding in schema ${SCHEMA_VERSION}`);
   }
   const encoded = value.slice(STRUCTURED_ENTRY_PREFIX.length);
@@ -773,13 +904,23 @@ function splitSections(body) {
   return sections;
 }
 
-/** The complete, exact set of `## ` section headings a foundation must carry. */
-const REQUIRED_SECTION_TITLES = Object.freeze([
+/** The complete, exact ordered section headings for each readable schema. */
+const SCHEMA_1_SECTION_TITLES = Object.freeze([
+  ...SCHEMA_1_LIST_SECTIONS.map((field) => SECTION_TITLES[field]),
+  'Next Action',
+  'Resolved',
+  'History',
+]);
+const SCHEMA_2_SECTION_TITLES = Object.freeze([
   ...LIST_SECTIONS.map((field) => SECTION_TITLES[field]),
   'Next Action',
   'Resolved',
   'History',
 ]);
+
+function sectionTitlesForSchema(schema) {
+  return schema === '1' ? SCHEMA_1_SECTION_TITLES : SCHEMA_2_SECTION_TITLES;
+}
 
 /**
  * Read the exact, ordered metadata header. The renderer emits the four lines
@@ -822,14 +963,30 @@ function readHeader(allLines) {
  * is not one of the required sections, would restructure the document or smuggle
  * content past the section grammar, so it is refused (MF-3).
  */
-function assertNoRogueHeadings(allLines) {
+function assertNoRogueHeadings(allLines, allowedSectionTitles) {
   for (let i = 0; i < allLines.length; i += 1) {
     const line = allLines[i];
     if (!HEADING_RE.test(line)) continue;
     if (i === 0 && line === HEADING) continue;
     const section = /^## (.+)$/.exec(line);
-    if (section && REQUIRED_SECTION_TITLES.includes(section[1])) continue;
+    if (section && allowedSectionTitles.includes(section[1])) continue;
     throw new FoundationPersistError('invalid-input', `foundation contains an unexpected heading: ${line}`);
+  }
+}
+
+function assertSectionOrder(allLines, expectedTitles) {
+  const actualTitles = allLines
+    .map((line) => /^## (.+)$/.exec(line))
+    .filter(Boolean)
+    .map((match) => match[1]);
+  if (
+    actualTitles.length !== expectedTitles.length
+    || actualTitles.some((title, index) => title !== expectedTitles[index])
+  ) {
+    throw new FoundationPersistError(
+      'invalid-input',
+      `foundation sections must appear exactly in schema order: ${expectedTitles.join(', ')}`,
+    );
   }
 }
 
@@ -896,12 +1053,13 @@ export function parseFoundation(bytes) {
     throw new FoundationPersistError('invalid-input', `foundation must begin with "${HEADING}"`);
   }
 
-  assertNoRogueHeadings(allLines);
-
   const { schema, subjectId, slug, alignment } = readHeader(allLines);
   if (!SUPPORTED_SCHEMA_VERSIONS.has(schema)) {
     throw new FoundationPersistError('unsupported-schema', `foundation schema ${schema} is not supported; this build reads schemas 1 and ${SCHEMA_VERSION}`);
   }
+  const requiredSectionTitles = sectionTitlesForSchema(schema);
+  assertNoRogueHeadings(allLines, requiredSectionTitles);
+  assertSectionOrder(allLines, requiredSectionTitles);
   if (!subjectId || !slug) {
     throw new FoundationPersistError('invalid-input', 'foundation is missing subject identity');
   }
@@ -910,24 +1068,12 @@ export function parseFoundation(bytes) {
 
   const sections = splitSections(normalized);
   for (const title of sections.keys()) {
-    if (!REQUIRED_SECTION_TITLES.includes(title)) {
+    if (!requiredSectionTitles.includes(title)) {
       throw new FoundationPersistError('invalid-input', `foundation contains an unknown section: ${title}`);
     }
   }
-  for (const title of REQUIRED_SECTION_TITLES) {
+  for (const title of requiredSectionTitles) {
     if (!sections.has(title)) {
-      // Schema 1 artifacts created before issue #156 have no Domain Model
-      // section. Read them as an empty model so existing aligned foundations
-      // remain rehydratable; the next successful write emits the section.
-      if (
-        schema === '1'
-        &&
-        [...OPTIONAL_SCHEMA_1_FIELDS]
-          .map((field) => SECTION_TITLES[field])
-          .includes(title)
-      ) {
-        continue;
-      }
       throw new FoundationPersistError('invalid-input', `foundation is missing the ${title} section`);
     }
   }
@@ -940,7 +1086,7 @@ export function parseFoundation(bytes) {
   };
 
   for (const field of LIST_SECTIONS) {
-    foundation[field] = OPTIONAL_SCHEMA_1_FIELDS.has(field) && !sections.has(SECTION_TITLES[field])
+    foundation[field] = schema === '1' && POST_SCHEMA_1_FIELD_SET.has(field)
       ? []
       : listFrom(sections.get(SECTION_TITLES[field]), SECTION_TITLES[field], field, schema);
   }
@@ -958,8 +1104,12 @@ export function parseFoundation(bytes) {
     throw new FoundationPersistError('invalid-input', 'foundation Resolved section is empty');
   }
   if (!(resolvedTrimmed.length === 1 && resolvedTrimmed[0] === NONE_MARKER)) {
+    const parsedResolved = [];
     for (const line of resolvedTrimmed) {
       if (line.startsWith('- JSON: ')) {
+        if (schema === '1') {
+          throw new FoundationPersistError('invalid-input', 'schema 1 does not support structured Resolved entries');
+        }
         const encoded = line.slice('- JSON: '.length);
         let parsed;
         try {
@@ -970,11 +1120,12 @@ export function parseFoundation(bytes) {
         if (!isPlainObject(parsed) || canonicalize(parsed) !== encoded) {
           throw new FoundationPersistError('invalid-input', `malformed or noncanonical Resolved JSON entry: ${line}`);
         }
-        foundation.resolved.push(...assertResolved([parsed], { allowLegacyStructuredText: schema === '1' }));
+        parsedResolved.push(parsed);
         continue;
       }
       const match = /^- ([a-zA-Z]+): (.*)$/.exec(line);
-      if (!match || !RETAINED_FIELDS.includes(match[1])) {
+      const allowedResolvedFields = schema === '1' ? SCHEMA_1_RETAINED_FIELD_SET : new Set(RETAINED_FIELDS);
+      if (!match || !allowedResolvedFields.has(match[1])) {
         throw new FoundationPersistError('invalid-input', `malformed Resolved entry: ${line}`);
       }
       const parts = match[2].split(' \u2014 ');
@@ -986,11 +1137,9 @@ export function parseFoundation(bytes) {
       if (entry === '' || resolution === '') {
         throw new FoundationPersistError('invalid-input', `malformed Resolved entry: ${line}`);
       }
-      foundation.resolved.push(...assertResolved(
-        [{ field: match[1], entry, resolution }],
-        { allowLegacyStructuredText: schema === '1' },
-      ));
+      parsedResolved.push({ field: match[1], entry, resolution });
     }
+    foundation.resolved = assertResolved(parsedResolved);
   }
 
   const historyTrimmed = sections.get('History').filter((line) => line !== '');
@@ -1170,7 +1319,7 @@ function normalizeIntake(intake) {
       throw new FoundationPersistError('invalid-input', `${field} is required for a canonical schema-2 write`);
     }
   }
-  for (const field of ['alignedFindingsDigest', 'domainModelBasisDigest', 'frontierBasisDigest']) {
+  for (const field of ['alignedFindingsDigest', 'domainModelBasisDigest', 'domainModelDigest', 'frontierBasisDigest']) {
     if (!Object.prototype.hasOwnProperty.call(intake, field)) {
       throw new FoundationPersistError('invalid-input', `${field} is required for a canonical schema-2 write`);
     }
@@ -1211,17 +1360,38 @@ function normalizeIntake(intake) {
       `the aligned findings digest does not match the persisted findings (declared ${intake.alignedFindingsDigest}, computed ${digest})`,
     );
   }
-  if (
-    intake.domainModelBasisDigest !== digest
-    || intake.frontierBasisDigest !== digest
-  ) {
+  const domainModelDigest = domainModelDigestOf(foundation.domainModel);
+  if (intake.domainModelBasisDigest !== digest) {
     throw new FoundationPersistError(
       'derivation-unbound',
-      'domain model and frontier receipts must bind to the aligned findings digest',
+      'domainModelBasisDigest must bind the domain model to the aligned findings digest',
+    );
+  }
+  if (intake.domainModelDigest !== domainModelDigest) {
+    throw new FoundationPersistError(
+      'derivation-unbound',
+      `domainModelDigest does not match the validated domain model (declared ${intake.domainModelDigest}, computed ${domainModelDigest})`,
+    );
+  }
+  if (intake.frontierBasisDigest !== domainModelDigest) {
+    throw new FoundationPersistError(
+      'derivation-unbound',
+      'frontierBasisDigest must bind the frontier to domainModelDigest',
     );
   }
 
-  return { repositoryRoot, cycle, timestamp, alignmentResult: intake.alignment, expectedPriorRevision, foundation };
+  return {
+    repositoryRoot,
+    cycle,
+    timestamp,
+    alignmentResult: intake.alignment,
+    expectedPriorRevision,
+    alignedFindingsDigest: digest,
+    domainModelBasisDigest: intake.domainModelBasisDigest,
+    domainModelDigest,
+    frontierBasisDigest: intake.frontierBasisDigest,
+    foundation,
+  };
 }
 
 const realIo = {
@@ -1399,7 +1569,18 @@ function foundationsEqual(a, b) {
  * because the destination has already been replaced (R3).
  */
 export function persistFoundation(intake, { io = realIo } = {}) {
-  const { repositoryRoot, cycle, timestamp, alignmentResult, expectedPriorRevision, foundation } = normalizeIntake(intake);
+  const {
+    repositoryRoot,
+    cycle,
+    timestamp,
+    alignmentResult,
+    expectedPriorRevision,
+    alignedFindingsDigest,
+    domainModelBasisDigest,
+    domainModelDigest,
+    frontierBasisDigest,
+    foundation,
+  } = normalizeIntake(intake);
 
   const locator = `docs/agent/discovery/${foundation.subject.slug}.md`;
   const destination = path.join(repositoryRoot, 'docs', 'agent', 'discovery', `${foundation.subject.slug}.md`);
@@ -1547,6 +1728,10 @@ export function persistFoundation(intake, { io = realIo } = {}) {
     revision,
     subjectId: foundation.subject.id,
     alignment: CONFIRMED,
+    alignedFindingsDigest,
+    domainModelBasisDigest,
+    domainModelDigest,
+    frontierBasisDigest,
     priorRevision,
     historyLength: foundation.history.length,
     // Post-write reread proves the persisted bytes; it is NOT next-run

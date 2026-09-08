@@ -14,6 +14,7 @@ import {
   STRUCTURED_RECORD_FIELDS,
   alignedFindingsDigestOf,
   alignedPayloadDigestOf,
+  domainModelDigestOf,
   parseFoundation,
   persistFoundation,
   renderFoundation,
@@ -58,6 +59,21 @@ function currentRevision(root, slug = 'discovery-rehydration') {
   }
 }
 
+function emptyDomainModel() {
+  return [{
+    actors: [],
+    concepts: [],
+    systems: [],
+    terms: [],
+    states: [],
+    events: [],
+    relationships: [],
+    boundaries: [],
+    confidence: 'unknown',
+    unsettledSeams: [],
+  }];
+}
+
 // Build a canonical schema-2 intake. expectedPriorRevision defaults to whatever
 // revision is currently on disk for the subject.
 function intake(overrides = {}) {
@@ -81,7 +97,7 @@ function intake(overrides = {}) {
     risks: [],
     scope: ['Discovery re-entry.'],
     exclusions: ['Specification.'],
-    domainModel: [],
+    domainModel: emptyDomainModel(),
     frontier: ['needs-more-evidence: read discovery-source'],
     nextAction: 'Read the discovery-source contract.',
     resolved: [],
@@ -91,12 +107,14 @@ function intake(overrides = {}) {
     ? overrides.expectedPriorRevision
     : currentRevision(payload.repositoryRoot, payload.subject.slug);
   const alignedFindingsDigest = alignedFindingsDigestOf(payload);
+  const domainModelDigest = domainModelDigestOf(payload.domainModel);
   return {
     ...payload,
     expectedPriorRevision,
     alignedFindingsDigest,
     domainModelBasisDigest: alignedFindingsDigest,
-    frontierBasisDigest: alignedFindingsDigest,
+    domainModelDigest,
+    frontierBasisDigest: domainModelDigest,
   };
 }
 
@@ -124,18 +142,67 @@ function structuredRecords() {
     notes: ['No specification authority crosses the boundary.'],
   };
   const domain = {
-    actors: [{ name: 'Operator', aliases: ['human reviewer'], confidence: 'confirmed' }],
-    systems: [{ name: 'Discovery', aliases: ['discovery loop'], confidence: 'confirmed' }],
-    concepts: [{ name: 'aligned foundation', evidence: ['docs/evidence.md'] }],
-    terms: [{ name: 'alignment', aliases: ['verification'], contested: false }],
-    states: [{ name: 'findings-documented', transitionsTo: ['verified', 'corrected'] }],
-    events: [{ name: 'foundation persisted', emittedBy: 'Discovery' }],
-    policies: [{ name: 'human-owned alignment' }],
-    externalDependencies: [],
+    actors: [{
+      kind: 'actor',
+      name: 'Operator',
+      aliases: ['human reviewer'],
+      evidence: [{ locator: 'docs/evidence.md' }],
+      confidence: 'confirmed',
+      notes: [],
+    }],
+    systems: [{
+      kind: 'system',
+      name: 'Discovery',
+      aliases: ['discovery loop'],
+      evidence: [{ locator: 'skills/discovery/SKILL.md' }],
+      confidence: 'confirmed',
+      notes: [],
+    }],
+    concepts: [{
+      kind: 'concept',
+      name: 'aligned foundation',
+      aliases: [],
+      evidence: [{ locator: 'docs/evidence.md' }],
+      confidence: 'confirmed',
+      notes: [],
+    }],
+    terms: [{
+      kind: 'term',
+      name: 'alignment',
+      aliases: ['verification'],
+      evidence: [{ locator: 'docs/evidence.md' }],
+      confidence: 'confirmed',
+      notes: [],
+      contested: false,
+    }],
+    states: [{
+      kind: 'state',
+      name: 'findings-documented',
+      aliases: [],
+      evidence: [{ locator: 'skills/discovery/SKILL.md' }],
+      confidence: 'confirmed',
+      notes: [],
+      transitionsTo: ['verified', 'corrected'],
+    }],
+    events: [{
+      kind: 'event',
+      name: 'foundation persisted',
+      aliases: [],
+      evidence: [{ locator: 'skills/discovery/SKILL.md' }],
+      confidence: 'confirmed',
+      notes: [],
+      emittedBy: 'Discovery',
+    }],
     relationships: [relationship],
     boundaries: [boundary],
     confidence: 'confirmed',
-    unsettledSeams: [{ question: 'Who owns the next specification?', confidence: 'unknown' }],
+    unsettledSeams: [{
+      kind: 'unsettled-seam',
+      question: 'Who owns the next specification?',
+      evidence: [],
+      confidence: 'unknown',
+      notes: [],
+    }],
   };
   return {
     relationshipClaims: [relationship],
@@ -143,6 +210,66 @@ function structuredRecords() {
     domainModel: [domain],
   };
 }
+
+const BASE_SCHEMA_1_FIXTURE = `# Discovery Foundation
+
+- Schema: 1
+- Subject: issue-119
+- Slug: discovery-rehydration
+- Alignment: confirmed
+
+## Confirmed Facts
+
+- Discovery rereads its own handoff today.
+
+## Evidence References
+
+- docs/agent/discovery/discovery-rehydration.md
+
+## Decisions
+
+- Persist a durable foundation.
+
+## Constraints
+
+- Never overwrite durable evidence.
+
+## Assumptions
+
+- One subject per foundation.
+
+## Contradictions
+
+_None recorded._
+
+## Open Questions
+
+- How is staleness reported?
+
+## Scope
+
+- Discovery re-entry.
+
+## Exclusions
+
+- Specification.
+
+## Frontier
+
+- needs-more-evidence: read discovery-source
+
+## Next Action
+
+Read the discovery-source contract.
+
+## Resolved
+
+_None recorded._
+
+## History
+
+- c-0001 | 2026-08-29T01:00:00Z | verified | succeeds none
+`;
 
 function code(fn) {
   try {
@@ -167,26 +294,29 @@ test('render and parse are exact inverses for the documents the renderer produce
 });
 
 test('schema 1 foundations written before domain modeling remain readable', () => {
-  const root = freshRepo();
-  persistFoundation(intake({ repositoryRoot: root }), { io: realIo() });
-  const current = fs.readFileSync(destIn(root), 'utf8');
-  const legacy = [
-    'Source Claims',
-    'Relationship Claims',
-    'Boundary Claims',
-    'Risks',
-    'Domain Model',
-  ].reduce(
-    (bytes, title) => bytes.replace(new RegExp(`\\n## ${title}\\n\\n_None recorded\\._\\n`), ''),
-    current.replace('- Schema: 2', '- Schema: 1'),
-  );
-  const parsed = parseFoundation(legacy);
+  const parsed = parseFoundation(BASE_SCHEMA_1_FIXTURE);
   assert.deepEqual(parsed.domainModel, []);
   assert.deepEqual(parsed.sourceClaims, []);
   assert.deepEqual(parsed.relationshipClaims, []);
   assert.deepEqual(parsed.boundaryClaims, []);
   assert.deepEqual(parsed.risks, []);
   assert.deepEqual(parsed.confirmedFacts, ['Discovery rereads its own handoff today.']);
+});
+
+test('schema 1 refuses every post-schema-1 section instead of accepting a downgrade', () => {
+  for (const title of [
+    'Source Claims',
+    'Relationship Claims',
+    'Boundary Claims',
+    'Risks',
+    'Domain Model',
+  ]) {
+    const injected = BASE_SCHEMA_1_FIXTURE.replace(
+      '\n## Frontier\n',
+      `\n## ${title}\n\n_None recorded._\n\n## Frontier\n`,
+    );
+    assert.equal(code(() => parseFoundation(injected)), 'invalid-input', title);
+  }
 });
 
 test('schema 2 refuses deletion of any aligned-claims or domain-model section', () => {
@@ -200,7 +330,10 @@ test('schema 2 refuses deletion of any aligned-claims or domain-model section', 
     'Risks',
     'Domain Model',
   ]) {
-    const missing = current.replace(new RegExp(`\\n## ${title}\\n\\n_None recorded\\._\\n`), '');
+    const missing = current.replace(
+      new RegExp(`\\n## ${title}\\n\\n(?:_None recorded\\._|- JSON: [^\\n]+)\\n`),
+      '',
+    );
     assert.equal(code(() => parseFoundation(missing)), 'invalid-input', title);
   }
 });
@@ -227,6 +360,9 @@ test('a persisted foundation records alignment, schema, and every distinct field
   assert.equal(result.locator, 'docs/agent/discovery/discovery-rehydration.md');
   assert.match(result.revision, /^[a-f0-9]{64}$/);
   assert.equal(result.alignment, CONFIRMED);
+  assert.equal(result.domainModelBasisDigest, result.alignedFindingsDigest);
+  assert.equal(result.domainModelDigest, domainModelDigestOf(intake().domainModel));
+  assert.equal(result.frontierBasisDigest, result.domainModelDigest);
 
   const bytes = fs.readFileSync(destIn(root), 'utf8');
   assert.match(bytes, /^- Schema: 2$/m);
@@ -376,11 +512,13 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
     nextAction: 'Hand the reread compact handoff to specification.',
   };
   const alignedFindingsDigest = alignedFindingsDigestOf(payload);
+  const domainModelDigest = domainModelDigestOf(payload.domainModel);
   const derived = {
     ...payload,
     alignedFindingsDigest,
     domainModelBasisDigest: alignedFindingsDigest,
-    frontierBasisDigest: alignedFindingsDigest,
+    domainModelDigest,
+    frontierBasisDigest: domainModelDigest,
   };
 
   persistFoundation(derived, { io: realIo() });
@@ -388,6 +526,7 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
   assert.deepEqual(parsed.domainModel, payload.domainModel);
   assert.deepEqual(parsed.frontier, payload.frontier);
   assert.equal(parsed.nextAction, payload.nextAction);
+  assert.equal(domainModelDigestOf(parsed.domainModel), domainModelDigest);
 
   assert.equal(
     code(() => persistFoundation({
@@ -398,15 +537,82 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
     'derivation-unbound',
   );
 
+  const changedDomainModel = emptyDomainModel();
+  assert.equal(
+    code(() => persistFoundation({
+      ...derived,
+      repositoryRoot: freshRepo(),
+      domainModel: changedDomainModel,
+      domainModelDigest: domainModelDigestOf(changedDomainModel),
+    }, { io: realIo() })),
+    'derivation-unbound',
+  );
+
+  assert.equal(
+    persistFoundation({
+      ...derived,
+      repositoryRoot: freshRepo(),
+      frontier: ['blocked: a different frontier output'],
+      nextAction: 'Stop for the named blocker.',
+    }, { io: realIo() }).frontierBasisDigest,
+    domainModelDigest,
+  );
+
   const legacyBypass = { ...payload, repositoryRoot: freshRepo() };
   delete legacyBypass.alignedFindingsDigest;
   delete legacyBypass.domainModelBasisDigest;
+  delete legacyBypass.domainModelDigest;
   delete legacyBypass.frontierBasisDigest;
   legacyBypass.alignedPayloadDigest = alignedPayloadDigestOf(legacyBypass);
   assert.equal(
     code(() => persistFoundation(legacyBypass, { io: realIo() })),
     'invalid-input',
   );
+});
+
+test('the domain model is one canonical aggregate with required categories', () => {
+  const valid = structuredRecords().domainModel;
+  assert.equal(domainModelDigestOf(valid), domainModelDigestOf(structuredRecords().domainModel));
+
+  const aggregate = valid[0];
+  const cases = [
+    ['empty outer list', []],
+    ['empty aggregate', [{}]],
+    ['missing category', [{ ...aggregate, actors: undefined }]],
+    ['unknown aggregate key', [{ ...aggregate, surprise: [] }]],
+    ['unknown nested kind', [{
+      ...aggregate,
+      actors: [{ ...aggregate.actors[0], kind: 'person' }],
+    }]],
+    ['malformed relationship', [{
+      ...aggregate,
+      relationships: [{ ...aggregate.relationships[0], direction: 'sideways' }],
+    }]],
+    ['malformed boundary', [{
+      ...aggregate,
+      boundaries: [{ ...aggregate.boundaries[0], target: '' }],
+    }]],
+  ];
+  for (const [label, domainModel] of cases) {
+    assert.equal(
+      code(() => persistFoundation(intake({ repositoryRoot: freshRepo(), domainModel }), { io: realIo() })),
+      'invalid-input',
+      label,
+    );
+  }
+});
+
+test('changing aligned findings invalidates the domain-model basis receipt', () => {
+  const original = intake({ repositoryRoot: freshRepo(), ...structuredRecords() });
+  const changed = {
+    ...original,
+    confirmedFacts: ['Changed after alignment.'],
+    alignedFindingsDigest: alignedFindingsDigestOf({
+      ...original,
+      confirmedFacts: ['Changed after alignment.'],
+    }),
+  };
+  assert.equal(code(() => persistFoundation(changed, { io: realIo() })), 'derivation-unbound');
 });
 
 test('structured findings and domain records render canonically and parse by deep equality', () => {
@@ -533,7 +739,34 @@ test('schema 2 parse refuses plain-text structured entries and resolutions', () 
   assert.equal(code(() => parseFoundation(plainResolution)), 'invalid-input');
 });
 
-test('genuine schema 1 parse keeps legacy plain-text structured entries and resolutions readable', () => {
+test('schema 1 refuses resolutions for fields that did not exist in schema 1', () => {
+  const injected = BASE_SCHEMA_1_FIXTURE.replace(
+    '## Resolved\n\n_None recorded._',
+    '## Resolved\n\n- relationshipClaims: legacy plain text — Superseded.',
+  );
+  assert.equal(code(() => parseFoundation(injected)), 'invalid-input');
+});
+
+test('parse validates conflicting scalar resolutions across the complete array', () => {
+  const conflict = BASE_SCHEMA_1_FIXTURE.replace(
+    '## Resolved\n\n_None recorded._',
+    [
+      '## Resolved',
+      '',
+      '- openQuestions: Same question. — First answer.',
+      '- openQuestions: Same question. — Different answer.',
+    ].join('\n'),
+  );
+  assert.equal(code(() => parseFoundation(conflict)), 'foundation-regression');
+
+  const duplicate = conflict.replace('Different answer.', 'First answer.');
+  assert.deepEqual(parseFoundation(duplicate).resolved, [
+    { field: 'openQuestions', entry: 'Same question.', resolution: 'First answer.' },
+    { field: 'openQuestions', entry: 'Same question.', resolution: 'First answer.' },
+  ]);
+});
+
+test('parse validates conflicting structured resolutions across the complete array', () => {
   const root = freshRepo();
   const records = structuredRecords();
   persistFoundation(intake({
@@ -542,30 +775,23 @@ test('genuine schema 1 parse keeps legacy plain-text structured entries and reso
     resolved: [{
       field: 'relationshipClaims',
       entry: records.relationshipClaims[0],
-      resolution: 'Superseded by aligned evidence.',
+      resolution: 'First answer.',
     }],
   }), { io: realIo() });
-  let legacy = fs.readFileSync(destIn(root), 'utf8').replace('- Schema: 2', '- Schema: 1');
-  for (const title of ['Relationship Claims', 'Boundary Claims', 'Domain Model']) {
-    legacy = legacy.replace(
-      new RegExp(`(\\n## ${title}\\n\\n)- JSON: [^\\n]+`),
-      '$1- legacy plain text',
-    );
-  }
-  legacy = legacy.replace(
-    /(\n## Resolved\n\n)- JSON: [^\n]+/,
-    '$1- relationshipClaims: legacy plain text — Superseded by aligned evidence.',
-  );
+  const bytes = fs.readFileSync(destIn(root), 'utf8');
+  const firstLine = bytes.match(/^- JSON: \{"entry":.+$/m)[0];
+  const conflict = bytes.replace(firstLine, `${firstLine}\n${firstLine.replace('First answer.', 'Different answer.')}`);
+  assert.equal(code(() => parseFoundation(conflict)), 'foundation-regression');
 
-  const parsed = parseFoundation(legacy);
-  assert.deepEqual(parsed.relationshipClaims, ['legacy plain text']);
-  assert.deepEqual(parsed.boundaryClaims, ['legacy plain text']);
-  assert.deepEqual(parsed.domainModel, ['legacy plain text']);
-  assert.deepEqual(parsed.resolved, [{
-    field: 'relationshipClaims',
-    entry: 'legacy plain text',
-    resolution: 'Superseded by aligned evidence.',
-  }]);
+  const duplicate = bytes.replace(firstLine, `${firstLine}\n${firstLine}`);
+  assert.equal(parseFoundation(duplicate).resolved.length, 2);
+});
+
+test('parse refuses valid sections reordered within a schema', () => {
+  const facts = '## Confirmed Facts\n\n- Discovery rereads its own handoff today.\n\n';
+  const evidence = '## Evidence References\n\n- docs/agent/discovery/discovery-rehydration.md\n\n';
+  const reordered = BASE_SCHEMA_1_FIXTURE.replace(`${facts}${evidence}`, `${evidence}${facts}`);
+  assert.equal(code(() => parseFoundation(reordered)), 'invalid-input');
 });
 
 test('a structured retained entry can be discharged without flattening its identity', () => {
@@ -636,6 +862,7 @@ test('unknown, missing, and wrong-version intake fields are refused', () => {
     'domainModel',
     'alignedFindingsDigest',
     'domainModelBasisDigest',
+    'domainModelDigest',
     'frontierBasisDigest',
   ]) {
     const partial = intake();
@@ -717,7 +944,7 @@ test('every durable set participates in retention', () => {
       repositoryRoot: root,
       cycle: 'c-0002',
       timestamp: '2026-08-29T02:00:00Z',
-      [field]: [],
+      [field]: field === 'domainModel' ? emptyDomainModel() : [],
     }), { io: realIo() }));
     assert.equal(dropped, 'foundation-regression', `${field} must be retained`);
   }

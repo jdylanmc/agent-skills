@@ -85,8 +85,9 @@ knowledge acquisition -> documented findings -> human alignment
 6. Only after alignment is `verified` or `corrected`, run
    [Aligned domain model](../aligned-domain-model/aligned-domain-model.md),
    which is local to Discovery and has no evidence-acquisition tools. Bind its
-   receipt to the alignment atom's
-   `aligned-findings-digest`. Incorporate the
+   `domainModelBasisDigest` receipt to the alignment atom's
+   `aligned-findings-digest`, then retain its canonical `domainModelDigest`.
+   Incorporate the
    returned actors, concepts, systems, terms, states, events, relationships,
    boundaries, confidence, and unsettled seams as domain evidence. The map
    receives no alignment, persistence, tracker, specification, implementation,
@@ -94,7 +95,9 @@ knowledge acquisition -> documented findings -> human alignment
 7. Feed the aligned domain model into
    [Frontier ledger](../../_atoms/frontier-ledger/frontier-ledger.md). Frontier
    mapping happens here, never before alignment or domain modeling, and its
-   receipt carries the same `aligned-findings-digest`. Backlog,
+   `frontierBasisDigest` receipt equals the canonical `domainModelDigest`.
+   Frontier classifications and next actions may change while that receipt
+   remains valid only when the validated domain model is unchanged. Backlog,
    ticket, work-item, dependency, critical-path, sequencing, roadmap, and work-
    readiness prompts are not relabeled as Discovery and do not route to the
    aligned-domain-model operation.
@@ -111,10 +114,12 @@ knowledge acquisition -> documented findings -> human alignment
    the durable foundation for the subject with
    [Foundation persist](../../_atoms/foundation-persist/foundation-persist.md).
    Persist the domain map in the foundation's `domainModel` field. Pass the
-   alignment atom's `alignedFindingsDigest`, and pass the same digest as both
-   `domainModelBasisDigest` and `frontierBasisDigest`; the helper refuses a
-   mismatched derivation receipt rather than pretending post-alignment outputs
-   were part of the payload shown to the human.
+   alignment atom's `alignedFindingsDigest`; pass that digest as
+   `domainModelBasisDigest`; pass the aligned-domain-model operation's canonical
+   `domainModelDigest`; and pass that model digest as `frontierBasisDigest`.
+   The helper refuses a broken findings-to-model or model-to-frontier receipt
+   rather than pretending post-alignment outputs were part of the payload shown
+   to the human.
    It writes exactly `docs/agent/discovery/<slug>.md`, refuses to drop any
    previously recorded durable entry, appends one history line, and rereads the
    file to verify the write. Pass `expectedPriorRevision` — the revision this run

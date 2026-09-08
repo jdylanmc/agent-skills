@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   FOUNDATION_FIELDS,
   alignedFindingsDigestOf,
+  domainModelDigestOf,
   persistFoundation,
   revisionOf,
 } from '../foundation-persist/foundation-persist.mjs';
@@ -36,6 +37,21 @@ function freshRepo() {
   return root;
 }
 
+function emptyDomainModel() {
+  return [{
+    actors: [],
+    concepts: [],
+    systems: [],
+    terms: [],
+    states: [],
+    events: [],
+    relationships: [],
+    boundaries: [],
+    confidence: 'unknown',
+    unsettledSeams: [],
+  }];
+}
+
 // Persist a genuine foundation into a real repository so rehydration reads real
 // bytes, exactly what the atom does at the start of a run.
 function seed(root, overrides = {}) {
@@ -59,7 +75,7 @@ function seed(root, overrides = {}) {
     risks: [],
     scope: ['In scope.'],
     exclusions: ['Excluded.'],
-    domainModel: [],
+    domainModel: emptyDomainModel(),
     frontier: ['ready'],
     nextAction: 'Hand to specification.',
     resolved: [],
@@ -71,12 +87,14 @@ function seed(root, overrides = {}) {
     expectedPriorRevision = revisionOf(fs.readFileSync(dest, 'utf8'));
   } catch { /* first cycle */ }
   const alignedFindingsDigest = alignedFindingsDigestOf(payload);
+  const domainModelDigest = domainModelDigestOf(payload.domainModel);
   const result = persistFoundation({
     ...payload,
     expectedPriorRevision,
     alignedFindingsDigest,
     domainModelBasisDigest: alignedFindingsDigest,
-    frontierBasisDigest: alignedFindingsDigest,
+    domainModelDigest,
+    frontierBasisDigest: domainModelDigest,
   });
   return result;
 }
@@ -114,18 +132,67 @@ function structuredRecords() {
     relationshipClaims: [relationship],
     boundaryClaims: [boundary],
     domainModel: [{
-      actors: [{ name: 'Operator', aliases: ['human reviewer'], confidence: 'confirmed' }],
-      systems: [{ name: 'Discovery', aliases: ['discovery loop'], confidence: 'confirmed' }],
-      concepts: [{ name: 'foundation', evidence: ['docs/evidence.md'] }],
-      terms: [{ name: 'alignment', aliases: ['verification'], contested: false }],
-      states: [{ name: 'findings-documented', transitionsTo: ['verified', 'corrected'] }],
-      events: [{ name: 'foundation persisted', emittedBy: 'Discovery' }],
-      policies: [{ name: 'human-owned alignment' }],
-      externalDependencies: [],
+      actors: [{
+        kind: 'actor',
+        name: 'Operator',
+        aliases: ['human reviewer'],
+        evidence: [{ locator: 'docs/evidence.md' }],
+        confidence: 'confirmed',
+        notes: [],
+      }],
+      systems: [{
+        kind: 'system',
+        name: 'Discovery',
+        aliases: ['discovery loop'],
+        evidence: [{ locator: 'skills/discovery/SKILL.md' }],
+        confidence: 'confirmed',
+        notes: [],
+      }],
+      concepts: [{
+        kind: 'concept',
+        name: 'foundation',
+        aliases: [],
+        evidence: [{ locator: 'docs/evidence.md' }],
+        confidence: 'confirmed',
+        notes: [],
+      }],
+      terms: [{
+        kind: 'term',
+        name: 'alignment',
+        aliases: ['verification'],
+        evidence: [{ locator: 'docs/evidence.md' }],
+        confidence: 'confirmed',
+        notes: [],
+        contested: false,
+      }],
+      states: [{
+        kind: 'state',
+        name: 'findings-documented',
+        aliases: [],
+        evidence: [{ locator: 'skills/discovery/SKILL.md' }],
+        confidence: 'confirmed',
+        notes: [],
+        transitionsTo: ['verified', 'corrected'],
+      }],
+      events: [{
+        kind: 'event',
+        name: 'foundation persisted',
+        aliases: [],
+        evidence: [{ locator: 'skills/discovery/SKILL.md' }],
+        confidence: 'confirmed',
+        notes: [],
+        emittedBy: 'Discovery',
+      }],
       relationships: [relationship],
       boundaries: [boundary],
       confidence: 'confirmed',
-      unsettledSeams: [{ question: 'Who owns the next specification?', confidence: 'unknown' }],
+      unsettledSeams: [{
+        kind: 'unsettled-seam',
+        question: 'Who owns the next specification?',
+        evidence: [],
+        confidence: 'unknown',
+        notes: [],
+      }],
     }],
   };
 }
@@ -184,11 +251,13 @@ test('structured records survive persist, parse, rehydrate, and next-cycle persi
     nextPayload[field] = cold[field];
   }
   const alignedFindingsDigest = alignedFindingsDigestOf(nextPayload);
+  const domainModelDigest = domainModelDigestOf(nextPayload.domainModel);
   const second = persistFoundation({
     ...nextPayload,
     alignedFindingsDigest,
     domainModelBasisDigest: alignedFindingsDigest,
-    frontierBasisDigest: alignedFindingsDigest,
+    domainModelDigest,
+    frontierBasisDigest: domainModelDigest,
   });
 
   const compacted = rehydrateFoundation(intake(root, {
@@ -311,7 +380,7 @@ test('schema-1 rehydration returns empty defaults for every later foundation fie
     'Risks',
     'Domain Model',
   ].reduce(
-    (bytes, title) => bytes.replace(new RegExp(`\\n## ${title}\\n\\n_None recorded\\._\\n`), ''),
+    (bytes, title) => bytes.replace(new RegExp(`\\n## ${title}\\n\\n(?:_None recorded\\._|- JSON: [^\\n]+)\\n`), ''),
     current.replace('- Schema: 2', '- Schema: 1'),
   );
   fs.writeFileSync(dest, legacy);
@@ -321,6 +390,95 @@ test('schema-1 rehydration returns empty defaults for every later foundation fie
     assert.deepEqual(result[field], [], `${field} must default empty for schema 1`);
   }
   assert.deepEqual(result.confirmedFacts, ['A confirmed fact.']);
+});
+
+test('schema-1 artifacts containing any post-schema-1 section fail closed in both modes', () => {
+  for (const title of [
+    'Source Claims',
+    'Relationship Claims',
+    'Boundary Claims',
+    'Risks',
+    'Domain Model',
+  ]) {
+    const root = freshRepo();
+    seed(root);
+    const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+    const current = fs.readFileSync(dest, 'utf8');
+    let legacy = [
+      'Source Claims',
+      'Relationship Claims',
+      'Boundary Claims',
+      'Risks',
+      'Domain Model',
+    ].reduce(
+      (bytes, section) => bytes.replace(new RegExp(`\\n## ${section}\\n\\n(?:_None recorded\\._|- JSON: [^\\n]+)\\n`), ''),
+      current.replace('- Schema: 2', '- Schema: 1'),
+    );
+    legacy = legacy.replace(
+      '\n## Frontier\n',
+      `\n## ${title}\n\n_None recorded._\n\n## Frontier\n`,
+    );
+    fs.writeFileSync(dest, legacy);
+
+    const cold = rehydrateFoundation(intake(root));
+    assert.equal(cold.status, RECOVERY.unreadable, `${title} cold start`);
+
+    const compacted = rehydrateFoundation(intake(root, {
+      expected: { locator: LOCATOR, revision: revisionOf(legacy) },
+    }));
+    assert.equal(compacted.status, RECOVERY.unreadable, `${title} compacted`);
+  }
+});
+
+test('conflicting scalar resolutions fail closed in cold-start and compacted modes; identical duplicates survive', () => {
+  const root = freshRepo();
+  seed(root, {
+    resolved: [
+      { field: 'openQuestions', entry: 'Same question.', resolution: 'First answer.' },
+      { field: 'openQuestions', entry: 'Same question.', resolution: 'First answer.' },
+    ],
+  });
+  const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+  const valid = fs.readFileSync(dest, 'utf8');
+  assert.equal(rehydrateFoundation(intake(root)).resolved.length, 2);
+
+  const conflict = valid.replace(
+    '- openQuestions: Same question. — First answer.\n- openQuestions: Same question. — First answer.',
+    '- openQuestions: Same question. — First answer.\n- openQuestions: Same question. — Different answer.',
+  );
+  fs.writeFileSync(dest, conflict);
+  assert.equal(rehydrateFoundation(intake(root)).status, RECOVERY.unreadable);
+  assert.equal(rehydrateFoundation(intake(root, {
+    expected: { locator: LOCATOR, revision: revisionOf(conflict) },
+  })).status, RECOVERY.unreadable);
+});
+
+test('conflicting structured resolutions fail closed in cold-start and compacted modes; identical duplicates survive', () => {
+  const root = freshRepo();
+  const records = structuredRecords();
+  seed(root, {
+    ...records,
+    resolved: [
+      { field: 'relationshipClaims', entry: records.relationshipClaims[0], resolution: 'First answer.' },
+      { field: 'relationshipClaims', entry: records.relationshipClaims[0], resolution: 'First answer.' },
+    ],
+  });
+  const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+  const valid = fs.readFileSync(dest, 'utf8');
+  assert.equal(rehydrateFoundation(intake(root)).resolved.length, 2);
+
+  const lines = valid.split('\n');
+  const resolutionIndexes = lines
+    .map((line, index) => line.startsWith('- JSON: {"entry":') ? index : -1)
+    .filter((index) => index >= 0);
+  assert.equal(resolutionIndexes.length, 2);
+  lines[resolutionIndexes[1]] = lines[resolutionIndexes[1]].replace('First answer.', 'Different answer.');
+  const conflict = lines.join('\n');
+  fs.writeFileSync(dest, conflict);
+  assert.equal(rehydrateFoundation(intake(root)).status, RECOVERY.unreadable);
+  assert.equal(rehydrateFoundation(intake(root, {
+    expected: { locator: LOCATOR, revision: revisionOf(conflict) },
+  })).status, RECOVERY.unreadable);
 });
 
 test('the continuation record carries the exact locator and current revision', () => {

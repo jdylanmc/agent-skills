@@ -21,8 +21,9 @@ Extract the domain nouns from the exact documented findings the human aligned.
 
 1. Read only the supplied aligned findings packet. Do not search repositories,
    retrieve sources, follow links, or add evidence after alignment.
-2. Extract actors, systems, concepts, terms, states, events, policies, and
-   external dependencies.
+2. Extract actors, systems, concepts, terms, states, and events. Give every
+   record its category-matching `kind` and preserve its declared aliases,
+   evidence, confidence, notes, contested state, transitions, or emitter.
 3. Preserve aliases, contested names, confidence, and source references already
    present in the packet.
 4. Preserve the aligned relationship claims and boundary claims as distinct

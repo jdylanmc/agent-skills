@@ -29,19 +29,27 @@ Model only what the human-aligned findings support.
    from the inventory's preserved relationship and boundary claims, including
    their existing directions, confidence, and evidence references. Entity
    co-occurrence alone never produces a relationship.
-4. Return actors, concepts, systems, terms, states, events, relationships,
-   boundaries, confidence, unsettled seams, and the unchanged
-   `aligned-findings-digest` as the model's basis receipt.
+4. Return one aggregate model containing actors, concepts, systems, terms,
+   states, events, relationships, boundaries, confidence, and unsettled seams.
+   Return the unchanged `aligned-findings-digest` as
+   `domainModelBasisDigest`, and return `domainModelDigest`, the SHA-256 digest
+   of the canonical validated aggregate.
 
 ## Output Contract
 
-Return `domainModel` as an array of structured, JSON-compatible object records,
-not flattened prose. Records may group or represent actors, concepts, systems,
-terms, states, events, policies, external dependencies, relationships,
-boundaries, confidence, and unsettled seams. Preserve nested aliases, contested
-names, evidence references, confidence, directions, transitions, and notes as
-their original arrays and records. Every value must be JSON-compatible: `null`,
-a boolean, a canonical finite number, a string, an array, or a plain object.
+Return `domainModel` as an array containing exactly one structured aggregate,
+not flattened prose. The aggregate requires exactly `actors`, `concepts`,
+`systems`, `terms`, `states`, `events`, `relationships`, `boundaries`,
+`confidence`, and `unsettledSeams`; category arrays may be empty but may not be
+missing.
+
+Every actor, concept, system, term, state, event, and unsettled-seam record
+carries its matching `kind`. Preserve aliases, contested names, evidence
+references, confidence, transitions, emitters, and notes in their declared
+fields. Preserve relationship and boundary records with exactly `source`,
+`target`, `relationship`, `direction`, `evidence`, `confidence`, and `notes`.
+Unknown aggregate keys, unknown or category-mismatched kinds, and malformed
+nested records are invalid rather than silently retained as miscellaneous JSON.
 
 ## Boundaries
 
