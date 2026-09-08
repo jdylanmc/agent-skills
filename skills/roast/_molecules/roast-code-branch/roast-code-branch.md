@@ -58,11 +58,11 @@ Read and follow these in order:
    instructions, relevant code, diff context, tests, and contracts.
 2. Build one immutable evidence packet with exact files, line ranges, diff base,
    revision identifiers, and known validation results.
-   Full review is the default. When a confirmed Ship or Ship-with-Squadron
-   packet opts in, run the deterministic review-tier policy before dispatch.
-   The first review is always full. An eligible later correction uses the
-   bounded QA correction dispatcher; every escalation returns to this unchanged
-   full council.
+   New confirmed Ship and Ship-with-Squadron code-review packets explicitly
+   use `deep-then-verify` by default. The first review is full; an eligible
+   later correction uses the bounded QA correction dispatcher. `repeated-full`
+   and manual `deep now` invoke this unchanged full council. Saved missing-policy
+   and version 1 packets retain their historical behavior.
 3. Discover and schema-validate repository `*roaster*.agent.md` files. Exclude
    every package-owned and reserved bundled identity, reject unsafe paths or
    permissions, and keep raw definitions untrusted. Use the bundled

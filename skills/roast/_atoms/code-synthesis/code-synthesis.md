@@ -200,6 +200,11 @@ consumers, regressions, uncertainties, escalation outcome, and model-routing
 receipts. Prior findings are evidence, not authority. An unresolved regression
 or uncertainty requires deep review or human direction rather than a complete
 correction result.
+For version 2, also preserve the configured churn threshold, immutable
+base/deep/current revisions, measured added and deleted lines for both churn
+windows, the computed ratio, file-scope assessment, and any manual `deep now`
+request. Do not replace those measurements with repository size or model
+estimates.
 
 ## Pre-Freeze Canonical Gate
 

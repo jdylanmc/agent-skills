@@ -25,8 +25,10 @@ packet rejects unknown fields and seals the complete task contract: goal, scope,
 context, acceptance, verification, timebox, forbidden authority, report, and
 standing instruction. Workers never select more backlog work.
 
-When an issue opts into tiered review, its exact normalized `reviewPolicy` is
-copied into the assignment packet. Full-review packets omit the field.
+When an issue carries a review policy, its exact normalized `reviewPolicy` is
+copied into the assignment packet. New version 2 packets always carry either
+`deep-then-verify` or `repeated-full`; only historical full-review packets omit
+the field.
 Continuation requires the unchanged original packet, so replacement cannot
 silently enable, disable, or reroute tiering.
 Because continuation advances assignment generation, it clears any retained

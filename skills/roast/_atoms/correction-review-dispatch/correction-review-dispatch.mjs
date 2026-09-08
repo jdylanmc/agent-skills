@@ -6,7 +6,9 @@ import {
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
+  newCodeReviewDefaultPolicy,
   executeTieredReview,
+  measureReviewChurn,
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 import {
   resolveBundledRoastRoster,
@@ -240,6 +242,72 @@ export async function runTieredCodeReview({
         receipt: result,
       };
     },
+  });
+}
+
+export async function runTieredCodeReviewFromGit({
+  input,
+  repositoryRoot,
+  reviewBaseSha,
+  lastDeepHead,
+  currentHead,
+  runGit = null,
+  runtimeAvailableModels,
+  correctionTransport,
+  fullReview,
+  root,
+} = {}) {
+  if (input.policy?.policyVersion !== 2
+      || input.policy?.mode !== 'deep-then-verify'
+      || input.manualDeepRequested === true
+      || input.policy?.mode === 'repeated-full'
+      || !input.lastDeep) {
+    return runTieredCodeReview({
+      input,
+      runtimeAvailableModels,
+      correctionTransport,
+      fullReview,
+      root,
+    });
+  }
+
+  const churnMetrics = measureReviewChurn({
+    repositoryRoot,
+    reviewBaseSha,
+    lastDeepHead,
+    currentHead,
+    runGit,
+  });
+  return runTieredCodeReview({
+    input: { ...input, churnMetrics },
+    runtimeAvailableModels,
+    correctionTransport,
+    fullReview,
+    root,
+  });
+}
+
+export async function runNewCodeReviewFromGit({
+  input = {},
+  reviewMode = 'deep-then-verify',
+  churnThresholdPercent,
+  ...options
+} = {}) {
+  if (!['deep-then-verify', 'repeated-full'].includes(reviewMode)) {
+    throw new Error('reviewMode must be deep-then-verify or repeated-full');
+  }
+  const policy = input.policy ?? (reviewMode === 'repeated-full'
+    ? {
+      mode: 'repeated-full',
+      policyVersion: 2,
+      deepRoute: DEEP_REVIEW_ROUTE,
+    }
+    : newCodeReviewDefaultPolicy(
+      churnThresholdPercent === undefined ? {} : { churnThresholdPercent },
+    ));
+  return runTieredCodeReviewFromGit({
+    ...options,
+    input: { ...input, policy },
   });
 }
 

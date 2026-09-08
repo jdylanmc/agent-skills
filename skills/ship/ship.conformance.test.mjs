@@ -33,13 +33,10 @@ import { fileURLToPath } from 'node:url';
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import {
-  CORRECTION_REVIEW_ROUTE,
-  DEEP_REVIEW_ROUTE,
-  reviewPolicyBindingDigest,
   SEMANTIC_ASSESSMENT_CATEGORIES,
 } from '../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 import {
-  runTieredCodeReview,
+  runNewCodeReviewFromGit,
 } from '../roast/_atoms/correction-review-dispatch/correction-review-dispatch.mjs';
 import { classifyTerminalDisposition } from '../shepherd/_atoms/shepherd-disposition/shepherd-disposition.mjs';
 import { MERGE_GRANT_TOKEN, evaluateMergeGate, mayMerge } from './_atoms/merge-gate/merge-gate.mjs';
@@ -186,22 +183,6 @@ function tieredInput(semanticSignals = []) {
     })),
     uncertainties: [],
   };
-  const policy = {
-    mode: 'tiered',
-    policyVersion: 1,
-    evaluationMode: 'operational',
-    deepRoute: DEEP_REVIEW_ROUTE,
-    correctionRoute: CORRECTION_REVIEW_ROUTE,
-    promotionDecision: {
-      approved: true,
-      actorType: 'human',
-      actorId: 'operator-1',
-      decisionId: 'ship-tier-pilot',
-      decidedAt: '2026-09-07T00:00:00Z',
-      packetDigest: REVIEW_DIGEST,
-      policyBindingDigest: reviewPolicyBindingDigest({ evaluationMode: 'operational' }),
-    },
-  };
   const identity = (headSha) => ({
     baseSha: BASE_OID,
     headSha,
@@ -210,7 +191,6 @@ function tieredInput(semanticSignals = []) {
     sourceRevision: 'source',
   });
   return {
-    policy,
     current: identity(RESULTING_HEAD),
     lastDeep: identity(HEAD),
     previousHead: HEAD,
@@ -229,6 +209,11 @@ function tieredInput(semanticSignals = []) {
       semanticAssessment: assessment,
     },
     deltaReconciliation: { complete: true, revertedPaths: [], unexplainedPaths: [] },
+    fileScopeAssessment: {
+      complete: true,
+      newOrOutOfScopeFiles: false,
+      evidence: 'scope unchanged',
+    },
     requirements: ['preserve the confirmed behavior'],
     originalFindingIds: ['F-1'],
     affectedConsumers: ['consumer-a'],
@@ -237,10 +222,16 @@ function tieredInput(semanticSignals = []) {
   };
 }
 
-test('Ship opt-in calls one correction review after the initial full review and escalates to full', async () => {
+test('Ship new default calls correction after initial deep and escalates semantic changes', async () => {
   const calls = [];
-  const fast = await runTieredCodeReview({
+  const fast = await runNewCodeReviewFromGit({
     input: tieredInput(),
+    repositoryRoot: '/repo',
+    reviewBaseSha: BASE_OID,
+    lastDeepHead: HEAD,
+    currentHead: RESULTING_HEAD,
+    runGit: (_root, args) =>
+      args.includes(BASE_OID) ? '60\t40\tsrc/base.js\n' : '10\t0\tsrc/fix.js\n',
     runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
     correctionTransport: async () => {
       calls.push('correction');
@@ -279,8 +270,14 @@ test('Ship opt-in calls one correction review after the initial full review and 
   assert.equal(fast.authoritative, 'correction');
 
   calls.length = 0;
-  const escalated = await runTieredCodeReview({
+  const escalated = await runNewCodeReviewFromGit({
     input: tieredInput(['public-contract']),
+    repositoryRoot: '/repo',
+    reviewBaseSha: BASE_OID,
+    lastDeepHead: HEAD,
+    currentHead: RESULTING_HEAD,
+    runGit: (_root, args) =>
+      args.includes(BASE_OID) ? '60\t40\tsrc/base.js\n' : '10\t0\tsrc/fix.js\n',
     runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
     correctionTransport: async () => {
       calls.push('correction');
@@ -489,6 +486,7 @@ test('the execute-bearing closure is pinned, because execute can mutate', () => 
     '_base/_atoms/chronicle-append/chronicle-append.md',
     '_base/_atoms/chronicle-replay/chronicle-replay.md',
     '_base/_atoms/provider-detect/provider-detect.md',
+    '_base/_atoms/review-tier-policy/review-tier-policy.md',
     '_base/_molecules/chronicler/chronicler.md',
     'ship/SKILL.md',
     'ship/_atoms/change-request/change-request.md',

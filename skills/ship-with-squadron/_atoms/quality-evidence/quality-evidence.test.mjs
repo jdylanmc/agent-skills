@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
-import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
+import {
+  normalizeFleetManifest,
+  normalizeNewFleetManifest,
+} from '../fleet-manifest/fleet-manifest.mjs';
 import {
   adaptBlastRadiusEvidence,
   adaptCiEvidence,
@@ -21,7 +24,6 @@ import {
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
-  reviewPolicyBindingDigest,
   SEMANTIC_ASSESSMENT_CATEGORIES,
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
@@ -32,8 +34,14 @@ const POLICY_CURRENT_HEAD = '3'.repeat(40);
 const identity = { runId: 'run', issue: '1' };
 const REPOSITORY_ROOT = path.resolve('test-fixtures', 'quality-evidence-repository');
 
-function manifest(shepherdIntent = 'yes', humanDecisions = [], reviewPolicy = null) {
-  return normalizeFleetManifest({
+function manifest(
+  shepherdIntent = 'yes',
+  humanDecisions = [],
+  reviewPolicy = null,
+  reviewPolicyContractVersion = null,
+  newIntake = false,
+) {
+  const payload = {
     confirmation: 'confirmed',
     goal: 'deliver',
     acceptedScope: [],
@@ -61,18 +69,13 @@ function manifest(shepherdIntent = 'yes', humanDecisions = [], reviewPolicy = nu
     stopConditions: ['cancelled'],
     humanBoundaries: ['human merge'],
     shepherdIntent,
-  });
+    ...(reviewPolicyContractVersion === 2 ? { reviewPolicyContractVersion: 2 } : {}),
+  };
+  return newIntake ? normalizeNewFleetManifest(payload) : normalizeFleetManifest(payload);
 }
 
 function tieredManifest() {
-  return manifest('yes', [], {
-    mode: 'tiered',
-    policyVersion: 1,
-    evaluationMode: 'shadow',
-    deepRoute: DEEP_REVIEW_ROUTE,
-    correctionRoute: CORRECTION_REVIEW_ROUTE,
-    promotionDecision: null,
-  });
+  return manifest('yes', [], null, null, true);
 }
 
 function routing(kind) {
@@ -452,8 +455,29 @@ test('enforces workflow order, conditional Shepherd intent, invalidation, and bo
   assert.equal(remediationDecision({ attempt: 1, limit: 1, defects: ['roast-blocker'] }).action, 'hand-back');
 });
 
+test('stable packet identity excludes mutable cursors and policy while policy binds separately', () => {
+  const currentManifest = tieredManifest();
+  const packet = packetFor(currentManifest);
+  const moved = {
+    ...packet,
+    baseSha: 'different-base',
+    headSha: 'different-head',
+    reviewPolicy: {
+      ...packet.reviewPolicy,
+      churnThresholdPercent: 35,
+    },
+  };
+  assert.equal(reviewPacketBindingDigest(packet), reviewPacketBindingDigest(moved));
+  assert.notEqual(
+    reviewPolicyDigest(packet.reviewPolicy),
+    reviewPolicyDigest(moved.reviewPolicy),
+  );
+});
+
 test('tiered review lineage survives head invalidation and validates after replay', () => {
   const currentManifest = tieredManifest();
+  assert.equal(currentManifest.reviewPolicyContractVersion, 2);
+  assert.equal(currentManifest.issues[0].reviewPolicy.mode, 'deep-then-verify');
   const issueDefinition = currentManifest.issues[0];
   let record = {
     identity: '1',
@@ -510,6 +534,27 @@ test('tiered review lineage survives head invalidation and validates after repla
   );
   assert.equal(replayed.qualityEvidence.reviewLineage.latestCorrection.headSha, 'head-2');
 
+  const thirdRevision = { baseSha: 'base', headSha: 'head-3' };
+  let deepReset = invalidateRevisionEvidence(replayed, thirdRevision);
+  deepReset.pipeline = [
+    { stage: 'implementation', evidence: { ...thirdRevision } },
+    { stage: 'diff-reconciliation', evidence: { ...thirdRevision } },
+    { stage: 'run-ci', evidence: ci(thirdRevision) },
+  ];
+  assert.throws(() => recordStage(deepReset, 'roast', roast({
+    ...thirdRevision,
+    status: 'failed',
+    reviewTier: reviewTier('full', deepReset.assignment.packet, issueDefinition),
+  }), thirdRevision, currentManifest), /Roast evidence does not pass/);
+  assert.equal(deepReset.qualityEvidence.reviewLineage.lastDeep.headSha, 'head');
+  deepReset = recordStage(deepReset, 'roast', roast({
+    ...thirdRevision,
+    reviewTier: reviewTier('full', deepReset.assignment.packet, issueDefinition),
+  }), thirdRevision, currentManifest);
+  assert.equal(deepReset.qualityEvidence.reviewLineage.lastDeep.headSha, 'head-3');
+  assert.equal(deepReset.qualityEvidence.reviewLineage.cumulativeDiffBase, 'head-3');
+  assert.equal(deepReset.qualityEvidence.reviewLineage.latestCorrection, null);
+
   const staleGeneration = structuredClone(replayed);
   staleGeneration.assignment.generation = 2;
   assert.throws(() => validateReviewLineage(
@@ -541,19 +586,7 @@ test('Squadron callable path consumes correction transport without a second full
   const calls = [];
   const result = await runSquadronTieredReview({
     input: {
-      policy: {
-        ...policy,
-        evaluationMode: 'operational',
-        promotionDecision: {
-          approved: true,
-          actorType: 'human',
-          actorId: 'operator-1',
-          decisionId: 'promotion',
-          decidedAt: '2026-09-07T00:00:00Z',
-          packetDigest: 'a'.repeat(64),
-          policyBindingDigest: reviewPolicyBindingDigest({ evaluationMode: 'operational' }),
-        },
-      },
+      policy,
       current,
       lastDeep: { ...current, headSha: POLICY_DEEP_HEAD },
       previousHead: POLICY_DEEP_HEAD,
@@ -584,12 +617,23 @@ test('Squadron callable path consumes correction transport without a second full
         },
       },
       deltaReconciliation: { complete: true, revertedPaths: [], unexplainedPaths: [] },
+      fileScopeAssessment: {
+        complete: true,
+        newOrOutOfScopeFiles: false,
+        evidence: 'scope is unchanged',
+      },
       requirements: ['done'],
       originalFindingIds: ['F-1'],
       affectedConsumers: ['consumer-a'],
       validation: { headSha: POLICY_CURRENT_HEAD, complete: true },
       remediationAttempt: 1,
     },
+    repositoryRoot: '/repo',
+    reviewBaseSha: POLICY_BASE,
+    lastDeepHead: POLICY_DEEP_HEAD,
+    currentHead: POLICY_CURRENT_HEAD,
+    runGit: (_root, args) =>
+      args.includes(POLICY_BASE) ? '60\t40\tsrc/base.js\n' : '10\t0\tsrc/a.js\n',
     runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
     correctionTransport: async () => {
       calls.push('correction');

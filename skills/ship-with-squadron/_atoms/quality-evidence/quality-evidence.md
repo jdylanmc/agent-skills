@@ -34,13 +34,14 @@ diff, Continuous Integration, Roast, blast-radius, criterion, publication, and
 Shepherd evidence; restart from reconciliation. Remediation is a fresh bounded
 worker dispatch, never an unbounded loop or validation weakening.
 
-For an opted-in issue, keep exact-schema `reviewLineage` inside the existing
+For a `deep-then-verify` or legacy version 1 tiered issue, keep exact-schema
+`reviewLineage` inside the existing
 `qualityEvidence` object. It binds policy, packet, scope, source revision,
 assignment generation, cumulative-diff base, last full deep receipt, and latest
 correction receipt. Head mutation clears current correction and pipeline
 evidence but never fabricates or advances the deep anchor. Manifest, source,
 scope, base, generation, digest, or replay mismatch requires full review.
-Legacy and non-opted-in records remain valid without this field.
+Historical missing-policy records remain valid without this field.
 The deep anchor retains the complete previously accepted full Roast receipt;
 its digest, revision, tier receipt, routing, and semantic completion are
 revalidated on every reload. Synthetic lineage metadata is not provenance.

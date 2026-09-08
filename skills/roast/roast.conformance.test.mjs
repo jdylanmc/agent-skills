@@ -30,6 +30,7 @@ import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
   classifyReviewTier,
+  newCodeReviewDefaultPolicy,
 } from '../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 import { resolveBundledRoastRoster } from './_atoms/code-reviewer-panel/code-reviewer-panel.mjs';
 
@@ -258,8 +259,9 @@ test('agent-spawn exposes the bounded model-role vocabulary and keeps direct rou
   assert.match(atom, /A plain call that omits\s+`model-role` keeps the existing direct-routing behavior/);
 });
 
-test('tiered code review is opt-in and uses only the confirmed full-strength routes', () => {
+test('new code review defaults to deep-then-verify and uses only confirmed routes', () => {
   assert.equal(classifyReviewTier({ policy: { mode: 'full' } }).outcome, 'full');
+  assert.equal(newCodeReviewDefaultPolicy().mode, 'deep-then-verify');
   assert.deepEqual(DEEP_REVIEW_ROUTE, {
     model: 'gpt-6-astra',
     fallbackModels: ['gpt-5.6-sol'],
@@ -274,8 +276,9 @@ test('tiered code review is opt-in and uses only the confirmed full-strength rou
     contextTier: 'default',
   });
   const branch = read('roast/_molecules/roast-code-branch/roast-code-branch.md');
-  assert.match(branch, /first review is always full/);
+  assert.match(branch, /first review is full/);
   assert.match(branch, /bounded QA correction dispatcher/);
+  assert.match(branch, /`repeated-full`/);
 });
 
 test('the bundled code roast roster resolves through shared model-role routing without changing security routing', () => {

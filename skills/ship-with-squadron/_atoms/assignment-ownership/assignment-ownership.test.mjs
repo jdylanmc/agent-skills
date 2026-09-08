@@ -5,7 +5,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
+import {
+  normalizeFleetManifest,
+  normalizeNewFleetManifest,
+} from '../fleet-manifest/fleet-manifest.mjs';
 import {
   assertFleetState,
   cancelFleet,
@@ -39,10 +42,6 @@ import {
   reviewPolicyDigest,
   reviewScopeBindingDigest,
 } from '../quality-evidence/quality-evidence.mjs';
-import {
-  CORRECTION_REVIEW_ROUTE,
-  DEEP_REVIEW_ROUTE,
-} from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SANDBOX = path.join(ROOT, '.test-sandbox', 'ship-with-squadron-handoff');
@@ -204,14 +203,6 @@ test('tiered manifest policy is bound into the assignment packet', () => {
       acceptanceCriteria: ['done'],
       scope: ['issue a'],
       allowedPaths: ['src/a/**'],
-      reviewPolicy: {
-        mode: 'tiered',
-        policyVersion: 1,
-        evaluationMode: 'shadow',
-        deepRoute: DEEP_REVIEW_ROUTE,
-        correctionRoute: CORRECTION_REVIEW_ROUTE,
-        promotionDecision: null,
-      },
     }],
     dependencies: [],
     concurrency: 1,
@@ -223,7 +214,8 @@ test('tiered manifest policy is bound into the assignment packet', () => {
     humanBoundaries: ['human merge'],
     shepherdIntent: 'yes',
   };
-  const tieredManifest = normalizeFleetManifest(tieredInput);
+  const tieredManifest = normalizeNewFleetManifest(tieredInput);
+  assert.equal(tieredManifest.issues[0].reviewPolicy.mode, 'deep-then-verify');
   let current = createFleetState(tieredManifest, 'tiered-run');
   current = recordSourceRevisionObservation(
     current,

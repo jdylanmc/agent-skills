@@ -49,14 +49,16 @@ test('directly composes Chronicler and local fleet molecules only', () => {
   assert.ok(!closure.some((file) => file.startsWith('blast-radius/')));
 });
 
-test('tiered review is issue-bound, replay-safe, and opt-in only', () => {
+test('new review defaults are explicit while legacy state remains replay-safe', () => {
   const manifest = read('ship-with-squadron/_atoms/fleet-manifest/fleet-manifest.md');
   const assignment = read('ship-with-squadron/_atoms/assignment-ownership/assignment-ownership.md');
   const quality = read('ship-with-squadron/_atoms/quality-evidence/quality-evidence.md');
-  assert.match(manifest, /absence means\s+the existing full Roast behavior/);
+  assert.match(manifest, /New intake declares `reviewPolicyContractVersion: 2`/);
+  assert.match(manifest, /`deep-then-verify` is the new default/);
+  assert.match(manifest, /Historical version 1 manifests may omit `reviewPolicy`/);
   assert.match(assignment, /exact normalized `reviewPolicy`/);
-  assert.match(quality, /exact-schema `reviewLineage`/);
-  assert.match(quality, /Legacy and non-opted-in records remain valid/);
+  assert.match(quality, /exact-schema\s+`reviewLineage`/);
+  assert.match(quality, /Historical missing-policy records remain valid/);
 });
 
 test('pins required local workflow skills and the checked-in blast-radius seam', () => {
