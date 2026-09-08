@@ -119,6 +119,8 @@ jobs:
           skills/discovery/_atoms/foundation-rehydrate/foundation-rehydrate.test.mjs
           skills/proof-of-concept/proof-of-concept.conformance.test.mjs
           skills/next-step-selection/next-step-selection.conformance.test.mjs
+          skills/status-report/status-report.conformance.test.mjs
+          skills/status-report/_atoms/concise-report/concise-report.test.mjs
           skills/sanity-check/sanity-check.conformance.test.mjs
           skills/shepherd/shepherd.conformance.test.mjs
           skills/shepherd/_atoms/shepherd-disposition/shepherd-disposition.test.mjs
