@@ -33,6 +33,16 @@ Model only what the human-aligned findings support.
    boundaries, confidence, unsettled seams, and the unchanged
    `aligned-findings-digest` as the model's basis receipt.
 
+## Output Contract
+
+Return `domainModel` as an array of structured, JSON-compatible object records,
+not flattened prose. Records may group or represent actors, concepts, systems,
+terms, states, events, policies, external dependencies, relationships,
+boundaries, confidence, and unsettled seams. Preserve nested aliases, contested
+names, evidence references, confidence, directions, transitions, and notes as
+their original arrays and records. Every value must be JSON-compatible: `null`,
+a boolean, a canonical finite number, a string, an array, or a plain object.
+
 ## Boundaries
 
 - No evidence acquisition. A missing fact becomes an unsettled seam for a later

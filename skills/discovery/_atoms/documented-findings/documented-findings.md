@@ -21,6 +21,13 @@ Make the current understanding visible before asking the human to align it.
    `constraints`, `assumptions`, `contradictions`, `risks`, `openQuestions`,
    `scope`, `exclusions`, and `resolved`. Every field is included in the
    `aligned-findings-digest`.
+   `relationshipClaims` and `boundaryClaims` are arrays of structured,
+   JSON-compatible object records, not prose strings. Each record preserves
+   `source`, `target`, `relationship`, `direction`, `evidence`, `confidence`,
+   and `notes`; nested evidence records and lists remain structured. All other
+   findings fields remain arrays of scalar text except `resolved`, whose records
+   are `{field, entry, resolution}` and whose `entry` has the same scalar-or-
+   structured shape as the field it resolves.
 2. Record what was found, what was uncovered by comparing sources, what remains
    unknown, and the evidence reference for each material claim.
 3. Mark the packet `findings-documented`. This marker is input to the

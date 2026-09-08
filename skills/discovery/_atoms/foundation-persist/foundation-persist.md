@@ -54,10 +54,18 @@ The check refuses the links it can see; it does not prove the path stays safe.
 
 The artifact records `- Schema: 2` beside `- Subject:`. Schema 2 requires every
 aligned-claims, risk, and domain-model section. The parser also reads genuine
-schema 1 foundations from before issue #156, treating only those newly
-introduced fields as empty. A missing or unknown schema is refused with
-`unsupported-schema`; deleting a required schema 2 section is `invalid-input`,
-not a silent downgrade.
+schema 1 foundations from before issue #156, treating only `sourceClaims`,
+`relationshipClaims`, `boundaryClaims`, `risks`, and `domainModel` as empty.
+A missing or unknown schema is refused with `unsupported-schema`; deleting a
+required schema 2 section is `invalid-input`, not a silent downgrade.
+
+`relationshipClaims`, `boundaryClaims`, and `domainModel` are arrays of
+structured JSON-compatible object records. Every other durable or frontier
+field is an array of scalar text, and `nextAction` is scalar text. Structured
+records may contain only `null`, booleans, canonical finite numbers, strings,
+arrays, and plain objects; sparse arrays, circular values, non-finite numbers,
+negative zero, class instances, functions, `undefined`, and non-object
+top-level entries are refused as `invalid-input`.
 
 ## Alignment and the payload binding
 
@@ -116,13 +124,14 @@ is dropped or rewritten. A second, conflicting resolution for the same
 `(field, entry)` is refused unless it is byte-identical to the existing one.
 Removal and re-resolution are human decisions, not side effects of a write.
 
-Be honest about what this proves. The check compares entries by exact text, so
-it guarantees an entry was not silently *dropped* or *moved*. It does not and
-cannot guarantee an entry was not *reworded*: text identity is only a proxy for
-meaning, a reworded entry whose original text no longer appears reads as a drop,
-and a caller intent on hiding a change could keep the original text verbatim in
-`Resolved` while burying an altered meaning elsewhere. Rewording is exactly the
-seam this check cannot see.
+Be honest about what this proves. The check compares scalar entries by exact
+text and structured entries by canonical JSON, so it guarantees an entry was
+not silently *dropped* or *moved*. It does not and cannot guarantee an entry was
+not semantically rewritten: identity is only a proxy for meaning, a changed
+entry whose original canonical value no longer appears reads as a drop, and a
+caller intent on hiding a change could keep the original entry in `Resolved`
+while burying an altered meaning elsewhere. Rewording is exactly the seam this
+check cannot see.
 
 ## Append-only history
 
@@ -149,14 +158,16 @@ required section occurs exactly once and no unknown section appears.
 
 ## Control characters and unambiguous encodings
 
-Every persisted string — each durable and frontier entry, `nextAction`, every
-resolution, the subject identity, the cycle, and the timestamp — is refused as
+Every persisted string — including strings and keys nested inside structured
+records, each scalar durable and frontier entry, `nextAction`, every resolution,
+the subject identity, the cycle, and the timestamp — is refused as
 `invalid-input` if it contains any ASCII control character (U+0000–U+001F or
-U+007F), on the write path and again on parse. A `Resolved` record's entry and
-resolution are rendered with the delimiter characters and the backslash
-backslash-escaped, so **any** legal durable entry round-trips — backticks,
-colons, pipes, em dashes, a leading `- `, and the `_None recorded._` sentinel
-all survive persist → parse → resolve. Tuple keys used by the retention check are
+U+007F), on the write path and again on parse. Structured records are rendered
+as one `- JSON: <canonical-json>` line with recursively sorted object keys and
+array order preserved. Parse requires that exact canonical encoding, so records
+survive persist → parse → rehydrate without prose flattening. Scalar `Resolved`
+entries retain the escaped legacy line encoding; a resolution for a structured
+entry uses one canonical JSON record. Tuple keys used by the retention check are
 canonical JSON, not separator-joined strings, so two distinct records can never
 collide on one key.
 
@@ -282,6 +293,9 @@ documented-findings field, `alignedFindingsDigest`, an explicit `domainModel`,
 (the revision the cycle rehydrated, or `null` for a genuine first cycle), a
 `cycle` identifier, a canonical UTC `timestamp`, the current `frontier` and
 `nextAction`, and a `resolved` list of `{field, entry, resolution}` records.
+`relationshipClaims`, `boundaryClaims`, and `domainModel` must be structured
+record arrays; `resolved[].entry` must match the scalar or structured shape of
+the field it discharges.
 Exit `0` prints one JSON object on standard output with the persisted `locator`,
 `revision`, subject identity, and the write-verification record. Any failure prints one
 `{"error": {"code", "message"}}` object on standard error with exit `1` and

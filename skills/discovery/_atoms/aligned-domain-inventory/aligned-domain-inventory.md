@@ -27,8 +27,8 @@ Extract the domain nouns from the exact documented findings the human aligned.
    present in the packet.
 4. Preserve the aligned relationship claims and boundary claims as distinct
    records carrying their source, target, verb, direction, evidence citation,
-   confidence, and notes. Do not reduce them to an entity list before the
-   relationship stage.
+   confidence, and notes. The verb occupies the record's `relationship` field.
+   Do not reduce them to an entity list before the relationship stage.
 5. If modeling exposes a need for evidence absent from the packet, return that
    seam as unsettled. Discovery must acquire and document the evidence, then
    align again before it can enter a later model.

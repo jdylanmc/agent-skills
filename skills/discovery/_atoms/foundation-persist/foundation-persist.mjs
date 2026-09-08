@@ -26,12 +26,12 @@
  * conflicting resolution for the same `(field, entry)` is refused unless it is
  * byte-identical to the existing one.
  *
- * The retention check compares entries by exact text. It proves no prior entry
- * silently *vanished*. It cannot prove an entry's *meaning* survived: a reworded
- * entry whose original text no longer appears reads as a drop, and a caller
- * intent on hiding a change could keep the original text verbatim in `Resolved`
- * while burying an altered meaning elsewhere. That proxy is the seam this check
- * cannot see.
+ * The retention check compares scalar entries by exact text and structured
+ * entries by canonical JSON. It proves no prior entry silently *vanished*. It
+ * cannot prove an entry's *meaning* survived: a reworded entry whose canonical
+ * value no longer appears reads as a drop, and a caller intent on hiding a
+ * change could keep the original entry in `Resolved` while burying an altered
+ * meaning elsewhere. That proxy is the seam this check cannot see.
  *
  * The alignment gate is bound, not asserted. Every new write must carry the
  * complete canonical findings packet, `alignedFindingsDigest`, an explicit
@@ -135,6 +135,15 @@ export const FOUNDATION_FIELDS = Object.freeze([...DURABLE_SETS, 'frontier', 'ne
 
 /** The fields whose prior entries must be retained across a write. */
 export const RETAINED_FIELDS = Object.freeze([...DURABLE_SETS, 'frontier']);
+
+/** Fields whose upstream contracts produce JSON-compatible records, not text. */
+export const STRUCTURED_RECORD_FIELDS = Object.freeze([
+  'relationshipClaims',
+  'boundaryClaims',
+  'domainModel',
+]);
+
+const STRUCTURED_RECORD_FIELD_SET = new Set(STRUCTURED_RECORD_FIELDS);
 
 /** Discovery's alignment vocabulary. Only these two aligned results persist. */
 export const PERSISTABLE_ALIGNMENT = Object.freeze(['verified', 'corrected']);
@@ -402,6 +411,77 @@ function assertStringList(value, label) {
   return value.map((entry, index) => assertSingleLine(entry, `${label}[${index}]`));
 }
 
+function assertJsonCompatible(value, label, ancestors = new Set()) {
+  if (value === null || typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    assertNoControlChars(value, label);
+    return value;
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || Object.is(value, -0)) {
+      throw new FoundationPersistError('invalid-input', `${label} must contain only canonical finite JSON numbers`);
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) {
+      throw new FoundationPersistError('invalid-input', `${label} must not contain a circular reference`);
+    }
+    ancestors.add(value);
+    const result = [];
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.prototype.hasOwnProperty.call(value, index)) {
+        throw new FoundationPersistError('invalid-input', `${label} must not contain sparse arrays`);
+      }
+      result.push(assertJsonCompatible(value[index], `${label}[${index}]`, ancestors));
+    }
+    ancestors.delete(value);
+    return result;
+  }
+  if (isPlainObject(value) && Object.getPrototypeOf(value) === Object.prototype) {
+    if (ancestors.has(value)) {
+      throw new FoundationPersistError('invalid-input', `${label} must not contain a circular reference`);
+    }
+    ancestors.add(value);
+    const result = {};
+    for (const key of Object.keys(value)) {
+      assertNoControlChars(key, `${label} key`);
+      Object.defineProperty(result, key, {
+        value: assertJsonCompatible(value[key], `${label}.${key}`, ancestors),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+    ancestors.delete(value);
+    return result;
+  }
+  throw new FoundationPersistError(
+    'invalid-input',
+    `${label} must contain only JSON-compatible null, boolean, finite number, string, array, and plain-object values`,
+  );
+}
+
+function assertStructuredRecord(value, label) {
+  if (!isPlainObject(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new FoundationPersistError('invalid-input', `${label} must be a JSON-compatible object record`);
+  }
+  return assertJsonCompatible(value, label);
+}
+
+function assertStructuredRecordList(value, label) {
+  if (!Array.isArray(value)) {
+    throw new FoundationPersistError('invalid-input', `${label} must be an array`);
+  }
+  return value.map((entry, index) => assertStructuredRecord(entry, `${label}[${index}]`));
+}
+
+function assertFieldEntries(value, field) {
+  return STRUCTURED_RECORD_FIELD_SET.has(field)
+    ? assertStructuredRecordList(value, field)
+    : assertStringList(value, field);
+}
+
 function assertResolved(value) {
   if (!Array.isArray(value)) {
     throw new FoundationPersistError('invalid-input', 'resolved must be an array');
@@ -419,9 +499,11 @@ function assertResolved(value) {
     if (!RETAINED_FIELDS.includes(field)) {
       throw new FoundationPersistError('invalid-input', `resolved[${index}].field must be one of the retained fields (${RETAINED_FIELDS.join(', ')}): ${field}`);
     }
-    const text = assertSingleLine(entry.entry, `resolved[${index}].entry`);
+    const resolvedEntry = STRUCTURED_RECORD_FIELD_SET.has(field) && isPlainObject(entry.entry)
+      ? assertStructuredRecord(entry.entry, `resolved[${index}].entry`)
+      : assertSingleLine(entry.entry, `resolved[${index}].entry`);
     const resolution = assertFreeTextLine(entry.resolution, `resolved[${index}].resolution`);
-    return { field, entry: text, resolution };
+    return { field, entry: resolvedEntry, resolution };
   });
 
   // A second, conflicting resolution for the same (field, entry) is refused
@@ -450,7 +532,34 @@ function assertResolved(value) {
  * refusal alone (R6).
  */
 function pairKey(field, entry) {
-  return JSON.stringify([field, entry]);
+  return canonicalize([field, entry]);
+}
+
+const STRUCTURED_ENTRY_PREFIX = 'JSON: ';
+
+function renderStructuredEntry(entry) {
+  return `${STRUCTURED_ENTRY_PREFIX}${canonicalize(entry)}`;
+}
+
+function parseStructuredEntry(value, label) {
+  if (!value.startsWith(STRUCTURED_ENTRY_PREFIX)) {
+    // Schema-2 artifacts produced before structured records were canonicalized
+    // used plain text. Keep them readable; new writes reject text in these
+    // fields and require an explicit resolution before replacing it.
+    return assertNoControlChars(value, label);
+  }
+  const encoded = value.slice(STRUCTURED_ENTRY_PREFIX.length);
+  let parsed;
+  try {
+    parsed = JSON.parse(encoded);
+  } catch (error) {
+    throw new FoundationPersistError('invalid-input', `${label} contains malformed structured JSON: ${error.message}`);
+  }
+  const record = assertStructuredRecord(parsed, label);
+  if (canonicalize(record) !== encoded) {
+    throw new FoundationPersistError('invalid-input', `${label} must use canonical JSON with sorted object keys`);
+  }
+  return record;
 }
 
 /**
@@ -506,7 +615,7 @@ export function renderFoundation(foundation) {
       lines.push(NONE_MARKER);
     } else {
       for (const entry of entries) {
-        lines.push(`- ${entry}`);
+        lines.push(`- ${STRUCTURED_RECORD_FIELD_SET.has(field) ? renderStructuredEntry(entry) : entry}`);
       }
     }
   }
@@ -518,7 +627,11 @@ export function renderFoundation(foundation) {
     lines.push(NONE_MARKER);
   } else {
     for (const item of foundation.resolved) {
-      lines.push(`- ${item.field}: ${escapeResolvedField(item.entry)} — ${escapeResolvedField(item.resolution)}`);
+      if (isPlainObject(item.entry)) {
+        lines.push(`- JSON: ${canonicalize(item)}`);
+      } else {
+        lines.push(`- ${item.field}: ${escapeResolvedField(item.entry)} — ${escapeResolvedField(item.resolution)}`);
+      }
     }
   }
 
@@ -644,7 +757,7 @@ function assertNoRogueHeadings(allLines) {
   }
 }
 
-function listFrom(sectionLines, title) {
+function listFrom(sectionLines, title, field) {
   if (!sectionLines) {
     throw new FoundationPersistError('invalid-input', `foundation is missing the ${title} section`);
   }
@@ -657,7 +770,9 @@ function listFrom(sectionLines, title) {
     if (!match) {
       throw new FoundationPersistError('invalid-input', `malformed entry in ${title}: ${line}`);
     }
-    return assertNoControlChars(match[1], `${title} entry`);
+    return STRUCTURED_RECORD_FIELD_SET.has(field)
+      ? parseStructuredEntry(match[1], `${title} entry`)
+      : assertNoControlChars(match[1], `${title} entry`);
   });
 }
 
@@ -751,7 +866,7 @@ export function parseFoundation(bytes) {
   for (const field of LIST_SECTIONS) {
     foundation[field] = OPTIONAL_SCHEMA_1_FIELDS.has(field) && !sections.has(SECTION_TITLES[field])
       ? []
-      : listFrom(sections.get(SECTION_TITLES[field]), SECTION_TITLES[field]);
+      : listFrom(sections.get(SECTION_TITLES[field]), SECTION_TITLES[field], field);
   }
 
   const nextActionLines = sections.get('Next Action');
@@ -768,6 +883,20 @@ export function parseFoundation(bytes) {
   }
   if (!(resolvedTrimmed.length === 1 && resolvedTrimmed[0] === NONE_MARKER)) {
     for (const line of resolvedTrimmed) {
+      if (line.startsWith('- JSON: ')) {
+        const encoded = line.slice('- JSON: '.length);
+        let parsed;
+        try {
+          parsed = JSON.parse(encoded);
+        } catch (error) {
+          throw new FoundationPersistError('invalid-input', `malformed Resolved JSON entry: ${error.message}`);
+        }
+        if (!isPlainObject(parsed) || canonicalize(parsed) !== encoded) {
+          throw new FoundationPersistError('invalid-input', `malformed or noncanonical Resolved JSON entry: ${line}`);
+        }
+        foundation.resolved.push(...assertResolved([parsed]));
+        continue;
+      }
       const match = /^- ([a-zA-Z]+): (.*)$/.exec(line);
       if (!match || !RETAINED_FIELDS.includes(match[1])) {
         throw new FoundationPersistError('invalid-input', `malformed Resolved entry: ${line}`);
@@ -809,7 +938,8 @@ export function parseFoundation(bytes) {
 function countMultiset(entries) {
   const counts = new Map();
   for (const entry of entries) {
-    counts.set(entry, (counts.get(entry) ?? 0) + 1);
+    const key = canonicalize(entry);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return counts;
 }
@@ -857,18 +987,20 @@ function enforceRetention(prior, next) {
   const nextEntryFields = new Map();
   for (const field of RETAINED_FIELDS) {
     for (const entry of new Set(next[field])) {
-      if (!nextEntryFields.has(entry)) nextEntryFields.set(entry, new Set());
-      nextEntryFields.get(entry).add(field);
+      const key = canonicalize(entry);
+      if (!nextEntryFields.has(key)) nextEntryFields.set(key, new Set());
+      nextEntryFields.get(key).add(field);
     }
   }
 
   for (const field of RETAINED_FIELDS) {
     const available = countMultiset(next[field]);
-    for (const [entry, count] of countMultiset(prior[field])) {
+    for (const [entryKey, count] of countMultiset(prior[field])) {
+      const entry = JSON.parse(entryKey);
       for (let i = 0; i < count; i += 1) {
-        const remaining = available.get(entry) ?? 0;
+        const remaining = available.get(entryKey) ?? 0;
         if (remaining > 0) {
-          available.set(entry, remaining - 1);
+          available.set(entryKey, remaining - 1);
           continue;
         }
         const spendKey = pairKey(field, entry);
@@ -877,7 +1009,7 @@ function enforceRetention(prior, next) {
           freshDischarges.set(spendKey, discharges - 1);
           continue;
         }
-        const elsewhere = [...(nextEntryFields.get(entry) ?? [])].filter((other) => other !== field).sort();
+        const elsewhere = [...(nextEntryFields.get(entryKey) ?? [])].filter((other) => other !== field).sort();
         if (elsewhere.length) {
           throw new FoundationPersistError(
             'foundation-regression',
@@ -894,7 +1026,7 @@ function enforceRetention(prior, next) {
 }
 
 function tripleKey(item) {
-  return JSON.stringify([item.field, item.entry, item.resolution]);
+  return canonicalize([item.field, item.entry, item.resolution]);
 }
 
 function parseTripleKey(key) {
@@ -988,7 +1120,7 @@ function normalizeIntake(intake) {
     resolved: assertResolved(intake.resolved),
   };
   for (const field of DURABLE_SETS) {
-    foundation[field] = assertStringList(intake[field], field);
+    foundation[field] = assertFieldEntries(intake[field], field);
   }
   foundation.frontier = assertStringList(intake.frontier, 'frontier');
   foundation.nextAction = assertFreeTextLine(intake.nextAction, 'nextAction');
@@ -1156,14 +1288,14 @@ function foundationsEqual(a, b) {
   for (const field of LIST_SECTIONS) {
     if (a[field].length !== b[field].length) return false;
     for (let i = 0; i < a[field].length; i += 1) {
-      if (a[field][i] !== b[field][i]) return false;
+      if (canonicalize(a[field][i]) !== canonicalize(b[field][i])) return false;
     }
   }
   if (a.resolved.length !== b.resolved.length) return false;
   for (let i = 0; i < a.resolved.length; i += 1) {
     if (
       a.resolved[i].field !== b.resolved[i].field
-      || a.resolved[i].entry !== b.resolved[i].entry
+      || canonicalize(a.resolved[i].entry) !== canonicalize(b.resolved[i].entry)
       || a.resolved[i].resolution !== b.resolved[i].resolution
     ) return false;
   }

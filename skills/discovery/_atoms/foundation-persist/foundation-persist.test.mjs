@@ -11,6 +11,7 @@ import {
   FOUNDATION_FIELDS,
   FoundationPersistError,
   PERSISTABLE_ALIGNMENT,
+  STRUCTURED_RECORD_FIELDS,
   alignedFindingsDigestOf,
   alignedPayloadDigestOf,
   parseFoundation,
@@ -101,6 +102,46 @@ function intake(overrides = {}) {
 
 function derivationIntake(overrides = {}) {
   return intake(overrides);
+}
+
+function structuredRecords() {
+  const relationship = {
+    source: 'Operator',
+    target: 'Discovery',
+    relationship: 'aligns',
+    direction: 'directed',
+    evidence: [{ locator: 'docs/evidence.md', quote: 'The operator confirms the findings.' }],
+    confidence: 'confirmed',
+    notes: ['Human approval remains outside the helper.'],
+  };
+  const boundary = {
+    source: 'Discovery',
+    target: 'Specification',
+    relationship: 'hands off to',
+    direction: 'directed',
+    evidence: [{ locator: 'skills/discovery/SKILL.md', section: 'Boundaries' }],
+    confidence: 'confirmed',
+    notes: ['No specification authority crosses the boundary.'],
+  };
+  const domain = {
+    actors: [{ name: 'Operator', aliases: ['human reviewer'], confidence: 'confirmed' }],
+    systems: [{ name: 'Discovery', aliases: ['discovery loop'], confidence: 'confirmed' }],
+    concepts: [{ name: 'aligned foundation', evidence: ['docs/evidence.md'] }],
+    terms: [{ name: 'alignment', aliases: ['verification'], contested: false }],
+    states: [{ name: 'findings-documented', transitionsTo: ['verified', 'corrected'] }],
+    events: [{ name: 'foundation persisted', emittedBy: 'Discovery' }],
+    policies: [{ name: 'human-owned alignment' }],
+    externalDependencies: [],
+    relationships: [relationship],
+    boundaries: [boundary],
+    confidence: 'confirmed',
+    unsettledSeams: [{ question: 'Who owns the next specification?', confidence: 'unknown' }],
+  };
+  return {
+    relationshipClaims: [relationship],
+    boundaryClaims: [boundary],
+    domainModel: [domain],
+  };
 }
 
 function code(fn) {
@@ -249,12 +290,7 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
   const root = freshRepo();
   const payload = {
     ...intake({ repositoryRoot: root }),
-    domainModel: [
-      'actor: operator',
-      'system: Discovery',
-      'relationship: operator aligns documented findings',
-      'boundary: Discovery retains persistence authority',
-    ],
+    ...structuredRecords(),
     frontier: ['ready: specification'],
     nextAction: 'Hand the reread compact handoff to specification.',
   };
@@ -290,6 +326,96 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
     code(() => persistFoundation(legacyBypass, { io: realIo() })),
     'invalid-input',
   );
+});
+
+test('structured findings and domain records render canonically and parse by deep equality', () => {
+  const root = freshRepo();
+  const records = structuredRecords();
+  persistFoundation(intake({ repositoryRoot: root, ...records }), { io: realIo() });
+
+  const bytes = fs.readFileSync(destIn(root), 'utf8');
+  assert.match(bytes, /## Relationship Claims\n\n- JSON: \{/);
+  assert.match(bytes, /## Boundary Claims\n\n- JSON: \{/);
+  assert.match(bytes, /## Domain Model\n\n- JSON: \{/);
+
+  const parsed = parseFoundation(bytes);
+  for (const field of STRUCTURED_RECORD_FIELDS) {
+    assert.deepEqual(parsed[field], records[field], `${field} must round-trip without flattening`);
+  }
+  assert.equal(renderFoundation(parsed), bytes);
+});
+
+test('malformed structured records are refused instead of flattened or coerced', () => {
+  for (const field of STRUCTURED_RECORD_FIELDS) {
+    assert.equal(
+      code(() => persistFoundation(intake({ repositoryRoot: freshRepo(), [field]: ['flattened text'] }), { io: realIo() })),
+      'invalid-input',
+      `${field} text`,
+    );
+    assert.equal(
+      code(() => persistFoundation(intake({ repositoryRoot: freshRepo(), [field]: [[]] }), { io: realIo() })),
+      'invalid-input',
+      `${field} array`,
+    );
+    assert.equal(
+      code(() => persistFoundation(intake({ repositoryRoot: freshRepo(), [field]: [{ invalid: Number.NaN }] }), { io: realIo() })),
+      'invalid-input',
+      `${field} non-finite number`,
+    );
+    assert.equal(
+      code(() => persistFoundation(intake({ repositoryRoot: freshRepo(), [field]: [{ invalid: -0 }] }), { io: realIo() })),
+      'invalid-input',
+      `${field} negative zero`,
+    );
+    assert.equal(
+      code(() => persistFoundation(intake({ repositoryRoot: freshRepo(), [field]: [{ invalid: undefined }] }), { io: realIo() })),
+      'invalid-input',
+      `${field} undefined`,
+    );
+  }
+});
+
+test('malformed and noncanonical structured Markdown records are refused on parse', () => {
+  const root = freshRepo();
+  const records = structuredRecords();
+  persistFoundation(intake({ repositoryRoot: root, ...records }), { io: realIo() });
+  const bytes = fs.readFileSync(destIn(root), 'utf8');
+
+  const malformed = bytes.replace(/- JSON: \{[^\n]+\}/, '- JSON: {"source":');
+  assert.equal(code(() => parseFoundation(malformed)), 'invalid-input');
+
+  const noncanonical = bytes.replace(
+    /^- JSON: \{"confidence":"confirmed","direction":"directed"/m,
+    '- JSON: {"direction":"directed","confidence":"confirmed"',
+  );
+  assert.notEqual(noncanonical, bytes);
+  assert.equal(code(() => parseFoundation(noncanonical)), 'invalid-input');
+});
+
+test('a structured retained entry can be discharged without flattening its identity', () => {
+  const root = freshRepo();
+  const relationship = structuredRecords().relationshipClaims[0];
+  const first = persistFoundation(intake({
+    repositoryRoot: root,
+    relationshipClaims: [relationship],
+  }), { io: realIo() });
+
+  const second = persistFoundation(intake({
+    repositoryRoot: root,
+    expectedPriorRevision: first.revision,
+    cycle: 'c-0002',
+    timestamp: '2026-08-29T02:00:00Z',
+    relationshipClaims: [],
+    resolved: [{
+      field: 'relationshipClaims',
+      entry: relationship,
+      resolution: 'The relationship was superseded by aligned evidence.',
+    }],
+  }), { io: realIo() });
+
+  assert.equal(second.status, 'persisted');
+  const parsed = parseFoundation(fs.readFileSync(destIn(root), 'utf8'));
+  assert.deepEqual(parsed.resolved[0].entry, relationship);
 });
 
 test('persisting a different subject over an existing foundation is refused', () => {
@@ -402,7 +528,10 @@ test('every durable set participates in retention', () => {
   for (const field of DURABLE_SETS) {
     const root = freshRepo();
     const makeIntake = field === 'domainModel' ? derivationIntake : intake;
-    persistFoundation(makeIntake({ repositoryRoot: root, [field]: [`entry-for-${field}`] }), { io: realIo() });
+    const entry = STRUCTURED_RECORD_FIELDS.includes(field)
+      ? { name: `entry-for-${field}`, evidence: ['docs/evidence.md'] }
+      : `entry-for-${field}`;
+    persistFoundation(makeIntake({ repositoryRoot: root, [field]: [entry] }), { io: realIo() });
     const dropped = code(() => persistFoundation(makeIntake({
       repositoryRoot: root,
       cycle: 'c-0002',

@@ -91,6 +91,45 @@ function intake(root, overrides = {}) {
   };
 }
 
+function structuredRecords() {
+  const relationship = {
+    source: 'Operator',
+    target: 'Discovery',
+    relationship: 'aligns',
+    direction: 'directed',
+    evidence: [{ locator: 'docs/evidence.md', kind: 'decision' }],
+    confidence: 'confirmed',
+    notes: ['The helper verifies binding, not human understanding.'],
+  };
+  const boundary = {
+    source: 'Discovery',
+    target: 'Specification',
+    relationship: 'hands off to',
+    direction: 'directed',
+    evidence: [{ locator: 'skills/discovery/SKILL.md', section: 'Boundaries' }],
+    confidence: 'confirmed',
+    notes: ['Specification authority stays downstream.'],
+  };
+  return {
+    relationshipClaims: [relationship],
+    boundaryClaims: [boundary],
+    domainModel: [{
+      actors: [{ name: 'Operator', aliases: ['human reviewer'], confidence: 'confirmed' }],
+      systems: [{ name: 'Discovery', aliases: ['discovery loop'], confidence: 'confirmed' }],
+      concepts: [{ name: 'foundation', evidence: ['docs/evidence.md'] }],
+      terms: [{ name: 'alignment', aliases: ['verification'], contested: false }],
+      states: [{ name: 'findings-documented', transitionsTo: ['verified', 'corrected'] }],
+      events: [{ name: 'foundation persisted', emittedBy: 'Discovery' }],
+      policies: [{ name: 'human-owned alignment' }],
+      externalDependencies: [],
+      relationships: [relationship],
+      boundaries: [boundary],
+      confidence: 'confirmed',
+      unsettledSeams: [{ question: 'Who owns the next specification?', confidence: 'unknown' }],
+    }],
+  };
+}
+
 function code(fn) {
   try {
     fn();
@@ -119,6 +158,45 @@ test('cold-start rehydration reads the artifact and returns the complete persist
   assert.deepEqual(result.resolved, []);
   assert.equal(result.foundation.alignment, 'confirmed');
   assert.equal(result.foundation.locator, LOCATOR);
+});
+
+test('structured records survive persist, parse, rehydrate, and next-cycle persistence by deep equality', () => {
+  const root = freshRepo();
+  const records = structuredRecords();
+  const first = seed(root, records);
+
+  const cold = rehydrateFoundation(intake(root));
+  assert.deepEqual(cold.relationshipClaims, records.relationshipClaims);
+  assert.deepEqual(cold.boundaryClaims, records.boundaryClaims);
+  assert.deepEqual(cold.domainModel, records.domainModel);
+
+  const nextPayload = {
+    version: 1,
+    repositoryRoot: root,
+    subject: { id: SUBJECT_ID, slug: SLUG },
+    alignment: 'corrected',
+    cycle: 'c-0002',
+    timestamp: '2026-08-29T02:00:00Z',
+    expectedPriorRevision: first.revision,
+    resolved: cold.resolved,
+  };
+  for (const field of FOUNDATION_FIELDS) {
+    nextPayload[field] = cold[field];
+  }
+  const alignedFindingsDigest = alignedFindingsDigestOf(nextPayload);
+  const second = persistFoundation({
+    ...nextPayload,
+    alignedFindingsDigest,
+    domainModelBasisDigest: alignedFindingsDigest,
+    frontierBasisDigest: alignedFindingsDigest,
+  });
+
+  const compacted = rehydrateFoundation(intake(root, {
+    expected: { locator: LOCATOR, revision: second.revision },
+  }));
+  assert.deepEqual(compacted.relationshipClaims, records.relationshipClaims);
+  assert.deepEqual(compacted.boundaryClaims, records.boundaryClaims);
+  assert.deepEqual(compacted.domainModel, records.domainModel);
 });
 
 test('cold-start and compacted-session rehydration preserve exact resolution order, duplicates, and field qualification', () => {
@@ -152,6 +230,30 @@ test('the legacy empty Resolved marker rehydrates as an empty resolution list in
 
   assert.deepEqual(cold.resolved, []);
   assert.deepEqual(compacted.resolved, []);
+});
+
+test('schema-1 rehydration returns empty defaults for every later foundation field', () => {
+  const root = freshRepo();
+  seed(root);
+  const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+  const current = fs.readFileSync(dest, 'utf8');
+  const legacy = [
+    'Source Claims',
+    'Relationship Claims',
+    'Boundary Claims',
+    'Risks',
+    'Domain Model',
+  ].reduce(
+    (bytes, title) => bytes.replace(new RegExp(`\\n## ${title}\\n\\n_None recorded\\._\\n`), ''),
+    current.replace('- Schema: 2', '- Schema: 1'),
+  );
+  fs.writeFileSync(dest, legacy);
+
+  const result = rehydrateFoundation(intake(root));
+  for (const field of ['sourceClaims', 'relationshipClaims', 'boundaryClaims', 'risks', 'domainModel']) {
+    assert.deepEqual(result[field], [], `${field} must default empty for schema 1`);
+  }
+  assert.deepEqual(result.confirmedFacts, ['A confirmed fact.']);
 });
 
 test('the continuation record carries the exact locator and current revision', () => {

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import { FOUNDATION_FIELDS } from './_atoms/foundation-persist/foundation-persist.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -189,6 +190,18 @@ test('domain modeling is structurally limited and preserves Discovery authority'
   assert.match(inventory, /source, target, verb, direction, evidence citation,\s+confidence, and notes/);
   assert.match(model, /inventory's preserved relationship and boundary claims/);
   assert.match(model, /Entity\s+co-occurrence alone never produces a relationship/);
+});
+
+test('foundation rehydrate documentation names every exported field and schema-1 default', () => {
+  const rehydrate = flat('discovery/_atoms/foundation-rehydrate/foundation-rehydrate.md');
+  for (const field of FOUNDATION_FIELDS) {
+    assert.match(rehydrate, new RegExp(`\\\`${field}\\\``), `${field} must be documented in the success payload`);
+  }
+  for (const field of ['sourceClaims', 'relationshipClaims', 'boundaryClaims', 'risks', 'domainModel']) {
+    assert.match(rehydrate, new RegExp(`\\\`${field}\\\``), `${field} must be documented as a schema-1 empty default`);
+  }
+  assert.match(rehydrate, /genuine schema-1 foundation/);
+  assert.match(rehydrate, /returned as empty arrays/);
 });
 
 test('every post-persistence continuation action has an authorized mechanism', () => {

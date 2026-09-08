@@ -156,15 +156,27 @@ bytes that exist but cannot be recovered.
 
 ## Success Payload
 
-A rehydrated state returns the eleven distinct foundation fields — `confirmedFacts`,
-`evidenceReferences`, `decisions`, `constraints`, `assumptions`,
-`contradictions`, `openQuestions`, `scope`, `exclusions`, `frontier`, and
-`nextAction` — as separate fields, never merged into prose. It also returns
-`resolved` as the exact parsed ordered list of `{ field, entry, resolution }`
-records. Duplicate records remain duplicate, field qualification is preserved,
-and the empty `Resolved` marker returns `resolved: []`; neither cold-start nor
+A rehydrated state returns every exported `FOUNDATION_FIELDS` member as a
+separate field, never merged into prose:
+
+`confirmedFacts`, `evidenceReferences`, `decisions`, `constraints`,
+`assumptions`, `contradictions`, `openQuestions`, `sourceClaims`,
+`relationshipClaims`, `boundaryClaims`, `risks`, `scope`, `exclusions`,
+`domainModel`, `frontier`, and `nextAction`.
+
+`relationshipClaims`, `boundaryClaims`, and `domainModel` remain structured
+JSON-compatible record arrays exactly as parsed; scalar fields remain scalar
+text or text arrays. It also returns `resolved` as the exact parsed ordered list
+of `{ field, entry, resolution }` records. Duplicate records remain duplicate,
+field qualification is preserved, structured entries remain structured, and
+the empty `Resolved` marker returns `resolved: []`; neither cold-start nor
 compacted-session rehydration drops, rewrites, reorders, or invents a
-resolution. Plus:
+resolution.
+
+When a genuine schema-1 foundation is read, the fields introduced later —
+`sourceClaims`, `relationshipClaims`, `boundaryClaims`, `risks`, and
+`domainModel` — are returned as empty arrays. All schema-1 fields retain their
+parsed values. Plus:
 
 - `foundation`: `{ locator, revision, subjectId, alignment: 'confirmed' }`;
 - `continuation`: `{ locator, revision }` — exactly what the next compaction must
