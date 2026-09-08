@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CONFIRMED,
+  DOCUMENTED_FINDINGS_FIELDS,
   DURABLE_SETS,
   FOUNDATION_FIELDS,
   FoundationPersistError,
@@ -56,9 +57,8 @@ function currentRevision(root, slug = 'discovery-rehydration') {
   }
 }
 
-// Build an intake and bind its aligned payload digest, exactly as an honest
-// caller would after showing the human the aligned payload. expectedPriorRevision
-// defaults to whatever revision is currently on disk for the subject.
+// Build a canonical schema-2 intake. expectedPriorRevision defaults to whatever
+// revision is currently on disk for the subject.
 function intake(overrides = {}) {
   const payload = {
     version: 1,
@@ -74,8 +74,13 @@ function intake(overrides = {}) {
     assumptions: ['One subject per foundation.'],
     contradictions: [],
     openQuestions: ['How is staleness reported?'],
+    sourceClaims: [],
+    relationshipClaims: [],
+    boundaryClaims: [],
+    risks: [],
     scope: ['Discovery re-entry.'],
     exclusions: ['Specification.'],
+    domainModel: [],
     frontier: ['needs-more-evidence: read discovery-source'],
     nextAction: 'Read the discovery-source contract.',
     resolved: [],
@@ -84,19 +89,18 @@ function intake(overrides = {}) {
   const expectedPriorRevision = 'expectedPriorRevision' in overrides
     ? overrides.expectedPriorRevision
     : currentRevision(payload.repositoryRoot, payload.subject.slug);
-  return { ...payload, expectedPriorRevision, alignedPayloadDigest: alignedPayloadDigestOf(payload) };
-}
-
-function derivationIntake(overrides = {}) {
-  const payload = intake(overrides);
-  delete payload.alignedPayloadDigest;
   const alignedFindingsDigest = alignedFindingsDigestOf(payload);
   return {
     ...payload,
+    expectedPriorRevision,
     alignedFindingsDigest,
     domainModelBasisDigest: alignedFindingsDigest,
     frontierBasisDigest: alignedFindingsDigest,
   };
+}
+
+function derivationIntake(overrides = {}) {
+  return intake(overrides);
 }
 
 function code(fn) {
@@ -204,7 +208,7 @@ test('only verified or corrected alignment persists, always recorded as confirme
   assert.equal(code(() => persistFoundation(intake({ repositoryRoot: freshRepo(), alignment: 'not-aligned' }), { io: realIo() })), 'unaligned');
 });
 
-test('the aligned payload digest is a binding, not a token', () => {
+test('the aligned findings digest is a binding, not a token', () => {
   // A caller cannot hand in aligned bytes that differ from the digest it showed
   // the human: mutating a field without recomputing the digest is alignment-unbound.
   const base = intake({ repositoryRoot: freshRepo() });
@@ -213,13 +217,23 @@ test('the aligned payload digest is a binding, not a token', () => {
 
   // A missing or malformed digest is refused as invalid input.
   const noDigest = intake({ repositoryRoot: freshRepo() });
-  delete noDigest.alignedPayloadDigest;
+  delete noDigest.alignedFindingsDigest;
   assert.equal(code(() => persistFoundation(noDigest, { io: realIo() })), 'invalid-input');
 
   // The digest is independent of JSON key order in the payload.
   const a = alignedPayloadDigestOf({ subject: { id: 'x', slug: 'y' }, confirmedFacts: ['f'], evidenceReferences: [], decisions: [], constraints: [], assumptions: [], contradictions: [], openQuestions: [], scope: [], exclusions: [], frontier: [], nextAction: 'go', resolved: [] });
   const b = alignedPayloadDigestOf({ resolved: [], nextAction: 'go', frontier: [], exclusions: [], scope: [], openQuestions: [], contradictions: [], assumptions: [], constraints: [], decisions: [], evidenceReferences: [], confirmedFacts: ['f'], subject: { slug: 'y', id: 'x' } });
   assert.equal(a, b);
+});
+
+test('legacy whole-payload digest inputs cannot emit schema 2', () => {
+  const canonical = intake({ repositoryRoot: freshRepo() });
+  const legacy = { ...canonical, alignedPayloadDigest: alignedPayloadDigestOf(canonical) };
+  delete legacy.alignedFindingsDigest;
+  delete legacy.domainModelBasisDigest;
+  delete legacy.frontierBasisDigest;
+  assert.equal(code(() => persistFoundation(legacy, { io: realIo() })), 'invalid-input');
+  assert.ok(!fs.existsSync(destIn(legacy.repositoryRoot)));
 });
 
 test('every documented-findings field changes the aligned findings digest', () => {
@@ -244,7 +258,6 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
     frontier: ['ready: specification'],
     nextAction: 'Hand the reread compact handoff to specification.',
   };
-  delete payload.alignedPayloadDigest;
   const alignedFindingsDigest = alignedFindingsDigestOf(payload);
   const derived = {
     ...payload,
@@ -268,13 +281,14 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
     'derivation-unbound',
   );
 
-  const legacyBypass = {
-    ...intake({ repositoryRoot: freshRepo() }),
-    domainModel: ['actor: operator'],
-  };
+  const legacyBypass = { ...payload, repositoryRoot: freshRepo() };
+  delete legacyBypass.alignedFindingsDigest;
+  delete legacyBypass.domainModelBasisDigest;
+  delete legacyBypass.frontierBasisDigest;
+  legacyBypass.alignedPayloadDigest = alignedPayloadDigestOf(legacyBypass);
   assert.equal(
     code(() => persistFoundation(legacyBypass, { io: realIo() })),
-    'derivation-unbound',
+    'invalid-input',
   );
 });
 
@@ -315,9 +329,21 @@ test('a non-canonical UTC timestamp is refused', () => {
 
 test('unknown, missing, and wrong-version intake fields are refused', () => {
   assert.equal(code(() => persistFoundation({ ...intake(), surprise: 1 }, { io: realIo() })), 'invalid-input');
-  const partial = intake();
-  delete partial.confirmedFacts;
-  assert.equal(code(() => persistFoundation(partial, { io: realIo() })), 'invalid-input');
+  for (const field of [
+    ...DOCUMENTED_FINDINGS_FIELDS,
+    'domainModel',
+    'alignedFindingsDigest',
+    'domainModelBasisDigest',
+    'frontierBasisDigest',
+  ]) {
+    const partial = intake();
+    delete partial[field];
+    assert.equal(
+      code(() => persistFoundation(partial, { io: realIo() })),
+      'invalid-input',
+      field,
+    );
+  }
   assert.equal(code(() => persistFoundation(intake({ version: 2 }), { io: realIo() })), 'invalid-input');
 });
 

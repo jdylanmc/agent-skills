@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   FOUNDATION_FIELDS,
-  alignedPayloadDigestOf,
+  alignedFindingsDigestOf,
   persistFoundation,
   revisionOf,
 } from '../foundation-persist/foundation-persist.mjs';
@@ -53,8 +53,13 @@ function seed(root, overrides = {}) {
     assumptions: ['An assumption.'],
     contradictions: ['A contradiction.'],
     openQuestions: ['An open question.'],
+    sourceClaims: [],
+    relationshipClaims: [],
+    boundaryClaims: [],
+    risks: [],
     scope: ['In scope.'],
     exclusions: ['Excluded.'],
+    domainModel: [],
     frontier: ['ready'],
     nextAction: 'Hand to specification.',
     resolved: [],
@@ -65,7 +70,14 @@ function seed(root, overrides = {}) {
   try {
     expectedPriorRevision = revisionOf(fs.readFileSync(dest, 'utf8'));
   } catch { /* first cycle */ }
-  const result = persistFoundation({ ...payload, expectedPriorRevision, alignedPayloadDigest: alignedPayloadDigestOf(payload) });
+  const alignedFindingsDigest = alignedFindingsDigestOf(payload);
+  const result = persistFoundation({
+    ...payload,
+    expectedPriorRevision,
+    alignedFindingsDigest,
+    domainModelBasisDigest: alignedFindingsDigest,
+    frontierBasisDigest: alignedFindingsDigest,
+  });
   return result;
 }
 

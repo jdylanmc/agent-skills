@@ -33,16 +33,12 @@
  * while burying an altered meaning elsewhere. That proxy is the seam this check
  * cannot see.
  *
- * The alignment gate is bound, not asserted. A caller cannot hand in
- * `alignment: "verified"` beside arbitrary bytes: it must also hand in
- * `alignedPayloadDigest`, the canonical digest of the aligned payload it showed
- * the human. The helper recomputes that digest over the normalized payload and
- * refuses (`alignment-unbound`) on any mismatch. The binding proves the persisted
- * payload is byte-for-byte the payload that was digested; it does NOT prove a
- * human understood it. `cycle`, `timestamp`, `expectedPriorRevision`, and
- * `history` are deliberately excluded from the digest, since the write appends
- * or checks them and they cannot be known at alignment time — so the digest
- * proves the aligned content, not the bookkeeping the write adds.
+ * The alignment gate is bound, not asserted. Every new write must carry the
+ * complete canonical findings packet, `alignedFindingsDigest`, an explicit
+ * `domainModel`, and domain/frontier basis receipts equal to that digest. The
+ * helper recomputes the findings digest and refuses (`alignment-unbound`) on
+ * mismatch. The binding proves the persisted findings are byte-for-byte the
+ * findings that were digested; it does NOT prove a human understood them.
  *
  * Persistence is bound to the revision the cycle rehydrated. The intake carries
  * `expectedPriorRevision` (`null` only for a genuine first cycle). It is checked
@@ -147,6 +143,12 @@ export const PERSISTABLE_ALIGNMENT = Object.freeze(['verified', 'corrected']);
 export const ALIGNED_FINDING_FIELDS = Object.freeze(
   DURABLE_SETS.filter((field) => field !== 'domainModel'),
 );
+
+/** Every field emitted by the documented-findings atom. */
+export const DOCUMENTED_FINDINGS_FIELDS = Object.freeze([
+  ...ALIGNED_FINDING_FIELDS,
+  'resolved',
+]);
 
 /** Fields introduced by issue #156; absent schema-1 artifacts read as empty. */
 const OPTIONAL_SCHEMA_1_FIELDS = new Set([
@@ -253,7 +255,6 @@ const INTAKE_FIELDS = Object.freeze([
   'repositoryRoot',
   'subject',
   'alignment',
-  'alignedPayloadDigest',
   'alignedFindingsDigest',
   'domainModelBasisDigest',
   'frontierBasisDigest',
@@ -314,12 +315,9 @@ function canonicalize(value) {
 }
 
 /**
- * The canonical digest of the aligned payload — the subject, all durable
- * sets, the frontier, the next action, and the resolved list. `cycle`,
- * `timestamp`, and `history` are excluded because the write appends them. A
- * caller computes this exact value over the payload it shows the human before
- * alignment, so `persistFoundation` can prove the bytes it persists are that
- * payload.
+ * Legacy whole-payload digest utility retained for compatibility with callers
+ * that must identify old inputs. `persistFoundation` does not accept this as a
+ * schema-2 write binding; new writes use `alignedFindingsDigestOf`.
  */
 export function alignedPayloadDigestOf(payload) {
   const canonical = {
@@ -956,22 +954,18 @@ function normalizeIntake(intake) {
     );
   }
 
-  const carriesDomainModel = Object.prototype.hasOwnProperty.call(intake, 'domainModel');
-  const postAlignmentDerivation = typeof intake.alignedFindingsDigest === 'string';
-  if (carriesDomainModel && !postAlignmentDerivation) {
-    throw new FoundationPersistError(
-      'derivation-unbound',
-      'a domainModel requires alignedFindingsDigest and derivation basis receipts',
-    );
-  }
-  if (postAlignmentDerivation) {
-    for (const field of ['alignedFindingsDigest', 'domainModelBasisDigest', 'frontierBasisDigest']) {
-      if (typeof intake[field] !== 'string' || !REVISION_RE.test(intake[field])) {
-        throw new FoundationPersistError('invalid-input', `${field} must be a SHA-256 digest`);
-      }
+  for (const field of [...DOCUMENTED_FINDINGS_FIELDS, 'domainModel']) {
+    if (!Object.prototype.hasOwnProperty.call(intake, field)) {
+      throw new FoundationPersistError('invalid-input', `${field} is required for a canonical schema-2 write`);
     }
-  } else if (typeof intake.alignedPayloadDigest !== 'string' || !REVISION_RE.test(intake.alignedPayloadDigest)) {
-    throw new FoundationPersistError('invalid-input', 'alignedPayloadDigest must be a SHA-256 digest of the aligned payload');
+  }
+  for (const field of ['alignedFindingsDigest', 'domainModelBasisDigest', 'frontierBasisDigest']) {
+    if (!Object.prototype.hasOwnProperty.call(intake, field)) {
+      throw new FoundationPersistError('invalid-input', `${field} is required for a canonical schema-2 write`);
+    }
+    if (typeof intake[field] !== 'string' || !REVISION_RE.test(intake[field])) {
+      throw new FoundationPersistError('invalid-input', `${field} must be a SHA-256 digest`);
+    }
   }
 
   if (!('expectedPriorRevision' in intake)) {
@@ -994,39 +988,26 @@ function normalizeIntake(intake) {
     resolved: assertResolved(intake.resolved),
   };
   for (const field of DURABLE_SETS) {
-    foundation[field] = assertStringList(
-      OPTIONAL_SCHEMA_1_FIELDS.has(field) ? (intake[field] ?? []) : intake[field],
-      field,
-    );
+    foundation[field] = assertStringList(intake[field], field);
   }
   foundation.frontier = assertStringList(intake.frontier, 'frontier');
   foundation.nextAction = assertFreeTextLine(intake.nextAction, 'nextAction');
 
-  if (postAlignmentDerivation) {
-    const digest = alignedFindingsDigestOf(foundation);
-    if (digest !== intake.alignedFindingsDigest) {
-      throw new FoundationPersistError(
-        'alignment-unbound',
-        `the aligned findings digest does not match the persisted findings (declared ${intake.alignedFindingsDigest}, computed ${digest})`,
-      );
-    }
-    if (
-      intake.domainModelBasisDigest !== digest
-      || intake.frontierBasisDigest !== digest
-    ) {
-      throw new FoundationPersistError(
-        'derivation-unbound',
-        'domain model and frontier receipts must bind to the aligned findings digest',
-      );
-    }
-  } else {
-    const digest = alignedPayloadDigestOf(foundation);
-    if (digest !== intake.alignedPayloadDigest) {
-      throw new FoundationPersistError(
-        'alignment-unbound',
-        `the aligned payload digest does not match the persisted payload (declared ${intake.alignedPayloadDigest}, computed ${digest}); the alignment gate is a binding, not a token`,
-      );
-    }
+  const digest = alignedFindingsDigestOf(foundation);
+  if (digest !== intake.alignedFindingsDigest) {
+    throw new FoundationPersistError(
+      'alignment-unbound',
+      `the aligned findings digest does not match the persisted findings (declared ${intake.alignedFindingsDigest}, computed ${digest})`,
+    );
+  }
+  if (
+    intake.domainModelBasisDigest !== digest
+    || intake.frontierBasisDigest !== digest
+  ) {
+    throw new FoundationPersistError(
+      'derivation-unbound',
+      'domain model and frontier receipts must bind to the aligned findings digest',
+    );
   }
 
   return { repositoryRoot, cycle, timestamp, alignmentResult: intake.alignment, expectedPriorRevision, foundation };

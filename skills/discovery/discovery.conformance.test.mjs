@@ -46,7 +46,11 @@ test('the routing description merges discovery-loop while excluding neighbors', 
   const { description } = frontmatter(ENTRY);
 
   assert.match(description, /Use when/);
+  assert.match(description, /asks to run discovery/);
   assert.match(description, /discovery loop/);
+  assert.match(description, /investigate requirements/);
+  assert.match(description, /unsettled product, engineering, or workflow question/);
+  assert.match(description, /maintain discovery state/);
   assert.match(description, /aligned domain model/);
   assert.match(description, /Do not use/);
   assert.match(description, /interrogate/);
@@ -657,6 +661,24 @@ async function rehydrateMod() {
   return import('./_atoms/foundation-rehydrate/foundation-rehydrate.mjs');
 }
 
+function canonicalPersistIntake(payload, alignedFindingsDigestOf) {
+  const canonical = {
+    sourceClaims: [],
+    relationshipClaims: [],
+    boundaryClaims: [],
+    risks: [],
+    domainModel: [],
+    ...payload,
+  };
+  const alignedFindingsDigest = alignedFindingsDigestOf(canonical);
+  return {
+    ...canonical,
+    alignedFindingsDigest,
+    domainModelBasisDigest: alignedFindingsDigest,
+    frontierBasisDigest: alignedFindingsDigest,
+  };
+}
+
 test.after(() => {
   fs.rmSync(FOUNDATION_SANDBOX, { recursive: true, force: true });
 });
@@ -664,7 +686,7 @@ test.after(() => {
 // Persist a genuine foundation into a real repository root and return its
 // persist result, so rehydration is exercised against real persisted output.
 async function seedFoundation(root, overrides = {}) {
-  const { persistFoundation, alignedPayloadDigestOf, revisionOf } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, revisionOf } = await persistMod();
   const payload = {
     version: 1,
     repositoryRoot: root,
@@ -691,7 +713,10 @@ async function seedFoundation(root, overrides = {}) {
   try {
     expectedPriorRevision = revisionOf(fs.readFileSync(dest, 'utf8'));
   } catch { /* first cycle */ }
-  return persistFoundation({ ...payload, expectedPriorRevision, alignedPayloadDigest: alignedPayloadDigestOf(payload) });
+  return persistFoundation(canonicalPersistIntake(
+    { ...payload, expectedPriorRevision },
+    alignedFindingsDigestOf,
+  ));
 }
 
 function rehydrateIntake(root, overrides = {}) {
@@ -911,7 +936,7 @@ test('AC4: every documented recovery state is one the helper can emit, and vice 
 });
 
 test('F9/F10: the documented persist codes match the source, and no injected IO failure escapes them', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const atom = flat(PERSIST_ATOM);
   const documented = new Set([...atom.matchAll(/\| `([a-z-]+)` \|/g)].map((m) => m[1]));
 
@@ -951,7 +976,10 @@ test('F9/F10: the documented persist codes match the source, and no injected IO 
       assumptions: [], contradictions: [], openQuestions: [], scope: ['In scope.'], exclusions: ['Excluded.'],
       frontier: ['ready'], nextAction: 'Go.', resolved: [],
     };
-    return { ...payload, expectedPriorRevision: null, alignedPayloadDigest: alignedPayloadDigestOf(payload) };
+    return canonicalPersistIntake(
+      { ...payload, expectedPriorRevision: null },
+      alignedFindingsDigestOf,
+    );
   }
 
   // A component lstat fails, mkdir fails, and staged write fails — each on a
@@ -1011,7 +1039,7 @@ test('F9/F10: the documented persist codes match the source, and no injected IO 
 });
 
 test('F9/R3: a post-commit reread failure is post-commit-verification-failed, naming the replaced destination', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const root = freshFoundationRepo();
   const dest = path.join(root, 'docs', 'agent', 'discovery', `${REHYDRATE_SLUG}.md`);
   const realBase = {
@@ -1036,7 +1064,10 @@ test('F9/R3: a post-commit reread failure is post-commit-verification-failed, na
   };
   let thrown = null;
   try {
-    persistFoundation({ ...payload, expectedPriorRevision: null, alignedPayloadDigest: alignedPayloadDigestOf(payload) }, { io });
+    persistFoundation(canonicalPersistIntake(
+      { ...payload, expectedPriorRevision: null },
+      alignedFindingsDigestOf,
+    ), { io });
   } catch (error) {
     thrown = error;
   }
@@ -1080,8 +1111,8 @@ test('R5: an unreadable artifact makes rehydration a recovery state, never a raw
   assert.ok(documentedStates.has(warm.status));
 });
 
-test('F3: the alignment gate is bound by a payload digest, not a caller token', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+test('F3: the alignment gate is bound by a findings digest, not a caller token', async () => {
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const root = freshFoundationRepo();
   const payload = {
     version: 1, repositoryRoot: root, subject: { id: REHYDRATE_SLUG, slug: REHYDRATE_SLUG },
@@ -1090,11 +1121,14 @@ test('F3: the alignment gate is bound by a payload digest, not a caller token', 
     assumptions: [], contradictions: [], openQuestions: [], scope: ['In scope.'], exclusions: ['Excluded.'],
     frontier: ['ready'], nextAction: 'Go.', resolved: [],
   };
-  const digest = alignedPayloadDigestOf(payload);
-  // Handing in aligned bytes that differ from the digest shown to the human is unbound.
+  const bound = canonicalPersistIntake(
+    { ...payload, expectedPriorRevision: null },
+    alignedFindingsDigestOf,
+  );
+  // Handing in findings that differ from the digest shown to the human is unbound.
   let unbound = null;
   try {
-    persistFoundation({ ...payload, confirmedFacts: ['A fact never shown.'], expectedPriorRevision: null, alignedPayloadDigest: digest });
+    persistFoundation({ ...bound, confirmedFacts: ['A fact never shown.'] });
   } catch (error) {
     if (error instanceof FoundationPersistError) unbound = error.code;
   }
@@ -1102,7 +1136,7 @@ test('F3: the alignment gate is bound by a payload digest, not a caller token', 
 });
 
 test('F3: persisting a different subject over an existing foundation is refused', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const root = freshFoundationRepo();
   const seeded = await seedFoundation(root);
   const payload = {
@@ -1115,7 +1149,10 @@ test('F3: persisting a different subject over an existing foundation is refused'
   };
   let mismatch = null;
   try {
-    persistFoundation({ ...payload, expectedPriorRevision: seeded.revision, alignedPayloadDigest: alignedPayloadDigestOf(payload) });
+    persistFoundation(canonicalPersistIntake(
+      { ...payload, expectedPriorRevision: seeded.revision },
+      alignedFindingsDigestOf,
+    ));
   } catch (error) {
     if (error instanceof FoundationPersistError) mismatch = error.code;
   }
@@ -1123,7 +1160,7 @@ test('F3: persisting a different subject over an existing foundation is refused'
 });
 
 test('F6: a concurrent modification of the destination is refused, not overwritten', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const root = freshFoundationRepo();
   const seeded = await seedFoundation(root);
   const dest = path.join(root, 'docs', 'agent', 'discovery', `${REHYDRATE_SLUG}.md`);
@@ -1153,7 +1190,10 @@ test('F6: a concurrent modification of the destination is refused, not overwritt
   };
   let refused = null;
   try {
-    persistFoundation({ ...payload, expectedPriorRevision: seeded.revision, alignedPayloadDigest: alignedPayloadDigestOf(payload) }, { io });
+    persistFoundation(canonicalPersistIntake(
+      { ...payload, expectedPriorRevision: seeded.revision },
+      alignedFindingsDigestOf,
+    ), { io });
   } catch (error) {
     if (error instanceof FoundationPersistError) refused = error.code;
   }
@@ -1161,7 +1201,7 @@ test('F6: a concurrent modification of the destination is refused, not overwritt
 });
 
 test('AC7: the persist atom names its reread as write verification, and refuses to drop evidence', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const root = freshFoundationRepo();
   const base = {
     version: 1, repositoryRoot: root, subject: { id: REHYDRATE_SLUG, slug: REHYDRATE_SLUG },
@@ -1170,14 +1210,20 @@ test('AC7: the persist atom names its reread as write verification, and refuses 
     assumptions: [], contradictions: [], openQuestions: [], scope: ['In scope.'], exclusions: ['Excluded.'],
     frontier: ['ready'], nextAction: 'Go.', resolved: [],
   };
-  const first = persistFoundation({ ...base, expectedPriorRevision: null, alignedPayloadDigest: alignedPayloadDigestOf(base) });
+  const first = persistFoundation(canonicalPersistIntake(
+    { ...base, expectedPriorRevision: null },
+    alignedFindingsDigestOf,
+  ));
   assert.equal(first.writeVerified, true);
   assert.match(first.writeVerificationNote, /not evidence that a later run rehydrated/);
 
   const dropPayload = { ...base, cycle: 'c-0002', timestamp: '2026-08-29T02:00:00Z', confirmedFacts: [] };
   let dropped = null;
   try {
-    persistFoundation({ ...dropPayload, expectedPriorRevision: first.revision, alignedPayloadDigest: alignedPayloadDigestOf(dropPayload) });
+    persistFoundation(canonicalPersistIntake(
+      { ...dropPayload, expectedPriorRevision: first.revision },
+      alignedFindingsDigestOf,
+    ));
   } catch (error) {
     if (error instanceof FoundationPersistError) dropped = error.code;
   }
@@ -1231,7 +1277,7 @@ test('the workflow registers both new atom test suites', () => {
 });
 
 test('the lifecycle builds every cycle after the first only from prior rehydration output', async () => {
-  const { persistFoundation, alignedPayloadDigestOf } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf } = await persistMod();
   const { rehydrateFoundation, renderContinuation, parseContinuation, REHYDRATED, MODES } = await rehydrateMod();
   const root = freshFoundationRepo();
   const slug = 'lifecycle-subject';
@@ -1258,7 +1304,7 @@ test('the lifecycle builds every cycle after the first only from prior rehydrati
       expectedPriorRevision: state?.continuation?.revision ?? null,
       ...overrides,
     };
-    return { ...payload, alignedPayloadDigest: alignedPayloadDigestOf(payload) };
+    return canonicalPersistIntake(payload, alignedFindingsDigestOf);
   };
   const rehydrateIn = (expected = null) => ({ version: 1, repositoryRoot: root, subject: { id: 'issue-119', slug }, expected });
 

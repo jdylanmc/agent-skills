@@ -1,6 +1,6 @@
 ---
 name: discovery
-description: Run a human-aligned, evidence-preserving discovery loop for an unclear problem domain until the known facts, aligned domain model, frontier, blockers, and next action are clear. Use when terminology, actors, systems, ownership or trust boundaries, states, transitions, events, competing names, or relationships are unclear. Do not use to interrogate a single rough idea, map GitHub issues, tickets, work items, backlog graphs, dependencies, critical paths, delivery sequencing, roadmaps, decide ready work, write a spec, create tickets, or implement code.
+description: Run a human-aligned, evidence-preserving discovery loop for an unclear product, engineering, workflow, or problem-domain question until the known facts, aligned domain model, frontier, blockers, and next action are clear. Use when the operator asks to run discovery, start a discovery loop, investigate requirements, clarify an unsettled product, engineering, or workflow question, maintain discovery state, or when terminology, actors, systems, ownership or trust boundaries, states, transitions, events, competing names, or relationships are unclear. Do not use to interrogate a single rough idea, map GitHub issues, tickets, work items, backlog graphs, dependencies, critical paths, delivery sequencing, roadmaps, decide ready work, write a spec, create tickets, or implement code.
 allowed-tools: ["execute","read","search","task"]
 includes: ["_base/_molecules/chronicler/chronicler.md","discovery/_atoms/foundation-rehydrate/foundation-rehydrate.md","discovery/_molecules/cycle-controller/cycle-controller.md","discovery/_atoms/tracker-update-gate/tracker-update-gate.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","discovery/_atoms/foundation-rehydrate/foundation-rehydrate.md","discovery/_molecules/cycle-controller/cycle-controller.md","discovery/_atoms/tracker-update-gate/tracker-update-gate.md"]
@@ -198,11 +198,12 @@ grant is not proof that nothing is written. What bounds this write is
 mechanical, not the missing `edit` grant: the destination rule (exactly
 `docs/agent/discovery/<slug>.md`, refused when any path component is a symbolic
 link), the alignment gate (only a `verified` or `corrected` result persists,
-recorded as `confirmed`) bound by a payload digest the caller must supply (the
-write refuses as `alignment-unbound` when the persisted payload is not the
-digested one), and the retention check (no previously recorded durable entry,
-per field and including the frontier, is dropped, moved between sections, or
-un-resolved without being named resolved). The write is staged and the `rename`
+recorded as `confirmed`) bound by the canonical findings digest and matching
+domain/frontier basis receipts the caller must supply (the write refuses as
+`alignment-unbound` or `derivation-unbound` when those bindings do not match),
+and the retention check (no previously recorded durable entry, per field and
+including the frontier, is dropped, moved between sections, or un-resolved
+without being named resolved). The write is staged and the `rename`
 is the single commit point: any failure before it leaves the prior authority
 byte-for-byte untouched, while a failure detected after the rename is reported as
 `post-commit-verification-failed` — the destination is already replaced, and the

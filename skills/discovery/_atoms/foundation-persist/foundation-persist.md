@@ -68,27 +68,25 @@ artifact records `alignment: confirmed` — the exact token
 `not-aligned` are refused with `unaligned`. Rereading is never approval;
 alignment stays human-owned.
 
-The alignment gate is bound, not asserted. Two modes are supported:
-
-- the legacy whole-payload mode carries `alignedPayloadDigest`, computed with
-  `alignedPayloadDigestOf`;
-- the canonical Discovery flow carries `alignedFindingsDigest`, computed with
-  `alignedFindingsDigestOf` over exactly the findings shown to the human, plus
-  `domainModelBasisDigest` and `frontierBasisDigest` receipts that must equal
-  that digest.
+The alignment gate is bound, not asserted. Every new write uses the canonical
+Discovery flow: it carries every documented-findings field explicitly,
+`alignedFindingsDigest` computed with `alignedFindingsDigestOf` over exactly the
+findings shown to the human, an explicit `domainModel`, and
+`domainModelBasisDigest` and `frontierBasisDigest` receipts that must equal that
+digest. A legacy whole-payload digest is not a schema-2 write mode. Schema-1
+compatibility exists only on parse.
 
 A findings mismatch is `alignment-unbound`. A domain-model or frontier receipt
 that does not bind to those findings is `derivation-unbound`. This preserves
 the required order without claiming the human saw outputs produced only after
 alignment.
 
-Be precise about what the binding proves. It proves the persisted payload is
-byte-for-byte the payload that was digested. It does **not** prove a human
-understood or approved that payload — alignment is a human act this atom cannot witness. The whole-payload digest
-covers every durable set, including `domainModel`, plus frontier, next action,
-and resolved records. The aligned-findings digest excludes the post-alignment
-`domainModel`, frontier, and next action, which are instead bound by their basis
-receipts. Both deliberately exclude cycle, timestamp, and history.
+Be precise about what the binding proves. It proves the persisted findings are
+byte-for-byte the findings that were digested. It does **not** prove a human
+understood or approved them — alignment is a human act this atom cannot witness.
+The aligned-findings digest excludes the post-alignment `domainModel`, frontier,
+and next action, which are instead bound by their basis receipts. It deliberately
+excludes cycle, timestamp, and history.
 
 ## Retention — the no-overwrite, no-launder guarantee
 
@@ -278,22 +276,22 @@ node <atoms>/foundation-persist.mjs --input <absolute-json-path>
 ```
 
 The JSON file is a version `1` intake record: `repositoryRoot`, `subject`
-(`id`, `slug`), the aligned `alignment` result, the `alignedPayloadDigest`, the
-`expectedPriorRevision` (the revision the cycle rehydrated, or `null` for a
-genuine first cycle), a `cycle` identifier, a canonical UTC `timestamp`, the
-durable sets, including the aligned claims, risks, and domain model, the current
-`frontier` and `nextAction`, and a `resolved`
-list of `{field, entry, resolution}` records. Exit `0` prints one JSON object on
-standard output with the persisted `locator`, `revision`, subject identity, and
-the write-verification record. Any failure prints one
+(`id`, `slug`), the aligned `alignment` result, every canonical
+documented-findings field, `alignedFindingsDigest`, an explicit `domainModel`,
+`domainModelBasisDigest`, `frontierBasisDigest`, the `expectedPriorRevision`
+(the revision the cycle rehydrated, or `null` for a genuine first cycle), a
+`cycle` identifier, a canonical UTC `timestamp`, the current `frontier` and
+`nextAction`, and a `resolved` list of `{field, entry, resolution}` records.
+Exit `0` prints one JSON object on standard output with the persisted `locator`,
+`revision`, subject identity, and the write-verification record. Any failure prints one
 `{"error": {"code", "message"}}` object on standard error with exit `1` and
 leaves nothing partial.
 
 The helper exports `renderFoundation`, `parseFoundation`, `revisionOf` (the
-SHA-256 digest of the exact persisted bytes), `alignedPayloadDigestOf`, the
+SHA-256 digest of the exact persisted bytes), `alignedFindingsDigestOf`, the
 field-name constants, and the error class, so `foundation-rehydrate` reuses the
-same parse and revision definition and a caller can compute the exact digest it
-shows the human.
+same parse and revision definition and a caller can compute the exact findings
+digest it shows the human.
 
 ## Failure Codes
 
