@@ -65,11 +65,12 @@ Track what the discovery loop knows and what can happen next.
 ## Output
 
 Return the frontier state, supporting evidence, blockers, ready next action,
-deferred questions, and `frontierBasisDigest`. The receipt must equal the
-canonical `domainModelDigest` supplied by the aligned-domain-model operation.
-The frontier output may change while retaining that receipt when a different
-classification or next action is derived from the same validated model; a
-changed model requires a newly computed receipt.
+deferred questions, `frontierBasisDigest`, and `frontierDigest`.
+`frontierBasisDigest` must equal the canonical `domainModelDigest` supplied by
+the aligned-domain-model operation. `frontierDigest` is the SHA-256 digest of
+the canonical object containing that `domainModelDigest`, the complete frontier
+content, and `nextAction`. Any change to the model, frontier, or next action
+requires a newly computed frontier digest.
 
 ## Boundaries
 

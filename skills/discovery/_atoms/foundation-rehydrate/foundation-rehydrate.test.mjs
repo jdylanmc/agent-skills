@@ -8,6 +8,8 @@ import {
   FOUNDATION_FIELDS,
   alignedFindingsDigestOf,
   domainModelDigestOf,
+  frontierDigestOf,
+  parseFoundation,
   persistFoundation,
   revisionOf,
 } from '../foundation-persist/foundation-persist.mjs';
@@ -88,6 +90,11 @@ function seed(root, overrides = {}) {
   } catch { /* first cycle */ }
   const alignedFindingsDigest = alignedFindingsDigestOf(payload);
   const domainModelDigest = domainModelDigestOf(payload.domainModel);
+  const frontierDigest = frontierDigestOf({
+    domainModelDigest,
+    frontier: payload.frontier,
+    nextAction: payload.nextAction,
+  });
   const result = persistFoundation({
     ...payload,
     expectedPriorRevision,
@@ -95,6 +102,7 @@ function seed(root, overrides = {}) {
     domainModelBasisDigest: alignedFindingsDigest,
     domainModelDigest,
     frontierBasisDigest: domainModelDigest,
+    frontierDigest,
   });
   return result;
 }
@@ -107,6 +115,21 @@ function intake(root, overrides = {}) {
     expected: null,
     ...overrides,
   };
+}
+
+function asSchema1(bytes) {
+  return [
+    'Source Claims',
+    'Relationship Claims',
+    'Boundary Claims',
+    'Risks',
+    'Domain Model',
+  ].reduce(
+    (legacy, title) => legacy.replace(new RegExp(`\\n## ${title}\\n\\n(?:_None recorded\\._|- JSON: [^\\n]+)\\n`), ''),
+    bytes
+      .replace('- Schema: 2', '- Schema: 1')
+      .replace(/- Aligned Findings Digest: [a-f0-9]{64}\n- Domain Model Basis Digest: [a-f0-9]{64}\n- Domain Model Digest: [a-f0-9]{64}\n- Frontier Basis Digest: [a-f0-9]{64}\n- Frontier Digest: [a-f0-9]{64}\n/, ''),
+  );
 }
 
 function structuredRecords() {
@@ -252,12 +275,18 @@ test('structured records survive persist, parse, rehydrate, and next-cycle persi
   }
   const alignedFindingsDigest = alignedFindingsDigestOf(nextPayload);
   const domainModelDigest = domainModelDigestOf(nextPayload.domainModel);
+  const frontierDigest = frontierDigestOf({
+    domainModelDigest,
+    frontier: nextPayload.frontier,
+    nextAction: nextPayload.nextAction,
+  });
   const second = persistFoundation({
     ...nextPayload,
     alignedFindingsDigest,
     domainModelBasisDigest: alignedFindingsDigest,
     domainModelDigest,
     frontierBasisDigest: domainModelDigest,
+    frontierDigest,
   });
 
   const compacted = rehydrateFoundation(intake(root, {
@@ -266,6 +295,58 @@ test('structured records survive persist, parse, rehydrate, and next-cycle persi
   assert.deepEqual(compacted.relationshipClaims, records.relationshipClaims);
   assert.deepEqual(compacted.boundaryClaims, records.boundaryClaims);
   assert.deepEqual(compacted.domainModel, records.domainModel);
+  assert.equal(compacted.alignedFindingsDigest, alignedFindingsDigest);
+  assert.equal(compacted.domainModelBasisDigest, alignedFindingsDigest);
+  assert.equal(compacted.domainModelDigest, domainModelDigest);
+  assert.equal(compacted.frontierBasisDigest, domainModelDigest);
+  assert.equal(compacted.frontierDigest, frontierDigest);
+});
+
+test('persist, parse, and rehydrate preserve the complete schema-2 lineage', () => {
+  const root = freshRepo();
+  const persisted = seed(root, {
+    frontier: ['needs-more-evidence: inspect the durable source'],
+    nextAction: 'Inspect the durable source.',
+  });
+  const bytes = fs.readFileSync(path.join(root, persisted.locator), 'utf8');
+  const parsed = parseFoundation(bytes);
+  const result = rehydrateFoundation(intake(root, {
+    expected: { locator: persisted.locator, revision: persisted.revision },
+  }));
+
+  assert.equal(parsed.alignedFindingsDigest, persisted.alignedFindingsDigest);
+  assert.equal(parsed.domainModelBasisDigest, persisted.domainModelBasisDigest);
+  assert.equal(parsed.domainModelDigest, persisted.domainModelDigest);
+  assert.equal(parsed.frontierBasisDigest, persisted.frontierBasisDigest);
+  assert.equal(parsed.frontierDigest, persisted.frontierDigest);
+  assert.equal(result.status, REHYDRATED);
+  assert.equal(result.alignedFindingsDigest, persisted.alignedFindingsDigest);
+  assert.equal(result.domainModelBasisDigest, persisted.domainModelBasisDigest);
+  assert.equal(result.domainModelDigest, persisted.domainModelDigest);
+  assert.equal(result.frontierBasisDigest, persisted.frontierBasisDigest);
+  assert.equal(result.frontierDigest, persisted.frontierDigest);
+  assert.deepEqual(result.frontier, ['needs-more-evidence: inspect the durable source']);
+  assert.equal(result.nextAction, 'Inspect the durable source.');
+});
+
+test('frontier or next-action substitution with a stale receipt fails closed in both rehydration modes', () => {
+  for (const mutate of [
+    (bytes) => bytes.replace('- ready', '- blocked: substituted frontier'),
+    (bytes) => bytes.replace('Hand to specification.', 'Substituted next action.'),
+  ]) {
+    const root = freshRepo();
+    seed(root);
+    const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+    const original = fs.readFileSync(dest, 'utf8');
+    const substituted = mutate(original);
+    assert.notEqual(substituted, original);
+    fs.writeFileSync(dest, substituted);
+
+    assert.equal(rehydrateFoundation(intake(root)).status, RECOVERY.unreadable);
+    assert.equal(rehydrateFoundation(intake(root, {
+      expected: { locator: LOCATOR, revision: revisionOf(substituted) },
+    })).status, RECOVERY.unreadable);
+  }
 });
 
 test('schema-2 plain-text structured entries fail closed in cold-start and compacted modes', () => {
@@ -373,16 +454,7 @@ test('schema-1 rehydration returns empty defaults for every later foundation fie
   seed(root);
   const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
   const current = fs.readFileSync(dest, 'utf8');
-  const legacy = [
-    'Source Claims',
-    'Relationship Claims',
-    'Boundary Claims',
-    'Risks',
-    'Domain Model',
-  ].reduce(
-    (bytes, title) => bytes.replace(new RegExp(`\\n## ${title}\\n\\n(?:_None recorded\\._|- JSON: [^\\n]+)\\n`), ''),
-    current.replace('- Schema: 2', '- Schema: 1'),
-  );
+  const legacy = asSchema1(current);
   fs.writeFileSync(dest, legacy);
 
   const result = rehydrateFoundation(intake(root));
@@ -390,6 +462,9 @@ test('schema-1 rehydration returns empty defaults for every later foundation fie
     assert.deepEqual(result[field], [], `${field} must default empty for schema 1`);
   }
   assert.deepEqual(result.confirmedFacts, ['A confirmed fact.']);
+  for (const receipt of ['alignedFindingsDigest', 'domainModelBasisDigest', 'domainModelDigest', 'frontierBasisDigest', 'frontierDigest']) {
+    assert.equal(Object.hasOwn(result, receipt), false, `${receipt} must not be invented for schema 1`);
+  }
 });
 
 test('schema-1 artifacts containing any post-schema-1 section fail closed in both modes', () => {
@@ -404,16 +479,7 @@ test('schema-1 artifacts containing any post-schema-1 section fail closed in bot
     seed(root);
     const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
     const current = fs.readFileSync(dest, 'utf8');
-    let legacy = [
-      'Source Claims',
-      'Relationship Claims',
-      'Boundary Claims',
-      'Risks',
-      'Domain Model',
-    ].reduce(
-      (bytes, section) => bytes.replace(new RegExp(`\\n## ${section}\\n\\n(?:_None recorded\\._|- JSON: [^\\n]+)\\n`), ''),
-      current.replace('- Schema: 2', '- Schema: 1'),
-    );
+    let legacy = asSchema1(current);
     legacy = legacy.replace(
       '\n## Frontier\n',
       `\n## ${title}\n\n_None recorded._\n\n## Frontier\n`,
@@ -507,14 +573,14 @@ test('a foreign artifact does not rehydrate under a mismatched identity', () => 
   assert.deepEqual(result.ignored[0].declaredSubject, { id: 'issue-999', slug: 'other-subject' });
 });
 
-test('two genuinely different files declaring the same subject are ambiguous, choosing none', () => {
+test('two different paths declaring the same subject are ambiguous, choosing none', () => {
   const root = freshRepo();
   seed(root);
-  // A second, genuinely different file that also declares this subject.
+  // A second path carrying the same valid subject-bound bytes is still a
+  // genuinely different candidate; the helper must not choose by content.
   const dir = path.join(root, 'docs', 'agent', 'discovery');
   const canonical = fs.readFileSync(path.join(dir, `${SLUG}.md`), 'utf8');
-  const different = canonical.replace('A confirmed fact.', 'A different confirmed fact.');
-  fs.writeFileSync(path.join(dir, 'duplicate.md'), different);
+  fs.writeFileSync(path.join(dir, 'duplicate.md'), canonical);
 
   const result = rehydrateFoundation(intake(root));
   assert.equal(result.status, RECOVERY.ambiguous);
@@ -543,12 +609,25 @@ test('a carried continuation whose artifact is gone is stale, never missing', ()
 test('a carried continuation whose revision moved is stale and reports both revisions', () => {
   const root = freshRepo();
   const { revision } = seed(root);
-  const result = rehydrateFoundation(intake(root, { expected: { locator: LOCATOR, revision: 'deadbeef' } }));
+  const expectedRevision = '0'.repeat(64);
+  const result = rehydrateFoundation(intake(root, { expected: { locator: LOCATOR, revision: expectedRevision } }));
   assert.equal(result.status, RECOVERY.stale);
-  assert.equal(result.expectedRevision, 'deadbeef');
+  assert.equal(result.expectedRevision, expectedRevision);
   assert.equal(result.currentRevision, revision);
   for (const field of FOUNDATION_FIELDS) {
     assert.equal(result[field], undefined, `stale must not return ${field}`);
+  }
+});
+
+test('malformed carried revisions are invalid input, not stale foundations', () => {
+  const root = freshRepo();
+  seed(root);
+  for (const revision of ['deadbeef', 'A'.repeat(64), `${'a'.repeat(63)}g`, 'a'.repeat(65)]) {
+    assert.equal(
+      code(() => rehydrateFoundation(intake(root, { expected: { locator: LOCATOR, revision } }))),
+      'invalid-input',
+      revision,
+    );
   }
 });
 
@@ -667,7 +746,7 @@ test('every recovery state and the rehydrated state is genuinely producible', ()
   seed(ambiguousRoot);
   const dir = path.join(ambiguousRoot, 'docs', 'agent', 'discovery');
   const canonical = fs.readFileSync(path.join(dir, `${SLUG}.md`), 'utf8');
-  fs.writeFileSync(path.join(dir, 'duplicate.md'), canonical.replace('A confirmed fact.', 'Another.'));
+  fs.writeFileSync(path.join(dir, 'duplicate.md'), canonical);
   producible.add(rehydrateFoundation(intake(ambiguousRoot)).status); // ambiguous
 
   const unreadableRoot = freshRepo();
@@ -684,7 +763,7 @@ test('every recovery state and the rehydrated state is genuinely producible', ()
 
   const staleRoot = freshRepo();
   seed(staleRoot);
-  producible.add(rehydrateFoundation(intake(staleRoot, { expected: { locator: LOCATOR, revision: 'nope' } })).status); // stale
+  producible.add(rehydrateFoundation(intake(staleRoot, { expected: { locator: LOCATOR, revision: '0'.repeat(64) } })).status); // stale
 
   assert.deepEqual([...producible].sort(), [REHYDRATED, ...Object.values(RECOVERY)].sort());
 });

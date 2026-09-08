@@ -38,7 +38,9 @@
  * `domainModel`, and a receipt chain. `domainModelBasisDigest` must equal the
  * aligned-findings digest, `domainModelDigest` must equal the canonical digest
  * of the validated domain model, and `frontierBasisDigest` must equal that
- * domain-model digest. The helper recomputes both content digests and refuses
+ * domain-model digest. `frontierDigest` must equal the canonical digest of that
+ * model digest plus the validated frontier and next action. The helper
+ * recomputes all content digests and refuses
  * (`alignment-unbound` or `derivation-unbound`) on mismatch. The binding proves
  * the persisted findings and model are byte-for-byte the values that were
  * digested; it does NOT prove a human understood them.
@@ -272,6 +274,7 @@ const INTAKE_FIELDS = Object.freeze([
   'domainModelBasisDigest',
   'domainModelDigest',
   'frontierBasisDigest',
+  'frontierDigest',
   'expectedPriorRevision',
   'cycle',
   'timestamp',
@@ -683,6 +686,19 @@ export function domainModelDigestOf(domainModel) {
   return createHash('sha256').update(canonicalize(validated), 'utf8').digest('hex');
 }
 
+/** SHA-256 of the model-bound frontier content and selected next action. */
+export function frontierDigestOf({ domainModelDigest, frontier, nextAction } = {}) {
+  if (typeof domainModelDigest !== 'string' || !REVISION_RE.test(domainModelDigest)) {
+    throw new FoundationPersistError('invalid-input', 'domainModelDigest must be a SHA-256 digest');
+  }
+  const canonical = {
+    domainModelDigest,
+    frontier: assertStringList(frontier, 'frontier'),
+    nextAction: assertFreeTextLine(nextAction, 'nextAction'),
+  };
+  return createHash('sha256').update(canonicalize(canonical), 'utf8').digest('hex');
+}
+
 function assertFieldEntries(value, field) {
   return STRUCTURED_RECORD_FIELD_SET.has(field)
     ? assertStructuredRecordList(value, field, field)
@@ -814,6 +830,11 @@ export function renderFoundation(foundation) {
   lines.push(`- Subject: ${foundation.subject.id}`);
   lines.push(`- Slug: ${foundation.subject.slug}`);
   lines.push(`- Alignment: ${foundation.alignment}`);
+  lines.push(`- Aligned Findings Digest: ${foundation.alignedFindingsDigest}`);
+  lines.push(`- Domain Model Basis Digest: ${foundation.domainModelBasisDigest}`);
+  lines.push(`- Domain Model Digest: ${foundation.domainModelDigest}`);
+  lines.push(`- Frontier Basis Digest: ${foundation.frontierBasisDigest}`);
+  lines.push(`- Frontier Digest: ${foundation.frontierDigest}`);
 
   for (const field of LIST_SECTIONS) {
     lines.push('', `## ${SECTION_TITLES[field]}`, '');
@@ -923,14 +944,14 @@ function sectionTitlesForSchema(schema) {
 }
 
 /**
- * Read the exact, ordered metadata header. The renderer emits the four lines
- * `- Schema:`, `- Subject:`, `- Slug:`, `- Alignment:` in that order, once each,
- * immediately after the document heading and its blank line, and before the
- * first section. Parsing them positionally — rather than searching the whole
+ * Read the exact, ordered metadata header. Schema 1 emits four identity lines;
+ * schema 2 follows those lines with the complete lineage receipt
+ * block, in exact order immediately after the document heading and its blank
+ * line, and before the first section. Parsing them positionally — rather than searching the whole
  * document for a matching prefix — means a legitimate list entry that merely
  * looks like `Subject: ...` can never be mistaken for metadata, and a metadata
  * line moved into a section can never masquerade as the header (R2/MF-3).
- * Returns `{ schema, subjectId, slug, alignment }`.
+ * Returns the identity metadata and, for schema 2 only, its declared lineage.
  */
 function readHeader(allLines) {
   if (allLines[1] !== '') {
@@ -951,10 +972,20 @@ function readHeader(allLines) {
   const subjectId = readMeta(3, 'Subject');
   const slug = readMeta(4, 'Slug');
   const alignment = readMeta(5, 'Alignment');
-  if (allLines[6] !== '') {
+  const lineage = schema === '1'
+    ? {}
+    : {
+      alignedFindingsDigest: readMeta(6, 'Aligned Findings Digest'),
+      domainModelBasisDigest: readMeta(7, 'Domain Model Basis Digest'),
+      domainModelDigest: readMeta(8, 'Domain Model Digest'),
+      frontierBasisDigest: readMeta(9, 'Frontier Basis Digest'),
+      frontierDigest: readMeta(10, 'Frontier Digest'),
+    };
+  const headerEnd = schema === '1' ? 6 : 11;
+  if (allLines[headerEnd] !== '') {
     throw new FoundationPersistError('invalid-input', 'foundation must carry a blank line after its header block');
   }
-  return { schema, subjectId, slug, alignment };
+  return { schema, subjectId, slug, alignment, lineage };
 }
 
 /**
@@ -1053,7 +1084,7 @@ export function parseFoundation(bytes) {
     throw new FoundationPersistError('invalid-input', `foundation must begin with "${HEADING}"`);
   }
 
-  const { schema, subjectId, slug, alignment } = readHeader(allLines);
+  const { schema, subjectId, slug, alignment, lineage } = readHeader(allLines);
   if (!SUPPORTED_SCHEMA_VERSIONS.has(schema)) {
     throw new FoundationPersistError('unsupported-schema', `foundation schema ${schema} is not supported; this build reads schemas 1 and ${SCHEMA_VERSION}`);
   }
@@ -1157,6 +1188,46 @@ export function parseFoundation(bytes) {
       };
       assertParsedHistory(record, line);
       foundation.history.push(record);
+    }
+  }
+
+  if (schema === String(SCHEMA_VERSION)) {
+    for (const [field, digest] of Object.entries(lineage)) {
+      if (!REVISION_RE.test(digest)) {
+        throw new FoundationPersistError('invalid-input', `${field} must be a SHA-256 digest`);
+      }
+      foundation[field] = digest;
+    }
+    const alignedFindingsDigest = alignedFindingsDigestOf(foundation);
+    if (foundation.alignedFindingsDigest !== alignedFindingsDigest) {
+      throw new FoundationPersistError(
+        'invalid-input',
+        `alignedFindingsDigest does not match the persisted findings (declared ${foundation.alignedFindingsDigest}, computed ${alignedFindingsDigest})`,
+      );
+    }
+    if (foundation.domainModelBasisDigest !== alignedFindingsDigest) {
+      throw new FoundationPersistError('invalid-input', 'domainModelBasisDigest does not bind the domain model to alignedFindingsDigest');
+    }
+    const domainModelDigest = domainModelDigestOf(foundation.domainModel);
+    if (foundation.domainModelDigest !== domainModelDigest) {
+      throw new FoundationPersistError(
+        'invalid-input',
+        `domainModelDigest does not match the persisted domain model (declared ${foundation.domainModelDigest}, computed ${domainModelDigest})`,
+      );
+    }
+    if (foundation.frontierBasisDigest !== domainModelDigest) {
+      throw new FoundationPersistError('invalid-input', 'frontierBasisDigest does not bind the frontier to domainModelDigest');
+    }
+    const frontierDigest = frontierDigestOf({
+      domainModelDigest,
+      frontier: foundation.frontier,
+      nextAction: foundation.nextAction,
+    });
+    if (foundation.frontierDigest !== frontierDigest) {
+      throw new FoundationPersistError(
+        'invalid-input',
+        `frontierDigest does not match the persisted frontier and next action (declared ${foundation.frontierDigest}, computed ${frontierDigest})`,
+      );
     }
   }
 
@@ -1319,7 +1390,7 @@ function normalizeIntake(intake) {
       throw new FoundationPersistError('invalid-input', `${field} is required for a canonical schema-2 write`);
     }
   }
-  for (const field of ['alignedFindingsDigest', 'domainModelBasisDigest', 'domainModelDigest', 'frontierBasisDigest']) {
+  for (const field of ['alignedFindingsDigest', 'domainModelBasisDigest', 'domainModelDigest', 'frontierBasisDigest', 'frontierDigest']) {
     if (!Object.prototype.hasOwnProperty.call(intake, field)) {
       throw new FoundationPersistError('invalid-input', `${field} is required for a canonical schema-2 write`);
     }
@@ -1379,6 +1450,25 @@ function normalizeIntake(intake) {
       'frontierBasisDigest must bind the frontier to domainModelDigest',
     );
   }
+  const frontierDigest = frontierDigestOf({
+    domainModelDigest,
+    frontier: foundation.frontier,
+    nextAction: foundation.nextAction,
+  });
+  if (intake.frontierDigest !== frontierDigest) {
+    throw new FoundationPersistError(
+      'derivation-unbound',
+      `frontierDigest does not match the model-bound frontier and next action (declared ${intake.frontierDigest}, computed ${frontierDigest})`,
+    );
+  }
+
+  Object.assign(foundation, {
+    alignedFindingsDigest: digest,
+    domainModelBasisDigest: intake.domainModelBasisDigest,
+    domainModelDigest,
+    frontierBasisDigest: intake.frontierBasisDigest,
+    frontierDigest,
+  });
 
   return {
     repositoryRoot,
@@ -1390,6 +1480,7 @@ function normalizeIntake(intake) {
     domainModelBasisDigest: intake.domainModelBasisDigest,
     domainModelDigest,
     frontierBasisDigest: intake.frontierBasisDigest,
+    frontierDigest,
     foundation,
   };
 }
@@ -1534,6 +1625,9 @@ function foundationsEqual(a, b) {
   if (a.subject.id !== b.subject.id || a.subject.slug !== b.subject.slug) return false;
   if (a.alignment !== b.alignment) return false;
   if (a.nextAction !== b.nextAction) return false;
+  for (const field of ['alignedFindingsDigest', 'domainModelBasisDigest', 'domainModelDigest', 'frontierBasisDigest', 'frontierDigest']) {
+    if (a[field] !== b[field]) return false;
+  }
   for (const field of LIST_SECTIONS) {
     if (a[field].length !== b[field].length) return false;
     for (let i = 0; i < a[field].length; i += 1) {
@@ -1579,6 +1673,7 @@ export function persistFoundation(intake, { io = realIo } = {}) {
     domainModelBasisDigest,
     domainModelDigest,
     frontierBasisDigest,
+    frontierDigest,
     foundation,
   } = normalizeIntake(intake);
 
@@ -1732,6 +1827,7 @@ export function persistFoundation(intake, { io = realIo } = {}) {
     domainModelBasisDigest,
     domainModelDigest,
     frontierBasisDigest,
+    frontierDigest,
     priorRevision,
     historyLength: foundation.history.length,
     // Post-write reread proves the persisted bytes; it is NOT next-run

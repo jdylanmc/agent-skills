@@ -117,19 +117,23 @@ Discovery flow: it carries every documented-findings field explicitly,
 findings shown to the human, an explicit canonical `domainModel`,
 `domainModelBasisDigest` equal to the aligned-findings digest,
 `domainModelDigest` computed with `domainModelDigestOf` over the validated
-model, and `frontierBasisDigest` equal to that domain-model digest. A legacy
+model, `frontierBasisDigest` equal to that domain-model digest, and
+`frontierDigest` computed with `frontierDigestOf` over the domain-model digest,
+complete frontier, and next action. A legacy
 whole-payload digest is not a schema-2 write mode. Schema-1 compatibility exists
 only on parse.
 
 A findings mismatch is `alignment-unbound`. A domain-model basis receipt that
 does not bind to those findings, a declared domain-model digest that does not
-match the validated model, or a frontier basis receipt that does not bind to
-that model digest is `derivation-unbound`. This preserves the exact derivation
-chain without claiming the human saw outputs produced only after alignment:
+match the validated model, a frontier basis receipt that does not bind to that
+model digest, or a frontier digest that does not bind the complete frontier and
+next action is `derivation-unbound`. This preserves the exact derivation chain
+without claiming the human saw outputs produced only after alignment:
 
 ```text
 aligned findings --domainModelBasisDigest--> domain model
 validated domain model --frontierBasisDigest--> frontier
+domainModelDigest + frontier + nextAction --frontierDigest--> frontier receipt
 ```
 
 Be precise about what the binding proves. It proves the persisted findings are
@@ -338,7 +342,8 @@ node <atoms>/foundation-persist.mjs --input <absolute-json-path>
 The JSON file is a version `1` intake record: `repositoryRoot`, `subject`
 (`id`, `slug`), the aligned `alignment` result, every canonical
 documented-findings field, `alignedFindingsDigest`, an explicit `domainModel`,
-`domainModelBasisDigest`, `domainModelDigest`, `frontierBasisDigest`, the `expectedPriorRevision`
+`domainModelBasisDigest`, `domainModelDigest`, `frontierBasisDigest`,
+`frontierDigest`, the `expectedPriorRevision`
 (the revision the cycle rehydrated, or `null` for a genuine first cycle), a
 `cycle` identifier, a canonical UTC `timestamp`, the current `frontier` and
 `nextAction`, and a `resolved` list of `{field, entry, resolution}` records.
@@ -348,16 +353,18 @@ documented-findings field, `alignedFindingsDigest`, an explicit `domainModel`,
 discharges.
 Exit `0` prints one JSON object on standard output with the persisted `locator`,
 `revision`, subject identity, `domainModelBasisDigest`, `domainModelDigest`,
-`alignedFindingsDigest`, `frontierBasisDigest`, and the write-verification
-record. Any failure prints one
+`alignedFindingsDigest`, `frontierBasisDigest`, `frontierDigest`, and the
+write-verification record. Schema 2 serializes those five lineage values in its
+metadata header; parsing recomputes and verifies every link before returning the
+foundation. Any failure prints one
 `{"error": {"code", "message"}}` object on standard error with exit `1` and
 leaves nothing partial.
 
 The helper exports `renderFoundation`, `parseFoundation`, `revisionOf` (the
 SHA-256 digest of the exact persisted bytes), `alignedFindingsDigestOf`,
-`domainModelDigestOf`, the field-name constants, and the error class, so
+`domainModelDigestOf`, `frontierDigestOf`, the field-name constants, and the error class, so
 `foundation-rehydrate` reuses the same parse and revision definition and a
-caller can compute the exact findings and model digests.
+caller can compute the exact findings, model, and frontier digests.
 
 ## Failure Codes
 

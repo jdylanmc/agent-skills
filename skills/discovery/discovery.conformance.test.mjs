@@ -9,6 +9,7 @@ import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import {
   FOUNDATION_FIELDS,
   domainModelDigestOf,
+  frontierDigestOf,
 } from './_atoms/foundation-persist/foundation-persist.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -238,7 +239,7 @@ test('needs-domain-evidence means continue Discovery and never domain-mapping', 
 test('the Discovery root returns the structured domain model and complete receipt chain', () => {
   const entry = flat(ENTRY);
 
-  assert.match(entry, /the structured aligned `domainModel`, its canonical `domainModelDigest`,\s+its `domainModelBasisDigest`\/`aligned-findings-digest` receipt, and the\s+frontier's `frontierBasisDigest`\/`domainModelDigest` receipt/);
+  assert.match(entry, /the structured aligned `domainModel`, its canonical `domainModelDigest`,\s+its `domainModelBasisDigest`\/`aligned-findings-digest` receipt, and the\s+frontier's `frontierBasisDigest`\/`domainModelDigest` receipt plus canonical\s+`frontierDigest` binding the model digest, complete frontier, and next action/);
 });
 
 test('backlog and dependency prompts cannot route to domain mapping', () => {
@@ -727,12 +728,18 @@ function canonicalPersistIntake(payload, alignedFindingsDigestOf) {
   };
   const alignedFindingsDigest = alignedFindingsDigestOf(canonical);
   const domainModelDigest = domainModelDigestOf(canonical.domainModel);
+  const frontierDigest = frontierDigestOf({
+    domainModelDigest,
+    frontier: canonical.frontier,
+    nextAction: canonical.nextAction,
+  });
   return {
     ...canonical,
     alignedFindingsDigest,
     domainModelBasisDigest: alignedFindingsDigest,
     domainModelDigest,
     frontierBasisDigest: domainModelDigest,
+    frontierDigest,
   };
 }
 
@@ -926,7 +933,7 @@ test('AC3/AC4: every recovery state is genuinely producible against real bytes',
   await seedFoundation(ambiguousRoot);
   const adir = path.join(ambiguousRoot, 'docs', 'agent', 'discovery');
   const canonical = fs.readFileSync(path.join(adir, `${REHYDRATE_SLUG}.md`), 'utf8');
-  fs.writeFileSync(path.join(adir, 'duplicate.md'), canonical.replace('A confirmed fact.', 'Another fact.'));
+  fs.writeFileSync(path.join(adir, 'duplicate.md'), canonical);
   producible.add(rehydrateFoundation(rehydrateIntake(ambiguousRoot)).status); // ambiguous
 
   const unreadableRoot = freshFoundationRepo();
@@ -943,7 +950,7 @@ test('AC3/AC4: every recovery state is genuinely producible against real bytes',
 
   const staleRoot = freshFoundationRepo();
   await seedFoundation(staleRoot);
-  producible.add(rehydrateFoundation(rehydrateIntake(staleRoot, { expected: { locator: REHYDRATE_LOCATOR, revision: 'nope' } })).status); // stale
+  producible.add(rehydrateFoundation(rehydrateIntake(staleRoot, { expected: { locator: REHYDRATE_LOCATOR, revision: '0'.repeat(64) } })).status); // stale
 
   assert.deepEqual([...producible].sort(), [REHYDRATED, ...Object.values(RECOVERY)].sort());
 });
@@ -967,10 +974,11 @@ test('AC4: a stale continuation whose artifact moved or vanished never degrades 
 
   const bumpedRoot = freshFoundationRepo();
   const bumped = await seedFoundation(bumpedRoot);
-  const result = rehydrateFoundation(rehydrateIntake(bumpedRoot, { expected: { locator: REHYDRATE_LOCATOR, revision: 'stale-revision' } }));
+  const expectedRevision = '0'.repeat(64);
+  const result = rehydrateFoundation(rehydrateIntake(bumpedRoot, { expected: { locator: REHYDRATE_LOCATOR, revision: expectedRevision } }));
   assert.equal(result.status, RECOVERY.stale);
   assert.equal(result.currentRevision, bumped.revision);
-  assert.equal(result.expectedRevision, 'stale-revision');
+  assert.equal(result.expectedRevision, expectedRevision);
   for (const field of FOUNDATION_FIELDS) {
     assert.equal(result[field], undefined, `stale must not hand back ${field}`);
   }

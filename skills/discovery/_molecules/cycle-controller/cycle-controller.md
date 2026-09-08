@@ -96,8 +96,9 @@ knowledge acquisition -> documented findings -> human alignment
    [Frontier ledger](../../_atoms/frontier-ledger/frontier-ledger.md). Frontier
    mapping happens here, never before alignment or domain modeling, and its
    `frontierBasisDigest` receipt equals the canonical `domainModelDigest`.
-   Frontier classifications and next actions may change while that receipt
-   remains valid only when the validated domain model is unchanged. Backlog,
+   Retain its canonical `frontierDigest`, computed over that model digest plus
+   the complete frontier and `nextAction`; changing either output requires a
+   new digest. Backlog,
    ticket, work-item, dependency, critical-path, sequencing, roadmap, and work-
    readiness prompts are not relabeled as Discovery and do not route to the
    aligned-domain-model operation.
@@ -116,8 +117,10 @@ knowledge acquisition -> documented findings -> human alignment
    Persist the domain map in the foundation's `domainModel` field. Pass the
    alignment atom's `alignedFindingsDigest`; pass that digest as
    `domainModelBasisDigest`; pass the aligned-domain-model operation's canonical
-   `domainModelDigest`; and pass that model digest as `frontierBasisDigest`.
-   The helper refuses a broken findings-to-model or model-to-frontier receipt
+   `domainModelDigest`; pass that model digest as `frontierBasisDigest`; and pass
+   the frontier ledger's canonical `frontierDigest`. The helper recomputes all
+   content digests and refuses a broken findings-to-model, model-to-frontier, or
+   frontier-content receipt
    rather than pretending post-alignment outputs were part of the payload shown
    to the human.
    It writes exactly `docs/agent/discovery/<slug>.md`, refuses to drop any

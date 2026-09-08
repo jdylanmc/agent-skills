@@ -15,6 +15,7 @@ import {
   alignedFindingsDigestOf,
   alignedPayloadDigestOf,
   domainModelDigestOf,
+  frontierDigestOf,
   parseFoundation,
   persistFoundation,
   renderFoundation,
@@ -108,6 +109,11 @@ function intake(overrides = {}) {
     : currentRevision(payload.repositoryRoot, payload.subject.slug);
   const alignedFindingsDigest = alignedFindingsDigestOf(payload);
   const domainModelDigest = domainModelDigestOf(payload.domainModel);
+  const frontierDigest = frontierDigestOf({
+    domainModelDigest,
+    frontier: payload.frontier,
+    nextAction: payload.nextAction,
+  });
   return {
     ...payload,
     expectedPriorRevision,
@@ -115,6 +121,7 @@ function intake(overrides = {}) {
     domainModelBasisDigest: alignedFindingsDigest,
     domainModelDigest,
     frontierBasisDigest: domainModelDigest,
+    frontierDigest,
   };
 }
 
@@ -363,6 +370,11 @@ test('a persisted foundation records alignment, schema, and every distinct field
   assert.equal(result.domainModelBasisDigest, result.alignedFindingsDigest);
   assert.equal(result.domainModelDigest, domainModelDigestOf(intake().domainModel));
   assert.equal(result.frontierBasisDigest, result.domainModelDigest);
+  assert.equal(result.frontierDigest, frontierDigestOf({
+    domainModelDigest: result.domainModelDigest,
+    frontier: intake().frontier,
+    nextAction: intake().nextAction,
+  }));
 
   const bytes = fs.readFileSync(destIn(root), 'utf8');
   assert.match(bytes, /^- Schema: 2$/m);
@@ -513,12 +525,18 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
   };
   const alignedFindingsDigest = alignedFindingsDigestOf(payload);
   const domainModelDigest = domainModelDigestOf(payload.domainModel);
+  const frontierDigest = frontierDigestOf({
+    domainModelDigest,
+    frontier: payload.frontier,
+    nextAction: payload.nextAction,
+  });
   const derived = {
     ...payload,
     alignedFindingsDigest,
     domainModelBasisDigest: alignedFindingsDigest,
     domainModelDigest,
     frontierBasisDigest: domainModelDigest,
+    frontierDigest,
   };
 
   persistFoundation(derived, { io: realIo() });
@@ -527,6 +545,7 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
   assert.deepEqual(parsed.frontier, payload.frontier);
   assert.equal(parsed.nextAction, payload.nextAction);
   assert.equal(domainModelDigestOf(parsed.domainModel), domainModelDigest);
+  assert.equal(parsed.frontierDigest, frontierDigest);
 
   assert.equal(
     code(() => persistFoundation({
@@ -548,12 +567,19 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
     'derivation-unbound',
   );
 
+  const changedFrontier = ['blocked: a different frontier output'];
+  const changedNextAction = 'Stop for the named blocker.';
   assert.equal(
     persistFoundation({
       ...derived,
       repositoryRoot: freshRepo(),
-      frontier: ['blocked: a different frontier output'],
-      nextAction: 'Stop for the named blocker.',
+      frontier: changedFrontier,
+      nextAction: changedNextAction,
+      frontierDigest: frontierDigestOf({
+        domainModelDigest,
+        frontier: changedFrontier,
+        nextAction: changedNextAction,
+      }),
     }, { io: realIo() }).frontierBasisDigest,
     domainModelDigest,
   );
@@ -568,6 +594,33 @@ test('post-alignment domain and frontier derivations bind to the aligned finding
     code(() => persistFoundation(legacyBypass, { io: realIo() })),
     'invalid-input',
   );
+
+  for (const changed of [
+    { frontier: ['blocked: substituted frontier'] },
+    { nextAction: 'Substituted next action.' },
+  ]) {
+    assert.equal(
+      code(() => persistFoundation({
+        ...derived,
+        ...changed,
+        repositoryRoot: freshRepo(),
+      }, { io: realIo() })),
+      'derivation-unbound',
+    );
+  }
+});
+
+test('schema-2 parser rejects frontier or next-action substitution with a stale receipt', () => {
+  const root = freshRepo();
+  persistFoundation(intake({ repositoryRoot: root }), { io: realIo() });
+  const bytes = fs.readFileSync(destIn(root), 'utf8');
+  for (const substituted of [
+    bytes.replace('- needs-more-evidence: read discovery-source', '- blocked: substituted frontier'),
+    bytes.replace('Read the discovery-source contract.', 'Substituted next action.'),
+  ]) {
+    assert.notEqual(substituted, bytes);
+    assert.equal(code(() => parseFoundation(substituted)), 'invalid-input');
+  }
 });
 
 test('the domain model is one canonical aggregate with required categories', () => {
@@ -784,7 +837,26 @@ test('parse validates conflicting structured resolutions across the complete arr
   assert.equal(code(() => parseFoundation(conflict)), 'foundation-regression');
 
   const duplicate = bytes.replace(firstLine, `${firstLine}\n${firstLine}`);
-  assert.equal(parseFoundation(duplicate).resolved.length, 2);
+  const duplicateAlignedFindingsDigest = alignedFindingsDigestOf(intake({
+    repositoryRoot: root,
+    ...records,
+    resolved: [
+      {
+        field: 'relationshipClaims',
+        entry: records.relationshipClaims[0],
+        resolution: 'First answer.',
+      },
+      {
+        field: 'relationshipClaims',
+        entry: records.relationshipClaims[0],
+        resolution: 'First answer.',
+      },
+    ],
+  }));
+  const rebound = duplicate
+    .replace(/- Aligned Findings Digest: [a-f0-9]{64}/, `- Aligned Findings Digest: ${duplicateAlignedFindingsDigest}`)
+    .replace(/- Domain Model Basis Digest: [a-f0-9]{64}/, `- Domain Model Basis Digest: ${duplicateAlignedFindingsDigest}`);
+  assert.equal(parseFoundation(rebound).resolved.length, 2);
 });
 
 test('parse refuses valid sections reordered within a schema', () => {

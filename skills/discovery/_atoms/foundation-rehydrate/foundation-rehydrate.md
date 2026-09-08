@@ -53,7 +53,7 @@ refused.
 | `version` | Exactly `1`. |
 | `repositoryRoot` | An absolute path. The atom reads `<repositoryRoot>/docs/agent/discovery/`. |
 | `subject` | `{ id, slug }` — the Discovery subject identity. `slug` matches `^[a-z0-9]+(?:-[a-z0-9]+)*$`. |
-| `expected` | `{ locator, revision }` — the compacted continuation carried from the previous invocation — or `null` for a cold start with no carried continuation. |
+| `expected` | `{ locator, revision }` — the compacted continuation carried from the previous invocation — or `null` for a cold start with no carried continuation. `revision` is exactly 64 lowercase hexadecimal SHA-256 characters. |
 
 There are no caller-supplied candidates, no caller-supplied content, no
 caller-supplied per-file subject identity, and no caller-supplied alignment.
@@ -91,7 +91,9 @@ so parsing necessarily precedes them.
      unreadable). Report `expectedLocator`, `expectedRevision`, and
      `currentRevision`. A carried continuation that no longer resolves is
      **never** degraded to `foundation-missing`.
-   - Otherwise parse the bytes; if they are unparsable → `foundation-unreadable`.
+   - Otherwise parse the bytes; if they are unparsable, or any schema-2 lineage
+     receipt fails recomputation against the persisted findings, domain model,
+     frontier, or next action → `foundation-unreadable`.
      If the parsed subject is not this subject → `foundation-stale`. If the
      file's basename is not `<declared slug>.md` — a locator persistence could
      not continue from — → `foundation-unreadable`.
@@ -176,12 +178,22 @@ the empty `Resolved` marker returns `resolved: []`; neither cold-start nor
 compacted-session rehydration drops, rewrites, reorders, or invents a
 resolution.
 
+A schema-2 success also returns the complete verified lineage as separate
+fields: `alignedFindingsDigest`, `domainModelBasisDigest`,
+`domainModelDigest`, `frontierBasisDigest`, and `frontierDigest`. The parser
+recomputes the aligned-findings, domain-model, and frontier digests from the
+persisted content and verifies both basis links before these receipts are
+exposed. `frontierDigest` binds the canonical `domainModelDigest`, complete
+frontier, and `nextAction`, so content substitution with a stale receipt fails
+closed.
+
 When a genuine schema-1 foundation is read, all sections introduced later —
 `sourceClaims`, `relationshipClaims`, `boundaryClaims`, `risks`, and
 `domainModel` — must be absent and are returned as empty arrays. If any one of
 those sections is present, the artifact is not a genuine schema-1 foundation
 and rehydration fails closed as `foundation-unreadable` in both cold-start and
-compacted-session modes. All schema-1 fields retain their parsed values. Plus:
+compacted-session modes. All schema-1 fields retain their parsed values, and no
+lineage receipt is invented for bytes that never carried one. Plus:
 
 - `foundation`: `{ locator, revision, subjectId, alignment: 'confirmed' }`;
 - `continuation`: `{ locator, revision }` — exactly what the next compaction must

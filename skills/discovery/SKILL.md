@@ -100,7 +100,8 @@ Return:
   including duplicates, or an empty list when none exist;
 - the structured aligned `domainModel`, its canonical `domainModelDigest`,
   its `domainModelBasisDigest`/`aligned-findings-digest` receipt, and the
-  frontier's `frontierBasisDigest`/`domainModelDigest` receipt;
+  frontier's `frontierBasisDigest`/`domainModelDigest` receipt plus canonical
+  `frontierDigest` binding the model digest, complete frontier, and next action;
 - evidence inspected and evidence still missing;
 - confirmed facts with source references;
 - assumptions, contradictions, ambiguities, and risks;
