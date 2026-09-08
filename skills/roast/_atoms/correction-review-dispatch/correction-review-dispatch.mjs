@@ -6,6 +6,7 @@ import {
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
+  newCodeReviewDefaultPolicy,
   executeTieredReview,
   measureReviewChurn,
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
@@ -269,6 +270,7 @@ export async function runTieredCodeReviewFromGit({
       root,
     });
   }
+
   const churnMetrics = measureReviewChurn({
     repositoryRoot,
     reviewBaseSha,
@@ -282,6 +284,30 @@ export async function runTieredCodeReviewFromGit({
     correctionTransport,
     fullReview,
     root,
+  });
+}
+
+export async function runNewCodeReviewFromGit({
+  input = {},
+  reviewMode = 'deep-then-verify',
+  churnThresholdPercent,
+  ...options
+} = {}) {
+  if (!['deep-then-verify', 'repeated-full'].includes(reviewMode)) {
+    throw new Error('reviewMode must be deep-then-verify or repeated-full');
+  }
+  const policy = input.policy ?? (reviewMode === 'repeated-full'
+    ? {
+      mode: 'repeated-full',
+      policyVersion: 2,
+      deepRoute: DEEP_REVIEW_ROUTE,
+    }
+    : newCodeReviewDefaultPolicy(
+      churnThresholdPercent === undefined ? {} : { churnThresholdPercent },
+    ));
+  return runTieredCodeReviewFromGit({
+    ...options,
+    input: { ...input, policy },
   });
 }
 

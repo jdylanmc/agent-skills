@@ -81,6 +81,9 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
    bounded Git numstat helper. Strictly more than the configured percentage,
    missing or binary metrics, file-scope changes, or a manual `deep now`
    request invoke the full review. `repeated-full` is the explicit alternative.
+   New delivery calls `runNewCodeReviewFromGit`, so an omitted choice becomes
+   the default automatically. Continuation calls the recorded-policy seam and
+   never reinterprets historical absence.
 
    | Severity | Treated here as |
    | --- | --- |

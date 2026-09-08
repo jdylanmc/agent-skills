@@ -135,7 +135,11 @@ test('legacy missing and v1 policies preserve their historical full and experime
 test('new intake explicitly pins deep-then-verify while repeated full is explicit', () => {
   assert.deepEqual(newCodeReviewDefaultPolicy(), normalizeReviewPolicy(v2Policy()));
   assert.equal(newCodeReviewDefaultPolicy().mode, 'deep-then-verify');
-  assert.equal(classifyReviewTier({ policy: v2Policy(), lastDeep: null }).reason,
+  assert.equal(classifyReviewTier({
+    policy: v2Policy(),
+    current: identity(CURRENT_HEAD),
+    lastDeep: null,
+  }).reason,
     'initial-deep-review-required');
   assert.equal(classifyReviewTier({
     policy: {
@@ -143,6 +147,7 @@ test('new intake explicitly pins deep-then-verify while repeated full is explici
       policyVersion: 2,
       deepRoute: DEEP_REVIEW_ROUTE,
     },
+    current: identity(CURRENT_HEAD),
   }).reason, 'explicit-repeated-full');
 });
 

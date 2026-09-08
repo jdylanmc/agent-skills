@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { normalizeReviewPolicy } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
+import {
+  newCodeReviewDefaultPolicy,
+  normalizeReviewPolicy,
+} from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 const ISSUE_STATUSES = new Set([
   'pending', 'completed', 'blocked', 'failed', 'timed-out', 'deferred',
@@ -314,6 +317,7 @@ export function normalizeFleetManifest(input = {}) {
   if (input.confirmation !== 'confirmed') {
     throw new Error('fleet manifest requires one explicit confirmed state');
   }
+
   const goal = nonEmpty(input.goal, 'goal');
   if (!Array.isArray(input.issues) || input.issues.length === 0) {
     throw new Error('issues must be a non-empty closed set');
@@ -588,6 +592,20 @@ export function normalizeFleetManifest(input = {}) {
     closedSet: true,
   };
   return { ...manifest, digest: manifestDigest(manifest) };
+}
+
+export function normalizeNewFleetManifest(input = {}) {
+  if (!Array.isArray(input.issues) || input.issues.length === 0) {
+    throw new Error('new fleet manifest issues must be a non-empty array');
+  }
+  return normalizeFleetManifest({
+    ...input,
+    reviewPolicyContractVersion: 2,
+    issues: input.issues.map((issue) => ({
+      ...issue,
+      reviewPolicy: issue.reviewPolicy ?? newCodeReviewDefaultPolicy(),
+    })),
+  });
 }
 
 function manifestInput(manifest) {

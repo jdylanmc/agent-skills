@@ -456,47 +456,88 @@ function assessChurn(value, current, lastDeep, thresholdPercent) {
   };
 }
 
+function deepReviewInput(input, current) {
+  return immutable({
+    current,
+    manualDeepRequested: input.manualDeepRequested === true,
+    requirements: Array.isArray(input.requirements) ? [...input.requirements] : [],
+    affectedConsumers: Array.isArray(input.affectedConsumers)
+      ? [...input.affectedConsumers]
+      : [],
+  });
+}
+
 export function classifyReviewTier(input = {}) {
   const policy = normalizeReviewPolicy(input.policy);
   if (policy.mode === 'full') {
     return immutable({ outcome: 'full', reason: 'default-full', policy });
   }
+  const version2 = policy.policyVersion === REVIEW_TIER_POLICY_VERSION;
+  const current = version2 ? identity(input.current, 'current') : null;
+  const normalizedReviewInput = version2 ? deepReviewInput(input, current) : null;
   if (policy.mode === 'repeated-full') {
-    return immutable({ outcome: 'full', reason: 'explicit-repeated-full', policy });
+    return immutable({
+      outcome: 'full',
+      reason: 'explicit-repeated-full',
+      policy,
+      current,
+      reviewInput: normalizedReviewInput,
+    });
   }
   if (input.manualDeepRequested !== undefined
       && typeof input.manualDeepRequested !== 'boolean') {
     throw new ReviewTierPolicyError('invalid_input', 'manualDeepRequested must be boolean');
   }
   if (input.manualDeepRequested === true) {
-    return immutable({ outcome: 'full', reason: 'manual-deep-request', policy });
+    return immutable({
+      outcome: 'full',
+      reason: 'manual-deep-request',
+      policy,
+      current,
+      reviewInput: normalizedReviewInput,
+    });
   }
   if (!input.lastDeep) {
-    return immutable({ outcome: 'full', reason: 'initial-deep-review-required', policy });
+    return immutable({
+      outcome: 'full',
+      reason: 'initial-deep-review-required',
+      policy,
+      ...(version2 ? { current, reviewInput: normalizedReviewInput } : {}),
+    });
   }
-  const current = identity(input.current, 'current');
+  const resolvedCurrent = current ?? identity(input.current, 'current');
   if (policy.policyVersion === LEGACY_REVIEW_TIER_POLICY_VERSION
       && policy.evaluationMode === 'operational'
-      && policy.promotionDecision.packetDigest !== current.packetDigest) {
+      && policy.promotionDecision.packetDigest !== resolvedCurrent.packetDigest) {
     return immutable({ outcome: 'needs-human', reason: 'promotion-packet-mismatch', policy });
   }
   const lastDeep = identity(input.lastDeep, 'lastDeep');
-  if (lastDeep.baseSha !== current.baseSha
-      || lastDeep.packetDigest !== current.packetDigest
-      || lastDeep.scopeDigest !== current.scopeDigest
-      || lastDeep.sourceRevision !== current.sourceRevision) {
-    return immutable({ outcome: 'full-review-required', reason: 'deep-lineage-mismatch', policy });
+  if (lastDeep.baseSha !== resolvedCurrent.baseSha
+      || lastDeep.packetDigest !== resolvedCurrent.packetDigest
+      || lastDeep.scopeDigest !== resolvedCurrent.scopeDigest
+      || lastDeep.sourceRevision !== resolvedCurrent.sourceRevision) {
+    return immutable({
+      outcome: 'full-review-required',
+      reason: 'deep-lineage-mismatch',
+      policy,
+      ...(version2 ? { current: resolvedCurrent, reviewInput: normalizedReviewInput } : {}),
+    });
   }
-  if (lastDeep.headSha === current.headSha) {
-    return immutable({ outcome: 'full-review-required', reason: 'no-correction-head', policy });
+  if (lastDeep.headSha === resolvedCurrent.headSha) {
+    return immutable({
+      outcome: 'full-review-required',
+      reason: 'no-correction-head',
+      policy,
+      ...(version2 ? { current: resolvedCurrent, reviewInput: normalizedReviewInput } : {}),
+    });
   }
   const previousHead = exactGitOid(input.previousHead, 'previousHead');
-  const latestDelta = delta(input.latestDelta, 'latestDelta', previousHead, current.headSha);
+  const latestDelta = delta(input.latestDelta, 'latestDelta', previousHead, resolvedCurrent.headSha);
   const cumulativeDelta = delta(
     input.cumulativeDelta,
     'cumulativeDelta',
     lastDeep.headSha,
-    current.headSha,
+    resolvedCurrent.headSha,
     { pathsRequired: false },
   );
   const deltaReconciliation = reconcileDeltas(
@@ -513,13 +554,15 @@ export function classifyReviewTier(input = {}) {
       reason: 'file-scope-change',
       fileScopeAssessment: scopeAssessment,
       policy,
+      current: resolvedCurrent,
+      reviewInput: normalizedReviewInput,
     });
   }
   stringList(input.requirements, 'requirements', { nonEmptyList: true });
   stringList(input.originalFindingIds, 'originalFindingIds', { nonEmptyList: true });
   stringList(input.affectedConsumers, 'affectedConsumers', { nonEmptyList: true });
   exactKeys(input.validation, ['headSha', 'complete'], 'validation');
-  if (input.validation.complete !== true || input.validation.headSha !== current.headSha) {
+  if (input.validation.complete !== true || input.validation.headSha !== resolvedCurrent.headSha) {
     return immutable({ outcome: 'incomplete-evidence', reason: 'current-validation-incomplete', policy });
   }
   if (!Number.isInteger(input.remediationAttempt) || input.remediationAttempt < 1) {
@@ -539,10 +582,22 @@ export function classifyReviewTier(input = {}) {
     ...cumulativeDelta.semanticAssessment.uncertainties,
   ];
   if (uncertainties.length) {
-    return immutable({ outcome: 'full-review-required', reason: 'semantic-uncertainty', uncertainties, policy });
+    return immutable({
+      outcome: 'full-review-required',
+      reason: 'semantic-uncertainty',
+      uncertainties,
+      policy,
+      ...(version2 ? { current: resolvedCurrent, reviewInput: normalizedReviewInput } : {}),
+    });
   }
   if (signals.length) {
-    return immutable({ outcome: 'full-review-required', reason: 'semantic-escalation', signals, policy });
+    return immutable({
+      outcome: 'full-review-required',
+      reason: 'semantic-escalation',
+      signals,
+      policy,
+      ...(version2 ? { current: resolvedCurrent, reviewInput: normalizedReviewInput } : {}),
+    });
   }
   if (policy.policyVersion === LEGACY_REVIEW_TIER_POLICY_VERSION
       && policy.evaluationMode === 'baseline') {
@@ -551,19 +606,24 @@ export function classifyReviewTier(input = {}) {
   if (policy.policyVersion === REVIEW_TIER_POLICY_VERSION) {
     const churn = assessChurn(
       input.churnMetrics,
-      current,
+      resolvedCurrent,
       lastDeep,
       policy.churnThresholdPercent,
     );
     if (churn.outcome !== 'correction-verification') {
-      return immutable({ ...churn, policy });
+      return immutable({
+        ...churn,
+        policy,
+        current: resolvedCurrent,
+        reviewInput: normalizedReviewInput,
+      });
     }
     return immutable({
       outcome: 'correction-verification',
       reason: churn.reason,
       shadowFullReference: false,
       policy,
-      current,
+      current: resolvedCurrent,
       lastDeep,
       latestDelta,
       cumulativeDelta,
@@ -577,7 +637,7 @@ export function classifyReviewTier(input = {}) {
     reason: policy.evaluationMode === 'shadow' ? 'shadow-comparison' : 'promoted-fast-path',
     shadowFullReference: policy.evaluationMode === 'shadow',
     policy,
-    current,
+    current: resolvedCurrent,
     lastDeep,
     latestDelta,
     cumulativeDelta,

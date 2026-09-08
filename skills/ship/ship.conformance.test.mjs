@@ -33,11 +33,10 @@ import { fileURLToPath } from 'node:url';
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import {
-  newCodeReviewDefaultPolicy,
   SEMANTIC_ASSESSMENT_CATEGORIES,
 } from '../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 import {
-  runTieredCodeReviewFromGit,
+  runNewCodeReviewFromGit,
 } from '../roast/_atoms/correction-review-dispatch/correction-review-dispatch.mjs';
 import { classifyTerminalDisposition } from '../shepherd/_atoms/shepherd-disposition/shepherd-disposition.mjs';
 import { MERGE_GRANT_TOKEN, evaluateMergeGate, mayMerge } from './_atoms/merge-gate/merge-gate.mjs';
@@ -184,7 +183,6 @@ function tieredInput(semanticSignals = []) {
     })),
     uncertainties: [],
   };
-  const policy = newCodeReviewDefaultPolicy();
   const identity = (headSha) => ({
     baseSha: BASE_OID,
     headSha,
@@ -193,7 +191,6 @@ function tieredInput(semanticSignals = []) {
     sourceRevision: 'source',
   });
   return {
-    policy,
     current: identity(RESULTING_HEAD),
     lastDeep: identity(HEAD),
     previousHead: HEAD,
@@ -225,9 +222,9 @@ function tieredInput(semanticSignals = []) {
   };
 }
 
-test('Ship opt-in calls one correction review after the initial full review and escalates to full', async () => {
+test('Ship new default calls correction after initial deep and escalates semantic changes', async () => {
   const calls = [];
-  const fast = await runTieredCodeReviewFromGit({
+  const fast = await runNewCodeReviewFromGit({
     input: tieredInput(),
     repositoryRoot: '/repo',
     reviewBaseSha: BASE_OID,
@@ -273,7 +270,7 @@ test('Ship opt-in calls one correction review after the initial full review and 
   assert.equal(fast.authoritative, 'correction');
 
   calls.length = 0;
-  const escalated = await runTieredCodeReviewFromGit({
+  const escalated = await runNewCodeReviewFromGit({
     input: tieredInput(['public-contract']),
     repositoryRoot: '/repo',
     reviewBaseSha: BASE_OID,

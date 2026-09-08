@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   dispatchCorrectionReview,
   resolveTieredDeepReviewRouting,
+  runNewCodeReviewFromGit,
   runTieredCodeReview,
   runTieredCodeReviewFromGit,
   validateCorrectionReview,
@@ -227,6 +228,20 @@ test('manual deep request reaches the real deep dispatch without churn measureme
     input: {
       ...input,
       policy: newCodeReviewDefaultPolicy(),
+      current: {
+        baseSha: BASE,
+        headSha: CURRENT_HEAD,
+        packetDigest: 'a'.repeat(64),
+        scopeDigest: 'b'.repeat(64),
+        sourceRevision: 'source',
+      },
+      lastDeep: {
+        baseSha: BASE,
+        headSha: DEEP_HEAD,
+        packetDigest: 'a'.repeat(64),
+        scopeDigest: 'b'.repeat(64),
+        sourceRevision: 'source',
+      },
       manualDeepRequested: true,
     },
     runtimeAvailableModels: ['gpt-6-astra', 'gpt-5.6-sol'],
@@ -247,4 +262,109 @@ test('manual deep request reaches the real deep dispatch without churn measureme
   });
   assert.deepEqual(calls, ['full']);
   assert.equal(result.authoritative, 'full');
+});
+
+test('new callable defaults omitted policy and binds initial, manual, and repeated deep callbacks', async () => {
+    const current = {
+      baseSha: BASE,
+      headSha: CURRENT_HEAD,
+      packetDigest: 'a'.repeat(64),
+      scopeDigest: 'b'.repeat(64),
+      sourceRevision: 'source',
+    };
+    const baseInput = {
+      current,
+      requirements: ['preserve behavior'],
+      affectedConsumers: ['consumer-a'],
+    };
+    for (const scenario of [
+      { name: 'initial', input: baseInput, reviewMode: undefined, reason: 'initial-deep-review-required' },
+      {
+        name: 'manual',
+        input: { ...baseInput, lastDeep: { ...current, headSha: DEEP_HEAD }, manualDeepRequested: true },
+        reviewMode: undefined,
+        reason: 'manual-deep-request',
+      },
+      {
+        name: 'repeated',
+        input: baseInput,
+        reviewMode: 'repeated-full',
+        reason: 'explicit-repeated-full',
+      },
+    ]) {
+      let correctionCalls = 0;
+      const result = await runNewCodeReviewFromGit({
+        input: scenario.input,
+        ...(scenario.reviewMode ? { reviewMode: scenario.reviewMode } : {}),
+        runtimeAvailableModels: ['gpt-6-astra', 'gpt-5.6-sol'],
+        correctionTransport: async () => {
+          correctionCalls += 1;
+          return response();
+        },
+        fullReview: async (decision) => {
+          assert.equal(decision.reason, scenario.reason, scenario.name);
+          assert.deepEqual(decision.current, current, scenario.name);
+          assert.deepEqual(decision.reviewInput.current, current, scenario.name);
+          return { status: 'complete' };
+        },
+        runGit: () => {
+          throw new Error(`${scenario.name} deep dispatch must not measure churn`);
+        },
+      });
+      assert.equal(result.authoritative, 'full');
+      assert.equal(correctionCalls, 0);
+    }
+});
+
+test('all new v2 deep triggers reject movable or malformed current identity before dispatch', async () => {
+    for (const scenario of [
+      {
+        input: {
+          current: {
+            baseSha: BASE,
+            headSha: 'HEAD',
+            packetDigest: 'a'.repeat(64),
+            scopeDigest: 'b'.repeat(64),
+            sourceRevision: 'source',
+          },
+        },
+      },
+      {
+        input: {
+          current: {
+            baseSha: BASE,
+            headSha: CURRENT_HEAD,
+            packetDigest: 'not-a-digest',
+            scopeDigest: 'b'.repeat(64),
+            sourceRevision: 'source',
+          },
+          manualDeepRequested: true,
+        },
+      },
+      {
+        input: {
+          current: {
+            baseSha: BASE,
+            headSha: CURRENT_HEAD,
+            packetDigest: 'a'.repeat(64),
+            scopeDigest: 'scope',
+            sourceRevision: 'source',
+          },
+        },
+        reviewMode: 'repeated-full',
+      },
+    ]) {
+      let fullCalls = 0;
+      await assert.rejects(() => runNewCodeReviewFromGit({
+        input: scenario.input,
+        ...(scenario.reviewMode ? { reviewMode: scenario.reviewMode } : {}),
+        runtimeAvailableModels: ['gpt-6-astra', 'gpt-5.6-sol'],
+        correctionTransport: async () => response(),
+        fullReview: async () => {
+          fullCalls += 1;
+          return { status: 'complete' };
+        },
+      }), /canonical full lowercase Git object ID|SHA-256 digest/);
+      assert.equal(fullCalls, 0);
+    }
 });

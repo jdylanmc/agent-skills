@@ -23,6 +23,9 @@ For each ready issue:
 5. update [Fleet disposition](../../_atoms/fleet-disposition/fleet-disposition.md).
 
 Persist and reread after every step that changes control state. Publication uses
+New fleet creation uses `normalizeNewFleetManifest`; candidate delivery reads
+the explicit policy copied into the assignment packet. Resumed historical
+fleets use their saved normalized manifest and never inherit the new default. Publication uses
 intent-before-call and reconciliation. Shepherd intent `no` follows the
 persisted not-required branch rather than a fabricated invocation. Effective
 readiness is recomputed from current evidence after every sibling merge. Never

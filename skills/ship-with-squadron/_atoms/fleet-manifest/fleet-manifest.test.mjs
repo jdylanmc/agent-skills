@@ -6,6 +6,7 @@ import {
   assertFleetManifest,
   manifestDigest,
   normalizeFleetManifest,
+  normalizeNewFleetManifest,
   validateSourceRevisionReceipt,
 } from './fleet-manifest.mjs';
 import {
@@ -128,6 +129,22 @@ test('version 2 intake requires an explicit new default or repeated-full choice'
   assert.equal(normalized.issues[0].reviewPolicy.mode, 'deep-then-verify');
   assert.equal(normalized.issues[1].reviewPolicy.mode, 'repeated-full');
   assert.equal(assertFleetManifest(normalized), normalized);
+});
+
+test('ordinary new Fleet intake injects the v2 default and preserves explicit repeated-full', () => {
+  const ordinary = normalizeNewFleetManifest(manifest({
+    issues: [issue('1', 'r1')],
+  }));
+  assert.equal(ordinary.reviewPolicyContractVersion, 2);
+  assert.equal(ordinary.issues[0].reviewPolicy.mode, 'deep-then-verify');
+  const repeated = issue('1', 'r1');
+  repeated.reviewPolicy = {
+    mode: 'repeated-full',
+    policyVersion: 2,
+    deepRoute: DEEP_REVIEW_ROUTE,
+  };
+  const explicit = normalizeNewFleetManifest(manifest({ issues: [repeated] }));
+  assert.equal(explicit.issues[0].reviewPolicy.mode, 'repeated-full');
 });
 
 test('refuses source and query observations unless their provider reads are allow-listed', () => {

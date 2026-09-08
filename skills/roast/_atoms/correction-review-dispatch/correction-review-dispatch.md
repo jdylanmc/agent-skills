@@ -40,3 +40,7 @@ base-to-deep and deep-to-current line churn with the shared bounded Git helper
 before invoking the policy. Manual `deep now`, first review, and explicit
 `repeated-full` bypass churn measurement and reach the full deep dispatch
 directly.
+Ordinary new Ship/Roast intake calls `runNewCodeReviewFromGit`; omitted choice
+is normalized to the version 2 `deep-then-verify` default, while
+`reviewMode: repeated-full` persists the explicit alternative. Saved-run
+continuation keeps using its recorded policy through `runTieredCodeReviewFromGit`.

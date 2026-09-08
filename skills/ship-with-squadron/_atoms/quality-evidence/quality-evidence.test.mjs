@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
-import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
+import {
+  normalizeFleetManifest,
+  normalizeNewFleetManifest,
+} from '../fleet-manifest/fleet-manifest.mjs';
 import {
   adaptBlastRadiusEvidence,
   adaptCiEvidence,
@@ -21,7 +24,6 @@ import {
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
-  newCodeReviewDefaultPolicy,
   SEMANTIC_ASSESSMENT_CATEGORIES,
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
@@ -37,8 +39,9 @@ function manifest(
   humanDecisions = [],
   reviewPolicy = null,
   reviewPolicyContractVersion = null,
+  newIntake = false,
 ) {
-  return normalizeFleetManifest({
+  const payload = {
     confirmation: 'confirmed',
     goal: 'deliver',
     acceptedScope: [],
@@ -67,11 +70,12 @@ function manifest(
     humanBoundaries: ['human merge'],
     shepherdIntent,
     ...(reviewPolicyContractVersion === 2 ? { reviewPolicyContractVersion: 2 } : {}),
-  });
+  };
+  return newIntake ? normalizeNewFleetManifest(payload) : normalizeFleetManifest(payload);
 }
 
 function tieredManifest() {
-  return manifest('yes', [], newCodeReviewDefaultPolicy(), 2);
+  return manifest('yes', [], null, null, true);
 }
 
 function routing(kind) {
@@ -472,6 +476,8 @@ test('stable packet identity excludes mutable cursors and policy while policy bi
 
 test('tiered review lineage survives head invalidation and validates after replay', () => {
   const currentManifest = tieredManifest();
+  assert.equal(currentManifest.reviewPolicyContractVersion, 2);
+  assert.equal(currentManifest.issues[0].reviewPolicy.mode, 'deep-then-verify');
   const issueDefinition = currentManifest.issues[0];
   let record = {
     identity: '1',
@@ -569,6 +575,7 @@ test('tiered review lineage survives head invalidation and validates after repla
 
 test('Squadron callable path consumes correction transport without a second full review', async () => {
   const currentManifest = tieredManifest();
+  const policy = currentManifest.issues[0].reviewPolicy;
   const current = {
     baseSha: POLICY_BASE,
     headSha: POLICY_CURRENT_HEAD,
@@ -579,7 +586,7 @@ test('Squadron callable path consumes correction transport without a second full
   const calls = [];
   const result = await runSquadronTieredReview({
     input: {
-      policy: newCodeReviewDefaultPolicy(),
+      policy,
       current,
       lastDeep: { ...current, headSha: POLICY_DEEP_HEAD },
       previousHead: POLICY_DEEP_HEAD,
