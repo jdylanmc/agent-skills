@@ -46,7 +46,11 @@ used-by: ["roast/_molecules/roast-code-branch/roast-code-branch.md"]
 | Executive summary fails traceability twice | Omit it and return unchanged technical details. |
 | Restricted file or evidence | Do not bypass the restriction; record the evidence gap. |
 | User asks to apply fixes | Refuse within this skill and provide the ordered handoff. |
-| Tiering is not explicitly confirmed | Run the existing full review. |
+| Historical packet has no review policy | Preserve its existing full review behavior. |
+| New intake omits an explicit version 2 policy | Refuse intake; do not infer whether repeated full was intended. |
+| Orchestrator requests `deep now` | Invoke the full deep dispatch for the current head. |
+| Cumulative line churn is strictly above the configured threshold | Invoke the full deep dispatch; exactly the threshold remains eligible. |
+| Churn baseline is zero, binary, unavailable, malformed, or not revision-bound | Invoke the full deep dispatch and report the metric limitation. |
 | No exact prior deep receipt | Run the existing full review; never infer a deep anchor from a hash alone. |
 | Latest or cumulative delta is missing or stale | Return incomplete evidence. |
 | Scope, authority, permission, persistence, recovery, public contract, or domain meaning changed | Require deep review or human direction. |

@@ -7,6 +7,7 @@ import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
   executeTieredReview,
+  measureReviewChurn,
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 import {
   resolveBundledRoastRoster,
@@ -240,6 +241,47 @@ export async function runTieredCodeReview({
         receipt: result,
       };
     },
+  });
+}
+
+export async function runTieredCodeReviewFromGit({
+  input,
+  repositoryRoot,
+  reviewBaseSha,
+  lastDeepHead,
+  currentHead,
+  runGit = null,
+  runtimeAvailableModels,
+  correctionTransport,
+  fullReview,
+  root,
+} = {}) {
+  if (input.policy?.policyVersion !== 2
+      || input.policy?.mode !== 'deep-then-verify'
+      || input.manualDeepRequested === true
+      || input.policy?.mode === 'repeated-full'
+      || !input.lastDeep) {
+    return runTieredCodeReview({
+      input,
+      runtimeAvailableModels,
+      correctionTransport,
+      fullReview,
+      root,
+    });
+  }
+  const churnMetrics = measureReviewChurn({
+    repositoryRoot,
+    reviewBaseSha,
+    lastDeepHead,
+    currentHead,
+    runGit,
+  });
+  return runTieredCodeReview({
+    input: { ...input, churnMetrics },
+    runtimeAvailableModels,
+    correctionTransport,
+    fullReview,
+    root,
   });
 }
 

@@ -66,10 +66,12 @@ record -> confirm one closed fleet manifest -> persist state
    and head and, where the producer supplies it, the current run and issue.
    Roast blockers are exactly unresolved `Priority: Must fix` findings. Any head mutation
    invalidates downstream evidence and restarts at reconciliation.
-   Full Roast remains the default. Only an issue whose confirmed manifest and
-   assignment packet carry the tier policy may use correction verification.
-   Persist and revalidate its deep-review lineage across reloads; any mismatch
-   or escalation requires the unchanged full review.
+   New manifests explicitly pin review policy contract version 2 for every
+   issue. `deep-then-verify` is the default; `repeated-full` is explicit opt-in.
+   Historical missing-policy and version 1 manifests keep their recorded
+   behavior. Persist and revalidate the deep anchor across reloads; churn,
+   scope, semantic, stale-evidence, or manual-deep escalation invokes full
+   review.
 7. Invoke the checked-in local `blast-radius` skill. Consume its report
    unchanged: do not add invocation wrappers, completion booleans, or historical
    branch/revision provenance. Bind the report through its supplied baseline

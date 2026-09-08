@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { reconcile } from '../../../ship/_atoms/diff-reconciliation/diff-reconciliation.mjs';
-import { runTieredCodeReview } from '../../../roast/_atoms/correction-review-dispatch/correction-review-dispatch.mjs';
+import { runTieredCodeReviewFromGit } from '../../../roast/_atoms/correction-review-dispatch/correction-review-dispatch.mjs';
 import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 
 export const DELIVERY_STAGES = Object.freeze([
@@ -29,7 +29,7 @@ export const READINESS_OBLIGATION_FIELDS = Object.freeze([
 ]);
 
 export async function runSquadronTieredReview(input) {
-  return runTieredCodeReview(input);
+  return runTieredCodeReviewFromGit(input);
 }
 
 const CI_STATUSES = new Set([
@@ -86,7 +86,6 @@ export function reviewPacketBindingDigest(packet) {
   }
   return digest({
     schemaVersion: packet.schemaVersion,
-    manifestDigest: packet.manifestDigest,
     issue: packet.issue,
     sourceRevision: packet.sourceRevision,
     acceptanceCriteria: packet.acceptanceCriteria,

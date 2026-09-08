@@ -40,8 +40,7 @@ import {
   reviewScopeBindingDigest,
 } from '../quality-evidence/quality-evidence.mjs';
 import {
-  CORRECTION_REVIEW_ROUTE,
-  DEEP_REVIEW_ROUTE,
+  newCodeReviewDefaultPolicy,
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -195,6 +194,7 @@ test('tiered manifest policy is bound into the assignment packet', () => {
     confirmation: 'confirmed',
     goal: 'deliver',
     acceptedScope: [],
+    reviewPolicyContractVersion: 2,
     exclusions: ['unrelated files'],
     humanDecisions: [],
     issues: [{
@@ -204,14 +204,7 @@ test('tiered manifest policy is bound into the assignment packet', () => {
       acceptanceCriteria: ['done'],
       scope: ['issue a'],
       allowedPaths: ['src/a/**'],
-      reviewPolicy: {
-        mode: 'tiered',
-        policyVersion: 1,
-        evaluationMode: 'shadow',
-        deepRoute: DEEP_REVIEW_ROUTE,
-        correctionRoute: CORRECTION_REVIEW_ROUTE,
-        promotionDecision: null,
-      },
+      reviewPolicy: newCodeReviewDefaultPolicy(),
     }],
     dependencies: [],
     concurrency: 1,

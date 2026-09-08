@@ -1,9 +1,17 @@
 #!/usr/bin/env node
 
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
-export const REVIEW_TIER_POLICY_VERSION = 1;
-export const REVIEW_MODES = Object.freeze(['full', 'tiered']);
+export const REVIEW_TIER_POLICY_VERSION = 2;
+export const LEGACY_REVIEW_TIER_POLICY_VERSION = 1;
+export const DEFAULT_CHURN_THRESHOLD_PERCENT = 20;
+export const REVIEW_MODES = Object.freeze([
+  'full',
+  'tiered',
+  'deep-then-verify',
+  'repeated-full',
+]);
 export const EVALUATION_MODES = Object.freeze(['baseline', 'shadow', 'operational']);
 export const SEMANTIC_ESCALATION_SIGNALS = Object.freeze([
   'scope',
@@ -96,17 +104,28 @@ function digest(value) {
 }
 
 export function reviewPolicyBindingDigest({
+  policyVersion = LEGACY_REVIEW_TIER_POLICY_VERSION,
+  mode = 'tiered',
   evaluationMode,
+  churnThresholdPercent = null,
   deepRoute = DEEP_REVIEW_ROUTE,
   correctionRoute = CORRECTION_REVIEW_ROUTE,
 } = {}) {
-  return digest({
-    mode: 'tiered',
-    policyVersion: REVIEW_TIER_POLICY_VERSION,
-    evaluationMode,
-    deepRoute,
-    correctionRoute,
-  });
+  return digest(policyVersion === LEGACY_REVIEW_TIER_POLICY_VERSION
+    ? {
+      mode: 'tiered',
+      policyVersion: LEGACY_REVIEW_TIER_POLICY_VERSION,
+      evaluationMode,
+      deepRoute,
+      correctionRoute,
+    }
+    : {
+      mode,
+      policyVersion: REVIEW_TIER_POLICY_VERSION,
+      churnThresholdPercent,
+      deepRoute,
+      ...(mode === 'deep-then-verify' ? { correctionRoute } : {}),
+    });
 }
 
 function exactDigest(value, field) {
@@ -146,12 +165,50 @@ export function normalizeReviewPolicy(value) {
     exactKeys(value, ['mode'], 'reviewPolicy');
     return immutable({ mode: 'full' });
   }
+  if (value.policyVersion === REVIEW_TIER_POLICY_VERSION) {
+    if (value.mode === 'repeated-full') {
+      exactKeys(value, ['mode', 'policyVersion', 'deepRoute'], 'reviewPolicy');
+      return immutable({
+        mode: 'repeated-full',
+        policyVersion: REVIEW_TIER_POLICY_VERSION,
+        deepRoute: route(value.deepRoute, DEEP_REVIEW_ROUTE, 'reviewPolicy.deepRoute'),
+      });
+    }
+    exactKeys(
+      value,
+      ['mode', 'policyVersion', 'churnThresholdPercent', 'deepRoute', 'correctionRoute'],
+      'reviewPolicy',
+    );
+    if (value.mode !== 'deep-then-verify') {
+      throw new ReviewTierPolicyError('invalid_input', 'version 2 reviewPolicy mode is invalid');
+    }
+    if (!Number.isFinite(value.churnThresholdPercent)
+        || value.churnThresholdPercent < 0
+        || value.churnThresholdPercent > 100) {
+      throw new ReviewTierPolicyError(
+        'invalid_input',
+        'reviewPolicy churnThresholdPercent must be between 0 and 100',
+      );
+    }
+    return immutable({
+      mode: 'deep-then-verify',
+      policyVersion: REVIEW_TIER_POLICY_VERSION,
+      churnThresholdPercent: value.churnThresholdPercent,
+      deepRoute: route(value.deepRoute, DEEP_REVIEW_ROUTE, 'reviewPolicy.deepRoute'),
+      correctionRoute: route(
+        value.correctionRoute,
+        CORRECTION_REVIEW_ROUTE,
+        'reviewPolicy.correctionRoute',
+      ),
+    });
+  }
   exactKeys(
     value,
     ['mode', 'policyVersion', 'evaluationMode', 'deepRoute', 'correctionRoute', 'promotionDecision'],
     'reviewPolicy',
   );
-  if (value.mode !== 'tiered' || value.policyVersion !== REVIEW_TIER_POLICY_VERSION) {
+  if (value.mode !== 'tiered'
+      || value.policyVersion !== LEGACY_REVIEW_TIER_POLICY_VERSION) {
     throw new ReviewTierPolicyError('invalid_input', 'reviewPolicy mode or version is invalid');
   }
   if (!EVALUATION_MODES.includes(value.evaluationMode)) {
@@ -164,6 +221,7 @@ export function normalizeReviewPolicy(value) {
     'reviewPolicy.correctionRoute',
   );
   const policyBindingDigest = reviewPolicyBindingDigest({
+    policyVersion: LEGACY_REVIEW_TIER_POLICY_VERSION,
     evaluationMode: value.evaluationMode,
     deepRoute,
     correctionRoute,
@@ -176,6 +234,7 @@ export function normalizeReviewPolicy(value) {
         'operational tiering requires an explicit human promotion',
       );
     }
+
     exactKeys(value.promotionDecision, [
       'approved', 'actorType', 'actorId', 'decisionId', 'decidedAt',
       'packetDigest', 'policyBindingDigest',
@@ -208,11 +267,23 @@ export function normalizeReviewPolicy(value) {
   }
   return immutable({
     mode: 'tiered',
-    policyVersion: REVIEW_TIER_POLICY_VERSION,
+    policyVersion: LEGACY_REVIEW_TIER_POLICY_VERSION,
     evaluationMode: value.evaluationMode,
     deepRoute,
     correctionRoute,
     promotionDecision,
+  });
+}
+
+export function newCodeReviewDefaultPolicy({
+  churnThresholdPercent = DEFAULT_CHURN_THRESHOLD_PERCENT,
+} = {}) {
+  return normalizeReviewPolicy({
+    mode: 'deep-then-verify',
+    policyVersion: REVIEW_TIER_POLICY_VERSION,
+    churnThresholdPercent,
+    deepRoute: DEEP_REVIEW_ROUTE,
+    correctionRoute: CORRECTION_REVIEW_ROUTE,
   });
 }
 
@@ -284,6 +355,7 @@ function reconcileDeltas(value, latestDelta, cumulativeDelta) {
   if (value.complete !== true || !Array.isArray(value.revertedPaths)) {
     throw new ReviewTierPolicyError('incomplete_evidence', 'delta reconciliation is incomplete');
   }
+
   const reverted = new Map(value.revertedPaths.map((entry, index) => {
     exactKeys(entry, ['path', 'evidence'], `deltaReconciliation.revertedPaths[${index}]`);
     return [
@@ -304,16 +376,107 @@ function reconcileDeltas(value, latestDelta, cumulativeDelta) {
   };
 }
 
+function fileScopeAssessment(value) {
+  exactKeys(value, ['complete', 'newOrOutOfScopeFiles', 'evidence'], 'fileScopeAssessment');
+  if (value.complete !== true || typeof value.newOrOutOfScopeFiles !== 'boolean') {
+    throw new ReviewTierPolicyError('incomplete_evidence', 'fileScopeAssessment is incomplete');
+  }
+  return {
+    complete: true,
+    newOrOutOfScopeFiles: value.newOrOutOfScopeFiles,
+    evidence: nonEmpty(value.evidence, 'fileScopeAssessment.evidence'),
+  };
+}
+
+function churnMeasurement(value, field, expectedBase, expectedHead) {
+  exactKeys(
+    value,
+    ['baseSha', 'headSha', 'status', 'addedLines', 'deletedLines', 'totalLines'],
+    field,
+  );
+  const normalized = {
+    baseSha: exactGitOid(value.baseSha, `${field}.baseSha`),
+    headSha: exactGitOid(value.headSha, `${field}.headSha`),
+    status: nonEmpty(value.status, `${field}.status`),
+    addedLines: value.addedLines,
+    deletedLines: value.deletedLines,
+    totalLines: value.totalLines,
+  };
+  if (normalized.baseSha !== expectedBase || normalized.headSha !== expectedHead) {
+    throw new ReviewTierPolicyError('incomplete_evidence', `${field} revision binding does not match`);
+  }
+  if (!['complete', 'zero', 'binary', 'unavailable'].includes(normalized.status)) {
+    throw new ReviewTierPolicyError('incomplete_evidence', `${field} status is invalid`);
+  }
+  for (const count of ['addedLines', 'deletedLines', 'totalLines']) {
+    if (!Number.isInteger(normalized[count]) || normalized[count] < 0) {
+      throw new ReviewTierPolicyError('incomplete_evidence', `${field}.${count} is invalid`);
+    }
+  }
+  if (normalized.totalLines !== normalized.addedLines + normalized.deletedLines) {
+    throw new ReviewTierPolicyError('incomplete_evidence', `${field} line totals do not reconcile`);
+  }
+  return normalized;
+}
+
+function assessChurn(value, current, lastDeep, thresholdPercent) {
+  exactKeys(value, ['baseline', 'cumulative'], 'churnMetrics');
+  const baseline = churnMeasurement(
+    value.baseline,
+    'churnMetrics.baseline',
+    current.baseSha,
+    lastDeep.headSha,
+  );
+  const cumulative = churnMeasurement(
+    value.cumulative,
+    'churnMetrics.cumulative',
+    lastDeep.headSha,
+    current.headSha,
+  );
+  if (baseline.status !== 'complete'
+      || cumulative.status !== 'complete'
+      || baseline.totalLines === 0) {
+    return {
+      outcome: 'full-review-required',
+      reason: `churn-metrics-${baseline.totalLines === 0 ? 'zero-baseline' : baseline.status !== 'complete' ? baseline.status : cumulative.status}`,
+      baseline,
+      cumulative,
+    };
+  }
+  const ratioPercent = (cumulative.totalLines * 100) / baseline.totalLines;
+  return {
+    outcome: ratioPercent > thresholdPercent
+      ? 'full-review-required'
+      : 'correction-verification',
+    reason: ratioPercent > thresholdPercent ? 'cumulative-line-churn-exceeded' : 'cumulative-line-churn-within-threshold',
+    thresholdPercent,
+    ratioPercent,
+    baseline,
+    cumulative,
+  };
+}
+
 export function classifyReviewTier(input = {}) {
   const policy = normalizeReviewPolicy(input.policy);
   if (policy.mode === 'full') {
     return immutable({ outcome: 'full', reason: 'default-full', policy });
   }
+  if (policy.mode === 'repeated-full') {
+    return immutable({ outcome: 'full', reason: 'explicit-repeated-full', policy });
+  }
+  if (input.manualDeepRequested !== undefined
+      && typeof input.manualDeepRequested !== 'boolean') {
+    throw new ReviewTierPolicyError('invalid_input', 'manualDeepRequested must be boolean');
+  }
+  if (input.manualDeepRequested === true) {
+    return immutable({ outcome: 'full', reason: 'manual-deep-request', policy });
+  }
   if (!input.lastDeep) {
     return immutable({ outcome: 'full', reason: 'initial-deep-review-required', policy });
   }
   const current = identity(input.current, 'current');
-  if (policy.evaluationMode === 'operational'
+  if (policy.policyVersion === LEGACY_REVIEW_TIER_POLICY_VERSION
+      && policy.evaluationMode === 'operational'
       && policy.promotionDecision.packetDigest !== current.packetDigest) {
     return immutable({ outcome: 'needs-human', reason: 'promotion-packet-mismatch', policy });
   }
@@ -341,6 +504,17 @@ export function classifyReviewTier(input = {}) {
     latestDelta,
     cumulativeDelta,
   );
+  const scopeAssessment = policy.policyVersion === REVIEW_TIER_POLICY_VERSION
+    ? fileScopeAssessment(input.fileScopeAssessment)
+    : { complete: true, newOrOutOfScopeFiles: false, evidence: 'legacy-v1-policy' };
+  if (scopeAssessment.newOrOutOfScopeFiles) {
+    return immutable({
+      outcome: 'full-review-required',
+      reason: 'file-scope-change',
+      fileScopeAssessment: scopeAssessment,
+      policy,
+    });
+  }
   stringList(input.requirements, 'requirements', { nonEmptyList: true });
   stringList(input.originalFindingIds, 'originalFindingIds', { nonEmptyList: true });
   stringList(input.affectedConsumers, 'affectedConsumers', { nonEmptyList: true });
@@ -370,8 +544,33 @@ export function classifyReviewTier(input = {}) {
   if (signals.length) {
     return immutable({ outcome: 'full-review-required', reason: 'semantic-escalation', signals, policy });
   }
-  if (policy.evaluationMode === 'baseline') {
+  if (policy.policyVersion === LEGACY_REVIEW_TIER_POLICY_VERSION
+      && policy.evaluationMode === 'baseline') {
     return immutable({ outcome: 'full', reason: 'baseline-measurement', policy });
+  }
+  if (policy.policyVersion === REVIEW_TIER_POLICY_VERSION) {
+    const churn = assessChurn(
+      input.churnMetrics,
+      current,
+      lastDeep,
+      policy.churnThresholdPercent,
+    );
+    if (churn.outcome !== 'correction-verification') {
+      return immutable({ ...churn, policy });
+    }
+    return immutable({
+      outcome: 'correction-verification',
+      reason: churn.reason,
+      shadowFullReference: false,
+      policy,
+      current,
+      lastDeep,
+      latestDelta,
+      cumulativeDelta,
+      deltaReconciliation,
+      fileScopeAssessment: scopeAssessment,
+      churn,
+    });
   }
   return immutable({
     outcome: 'correction-verification',
@@ -383,6 +582,100 @@ export function classifyReviewTier(input = {}) {
     latestDelta,
     cumulativeDelta,
     deltaReconciliation,
+  });
+}
+
+export function measureGitLineChurn({
+  repositoryRoot,
+  baseSha,
+  headSha,
+  runGit = null,
+} = {}) {
+  const base = exactGitOid(baseSha, 'baseSha');
+  const head = exactGitOid(headSha, 'headSha');
+  const runner = runGit ?? ((cwd, args) => execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 10_000,
+    maxBuffer: 4 * 1024 * 1024,
+    env: { ...process.env, GIT_EXTERNAL_DIFF: '' },
+  }));
+  let output;
+  try {
+    output = runner(repositoryRoot, [
+      'diff',
+      '--numstat',
+      '--no-ext-diff',
+      '--no-textconv',
+      '--no-renames',
+      base,
+      head,
+      '--',
+    ]);
+  } catch {
+    return immutable({
+      baseSha: base,
+      headSha: head,
+      status: 'unavailable',
+      addedLines: 0,
+      deletedLines: 0,
+      totalLines: 0,
+    });
+  }
+  let addedLines = 0;
+  let deletedLines = 0;
+  let binary = false;
+  for (const line of String(output).trim().split('\n').filter(Boolean)) {
+    const [added, deleted] = line.split('\t', 3);
+    if (added === '-' || deleted === '-') {
+      binary = true;
+      continue;
+    }
+    if (!/^\d+$/u.test(added) || !/^\d+$/u.test(deleted)) {
+      return immutable({
+        baseSha: base,
+        headSha: head,
+        status: 'unavailable',
+        addedLines: 0,
+        deletedLines: 0,
+        totalLines: 0,
+      });
+    }
+    addedLines += Number(added);
+    deletedLines += Number(deleted);
+  }
+  const totalLines = addedLines + deletedLines;
+  return immutable({
+    baseSha: base,
+    headSha: head,
+    status: binary ? 'binary' : totalLines === 0 ? 'zero' : 'complete',
+    addedLines,
+    deletedLines,
+    totalLines,
+  });
+}
+
+export function measureReviewChurn({
+  repositoryRoot,
+  reviewBaseSha,
+  lastDeepHead,
+  currentHead,
+  runGit = null,
+} = {}) {
+  return immutable({
+    baseline: measureGitLineChurn({
+      repositoryRoot,
+      baseSha: reviewBaseSha,
+      headSha: lastDeepHead,
+      runGit,
+    }),
+    cumulative: measureGitLineChurn({
+      repositoryRoot,
+      baseSha: lastDeepHead,
+      headSha: currentHead,
+      runGit,
+    }),
   });
 }
 

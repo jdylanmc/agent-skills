@@ -11,6 +11,7 @@ import {
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
+  newCodeReviewDefaultPolicy,
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 function sourceReceipt(issue, revision, overrides = {}) {
@@ -105,6 +106,28 @@ test('normalizes an explicit per-issue tiered policy while absent policy remains
       },
     }],
   })), /human-confirmed full-strength route/);
+});
+
+test('version 2 intake requires an explicit new default or repeated-full choice', () => {
+  assert.throws(() => normalizeFleetManifest(manifest({
+    reviewPolicyContractVersion: 2,
+  })), /reviewPolicy must be explicit/);
+  const deep = issue('1', 'r1');
+  deep.reviewPolicy = newCodeReviewDefaultPolicy();
+  const repeated = issue('2', 'r2');
+  repeated.reviewPolicy = {
+    mode: 'repeated-full',
+    policyVersion: 2,
+    deepRoute: DEEP_REVIEW_ROUTE,
+  };
+  const normalized = normalizeFleetManifest(manifest({
+    reviewPolicyContractVersion: 2,
+    issues: [deep, repeated],
+  }));
+  assert.equal(normalized.reviewPolicyContractVersion, 2);
+  assert.equal(normalized.issues[0].reviewPolicy.mode, 'deep-then-verify');
+  assert.equal(normalized.issues[1].reviewPolicy.mode, 'repeated-full');
+  assert.equal(assertFleetManifest(normalized), normalized);
 });
 
 test('refuses source and query observations unless their provider reads are allow-listed', () => {

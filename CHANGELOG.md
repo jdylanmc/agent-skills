@@ -256,6 +256,13 @@ below is unreleased and no comparison links are available.
 
 ### Changed
 
+- **Deep-then-verify is now the explicit default for new code-review intake.**
+  Ship and Ship-with-Squadron run one deep review, then use bounded correction
+  verification until manual deep review, file-scope or semantic escalation, or
+  cumulative line churn strictly exceeds the configured threshold (20 percent
+  by default). Repeated full review is explicit opt-in. Historical
+  missing-policy and version 1 saved runs retain their recorded behavior.
+
 - **TDD Squadron model assignment.** Test-Driven Development Squadron now
   records the runtime's exact eligible model IDs and assigns the persistent
   Red/Green pair, four-seat Roast, publication agent, and Slop Sniper across the

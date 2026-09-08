@@ -5,11 +5,13 @@ import {
   dispatchCorrectionReview,
   resolveTieredDeepReviewRouting,
   runTieredCodeReview,
+  runTieredCodeReviewFromGit,
   validateCorrectionReview,
 } from './correction-review-dispatch.mjs';
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
+  newCodeReviewDefaultPolicy,
   reviewPolicyBindingDigest,
   SEMANTIC_ASSESSMENT_CATEGORIES,
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
@@ -217,4 +219,32 @@ test('deep routing refuses unless every council and Roastmaster seat resolves', 
   assert.throws(() => resolveTieredDeepReviewRouting({
     runtimeAvailableModels: [],
   }), /deep review route is unavailable/);
+});
+
+test('manual deep request reaches the real deep dispatch without churn measurement', async () => {
+  const calls = [];
+  const result = await runTieredCodeReviewFromGit({
+    input: {
+      ...input,
+      policy: newCodeReviewDefaultPolicy(),
+      manualDeepRequested: true,
+    },
+    runtimeAvailableModels: ['gpt-6-astra', 'gpt-5.6-sol'],
+    correctionTransport: async () => {
+      calls.push('correction');
+      return response();
+    },
+    fullReview: async (_decision, routing) => {
+      calls.push('full');
+      assert.deepEqual(routing.roster.roster.map((entry) => entry.route.model), [
+        'gpt-6-astra', 'gpt-6-astra', 'gpt-6-astra',
+      ]);
+      return { status: 'complete' };
+    },
+    runGit: () => {
+      throw new Error('manual deep must not measure churn first');
+    },
+  });
+  assert.deepEqual(calls, ['full']);
+  assert.equal(result.authoritative, 'full');
 });

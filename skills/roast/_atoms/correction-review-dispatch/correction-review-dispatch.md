@@ -34,3 +34,9 @@ dispositions cannot return `complete`.
 Ship-with-Squadron: it invokes this verifier for an eligible correction and
 calls the existing full-review callback for initial, baseline, shadow, or
 escalated work.
+
+New version 2 callers use `runTieredCodeReviewFromGit`. It measures
+base-to-deep and deep-to-current line churn with the shared bounded Git helper
+before invoking the policy. Manual `deep now`, first review, and explicit
+`repeated-full` bypass churn measurement and reach the full deep dispatch
+directly.

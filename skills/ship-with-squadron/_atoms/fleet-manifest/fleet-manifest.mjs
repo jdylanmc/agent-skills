@@ -19,7 +19,7 @@ const MANIFEST_INPUT_FIELDS = new Set([
   'confirmation', 'goal', 'acceptedScope', 'issues', 'issueSet', 'dependencies',
   'exclusions', 'concurrency', 'budget', 'repository', 'provider',
   'validationPolicy', 'stopConditions', 'shepherdIntent', 'humanBoundaries',
-  'humanDecisions',
+  'humanDecisions', 'reviewPolicyContractVersion',
 ]);
 const MANIFEST_FIELDS = new Set([
   'schemaVersion', 'goal', 'acceptedScope', 'issues', 'dependencies',
@@ -27,6 +27,7 @@ const MANIFEST_FIELDS = new Set([
   'providerConfigurationDigest', 'validationPolicy', 'stopConditions',
   'shepherdIntent', 'humanBoundaries', 'humanDecisions',
   'confirmationBindingDigest', 'issueSet', 'confirmation', 'closedSet', 'digest',
+  'reviewPolicyContractVersion',
 ]);
 
 function nonEmpty(value, field) {
@@ -319,6 +320,10 @@ export function normalizeFleetManifest(input = {}) {
   }
   const acceptedScope = explicitStringArray(input, 'acceptedScope');
   const exclusions = explicitStringArray(input, 'exclusions');
+  const reviewPolicyContractVersion = input.reviewPolicyContractVersion ?? null;
+  if (reviewPolicyContractVersion !== null && reviewPolicyContractVersion !== 2) {
+    throw new Error('reviewPolicyContractVersion must be 2 when supplied');
+  }
   const repository = input.repository;
   if (!repository || typeof repository !== 'object' || Array.isArray(repository)) {
     throw new Error('repository configuration is required');
@@ -377,7 +382,14 @@ export function normalizeFleetManifest(input = {}) {
       revision: sourceRevision,
       issueStatus: status,
     }, `${identity}.sourceReceipt`);
+    if (reviewPolicyContractVersion === 2 && !Object.hasOwn(issue, 'reviewPolicy')) {
+      throw new Error(`${identity}.reviewPolicy must be explicit for review policy contract version 2`);
+    }
     const reviewPolicy = normalizeReviewPolicy(issue.reviewPolicy);
+    if (reviewPolicyContractVersion === 2
+        && !['deep-then-verify', 'repeated-full'].includes(reviewPolicy.mode)) {
+      throw new Error(`${identity}.reviewPolicy must use a version 2 explicit mode`);
+    }
     return {
       identity,
       sourceRevision,
@@ -387,7 +399,7 @@ export function normalizeFleetManifest(input = {}) {
       allowedPaths,
       status,
       order: index,
-      ...(reviewPolicy.mode === 'tiered' ? { reviewPolicy } : {}),
+      ...(reviewPolicy.mode !== 'full' ? { reviewPolicy } : {}),
     };
   });
 
@@ -542,6 +554,7 @@ export function normalizeFleetManifest(input = {}) {
     humanBoundaries,
     issueSet,
     humanDecisionCores,
+    ...(reviewPolicyContractVersion === 2 ? { reviewPolicyContractVersion } : {}),
   });
   const humanDecisions = humanDecisionCores.map((decision) => ({
     ...decision,
@@ -568,6 +581,7 @@ export function normalizeFleetManifest(input = {}) {
     shepherdIntent: input.shepherdIntent,
     humanBoundaries,
     humanDecisions,
+    ...(reviewPolicyContractVersion === 2 ? { reviewPolicyContractVersion } : {}),
     confirmationBindingDigest,
     issueSet,
     confirmation: 'confirmed',
@@ -629,6 +643,9 @@ function manifestInput(manifest) {
     humanBoundaries: structuredClone(manifest.humanBoundaries),
     humanDecisions: manifest.humanDecisions.map(({ manifestDigest: ignored, ...decision }) =>
       structuredClone(decision)),
+    ...(manifest.reviewPolicyContractVersion === 2
+      ? { reviewPolicyContractVersion: 2 }
+      : {}),
   };
 }
 
