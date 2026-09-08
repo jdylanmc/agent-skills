@@ -186,6 +186,7 @@ test('the successful molecule path reaches atomic canonical persistence', (t) =>
     candidateText: variantText,
     outcome: result.outcome,
     runId: 'molecule-success',
+    profile: PROFILE,
   }, { persist: (input) => persistCandidate(input, { uuid: () => 'candidate' }) });
   assert.equal(result.outcome.status, 'complete');
   assert.equal(final.status, 'complete');

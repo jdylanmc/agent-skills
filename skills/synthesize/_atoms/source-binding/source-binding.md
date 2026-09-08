@@ -1,6 +1,6 @@
 ---
 name: source-binding
-description: Bind exactly one identified, revision-bound source artifact beneath the profile-derived workspace, refusing an unbound, absolute, out-of-workspace, symlinked, unreadable, unknown-profile, or stale source and returning a content-digest binding whose revision is computed from the bytes rather than asserted.
+description: Bind exactly one identified, revision-bound source artifact beneath the contract-derived workspace, refusing an unbound, absolute, out-of-workspace, symlinked, unreadable, unknown-profile, or stale source and returning a content-digest binding whose revision is computed from the bytes rather than asserted.
 level: atom
 allowed-tools: ["execute"]
 includes: ["synthesize/_atoms/source-binding/source-binding.mjs"]
@@ -36,13 +36,24 @@ implementation. The source path, the declared revision, and the profile id are
 all required and are never inferred or defaulted, because a defaulted input is
 how a run quietly synthesizes the wrong document under a workspace nobody chose.
 
-## The Workspace Is Profile-Derived
+## The Workspace Is Contract-Derived
 
-The containment root comes from `resolveProfile(profileId).workspaceRoot`, a row
-in the fixed profile table. It is not a caller parameter: there is no
-`workspaceRoot` argument and no `--workspace` flag, because a caller-supplied
-root of `.` would make every repository file eligible. Nothing a caller supplies
-can widen containment. An unknown profile refuses with `unknown-profile`.
+The containment root comes from `resolveProfile(profileId).workspaceRoot`. It is
+never a free parameter: there is no `workspaceRoot` argument and no
+`--workspace` flag, because a supplied root of `.` would make every repository
+file eligible.
+
+A named profile's workspace is the row's, settled when the profile was. A
+declared reduction states its own — and may only state one beneath the single
+root declared reductions have, so stating a reduction goal never becomes a grant
+to read and write wherever the requester fancies. Either way the root is the
+resolver's output, not the caller's input, and it is resolved before anything is
+read.
+
+An unknown named profile refuses with `unknown-profile`, and an incomplete or
+out-of-root declared reduction refuses with `invalid-profile`; a run whose
+contract does not resolve has no workspace to be contained by, so it never gets
+as far as reading anything.
 
 ## The Revision Is Computed, Never Asserted
 
@@ -57,6 +68,7 @@ declared revision to that digest. The two never come from the same hand.
 | --- | --- |
 | `unbound-source` | The source path or the declared revision is missing, the source path is absolute, or the file name yields no stable slug. None is ever inferred. |
 | `unknown-profile` | The named profile is absent from the profile table, so no workspace can be derived. |
+| `invalid-profile` | A declared reduction accompanied the call but does not state every term, so no workspace can be derived from it. |
 | `outside-workspace` | The resolved path is not beneath the profile's workspace root. |
 | `unsafe-path` | Any component of the resolved path is a symbolic link. |
 | `unreadable` | The source is absent, cannot be inspected or read, or is not a regular file. Native filesystem detail is retained separately and never escapes as the public refusal code. |

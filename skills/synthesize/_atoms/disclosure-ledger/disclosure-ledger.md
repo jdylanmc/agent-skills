@@ -24,13 +24,20 @@ candidate is left unsourced.
 
 1. [Disclosure ledger validator](./disclosure-ledger.mjs)
 
-## The Profile Is Named, Never Handed In
+## The Contract Is Resolved Here, Never Taken On Trust
 
-A caller passes a `profileId` string; this module resolves it from the fixed
-profile table. It never accepts a profile object, because a caller that supplies
-its own profile shape — `{nonOmittableKinds: [], requiredContent: []}` — can make
-every profile-driven check vanish. An unknown or absent id refuses with
-`unknown-profile`. A caller can no longer hand in a profile that checks nothing.
+A caller passes a contract *reference* — a named profile id, or a complete
+declared reduction — and this module resolves it through the one resolver that
+validates it. It never uses a profile shape as handed in, because a caller that
+supplied its own — `{nonOmittableKinds: [], requiredContent: []}` — could make
+every contract-driven check vanish.
+
+That hole stays closed under the declared route. The resolver refuses an
+incomplete declaration with `invalid-profile`, refuses empty `requiredContent`
+and `nonOmittableKinds`, and lets a declared contract **add** to the baseline
+non-omittable kinds while never dropping one of them — so no contract can make an
+intention, a criterion, a non-goal, a constraint, or a contradiction silently
+droppable. An unknown id refuses with `unknown-profile`.
 
 ## Entry Shape
 

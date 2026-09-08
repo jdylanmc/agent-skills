@@ -9,23 +9,24 @@ Sometimes a document is correct and complete and still too large for the place
 it has to live. A full specification is the right size for the people who build
 against it and the wrong size for the one line of settled product intent a human
 must keep authoritative. Bounded synthesis is the act of producing that smaller
-variant deliberately: read one identified source, write one profile-defined
+variant deliberately: read one identified source, write one contract-defined
 variant, and account for every difference between them.
 
 This is not summarization. Summarization is allowed to be lossy and is judged by
 whether it reads well. Bounded synthesis is judged by whether meaning survived,
 and it is allowed to refuse.
 
-## Why one source and one named profile, both explicit
+## Why one source and one reduction contract, both explicit
 
-A synthesis run takes exactly one source and exactly one named profile, and it
+A synthesis run takes exactly one source and exactly one explicitly stated reduction contract, and it
 infers neither. The source is one identified, revision-bound artifact, so a
 later run can prove it read the same bytes and not a newer draft that quietly
-changed underneath it. The profile is named out loud, because a profile is a
-contract about what the smaller variant must contain, how large it may be, and
-what may never be dropped. Letting the run guess "the obvious profile" is how a
-specification gets condensed under someone else's rules without anyone choosing
-them. A caller who will not name the profile has not selected one.
+changed underneath it. The contract states what the smaller variant must
+contain, how large it may be, and what may never be dropped. It may be a named,
+settled profile or a complete contract stated for one run. Letting the run guess
+"the obvious contract" is how an artifact gets condensed under someone else's
+rules without anyone choosing them. A caller who will not state the contract has
+not selected one.
 
 ## Why a disclosure ledger exists
 
@@ -43,7 +44,7 @@ not prove meaning was preserved; it proves nothing was changed off the record.
 
 ## Why refusing beats degrading
 
-When the required meaning genuinely will not fit the profile's limit, the honest
+When the required meaning genuinely will not fit the contract's limit, the honest
 answer is to stop and say so, and to propose how the material could be split
 into cohesive pieces. The dishonest answers are all the ways of pretending it
 fit: truncating the tail, moving the authoritative part into the companion

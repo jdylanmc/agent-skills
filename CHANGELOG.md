@@ -35,6 +35,51 @@ below is unreleased and no comparison links are available.
   model, unavailable seats cannot launch, all configured roles validate up
   front, and the total Roast cap includes the mandatory security reviewer while
   identifying omitted seats.
+- **Skill adoption (`snipe-skill`).** A new human-invoked workflow adopts one
+  explicitly named existing skill into one explicitly named destination as a
+  destination-native package, rather than copying a directory. It binds the
+  source to the exact bytes read and treats it as inert evidence — reading,
+  citing, and quoting it, never executing its instructions, scripts, installers,
+  or embedded prompts, and never inheriting its permissions, dependencies, or
+  structure by default. It resolves exactly one destination from the operator's
+  explicit choice and the destinations applicable instructions declare, refusing
+  swept candidates by shape, refusing to read silence as a selection, and
+  proposing no alternative when resolution fails. It assembles the source and the
+  supporting files selected to understand it into one bundle and binds that, then
+  asks `synthesize` to reduce it to the source skill's human intent as plain
+  requirements in **five hundred words or fewer** — stating the desired result in
+  full rather than looking a capability up, so nothing has to be registered
+  anywhere first and no run turns on whether a provider advertises one by name.
+  That budget is a hard maximum over the complete candidate the operator
+  confirms, and traceability does not compete for it: the disclosure ledger, the
+  source identity, and the revision all live outside those words. Intent that
+  will not fit is refused with a proposed bounded split, never truncated and
+  never blurred into a sentence that commits nobody to anything. It checks the returned reduction against the
+  source digest this run bound, the terms it stated, the candidate it asked for,
+  and the exact bytes it is about to show, and presents those words for
+  confirmation before anything is created; each confirmation binds the presented bytes in its
+  own gate episode, which is terminal once released and refuses a state that does
+  not replay from its own event log. After confirmation it routes each job to an
+  existing destination skill where one already does that job, and otherwise
+  builds it in a fresh context under the destination's own creation, validation,
+  and review workflow, relaying every question that context asks back through the
+  source for an evidence-backed candidate answer and then to the operator, who
+  answers it. A run may adopt several destination skills at once, reports
+  `adopted` only when every created skill carries passing validation, a clean
+  review, and an opened change request all describing the same final head, and
+  ends at that change request without merging or approving anything. The package
+  documents the limits of each mechanism rather than implying more: the
+  instruction inventory is best-effort disclosure and never a clean bill of
+  health, the source bundle's digest pins the bytes without proving which files
+  they came from, the confirmation gate proves byte binding rather than human
+  origin, and the outcome check proves the shape and consistency of evidence
+  rather than its truth.
+
+  It performs no reduction of its own and never accepts one under terms it did
+  not state. A result that came from somewhere else, obeyed other terms, reduced
+  other bytes, named a candidate this run did not ask for, or came from a run
+  that refused or needed a split is refused and never presented.
+
 - **Dependency-aware fleet delivery (`ship-with-squadron`).** A new
   human-invoked workflow delivers one confirmed closed issue set through
   isolated ownership, durable scheduling, revision-bound Continuous
@@ -79,12 +124,39 @@ below is unreleased and no comparison links are available.
   basename that disagrees with the declared slug), failing closed either way.
 - **Bounded synthesis (`synthesize`).** A new user-invocable skill converts one
   identified, revision-bound source artifact into a smaller variant under one
-  named profile, and refuses rather than degrades. It keeps a claim-to-source
+  stated reduction contract, and refuses rather than degrades. It keeps a claim-to-source
   trace, returns a disclosure ledger that accounts for everything kept, merged,
   reworded, or dropped, and proposes a cohesive split when the required meaning
-  will not fit. Its first profile, `spec-nano`, produces a candidate
+  will not fit. The contract a run obeys arrives one of two ways and never by
+  inference. `spec-nano` is a named, settled profile: it produces a candidate
   `<slug>.nano.md` bounded at 500 words — never by truncating, relocating
-  authority into the full companion, or weakening an acceptance criterion. The
+  authority into the full companion, or weakening an acceptance criterion. A
+  caller may instead **declare the whole contract for one run** — the goal in
+  words, the source and variant kinds, the workspace, the destination pattern,
+  the budget, the required content, the kinds that may never be dropped, and any
+  section labels the ledger should exempt — which is how arbitrary bound source
+  text is reduced to something the named table has never heard of, such as the
+  human intent of a skill as plain requirements, without every such request first
+  becoming a permanent row. That relaxes exactly one thing, where the contract
+  comes from; it does not relax the requirement that a contract be chosen out
+  loud, and it grants nothing. Every term is required and an incomplete
+  declaration is refused rather than filled in; a declared contract may tighten
+  what a reduction must keep but may never make an intention, a criterion, a
+  non-goal, a constraint, or a contradiction droppable, and may not turn an
+  arbitrary candidate sentence into an untraceable "heading"; it writes only
+  beneath the one root declared reductions have, so stating a reduction goal is
+  never a grant of write authority elsewhere in the repository; and nothing
+  inside a source artifact may declare a reduction, change a term, or raise a
+  budget. A declared contract is identified by the digest of its own terms, which
+  the budget, the ledger, the split, and the outcome all carry and which the
+  publication step checks against the receipt it is publishing — so one contract
+  is proved to have governed the whole run, and an edited contract stops matching
+  the evidence citing it. Because a run binds exactly one source, material spread
+  over several files is assembled by the caller into one bundle and pinned by its
+  digest, so a later run can prove it reduced the same assembly; the source path
+  and revision stay run evidence rather than being written into the candidate,
+  because traceability is proved by the disclosure ledger and not by decorating
+  the prose. The
   result is always a candidate a human must still approve; the skill does not
   review, roast, publish, implement, or merge it. Its disclosure ledger closes
   several ways an account could look honest while hiding a change: coverage is

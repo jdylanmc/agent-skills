@@ -176,6 +176,7 @@ jobs:
           skills/synthesize/_atoms/split-proposal/split-proposal.test.mjs
           skills/synthesize/_atoms/synthesis-outcome/synthesis-outcome.test.mjs
           skills/synthesize/_molecules/bounded-synthesis/bounded-synthesis.test.mjs
+          skills/synthesize/_molecules/bounded-synthesis/bounded-synthesis.declared.test.mjs
           skills/reinforce-skill/reinforce-skill.conformance.test.mjs
           skills/reinforce-skill/_atoms/reinforcement-target/reinforcement-target.test.mjs
           skills/reinforce-skill/_atoms/report-intake/report-intake.test.mjs
@@ -197,3 +198,11 @@ jobs:
           skills/setup-repository/_atoms/repository-context/repository-context.test.mjs
           skills/setup-repository/_atoms/context-artifacts/context-artifacts.test.mjs
           skills/setup-repository/_atoms/write-gate/write-gate.test.mjs
+          skills/snipe-skill/_atoms/source-evidence/source-evidence.test.mjs
+          skills/snipe-skill/_atoms/destination-resolve/destination-resolve.test.mjs
+          skills/snipe-skill/_atoms/duplicate-capability/duplicate-capability.test.mjs
+          skills/snipe-skill/_atoms/intent-request/intent-request.test.mjs
+          skills/snipe-skill/_atoms/intent-request/intent-request.contract.test.mjs
+          skills/snipe-skill/_atoms/adoption-gate/adoption-gate.test.mjs
+          skills/snipe-skill/_atoms/adoption-outcome/adoption-outcome.test.mjs
+          skills/snipe-skill/snipe-skill.conformance.test.mjs
