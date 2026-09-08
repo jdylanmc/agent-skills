@@ -590,8 +590,12 @@ test('serializes a multiprocess revision race so only one writer wins', async (t
           };
         }
       }
-      process.send(outcome, () => process.disconnect());
+      process.send(outcome, (error) => {
+        if (error) throw error;
+        process.disconnect();
+      });
     });
+    process.once('disconnect', () => process.exit(0));
     process.send({ type: 'ready', identity, revision: state.revision });
   `;
   const children = [
