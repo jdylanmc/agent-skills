@@ -154,18 +154,23 @@ function sameTerms(reported, stated) {
  * Attempt one is numbered like the rest. A special case for the first attempt is
  * exactly where this bug would grow back.
  */
-function attemptSlug(slug, attempt) {
-  if (typeof slug !== 'string' || !SLUG.test(slug)) return null;
+function attemptSlug(slug, runId, attempt) {
+  if (typeof slug !== 'string' || !SLUG.test(slug)
+    || typeof runId !== 'string' || !SLUG.test(runId)) return null;
   // Safe integers only. Past `Number.MAX_SAFE_INTEGER` two distinct attempt
   // numbers stringify identically, so two attempts would derive one path - the
   // exact collision this identity exists to prevent, reached by arithmetic
   // rather than by reuse.
   if (!Number.isSafeInteger(attempt) || attempt < 1) return null;
-  return `${slug}-attempt-${attempt}`;
+  // Length-prefix both variable-width slugs. Plain hyphen concatenation is
+  // ambiguous: (`demo`, `run-1`) and (`demo-run`, `1`) otherwise name the same
+  // immutable output. The encoded tuple remains a valid provider slug while
+  // making distinct requests distinct without relying on parsing heuristics.
+  return `s${slug.length}-${slug}-r${runId.length}-${runId}-a${attempt}`;
 }
 
-function attemptPaths(slug, attempt) {
-  const identity = attemptSlug(slug, attempt);
+function attemptPaths(slug, runId, attempt) {
+  const identity = attemptSlug(slug, runId, attempt);
   if (identity === null) return null;
   const { workspaceRoot, sourceKind, outputPattern } = INTENT_OUTPUT_CONTRACT;
   const suffix = sourceKind.split('-').slice(1).join('-');
@@ -188,21 +193,22 @@ function attemptPaths(slug, attempt) {
  * workspace, because that is the only shape whose candidate is predictable - and
  * predicting the candidate is how the result gets bound back to the request.
  */
-export function buildIntentRequest({ binding, slug, attempt } = {}) {
+export function buildIntentRequest({ binding, slug, runId, attempt } = {}) {
   if (!binding || typeof binding.digest !== 'string' || !SHA256.test(binding.digest)) {
     throw new IntentRequestError(REQUEST_FAILURES.usage, 'binding must be the bound source evidence');
   }
-  const paths = attemptPaths(slug, attempt);
+  const paths = attemptPaths(slug, runId, attempt);
   if (paths === null) {
     throw new IntentRequestError(
       REQUEST_FAILURES.usage,
-      `an attempt is one identifier slug and an attempt number from 1; "${slug}"/"${attempt}" is not one`,
+      `an attempt needs identifier slugs for the subject and run plus an attempt number from 1; "${slug}"/"${runId}"/"${attempt}" is not one`,
     );
   }
   return {
     skill: SYNTHESIS_PROVIDER,
     want: INTENT_OUTPUT_CONTRACT,
     slug,
+    runId,
     attempt,
     source: paths.source,
     candidate: paths.candidate,
@@ -260,7 +266,12 @@ export function assertIntentResult(record, binding, request) {
   }
   let canonical;
   try {
-    canonical = buildIntentRequest({ binding, slug: request.slug, attempt: request.attempt });
+    canonical = buildIntentRequest({
+      binding,
+      slug: request.slug,
+      runId: request.runId,
+      attempt: request.attempt,
+    });
   } catch {
     throw new IntentRequestError(REQUEST_FAILURES.usage, 'request must be the one buildIntentRequest produced');
   }

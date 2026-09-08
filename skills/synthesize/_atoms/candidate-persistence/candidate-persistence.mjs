@@ -72,10 +72,11 @@ export function destinationFor(reference, candidatePath) {
     return null;
   }
   if (typeof candidatePath !== 'string') return null;
+  if (candidatePath.includes('\\')) return null;
   const parts = profile.outputPattern.split('<slug>');
   if (parts.length !== 2) return null;
   const [prefix, suffix] = parts;
-  const posix = candidatePath.split('\\').join('/');
+  const posix = candidatePath;
   if (!posix.startsWith(prefix) || !posix.endsWith(suffix)
     || posix.length <= prefix.length + suffix.length) {
     return null;
@@ -138,7 +139,11 @@ function assertInputs({ repositoryRoot, candidatePath, candidateText, outcome, r
   // back to the run.
   const contract = ownField(outcome, 'contract');
   const candidate = ownField(outcome, 'candidate');
-  const reference = profile ?? contract;
+  // Before caller-declared contracts existed, spec-nano callers supplied
+  // neither a profile argument nor contract evidence. Preserve that exact input
+  // shape only for the original named profile; declared destinations live under
+  // a disjoint workspace and still require their complete terms.
+  const reference = profile ?? contract ?? 'spec-nano';
   const destination = destinationFor(reference, candidatePath);
   if (destination === null) {
     // A `declared:` id names terms that cannot be fetched back by name, so a

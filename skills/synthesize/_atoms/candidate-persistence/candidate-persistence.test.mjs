@@ -212,6 +212,7 @@ test("the destination is the one this run's contract names, and nothing else is"
     'docs/agent/demo.nano.md',
     'README.md',
     'docs/agent/specs/demo.nano.md.stage-run-1-nonce',
+    'docs\\agent\\specs\\demo.nano.md',
     '',
     null,
   ]) {
@@ -220,6 +221,27 @@ test("the destination is the one this run's contract names, and nothing else is"
   // A contract nobody stated names no destination at all.
   assert.equal(destinationFor(undefined, 'docs/agent/specs/demo.nano.md'), null);
   assert.equal(destinationFor({ ...DECLARED, wordBudget: 0 }, 'synthesis/intent/demo.intent.md'), null);
+});
+
+test('noncanonical separators cannot authorize a different physical destination', (t) => {
+  const repositoryRoot = root(t);
+  const candidatePath = 'docs\\agent\\specs\\demo.nano.md';
+  const candidateText = '# Candidate\n';
+  assert.equal(
+    code(() => persistCandidate({
+      repositoryRoot,
+      candidatePath,
+      candidateText,
+      outcome: {
+        status: 'complete',
+        candidate: { path: candidatePath, digest: digest(candidateText) },
+      },
+      runId: 'run-1',
+    })),
+    'invalid-input',
+  );
+  assert.equal(fs.existsSync(path.join(repositoryRoot, candidatePath)), false);
+  assert.equal(fs.existsSync(destination(repositoryRoot)), false);
 });
 
 test("a candidate outside the run's own contract is refused before any write", (t) => {
@@ -373,6 +395,23 @@ test('a named profile keeps its original receipt semantics, and a present contra
     })),
     'contract-mismatch',
   );
+});
+
+test('the original spec-nano input shape still needs no profile or contract field', (t) => {
+  const repositoryRoot = root(t);
+  const candidateText = '# Candidate\n';
+  const result = persistCandidate({
+    repositoryRoot,
+    candidatePath: CANDIDATE,
+    candidateText,
+    outcome: {
+      status: 'complete',
+      candidate: { path: CANDIDATE, digest: digest(candidateText) },
+    },
+    runId: 'run-1',
+  }, { uuid: () => 'original-shape' });
+  assert.equal(result.status, 'persisted');
+  assert.equal(fs.readFileSync(destination(repositoryRoot), 'utf8'), candidateText);
 });
 
 test('a named-profile call needs no separate contract argument', (t) => {

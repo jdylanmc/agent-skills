@@ -107,7 +107,7 @@ test('one assembled bundle reduces to one persisted candidate under a declared c
   const input = evidence(repositoryRoot);
 
   assert.equal(input.binding.status, 'bound');
-  assert.equal(input.binding.slug, 'demo-adopter-attempt-1');
+  assert.equal(input.binding.slug, 's12-demo-adopter-r5-run-1-a1');
   assert.equal(input.binding.revision, digest(SOURCE));
   assert.equal(input.budget.status, 'within');
   assert.equal(input.ledger.status, 'clean');

@@ -55,8 +55,11 @@ bind the source -> resolve the stated contract -> render the candidate variant
    really there. The source and candidate paths let the ledger confirm the
    artifacts are the shape the profile names.
 5. Run [Split proposal](../../_atoms/split-proposal/split-proposal.md) with the
-   budget status, the validated ledger entries, the profile id, and the ledger
-   digest. Below budget it reports that no split is required; over budget it
+   budget status, the validated ledger entries, the caller's original contract
+   reference (the named profile id or complete declared reduction), and the
+   ledger digest. The resolved id is evidence returned by this step, not an
+   input that can reconstruct a one-run declaration. Below budget it reports
+   that no split is required; over budget it
    derives the non-omittable inventory from those ledger entries and requires a
    partitioning proposal set rather than truncation, relocation of authority, or
    a weakened criterion. The inventory is derived from the ledger, not supplied,

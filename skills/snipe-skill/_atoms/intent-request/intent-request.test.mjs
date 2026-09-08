@@ -46,7 +46,7 @@ function refusal(run) {
 const BINDING = { digest: 'a'.repeat(64) };
 const INTENT_TEXT = '# Intent: demo\n\nWhat this is for.\n';
 
-const ATTEMPT = { slug: 'demo', attempt: 1 };
+const ATTEMPT = { slug: 'demo', runId: 'run-1', attempt: 1 };
 
 function goodResult(request) {
   const candidateDigest = sha256(INTENT_TEXT);
@@ -126,21 +126,22 @@ test('nothing about the provider is detected, so no document can declare or with
 });
 
 test('the request names one bundle, its one candidate, and the revision this run bound', () => {
-  const request = buildIntentRequest({ binding: BINDING, slug: 'demo-adopter', attempt: 1 });
+  const request = buildIntentRequest({ binding: BINDING, slug: 'demo-adopter', runId: 'run-1', attempt: 1 });
   assert.deepEqual(request, {
     skill: 'synthesize',
     want: INTENT_OUTPUT_CONTRACT,
     slug: 'demo-adopter',
+    runId: 'run-1',
     attempt: 1,
-    source: 'synthesis/intent/demo-adopter-attempt-1.bundle.md',
-    candidate: 'synthesis/intent/demo-adopter-attempt-1.intent.md',
+    source: 'synthesis/intent/s12-demo-adopter-r5-run-1-a1.bundle.md',
+    candidate: 'synthesis/intent/s12-demo-adopter-r5-run-1-a1.intent.md',
     revision: BINDING.digest,
   });
   // The revision handed over is the digest intake pinned, never a label.
   assert.equal(request.revision, BINDING.digest);
   assert.equal(
-    buildIntentRequest({ binding: BINDING, slug: 'two-word', attempt: 1 }).candidate,
-    'synthesis/intent/two-word-attempt-1.intent.md',
+    buildIntentRequest({ binding: BINDING, slug: 'two-word', runId: 'run-1', attempt: 1 }).candidate,
+    'synthesis/intent/s8-two-word-r5-run-1-a1.intent.md',
   );
 });
 
@@ -153,10 +154,10 @@ test('every corrected attempt gets its own bundle and candidate, over the same b
   const seenSources = new Set();
   const seenCandidates = new Set();
   for (const attempt of [1, 2, 3, 17]) {
-    const request = buildIntentRequest({ binding: BINDING, slug: 'demo-adopter', attempt });
+    const request = buildIntentRequest({ binding: BINDING, slug: 'demo-adopter', runId: 'run-1', attempt });
     assert.equal(request.attempt, attempt);
-    assert.equal(request.source, `synthesis/intent/demo-adopter-attempt-${attempt}.bundle.md`);
-    assert.equal(request.candidate, `synthesis/intent/demo-adopter-attempt-${attempt}.intent.md`);
+    assert.equal(request.source, `synthesis/intent/s12-demo-adopter-r5-run-1-a${attempt}.bundle.md`);
+    assert.equal(request.candidate, `synthesis/intent/s12-demo-adopter-r5-run-1-a${attempt}.intent.md`);
     assert.ok(!seenSources.has(request.source), `attempt ${attempt} reuses a bundle path`);
     assert.ok(!seenCandidates.has(request.candidate), `attempt ${attempt} reuses a candidate path`);
     seenSources.add(request.source);
@@ -167,7 +168,26 @@ test('every corrected attempt gets its own bundle and candidate, over the same b
   }
   // Attempt one is numbered like the rest; a special case for it is exactly
   // where the collision would grow back.
-  assert.match(buildIntentRequest({ binding: BINDING, slug: 'demo', attempt: 1 }).candidate, /-attempt-1\.intent\.md$/);
+  assert.match(buildIntentRequest({ binding: BINDING, slug: 'demo', runId: 'run-1', attempt: 1 }).candidate, /-a1\.intent\.md$/);
+});
+
+test('a later run for the same subject cannot reuse an earlier run candidate', () => {
+  const first = buildIntentRequest({ binding: BINDING, slug: 'demo-adopter', runId: 'run-1', attempt: 1 });
+  const later = buildIntentRequest({ binding: BINDING, slug: 'demo-adopter', runId: 'run-2', attempt: 1 });
+  assert.notEqual(first.source, later.source);
+  assert.notEqual(first.candidate, later.candidate);
+  assert.equal(first.revision, later.revision);
+});
+
+test('variable-width subject and run slugs cannot encode to the same request identity', () => {
+  const first = buildIntentRequest({ binding: BINDING, slug: 'demo', runId: 'run-1', attempt: 1 });
+  const second = buildIntentRequest({ binding: BINDING, slug: 'demo-run', runId: '1', attempt: 1 });
+  assert.notEqual(first.source, second.source);
+  assert.notEqual(first.candidate, second.candidate);
+  assert.equal(
+    refusal(() => assertIntentResult(goodResult(first), BINDING, second)).code,
+    REQUEST_FAILURES.substitutionForbidden,
+  );
 });
 
 test('a hand-built request cannot claim an attempt it does not carry', () => {
@@ -175,11 +195,12 @@ test('a hand-built request cannot claim an attempt it does not carry', () => {
   // while carrying attempt one's paths, it accepted attempt one's result and
   // reported it as attempt two - a superseded proposal presented as the
   // corrected one. The request is rebuilt from its parts and compared instead.
-  const honest = buildIntentRequest({ binding: BINDING, slug: 'demo', attempt: 1 });
+  const honest = buildIntentRequest({ binding: BINDING, slug: 'demo', runId: 'run-1', attempt: 1 });
   const record = goodResult(honest);
   for (const forged of [
     { ...honest, attempt: 2 },
     { ...honest, slug: 'other' },
+    { ...honest, runId: 'run-2' },
     { ...honest, candidate: 'synthesis/intent/other-attempt-1.intent.md' },
     { ...honest, source: 'synthesis/intent/other-attempt-1.bundle.md' },
     { ...honest, revision: 'b'.repeat(64) },
@@ -198,12 +219,12 @@ test('an attempt number past safe integers is refused, not silently collided', (
   // exists to prevent, reached by arithmetic rather than by reuse.
   for (const attempt of [Number.MAX_SAFE_INTEGER + 1, Number.MAX_SAFE_INTEGER + 2, Infinity]) {
     assert.equal(
-      refusal(() => buildIntentRequest({ binding: BINDING, slug: 'demo', attempt })).code,
+      refusal(() => buildIntentRequest({ binding: BINDING, slug: 'demo', runId: 'run-1', attempt })).code,
       REQUEST_FAILURES.usage,
       String(attempt),
     );
   }
-  assert.equal(buildIntentRequest({ binding: BINDING, slug: 'demo', attempt: Number.MAX_SAFE_INTEGER }).attempt, Number.MAX_SAFE_INTEGER);
+  assert.equal(buildIntentRequest({ binding: BINDING, slug: 'demo', runId: 'run-1', attempt: Number.MAX_SAFE_INTEGER }).attempt, Number.MAX_SAFE_INTEGER);
 });
 
 test('contract terms must be own properties, not inherited ones', () => {
@@ -223,8 +244,8 @@ test('contract terms must be own properties, not inherited ones', () => {
 test('a result is bound to the attempt that asked for it', () => {
   // Attempt two must not be confirmable against attempt one's candidate, or the
   // superseded proposal could be presented as the corrected one.
-  const first = buildIntentRequest({ binding: BINDING, slug: 'demo', attempt: 1 });
-  const second = buildIntentRequest({ binding: BINDING, slug: 'demo', attempt: 2 });
+  const first = buildIntentRequest({ binding: BINDING, slug: 'demo', runId: 'run-1', attempt: 1 });
+  const second = buildIntentRequest({ binding: BINDING, slug: 'demo', runId: 'run-1', attempt: 2 });
   assert.equal(assertIntentResult(goodResult(first), BINDING, first).attempt, 1);
   assert.equal(
     refusal(() => assertIntentResult(goodResult(first), BINDING, second)).code,
@@ -241,21 +262,28 @@ test('a subject or attempt that is not one is refused before the provider is inv
   // there is no path to point somewhere else.
   for (const slug of ['/demo', '../demo', 'C:/demo', 'sub/demo', 'Demo', 'demo.bundle', '', undefined, 7]) {
     assert.equal(
-      refusal(() => buildIntentRequest({ binding: BINDING, slug, attempt: 1 })).code,
+      refusal(() => buildIntentRequest({ binding: BINDING, slug, runId: 'run-1', attempt: 1 })).code,
       REQUEST_FAILURES.usage,
       String(slug),
     );
   }
+  for (const runId of ['/run', '../run', 'run/id', 'Run', '', undefined, 7]) {
+    assert.equal(
+      refusal(() => buildIntentRequest({ binding: BINDING, slug: 'demo', runId, attempt: 1 })).code,
+      REQUEST_FAILURES.usage,
+      String(runId),
+    );
+  }
   for (const attempt of [0, -1, 1.5, '1', undefined, null, Number.NaN]) {
     assert.equal(
-      refusal(() => buildIntentRequest({ binding: BINDING, slug: 'demo', attempt })).code,
+      refusal(() => buildIntentRequest({ binding: BINDING, slug: 'demo', runId: 'run-1', attempt })).code,
       REQUEST_FAILURES.usage,
       String(attempt),
     );
   }
-  assert.equal(refusal(() => buildIntentRequest({ slug: 'demo', attempt: 1 })).code, REQUEST_FAILURES.usage);
+  assert.equal(refusal(() => buildIntentRequest({ slug: 'demo', runId: 'run-1', attempt: 1 })).code, REQUEST_FAILURES.usage);
   assert.equal(
-    refusal(() => buildIntentRequest({ binding: { digest: 'short' }, slug: 'demo', attempt: 1 })).code,
+    refusal(() => buildIntentRequest({ binding: { digest: 'short' }, slug: 'demo', runId: 'run-1', attempt: 1 })).code,
     REQUEST_FAILURES.usage,
   );
 });

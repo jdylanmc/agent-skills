@@ -29,8 +29,8 @@ export const DECLARED = Object.freeze({
   structuralHeadings: Object.freeze(['What this is for', 'What it must do', 'What it must refuse']),
 });
 
-export const SOURCE_PATH = 'synthesis/intent/demo-adopter-attempt-1.bundle.md';
-export const CANDIDATE_PATH = 'synthesis/intent/demo-adopter-attempt-1.intent.md';
+export const SOURCE_PATH = 'synthesis/intent/s12-demo-adopter-r5-run-1-a1.bundle.md';
+export const CANDIDATE_PATH = 'synthesis/intent/s12-demo-adopter-r5-run-1-a1.intent.md';
 
 /**
  * The assembled bundle: the caller's explicit selection of the material an
@@ -126,5 +126,3 @@ export const ENTRIES = [
     variantAnchor: 'It must never close, triage, or approve a defect it filed.',
   },
 ];
-
-

@@ -64,9 +64,9 @@ test('the provider accepts the terms this package states', () => {
   // sourceKind implies, and the candidate is the one the provider's own pattern
   // produces for that bundle's slug.
   const suffix = `.${profile.sourceKind.split('-').slice(1).join('-')}.md`;
-  const request = buildIntentRequest({ binding: { digest: 'a'.repeat(64) }, slug: 'demo-adopter', attempt: 1 });
-  assert.equal(request.source, `${profile.workspaceRoot}demo-adopter-attempt-1${suffix}`);
-  assert.equal(request.candidate, profile.outputPattern.replace('<slug>', 'demo-adopter-attempt-1'));
+  const request = buildIntentRequest({ binding: { digest: 'a'.repeat(64) }, slug: 'demo-adopter', runId: 'run-1', attempt: 1 });
+  assert.equal(request.source, `${profile.workspaceRoot}s12-demo-adopter-r5-run-1-a1${suffix}`);
+  assert.equal(request.candidate, profile.outputPattern.replace('<slug>', 's12-demo-adopter-r5-run-1-a1'));
   assert.equal(request.skill, SYNTHESIS_PROVIDER);
 });
 
@@ -80,7 +80,7 @@ test('a corrected attempt publishes beside the one it supersedes, never over it'
     const binding = { digest: 'a'.repeat(64) };
     const written = [];
     for (const attempt of [1, 2]) {
-      const request = buildIntentRequest({ binding, slug: 'demo-adopter', attempt });
+      const request = buildIntentRequest({ binding, slug: 'demo-adopter', runId: 'run-1', attempt });
       const text = `# Intent: demo-adopter\n\nAttempt ${attempt}.\n`;
       const contract = resolveProfile(INTENT_OUTPUT_CONTRACT).id;
       const receipt = persistCandidate({
@@ -108,7 +108,7 @@ test('a corrected attempt publishes beside the one it supersedes, never over it'
       assert.ok(fs.existsSync(path.join(sandbox, candidate)), candidate);
     }
     // Reusing an attempt identity is still refused, which is the boundary itself.
-    const replay = buildIntentRequest({ binding, slug: 'demo-adopter', attempt: 1 });
+    const replay = buildIntentRequest({ binding, slug: 'demo-adopter', runId: 'run-1', attempt: 1 });
     const text = '# Intent: demo-adopter\n\nAttempt 1.\n';
     assert.throws(
       () => persistCandidate({
@@ -158,7 +158,7 @@ test('a real reduction produced by the provider is a result this package accepts
   });
   assert.equal(outcome.status, 'complete');
 
-  const request = buildIntentRequest({ binding, slug: 'demo-adopter', attempt: 1 });
+  const request = buildIntentRequest({ binding, slug: 'demo-adopter', runId: 'run-1', attempt: 1 });
   assert.equal(request.candidate, outcome.candidate.path);
 
   // What the molecule stamps on: which provider it invoked, and the candidate

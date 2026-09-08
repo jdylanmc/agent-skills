@@ -36,11 +36,13 @@ summary of the source; it is the standard the new skill will be judged against.
 
 ## Operation
 
-1. Build the request **first**, with `buildIntentRequest({ binding, slug,
+1. Build the request **first**, with `buildIntentRequest({ binding, slug, runId,
    attempt })` from
    [Intent request](../../_atoms/intent-request/intent-request.md). It carries
    the provider, the desired result in full, this attempt's bundle and candidate
-   paths, and the pinned revision.
+   paths, and the pinned revision. `runId` is the current Chronicler run
+   identity, normalized as a lowercase slug; it must not be reused for a later
+   adoption run.
 
    The order matters and is not incidental. The request derives the attempt's
    paths; staging to a path computed anywhere else is a second opinion about
@@ -83,7 +85,7 @@ summary of the source; it is the standard the new skill will be judged against.
    The advance is not bookkeeping. Synthesize refuses to overwrite a candidate it
    has already written, so returning to step 1 on the previous attempt's paths is
    refused with `replacement-not-authorized` and this loop cannot turn at all.
-   Each attempt gets its own bundle and candidate; the provider's no-overwrite
+   Each attempt and each adoption run get their own bundle and candidate; the provider's no-overwrite
    boundary is preserved rather than worked around, and every superseded proposal
    stays on disk beside the one that was confirmed.
 
@@ -137,8 +139,9 @@ reduction, the run stops; it does not quietly become the provider.
 
 - The bytes reduced are the bytes intake bound, unchanged by staging and
   unchanged by correction.
-- Every attempt has its own bundle and candidate, so a correction never asks the
-  provider to overwrite anything.
+- Every attempt and every adoption run have their own bundle and candidate, so
+  neither a correction nor a later re-adoption asks the provider to overwrite
+  anything.
 - No reduction is performed inside this package.
 - Nothing about the provider is detected, guessed, or parsed out of a document.
 - A reduction that refused, split, or blocked is never read as an intent.

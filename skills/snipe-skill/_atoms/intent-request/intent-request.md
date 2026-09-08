@@ -119,12 +119,14 @@ A run does not get one shot at this. The operator reads the proposed
 requirements, and when they are wrong he corrects them and the reduction is asked
 for again — which is the whole reason the confirmation gate exists.
 
-So each attempt is `<slug>-attempt-<n>`, for both the staged bundle and the
-candidate:
+So each attempt uses a length-prefixed encoding of
+`(<slug>, <run-id>, <attempt>)`, for both the staged bundle and the candidate:
 
 ```text
-attempt 1  synthesis/intent/<slug>-attempt-1.bundle.md -> <slug>-attempt-1.intent.md
-attempt 2  synthesis/intent/<slug>-attempt-2.bundle.md -> <slug>-attempt-2.intent.md
+attempt 1  synthesis/intent/s<slug-length>-<slug>-r<run-length>-<run-id>-a1.bundle.md
+           synthesis/intent/s<slug-length>-<slug>-r<run-length>-<run-id>-a1.intent.md
+attempt 2  synthesis/intent/s<slug-length>-<slug>-r<run-length>-<run-id>-a2.bundle.md
+           synthesis/intent/s<slug-length>-<slug>-r<run-length>-<run-id>-a2.intent.md
 ```
 
 That is not bookkeeping. Synthesize refuses to overwrite a candidate it has
@@ -135,8 +137,11 @@ provider's no-overwrite boundary — a boundary worth keeping for its own sake,
 since it is also what leaves every superseded proposal on disk beside the one
 that was confirmed, so what the operator rejected stays readable afterwards.
 
-Attempt one is numbered like the rest. A special case for the first attempt is
-exactly where this collision would grow back.
+The run id prevents a later adoption of the same source from colliding with an
+earlier run's immutable candidates. Length prefixes prevent different subject
+and run-id boundaries from encoding to the same path. Attempt one is numbered
+like the rest. A special case for the first attempt is exactly where this
+collision would grow back.
 
 **The binding does not change between attempts.** A correction changes what is
 asked for, never which bytes are being reduced: every attempt in a run reduces
@@ -147,11 +152,11 @@ the corrected one.
 
 ## Operation
 
-1. Build the request with `buildIntentRequest({ binding, slug, attempt })`. It
+1. Build the request with `buildIntentRequest({ binding, slug, runId, attempt })`. It
    carries the provider, the contract terms in full, the bundle and candidate
-   paths **derived from the subject and the attempt number**, and the revision
+   paths **derived from the subject, run id, and attempt number**, and the revision
    intake pinned rather than a label the caller chose. The caller names a subject
-   and an attempt; it does not hand in a path, so there is no path to point
+   a run, and an attempt; it does not hand in a path, so there is no path to point
    somewhere else. There is no "reduce this however you like" form of this call.
 2. Invoke `synthesize` with it. The reduction, its traceability, its budget, its
    ledger, and its persistence are the provider's.
@@ -228,8 +233,8 @@ as verified provenance, which it is not and says it is not.
   convenient.
 - No reduction happens inside this package.
 - Nothing about the provider is detected, guessed, or parsed out of a document.
-- A request names one bundle, one candidate, one attempt, and the revision this
-  run bound; no two attempts in a run name the same paths.
+- A request names one bundle, one candidate, one run, one attempt, and the
+  revision this run bound; no two attempts or separate runs name the same paths.
 - A result is bound to that source, to the contract terms that were sent, to a
   complete reduction, to the candidate that was asked for, to a clean ledger
   certifying that same candidate, and to the exact bytes the operator will be
