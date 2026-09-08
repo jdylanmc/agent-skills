@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import { persistBoundedHandoff } from '../_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.mjs';
 import { FOUNDATION_FIELDS } from './_atoms/foundation-persist/foundation-persist.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -187,7 +188,7 @@ test('domain modeling is structurally limited and preserves Discovery authority'
   const inventory = flat('discovery/_atoms/aligned-domain-inventory/aligned-domain-inventory.md');
   const model = flat('discovery/_molecules/aligned-domain-model/aligned-domain-model.md');
   assert.match(inventory, /Preserve the aligned relationship claims and boundary claims/);
-  assert.match(inventory, /source, target, verb, direction, evidence citation,\s+confidence, and notes/);
+  assert.match(inventory, /exactly `source`, `target`, `relationship`, `direction`,\s+`evidence`, `confidence`, and `notes`/);
   assert.match(model, /inventory's preserved relationship and boundary claims/);
   assert.match(model, /Entity\s+co-occurrence alone never produces a relationship/);
 });
@@ -212,6 +213,30 @@ test('every post-persistence continuation action has an authorized mechanism', (
   assert.match(controller, /does not dispatch\s+`interrogate` or `proof-of-concept`/);
   assert.match(controller, /named terminal handoffs after\s+persistence and both rereads/);
   assert.match(entry, /`task` exists for one purpose: dispatching to the runtime \*\*research route\*\*/);
+  assert.match(controller, /`needs-domain-evidence`,\s+`needs-more-evidence`, and `needs-uri-seed` continue Discovery acquisition/);
+  assert.match(controller, /`needs-research` dispatches one research thread/);
+  assert.match(controller, /`needs-interrogate` and\s+`needs-proof-of-concept` are terminal handoff recommendations/);
+  assert.match(controller, /`ready` is the\s+named downstream handoff/);
+  assert.match(controller, /`blocked` stops/);
+  assert.match(controller, /`stop` terminates/);
+});
+
+test('needs-domain-evidence means continue Discovery and never domain-mapping', () => {
+  const entry = flat(ENTRY);
+  const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+  const frontier = flat('discovery/_atoms/frontier-ledger/frontier-ledger.md');
+
+  assert.match(entry, /`needs-domain-evidence`/);
+  assert.doesNotMatch(entry, /`needs-domain-mapping`/);
+  assert.match(frontier, /`needs-domain-evidence` \| Evidence for terms, actors, systems, boundaries, relationships, or unsettled domain seams is still missing; continue Discovery acquisition/);
+  assert.match(frontier, /never invokes or recommends the standalone `\/domain-mapping` wrapper/);
+  assert.match(controller, /public `needs-domain-evidence` state mechanically selects another\s+Discovery acquisition cycle and no other route/);
+});
+
+test('the Discovery root returns the structured domain model and basis receipt', () => {
+  const entry = flat(ENTRY);
+
+  assert.match(entry, /the structured aligned `domainModel` and its\s+`domainModelBasisDigest`\/`aligned-findings-digest` basis receipt/);
 });
 
 test('backlog and dependency prompts cannot route to domain mapping', () => {
@@ -731,6 +756,86 @@ async function seedFoundation(root, overrides = {}) {
     alignedFindingsDigestOf,
   ));
 }
+
+test('compaction preserves actionable domain seams for cycle n+1', async () => {
+  const root = freshFoundationRepo();
+  const relationship = {
+    source: 'Operator',
+    target: 'Discovery',
+    relationship: 'aligns',
+    direction: 'directed',
+    evidence: [{ locator: 'docs/evidence.md', kind: 'decision' }],
+    confidence: 'confirmed',
+    notes: ['Human alignment remains authoritative.'],
+  };
+  const boundary = {
+    source: 'Discovery',
+    target: 'Specification',
+    relationship: 'hands off to',
+    direction: 'directed',
+    evidence: [{ locator: 'skills/discovery/SKILL.md', section: 'Boundaries' }],
+    confidence: 'confirmed',
+    notes: ['Specification authority remains downstream.'],
+  };
+  const unsettledSeams = [{
+    question: 'Which specification workflow owns the next step?',
+    confidence: 'unknown',
+  }];
+  const domainModel = [{
+    relationships: [relationship],
+    boundaries: [boundary],
+    unsettledSeams,
+  }];
+  const persisted = await seedFoundation(root, {
+    relationshipClaims: [relationship],
+    boundaryClaims: [boundary],
+    domainModel,
+    frontier: ['needs-domain-evidence: identify the specification owner'],
+    nextAction: 'Continue Discovery acquisition for the unsettled ownership seam.',
+  });
+  const { parseContinuation, rehydrateFoundation } = await rehydrateMod();
+  const cold = rehydrateFoundation(rehydrateIntake(root));
+  const continuationLine = `discovery-foundation: ${persisted.locator}@${persisted.revision}`;
+  const currentProgress = [
+    continuationLine,
+    JSON.stringify({
+      relationshipClaims: cold.relationshipClaims,
+      boundaryClaims: cold.boundaryClaims,
+      unsettledSeams: cold.domainModel.flatMap((record) => record.unsettledSeams ?? []),
+    }),
+  ].join('\n');
+
+  const handoff = persistBoundedHandoff({
+    schema_version: 1,
+    slug: `discovery-compaction-${process.pid}`,
+    goal: 'Continue the aligned Discovery cycle.',
+    current_progress: currentProgress,
+    decisions_and_constraints: 'Use only the aligned foundation and its compacted domain seams.',
+    artifacts_and_references: [`${persisted.locator}@${persisted.revision}`],
+    what_worked: 'Persisting and rereading the aligned foundation.',
+    what_did_not_work: '',
+    next_steps: 'Continue Discovery acquisition for the unsettled ownership seam.',
+  }, {
+    now: new Date('2026-09-08T22:00:00Z'),
+    child: `discovery-compaction-${process.pid}`,
+  });
+
+  try {
+    const rereadHandoff = fs.readFileSync(handoff.path, 'utf8');
+    assert.match(rereadHandoff, /"relationshipClaims"/);
+    assert.match(rereadHandoff, /"boundaryClaims"/);
+    assert.match(rereadHandoff, /"unsettledSeams"/);
+    assert.match(rereadHandoff, /Which specification workflow owns the next step/);
+
+    const expected = parseContinuation(rereadHandoff);
+    const nextCycle = rehydrateFoundation(rehydrateIntake(root, { expected }));
+    assert.deepEqual(nextCycle.relationshipClaims, [relationship]);
+    assert.deepEqual(nextCycle.boundaryClaims, [boundary]);
+    assert.deepEqual(nextCycle.domainModel[0].unsettledSeams, unsettledSeams);
+  } finally {
+    fs.rmSync(handoff.directory, { recursive: true, force: true });
+  }
+});
 
 function rehydrateIntake(root, overrides = {}) {
   return {

@@ -199,6 +199,73 @@ test('structured records survive persist, parse, rehydrate, and next-cycle persi
   assert.deepEqual(compacted.domainModel, records.domainModel);
 });
 
+test('schema-2 plain-text structured entries fail closed in cold-start and compacted modes', () => {
+  const cases = [
+    {
+      label: 'relationshipClaims',
+      mutate(bytes) {
+        return bytes.replace(
+          /(\n## Relationship Claims\n\n)- JSON: [^\n]+/,
+          '$1- legacy plain relationship',
+        );
+      },
+    },
+    {
+      label: 'boundaryClaims',
+      mutate(bytes) {
+        return bytes.replace(
+          /(\n## Boundary Claims\n\n)- JSON: [^\n]+/,
+          '$1- legacy plain boundary',
+        );
+      },
+    },
+    {
+      label: 'domainModel',
+      mutate(bytes) {
+        return bytes.replace(
+          /(\n## Domain Model\n\n)- JSON: [^\n]+/,
+          '$1- legacy plain domain model',
+        );
+      },
+    },
+    {
+      label: 'structured resolution',
+      mutate(bytes) {
+        return bytes.replace(
+          /(\n## Resolved\n\n)- JSON: [^\n]+/,
+          '$1- relationshipClaims: legacy plain relationship — Superseded.',
+        );
+      },
+    },
+  ];
+
+  for (const fixture of cases) {
+    const root = freshRepo();
+    const records = structuredRecords();
+    seed(root, {
+      ...records,
+      resolved: [{
+        field: 'relationshipClaims',
+        entry: records.relationshipClaims[0],
+        resolution: 'Superseded.',
+      }],
+    });
+    const dest = path.join(root, 'docs', 'agent', 'discovery', `${SLUG}.md`);
+    const original = fs.readFileSync(dest, 'utf8');
+    const malformed = fixture.mutate(original);
+    assert.notEqual(malformed, original, `${fixture.label} fixture must mutate the artifact`);
+    fs.writeFileSync(dest, malformed);
+
+    const cold = rehydrateFoundation(intake(root));
+    assert.equal(cold.status, RECOVERY.unreadable, `${fixture.label} cold start`);
+
+    const compacted = rehydrateFoundation(intake(root, {
+      expected: { locator: LOCATOR, revision: revisionOf(malformed) },
+    }));
+    assert.equal(compacted.status, RECOVERY.unreadable, `${fixture.label} compacted`);
+  }
+});
+
 test('cold-start and compacted-session rehydration preserve exact resolution order, duplicates, and field qualification', () => {
   const root = freshRepo();
   const resolved = [

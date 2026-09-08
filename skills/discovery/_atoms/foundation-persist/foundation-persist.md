@@ -59,13 +59,24 @@ schema 1 foundations from before issue #156, treating only `sourceClaims`,
 A missing or unknown schema is refused with `unsupported-schema`; deleting a
 required schema 2 section is `invalid-input`, not a silent downgrade.
 
-`relationshipClaims`, `boundaryClaims`, and `domainModel` are arrays of
-structured JSON-compatible object records. Every other durable or frontier
-field is an array of scalar text, and `nextAction` is scalar text. Structured
-records may contain only `null`, booleans, canonical finite numbers, strings,
-arrays, and plain objects; sparse arrays, circular values, non-finite numbers,
-negative zero, class instances, functions, `undefined`, and non-object
-top-level entries are refused as `invalid-input`.
+`relationshipClaims` and `boundaryClaims` are arrays of field-specific records
+with exactly these required keys and no others: `source`, `target`,
+`relationship`, `direction`, `evidence`, `confidence`, and `notes`. `source`,
+`target`, and `relationship` are non-empty scalar text. `direction` is
+`directed`, `bidirectional`, or `unknown`; `confidence` is `confirmed`,
+`likely`, `contested`, or `unknown`. `evidence` is an array of JSON-compatible
+object records, and `notes` is an array of non-empty scalar text. `domainModel`
+remains an array of broader structured JSON-compatible object records. Every
+other durable or frontier field is an array of scalar text, and `nextAction` is
+scalar text.
+
+All structured values may contain only `null`, booleans, canonical finite
+numbers, strings, arrays, and plain objects; sparse arrays, circular values,
+non-finite numbers, negative zero, class instances, functions, `undefined`, and
+non-object top-level entries are refused as `invalid-input`. Schema 2 requires
+the canonical `JSON:` encoding for every structured field entry and every
+resolution targeting a structured field. Plain-text structured entries remain
+readable only in genuine schema 1 artifacts.
 
 ## Alignment and the payload binding
 

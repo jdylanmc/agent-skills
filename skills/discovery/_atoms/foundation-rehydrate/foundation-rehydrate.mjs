@@ -110,8 +110,8 @@ function nonEmptyString(value, label) {
 
 /**
  * Encode a continuation reference as one canonical, unambiguous line suitable
- * for a bounded handoff's Artifacts and References section. The next invocation
- * parses it back and feeds it as `expected`.
+ * for a bounded handoff's Current Progress section. The next invocation parses
+ * it back and feeds it as `expected`.
  */
 export function renderContinuation({ locator, revision } = {}) {
   validateBoundedLocator(locator, makeRehydrateError);

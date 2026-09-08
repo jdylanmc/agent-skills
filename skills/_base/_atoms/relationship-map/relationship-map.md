@@ -22,9 +22,13 @@ Each relationship carries:
 | `target` | The related entity. |
 | `relationship` | The verb or relation, such as owns, emits, consumes, blocks, configures, depends on, transitions to, validates, or replaces. |
 | `direction` | `directed`, `bidirectional`, or `unknown`. |
-| `evidence` | Source references that support the relation. |
+| `evidence` | An array of JSON-compatible source-reference object records that support the relation. |
 | `confidence` | `confirmed`, `likely`, `contested`, or `unknown`. |
-| `notes` | Constraints, exceptions, or unresolved seams. |
+| `notes` | An array of non-empty text entries carrying constraints, exceptions, or unresolved seams. |
+
+Every relationship and boundary record contains exactly these seven required
+keys and no unknown keys. `source`, `target`, and `relationship` are non-empty
+text.
 
 ## Boundary Types
 

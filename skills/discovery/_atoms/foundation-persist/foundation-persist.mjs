@@ -469,20 +469,91 @@ function assertStructuredRecord(value, label) {
   return assertJsonCompatible(value, label);
 }
 
-function assertStructuredRecordList(value, label) {
+const CLAIM_KEYS = Object.freeze([
+  'source',
+  'target',
+  'relationship',
+  'direction',
+  'evidence',
+  'confidence',
+  'notes',
+]);
+const DIRECTION_VALUES = Object.freeze(['directed', 'bidirectional', 'unknown']);
+const CONFIDENCE_VALUES = Object.freeze(['confirmed', 'likely', 'contested', 'unknown']);
+
+function assertExactKeys(value, requiredKeys, label) {
+  const actual = Object.keys(value).sort();
+  const required = [...requiredKeys].sort();
+  const missing = required.filter((key) => !Object.prototype.hasOwnProperty.call(value, key));
+  const unknown = actual.filter((key) => !requiredKeys.includes(key));
+  if (missing.length || unknown.length) {
+    const details = [
+      missing.length ? `missing field(s): ${missing.join(', ')}` : null,
+      unknown.length ? `unknown field(s): ${unknown.join(', ')}` : null,
+    ].filter(Boolean).join('; ');
+    throw new FoundationPersistError('invalid-input', `${label} must contain exactly ${required.join(', ')} (${details})`);
+  }
+}
+
+function assertEvidenceList(value, label) {
   if (!Array.isArray(value)) {
-    throw new FoundationPersistError('invalid-input', `${label} must be an array`);
+    throw new FoundationPersistError('invalid-input', `${label} must be an array of JSON-compatible object records`);
   }
   return value.map((entry, index) => assertStructuredRecord(entry, `${label}[${index}]`));
 }
 
+function assertEnum(value, allowed, label) {
+  const checked = assertSingleLine(value, label);
+  if (!allowed.includes(checked)) {
+    throw new FoundationPersistError('invalid-input', `${label} must be one of ${allowed.join(', ')}`);
+  }
+  return checked;
+}
+
+function assertClaimRecord(value, label, kind) {
+  if (!isPlainObject(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new FoundationPersistError('invalid-input', `${label} must be a ${kind} object record`);
+  }
+  assertExactKeys(value, CLAIM_KEYS, label);
+  return {
+    source: assertSingleLine(value.source, `${label}.source`),
+    target: assertSingleLine(value.target, `${label}.target`),
+    relationship: assertSingleLine(value.relationship, `${label}.relationship`),
+    direction: assertEnum(value.direction, DIRECTION_VALUES, `${label}.direction`),
+    evidence: assertEvidenceList(value.evidence, `${label}.evidence`),
+    confidence: assertEnum(value.confidence, CONFIDENCE_VALUES, `${label}.confidence`),
+    notes: assertStringList(value.notes, `${label}.notes`),
+  };
+}
+
+function assertRelationshipClaim(value, label) {
+  return assertClaimRecord(value, label, 'relationship claim');
+}
+
+function assertBoundaryClaim(value, label) {
+  return assertClaimRecord(value, label, 'boundary claim');
+}
+
+function assertStructuredRecordForField(value, field, label) {
+  if (field === 'relationshipClaims') return assertRelationshipClaim(value, label);
+  if (field === 'boundaryClaims') return assertBoundaryClaim(value, label);
+  return assertStructuredRecord(value, label);
+}
+
+function assertStructuredRecordList(value, field, label) {
+  if (!Array.isArray(value)) {
+    throw new FoundationPersistError('invalid-input', `${label} must be an array`);
+  }
+  return value.map((entry, index) => assertStructuredRecordForField(entry, field, `${label}[${index}]`));
+}
+
 function assertFieldEntries(value, field) {
   return STRUCTURED_RECORD_FIELD_SET.has(field)
-    ? assertStructuredRecordList(value, field)
+    ? assertStructuredRecordList(value, field, field)
     : assertStringList(value, field);
 }
 
-function assertResolved(value) {
+function assertResolved(value, { allowLegacyStructuredText = false } = {}) {
   if (!Array.isArray(value)) {
     throw new FoundationPersistError('invalid-input', 'resolved must be an array');
   }
@@ -499,9 +570,14 @@ function assertResolved(value) {
     if (!RETAINED_FIELDS.includes(field)) {
       throw new FoundationPersistError('invalid-input', `resolved[${index}].field must be one of the retained fields (${RETAINED_FIELDS.join(', ')}): ${field}`);
     }
-    const resolvedEntry = STRUCTURED_RECORD_FIELD_SET.has(field) && isPlainObject(entry.entry)
-      ? assertStructuredRecord(entry.entry, `resolved[${index}].entry`)
-      : assertSingleLine(entry.entry, `resolved[${index}].entry`);
+    let resolvedEntry;
+    if (STRUCTURED_RECORD_FIELD_SET.has(field)) {
+      resolvedEntry = allowLegacyStructuredText && !isPlainObject(entry.entry)
+        ? assertSingleLine(entry.entry, `resolved[${index}].entry`)
+        : assertStructuredRecordForField(entry.entry, field, `resolved[${index}].entry`);
+    } else {
+      resolvedEntry = assertSingleLine(entry.entry, `resolved[${index}].entry`);
+    }
     const resolution = assertFreeTextLine(entry.resolution, `resolved[${index}].resolution`);
     return { field, entry: resolvedEntry, resolution };
   });
@@ -541,12 +617,12 @@ function renderStructuredEntry(entry) {
   return `${STRUCTURED_ENTRY_PREFIX}${canonicalize(entry)}`;
 }
 
-function parseStructuredEntry(value, label) {
+function parseStructuredEntry(value, field, schema, label) {
   if (!value.startsWith(STRUCTURED_ENTRY_PREFIX)) {
-    // Schema-2 artifacts produced before structured records were canonicalized
-    // used plain text. Keep them readable; new writes reject text in these
-    // fields and require an explicit resolution before replacing it.
-    return assertNoControlChars(value, label);
+    if (schema === '1') {
+      return assertNoControlChars(value, label);
+    }
+    throw new FoundationPersistError('invalid-input', `${label} must use the "${STRUCTURED_ENTRY_PREFIX}" structured encoding in schema ${SCHEMA_VERSION}`);
   }
   const encoded = value.slice(STRUCTURED_ENTRY_PREFIX.length);
   let parsed;
@@ -555,7 +631,7 @@ function parseStructuredEntry(value, label) {
   } catch (error) {
     throw new FoundationPersistError('invalid-input', `${label} contains malformed structured JSON: ${error.message}`);
   }
-  const record = assertStructuredRecord(parsed, label);
+  const record = assertStructuredRecordForField(parsed, field, label);
   if (canonicalize(record) !== encoded) {
     throw new FoundationPersistError('invalid-input', `${label} must use canonical JSON with sorted object keys`);
   }
@@ -757,7 +833,7 @@ function assertNoRogueHeadings(allLines) {
   }
 }
 
-function listFrom(sectionLines, title, field) {
+function listFrom(sectionLines, title, field, schema) {
   if (!sectionLines) {
     throw new FoundationPersistError('invalid-input', `foundation is missing the ${title} section`);
   }
@@ -771,7 +847,7 @@ function listFrom(sectionLines, title, field) {
       throw new FoundationPersistError('invalid-input', `malformed entry in ${title}: ${line}`);
     }
     return STRUCTURED_RECORD_FIELD_SET.has(field)
-      ? parseStructuredEntry(match[1], `${title} entry`)
+      ? parseStructuredEntry(match[1], field, schema, `${title} entry`)
       : assertNoControlChars(match[1], `${title} entry`);
   });
 }
@@ -866,7 +942,7 @@ export function parseFoundation(bytes) {
   for (const field of LIST_SECTIONS) {
     foundation[field] = OPTIONAL_SCHEMA_1_FIELDS.has(field) && !sections.has(SECTION_TITLES[field])
       ? []
-      : listFrom(sections.get(SECTION_TITLES[field]), SECTION_TITLES[field], field);
+      : listFrom(sections.get(SECTION_TITLES[field]), SECTION_TITLES[field], field, schema);
   }
 
   const nextActionLines = sections.get('Next Action');
@@ -894,7 +970,7 @@ export function parseFoundation(bytes) {
         if (!isPlainObject(parsed) || canonicalize(parsed) !== encoded) {
           throw new FoundationPersistError('invalid-input', `malformed or noncanonical Resolved JSON entry: ${line}`);
         }
-        foundation.resolved.push(...assertResolved([parsed]));
+        foundation.resolved.push(...assertResolved([parsed], { allowLegacyStructuredText: schema === '1' }));
         continue;
       }
       const match = /^- ([a-zA-Z]+): (.*)$/.exec(line);
@@ -910,7 +986,10 @@ export function parseFoundation(bytes) {
       if (entry === '' || resolution === '') {
         throw new FoundationPersistError('invalid-input', `malformed Resolved entry: ${line}`);
       }
-      foundation.resolved.push({ field: match[1], entry, resolution });
+      foundation.resolved.push(...assertResolved(
+        [{ field: match[1], entry, resolution }],
+        { allowLegacyStructuredText: schema === '1' },
+      ));
     }
   }
 

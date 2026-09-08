@@ -267,6 +267,87 @@ test('the aligned findings digest is a binding, not a token', () => {
   assert.equal(a, b);
 });
 
+test('alignedFindingsDigestOf matches fixed canonical vectors', () => {
+  const claim = {
+    source: 'Café',
+    target: 'Discovery',
+    relationship: 'describes',
+    direction: 'directed',
+    evidence: [{
+      locator: 'docs/é.md',
+      detail: { flag: true, count: 2.5, none: null },
+      tags: ['first', 'second'],
+    }],
+    confidence: 'likely',
+    notes: ['Unicode π'],
+  };
+  const base = (relationshipClaim) => ({
+    subject: { id: 'issue-156', slug: 'digest-vectors' },
+    confirmedFacts: ['α', 'β'],
+    evidenceReferences: [],
+    decisions: [],
+    constraints: [],
+    assumptions: [],
+    contradictions: [],
+    openQuestions: [],
+    sourceClaims: [],
+    relationshipClaims: [relationshipClaim],
+    boundaryClaims: [],
+    risks: [],
+    scope: ['scope'],
+    exclusions: [],
+    resolved: [{
+      field: 'relationshipClaims',
+      entry: relationshipClaim,
+      resolution: 'Superseded ✓',
+    }],
+  });
+
+  const reorderedClaim = {
+    notes: ['Unicode π'],
+    confidence: 'likely',
+    evidence: [{
+      tags: ['first', 'second'],
+      detail: { none: null, count: 2.5, flag: true },
+      locator: 'docs/é.md',
+    }],
+    direction: 'directed',
+    relationship: 'describes',
+    target: 'Discovery',
+    source: 'Café',
+  };
+  const reordered = base(reorderedClaim);
+  reordered.subject = { slug: 'digest-vectors', id: 'issue-156' };
+
+  const arrayChangedClaim = {
+    ...claim,
+    evidence: [{ ...claim.evidence[0], tags: ['second', 'first'] }],
+  };
+  const resolutionChanged = base(claim);
+  resolutionChanged.resolved = [{
+    field: 'relationshipClaims',
+    entry: claim,
+    resolution: 'Retained ✓',
+  }];
+
+  assert.equal(
+    alignedFindingsDigestOf(base(claim)),
+    '93949296eb9047d59fc657ae6d56fe5640fa39a94fdc3c0ad900e6efebef19f6',
+  );
+  assert.equal(
+    alignedFindingsDigestOf(reordered),
+    '93949296eb9047d59fc657ae6d56fe5640fa39a94fdc3c0ad900e6efebef19f6',
+  );
+  assert.equal(
+    alignedFindingsDigestOf(base(arrayChangedClaim)),
+    '7ed276193086be03bc80dc8d4ba43ac563bc52d2c8813e45926c12304eafaea6',
+  );
+  assert.equal(
+    alignedFindingsDigestOf(resolutionChanged),
+    '9c412e98dcd2f5305d857219e5ebed6b54f0dbaa94da54b3ad61d10d69f9a36a',
+  );
+});
+
 test('legacy whole-payload digest inputs cannot emit schema 2', () => {
   const canonical = intake({ repositoryRoot: freshRepo() });
   const legacy = { ...canonical, alignedPayloadDigest: alignedPayloadDigestOf(canonical) };
@@ -375,6 +456,34 @@ test('malformed structured records are refused instead of flattened or coerced',
   }
 });
 
+test('relationship and boundary claims enforce their exact field-specific contracts', () => {
+  const records = structuredRecords();
+  for (const field of ['relationshipClaims', 'boundaryClaims']) {
+    const valid = records[field][0];
+    const cases = [
+      ['missing key', Object.fromEntries(Object.entries(valid).filter(([key]) => key !== 'target'))],
+      ['unknown key', { ...valid, extra: true }],
+      ['invalid direction', { ...valid, direction: 'sideways' }],
+      ['invalid confidence', { ...valid, confidence: 'certain' }],
+      ['scalar evidence', { ...valid, evidence: 'docs/evidence.md' }],
+      ['scalar notes', { ...valid, notes: 'not an array' }],
+      ['empty source', { ...valid, source: '' }],
+      ['empty target', { ...valid, target: '   ' }],
+      ['empty relationship', { ...valid, relationship: '' }],
+    ];
+    for (const [label, record] of cases) {
+      assert.equal(
+        code(() => persistFoundation(intake({
+          repositoryRoot: freshRepo(),
+          [field]: [record],
+        }), { io: realIo() })),
+        'invalid-input',
+        `${field}: ${label}`,
+      );
+    }
+  }
+});
+
 test('malformed and noncanonical structured Markdown records are refused on parse', () => {
   const root = freshRepo();
   const records = structuredRecords();
@@ -390,6 +499,73 @@ test('malformed and noncanonical structured Markdown records are refused on pars
   );
   assert.notEqual(noncanonical, bytes);
   assert.equal(code(() => parseFoundation(noncanonical)), 'invalid-input');
+});
+
+test('schema 2 parse refuses plain-text structured entries and resolutions', () => {
+  const root = freshRepo();
+  const records = structuredRecords();
+  persistFoundation(intake({
+    repositoryRoot: root,
+    ...records,
+    resolved: [{
+      field: 'relationshipClaims',
+      entry: records.relationshipClaims[0],
+      resolution: 'Superseded by aligned evidence.',
+    }],
+  }), { io: realIo() });
+  const bytes = fs.readFileSync(destIn(root), 'utf8');
+
+  for (const title of ['Relationship Claims', 'Boundary Claims', 'Domain Model']) {
+    const fieldBytes = bytes.replace(
+      new RegExp(`(\\n## ${title}\\n\\n)- JSON: [^\\n]+`),
+      '$1- legacy plain text',
+    );
+    if (fieldBytes !== bytes) {
+      assert.equal(code(() => parseFoundation(fieldBytes)), 'invalid-input', title);
+    }
+  }
+
+  const plainResolution = bytes.replace(
+    /(\n## Resolved\n\n)- JSON: [^\n]+/,
+    '$1- relationshipClaims: legacy plain text — Superseded by aligned evidence.',
+  );
+  assert.notEqual(plainResolution, bytes);
+  assert.equal(code(() => parseFoundation(plainResolution)), 'invalid-input');
+});
+
+test('genuine schema 1 parse keeps legacy plain-text structured entries and resolutions readable', () => {
+  const root = freshRepo();
+  const records = structuredRecords();
+  persistFoundation(intake({
+    repositoryRoot: root,
+    ...records,
+    resolved: [{
+      field: 'relationshipClaims',
+      entry: records.relationshipClaims[0],
+      resolution: 'Superseded by aligned evidence.',
+    }],
+  }), { io: realIo() });
+  let legacy = fs.readFileSync(destIn(root), 'utf8').replace('- Schema: 2', '- Schema: 1');
+  for (const title of ['Relationship Claims', 'Boundary Claims', 'Domain Model']) {
+    legacy = legacy.replace(
+      new RegExp(`(\\n## ${title}\\n\\n)- JSON: [^\\n]+`),
+      '$1- legacy plain text',
+    );
+  }
+  legacy = legacy.replace(
+    /(\n## Resolved\n\n)- JSON: [^\n]+/,
+    '$1- relationshipClaims: legacy plain text — Superseded by aligned evidence.',
+  );
+
+  const parsed = parseFoundation(legacy);
+  assert.deepEqual(parsed.relationshipClaims, ['legacy plain text']);
+  assert.deepEqual(parsed.boundaryClaims, ['legacy plain text']);
+  assert.deepEqual(parsed.domainModel, ['legacy plain text']);
+  assert.deepEqual(parsed.resolved, [{
+    field: 'relationshipClaims',
+    entry: 'legacy plain text',
+    resolution: 'Superseded by aligned evidence.',
+  }]);
 });
 
 test('a structured retained entry can be discharged without flattening its identity', () => {
@@ -528,9 +704,14 @@ test('every durable set participates in retention', () => {
   for (const field of DURABLE_SETS) {
     const root = freshRepo();
     const makeIntake = field === 'domainModel' ? derivationIntake : intake;
-    const entry = STRUCTURED_RECORD_FIELDS.includes(field)
-      ? { name: `entry-for-${field}`, evidence: ['docs/evidence.md'] }
-      : `entry-for-${field}`;
+    const records = structuredRecords();
+    const entry = field === 'relationshipClaims'
+      ? records.relationshipClaims[0]
+      : field === 'boundaryClaims'
+        ? records.boundaryClaims[0]
+        : field === 'domainModel'
+          ? records.domainModel[0]
+          : `entry-for-${field}`;
     persistFoundation(makeIntake({ repositoryRoot: root, [field]: [entry] }), { io: realIo() });
     const dropped = code(() => persistFoundation(makeIntake({
       repositoryRoot: root,

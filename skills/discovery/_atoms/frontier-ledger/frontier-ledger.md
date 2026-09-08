@@ -18,7 +18,7 @@ Track what the discovery loop knows and what can happen next.
 | --- | --- |
 | `ready` | Enough evidence exists for the recommended next workflow. |
 | `needs-interrogate` | A pointed question must be answered before discovery can proceed. |
-| `needs-domain-mapping` | Terms, actors, systems, boundaries, or relationships are blocking progress. |
+| `needs-domain-evidence` | Evidence for terms, actors, systems, boundaries, relationships, or unsettled domain seams is still missing; continue Discovery acquisition. |
 | `needs-proof-of-concept` | A small bounded prototype is the cheapest way to answer the discovery question. |
 | `needs-research` | The blocker is knowledge that does not exist in reachable evidence and must be sought outside it. |
 | `needs-uri-seed` | A human supplied a URI or path to investigate that has not yet been attempted, and its content has not yet been folded into the evidence. |
@@ -43,6 +43,8 @@ Track what the discovery loop knows and what can happen next.
 - Assign every blocker an owner, source, or next workflow when known.
 - Route to `proof-of-concept` when code can answer the question cheaply; do not
   pretend the prototype has already been run.
+- `needs-domain-evidence` always continues Discovery knowledge acquisition. It
+  never invokes or recommends the standalone `/domain-mapping` wrapper.
 - Choose `needs-research` over `needs-more-evidence` when the answer is not
   reachable from the repository, the tracker, or supplied documents at all. The
   distinction is reachability, not difficulty: a source that exists and has not

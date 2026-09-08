@@ -98,13 +98,15 @@ Return:
   invocation's rehydration;
 - the exact ordered `resolved` list of `{ field, entry, resolution }` records,
   including duplicates, or an empty list when none exist;
+- the structured aligned `domainModel` and its
+  `domainModelBasisDigest`/`aligned-findings-digest` basis receipt;
 - evidence inspected and evidence still missing;
 - confirmed facts with source references;
 - assumptions, contradictions, ambiguities, and risks;
 - decisions made during the loop and who made them;
 - open questions, each with owner or next workflow;
 - frontier classification: `ready`, `needs-interrogate`,
-  `needs-domain-mapping`, `needs-proof-of-concept`, `needs-research`,
+  `needs-domain-evidence`, `needs-proof-of-concept`, `needs-research`,
   `needs-uri-seed`, `needs-more-evidence`, `blocked`, or `stop`;
 - alignment status: `offered`, `verified`, `corrected`, or `not-aligned`;
 - handoff path, read-back status, and compacted continuation focus for every

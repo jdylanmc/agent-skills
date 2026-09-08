@@ -195,7 +195,7 @@ discovery-foundation: <locator>@<revision>
 ```
 
 - `renderContinuation({ locator, revision })` produces that line for a bounded
-  handoff's Artifacts and References section. The locator is validated by the
+  handoff text, normally its Current Progress section. The locator is validated by the
   shared bounded-locator validator, so only a `docs/agent/discovery/<slug>.md`
   path is ever encoded.
 - `parseContinuation(text)` recovers exactly one such reference from arbitrary

@@ -98,6 +98,8 @@ knowledge acquisition -> documented findings -> human alignment
    ticket, work-item, dependency, critical-path, sequencing, roadmap, and work-
    readiness prompts are not relabeled as Discovery and do not route to the
    aligned-domain-model operation.
+   The public `needs-domain-evidence` state mechanically selects another
+   Discovery acquisition cycle and no other route.
 8. Record the next action selected from the resulting frontier:
    `interrogate`, `proof-of-concept`, research, URI-seed investigation, another
    Discovery cycle, specification, ticket breakdown, or exit. Do not dispatch,
@@ -140,8 +142,14 @@ knowledge acquisition -> documented findings -> human alignment
 13. Use the reread compact handoff as the continuation focus: the smallest set of
     aligned facts, decisions, open questions, frontier state, and next action
     needed to begin the next discovery pass without rereading the whole prior
-    conversation. The continuation focus retains the exact foundation locator
-    and revision as one canonical line in `artifacts_and_references`:
+    conversation. `current_progress` must also preserve the actionable domain
+    seams from the reread foundation: its relationship claims, boundary claims,
+    and unsettled seams. When the bounded handoff cannot inline all of those
+    records, `current_progress` carries the exact canonical
+    `discovery-foundation: <locator>@<revision>` dereference and cycle *n+1*
+    must rehydrate that foundation before acquisition. The continuation focus
+    always carries that line in `current_progress` so
+    `foundation-rehydrate` can recover it from the handoff text:
 
     ```text
     discovery-foundation: <locator>@<revision>
@@ -150,6 +158,9 @@ knowledge acquisition -> documented findings -> human alignment
     That is exactly the line `foundation-rehydrate`'s `renderContinuation`
     produces and `parseContinuation` recovers, and it is what the next
     invocation's rehydration compares against. Emit exactly one such line.
+    `artifacts_and_references` separately carries the whitespace-free
+    `<locator>@<revision>` artifact locator required by the bounded-handoff
+    validator.
 14. Use that reread compact handoff-derived focus, not memory, to continue or
     exit according to the next action recorded at step 8:
     - continue Discovery knowledge acquisition;
@@ -201,9 +212,9 @@ Map aligned discovery state into the bounded handoff payload:
 | Handoff field | Discovery source |
 | --- | --- |
 | `goal` | Discovery subject and intended outcome. |
-| `current_progress` | Verified shared understanding, aligned facts, decisions, frontier, and cycle count. |
+| `current_progress` | Verified shared understanding, aligned facts, decisions, frontier, cycle count, and actionable domain seams: relationship claims, boundary claims, and unsettled seams. If boundedness prevents carrying the records, include the canonical foundation dereference here and require rehydration before cycle *n+1*. |
 | `decisions_and_constraints` | Decisions, boundaries, refusals, and alignment corrections. |
-| `artifacts_and_references` | Evidence sources, prior handoffs, maps, interrogation packets, and the persisted foundation as one canonical `discovery-foundation: <locator>@<revision>` line. |
+| `artifacts_and_references` | Evidence sources, prior handoffs, maps, interrogation packets, and the persisted foundation as the whitespace-free `<locator>@<revision>` artifact locator. |
 | `what_worked` | Evidence routes and questions that advanced understanding. |
 | `what_did_not_work` | Missing sources, contradictions, and dead ends. |
 | `next_steps` | The next cycle selected from the reread handoff. |
@@ -225,6 +236,12 @@ claims.
   precedes domain modeling.
 - Frontier selection records a next action but cannot dispatch it before the
   full foundation and compact handoff have both been persisted and reread.
+- Every frontier state maps to one continuation: `needs-domain-evidence`,
+  `needs-more-evidence`, and `needs-uri-seed` continue Discovery acquisition;
+  `needs-research` dispatches one research thread; `needs-interrogate` and
+  `needs-proof-of-concept` are terminal handoff recommendations; `ready` is the
+  named downstream handoff; `blocked` stops for unavailable authority, access,
+  or ownership; and `stop` terminates as out of scope or unsafe.
 - The controller writes both the durable foundation and the ephemeral bounded
   handoff; neither replaces the other, and a failed persist or reread of either
   stops the cycle rather than compacting from an unverified artifact.
