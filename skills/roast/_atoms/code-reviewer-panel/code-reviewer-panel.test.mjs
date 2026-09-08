@@ -7,6 +7,7 @@ import {
   CodeReviewerPanelError,
   dispatchBundledRoastRoster,
   resolveBundledRoastRoster,
+  resolveBundledRoastmasterRoute,
 } from './code-reviewer-panel.mjs';
 
 const REPOSITORY_ROOT = path.resolve(
@@ -177,6 +178,33 @@ test('roster receipts and shared panel snapshots are deeply immutable', () => {
   const resolved = resolveBundledRoastRoster({
     root: REPOSITORY_ROOT,
     panelLengthByRole: { 'qa-reviewer': 2 },
+  });
+
+  test('confirmed deep route reaches every bundled reviewer and both Roastmaster invocations', () => {
+    const deepRoute = {
+      model: 'gpt-6-astra',
+      fallbackModels: ['gpt-5.6-sol'],
+      reasoningEffort: 'high',
+      contextTier: 'default',
+    };
+    const available = ['gpt-6-astra', 'gpt-5.6-sol'];
+    const roster = resolveBundledRoastRoster({
+      root: REPOSITORY_ROOT,
+      deepRoute,
+      runtimeAvailableModels: available,
+    });
+    assert.deepEqual(roster.roster.map((entry) => entry.route.model), [
+      'gpt-6-astra',
+      'gpt-6-astra',
+      'gpt-6-astra',
+    ]);
+    const roastmaster = resolveBundledRoastmasterRoute({
+      root: REPOSITORY_ROOT,
+      deepRoute,
+      runtimeAvailableModels: available,
+    });
+    assert.equal(roastmaster.coordinate.route.model, 'gpt-6-astra');
+    assert.equal(roastmaster.synthesize.route.model, 'gpt-6-astra');
   });
   const qa = resolved.roster.filter((entry) => entry.role === 'qa-reviewer');
   assert.equal(Object.isFrozen(resolved.roster), true);

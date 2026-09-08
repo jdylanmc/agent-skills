@@ -69,9 +69,11 @@ jobs:
           skills/_base/_molecules/chronicler/chronicler.adversarial.test.mjs
           skills/_base/_molecules/roast-coordinate-review/roast-coordinate-review.adversarial.test.mjs
           skills/_base/_atoms/agent-spawn/agent-spawn.test.mjs
+          skills/_base/_atoms/review-tier-policy/review-tier-policy.test.mjs
           skills/roast/roast.conformance.test.mjs
           skills/roast/_atoms/artifact-profile/artifact-profile.test.mjs
           skills/roast/_atoms/code-reviewer-panel/code-reviewer-panel.test.mjs
+          skills/roast/_atoms/correction-review-dispatch/correction-review-dispatch.test.mjs
           skills/roast/_atoms/intent-screen/intent-screen.test.mjs
           skills/roast/_atoms/intent-screen/intent-screen.adversarial.test.mjs
           skills/roast/_atoms/intent-source/intent-source.test.mjs

@@ -44,8 +44,19 @@ test('directly composes Chronicler and local fleet molecules only', () => {
   const closure = closureFor(validateRepository(ROOT), ENTRY);
   assert.ok(closure.includes('ship-with-squadron/_atoms/dependency-frontier/dependency-frontier.md'));
   assert.ok(closure.includes('ship-with-squadron/_atoms/quality-evidence/quality-evidence.md'));
+  assert.ok(closure.includes('_base/_atoms/review-tier-policy/review-tier-policy.md'));
   assert.ok(!closure.some((file) => file.startsWith('chart-a-course/')));
   assert.ok(!closure.some((file) => file.startsWith('blast-radius/')));
+});
+
+test('tiered review is issue-bound, replay-safe, and opt-in only', () => {
+  const manifest = read('ship-with-squadron/_atoms/fleet-manifest/fleet-manifest.md');
+  const assignment = read('ship-with-squadron/_atoms/assignment-ownership/assignment-ownership.md');
+  const quality = read('ship-with-squadron/_atoms/quality-evidence/quality-evidence.md');
+  assert.match(manifest, /absence means\s+the existing full Roast behavior/);
+  assert.match(assignment, /exact normalized `reviewPolicy`/);
+  assert.match(quality, /exact-schema `reviewLineage`/);
+  assert.match(quality, /Legacy and non-opted-in records remain valid/);
 });
 
 test('pins required local workflow skills and the checked-in blast-radius seam', () => {

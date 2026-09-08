@@ -15,6 +15,13 @@ below is unreleased and no comparison links are available.
 
 ### Added
 
+- **Opt-in tiered code review for Ship and Ship-with-Squadron.** Initial review
+  remains the complete deep Roast. Confirmed callers can use one bounded
+  current-head Quality Assurance correction verifier after remediation, with
+  semantic escalation back to full review, exact revision and cumulative-delta
+  evidence, GPT-6 Astra and GPT-5.6 Sol routing through the shared resolver,
+  and replay-safe Squadron lineage. Full review remains the default and
+  promotion remains human-only.
 - **Configurable model-role routing for agent dispatch and Roast panel seats.**
   `agent-spawn` now defines deterministic optional role-aware model routing with
   explicit precedence between user, repository, and inline defaults; bounded

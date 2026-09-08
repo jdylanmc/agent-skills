@@ -52,6 +52,10 @@ supports one decision: ship it, revise it, or hand the work somewhere else. See
    - `code` — a pull request, branch diff, working-tree change set, named
      source files, a unified diff, or pasted code. Run
      [Code branch](./_molecules/roast-code-branch/roast-code-branch.md).
+     Full review remains the default. Only a confirmed Ship or
+     Ship-with-Squadron packet may opt into tiering; the first review is still
+     full and semantic or evidentiary uncertainty returns to deep review or the
+     human.
 
 4. Return what the branch returned, with the doctrine selection and its
    reasoning attached, so a surprising recommendation can be traced to the

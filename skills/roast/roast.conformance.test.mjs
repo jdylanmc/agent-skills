@@ -26,6 +26,11 @@ import { ARTIFACT_TYPES } from './_atoms/artifact-profile/artifact-profile.mjs';
 import { classifyArtifact } from '../_base/_atoms/artifact-classify/artifact-classify.mjs';
 import { GOVERNANCE } from './_atoms/doctrine-select/doctrine-select.mjs';
 import { MODEL_ROLE_KEYS } from '../_base/_atoms/agent-spawn/agent-spawn.mjs';
+import {
+  CORRECTION_REVIEW_ROUTE,
+  DEEP_REVIEW_ROUTE,
+  classifyReviewTier,
+} from '../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 import { resolveBundledRoastRoster } from './_atoms/code-reviewer-panel/code-reviewer-panel.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -251,6 +256,26 @@ test('agent-spawn exposes the bounded model-role vocabulary and keeps direct rou
   const atom = read('_base/_atoms/agent-spawn/agent-spawn.md');
   assert.match(atom, /`user-model-roles`, then `repository-model-roles`, then the caller's inline/);
   assert.match(atom, /A plain call that omits\s+`model-role` keeps the existing direct-routing behavior/);
+});
+
+test('tiered code review is opt-in and uses only the confirmed full-strength routes', () => {
+  assert.equal(classifyReviewTier({ policy: { mode: 'full' } }).outcome, 'full');
+  assert.deepEqual(DEEP_REVIEW_ROUTE, {
+    model: 'gpt-6-astra',
+    fallbackModels: ['gpt-5.6-sol'],
+    reasoningEffort: 'high',
+    contextTier: 'default',
+  });
+  assert.deepEqual(CORRECTION_REVIEW_ROUTE, {
+    role: 'qa-reviewer',
+    model: 'gpt-5.6-sol',
+    fallbackModels: ['gpt-6-astra'],
+    reasoningEffort: 'high',
+    contextTier: 'default',
+  });
+  const branch = read('roast/_molecules/roast-code-branch/roast-code-branch.md');
+  assert.match(branch, /first review is always full/);
+  assert.match(branch, /bounded QA correction dispatcher/);
 });
 
 test('the bundled code roast roster resolves through shared model-role routing without changing security routing', () => {

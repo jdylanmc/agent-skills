@@ -34,6 +34,29 @@ diff, Continuous Integration, Roast, blast-radius, criterion, publication, and
 Shepherd evidence; restart from reconciliation. Remediation is a fresh bounded
 worker dispatch, never an unbounded loop or validation weakening.
 
+For an opted-in issue, keep exact-schema `reviewLineage` inside the existing
+`qualityEvidence` object. It binds policy, packet, scope, source revision,
+assignment generation, cumulative-diff base, last full deep receipt, and latest
+correction receipt. Head mutation clears current correction and pipeline
+evidence but never fabricates or advances the deep anchor. Manifest, source,
+scope, base, generation, digest, or replay mismatch requires full review.
+Legacy and non-opted-in records remain valid without this field.
+The deep anchor retains the complete previously accepted full Roast receipt;
+its digest, revision, tier receipt, routing, and semantic completion are
+revalidated on every reload. Synthetic lineage metadata is not provenance.
+Head-only changes may retain that anchor. Base or assignment-generation changes
+clear it in their owning transition and set the next action to full review.
+Packet identity is recomputed from the actual manifest-bound assignment packet,
+excluding mutable base/head cursors and the separately bound review policy.
+Scope identity is recomputed from the confirmed issue identity, source,
+criteria, scope, and allowed paths. Self-consistent caller hashes cannot create
+authority.
+
+`runSquadronTieredReview` is the callable review seam. It uses the same
+deterministic policy and Roast correction dispatcher as Ship. A successful
+correction receipt still becomes ordinary current-head Roast-stage evidence;
+the existing publication gate is not replaced or weakened.
+
 The helper reuses `ship`'s validated deterministic hunk reconciler through a
 code dependency. This does not compose or route to another skill-local unit;
 the composition graph remains squadron-local.

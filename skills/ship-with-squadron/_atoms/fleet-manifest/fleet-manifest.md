@@ -23,6 +23,12 @@ policy, concurrency, budgets, stop conditions, Shepherd intent, and human-only
 decisions. Accepted scope, exclusions, and human decisions are required even
 when their confirmed value is an empty array.
 
+Each issue may optionally carry a normalized `reviewPolicy`. Its absence means
+the existing full Roast behavior. An opt-in policy records its version,
+baseline, shadow, or human-promoted operational mode, and the exact confirmed
+GPT-6 Astra deep and GPT-5.6 Sol correction routes. It is covered by the
+manifest digest.
+
 An issue may enter the run as `already-complete` only when both the confirmed
 manifest status and its exact provider receipt record `completed`.
 

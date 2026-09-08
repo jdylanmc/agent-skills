@@ -46,6 +46,13 @@ used-by: ["roast/_molecules/roast-code-branch/roast-code-branch.md"]
 | Executive summary fails traceability twice | Omit it and return unchanged technical details. |
 | Restricted file or evidence | Do not bypass the restriction; record the evidence gap. |
 | User asks to apply fixes | Refuse within this skill and provide the ordered handoff. |
+| Tiering is not explicitly confirmed | Run the existing full review. |
+| No exact prior deep receipt | Run the existing full review; never infer a deep anchor from a hash alone. |
+| Latest or cumulative delta is missing or stale | Return incomplete evidence. |
+| Scope, authority, permission, persistence, recovery, public contract, or domain meaning changed | Require deep review or human direction. |
+| Original recommendation is contradicted | Preserve the disagreement and escalate; do not rubber-stamp it. |
+| Correction introduces a regression or unexplained consequence | Require deep review. |
+| Confirmed full-strength route is unavailable | Return tiered review unavailable; never use runtime default, mini, flash, old, or unlisted models. |
 
 ## Scenario Tests
 

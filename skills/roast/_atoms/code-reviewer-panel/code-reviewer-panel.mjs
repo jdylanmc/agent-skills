@@ -138,17 +138,26 @@ export function resolveBundledRoastRoster({
   runtimeAvailableModels = null,
   panelLengthByRole = {},
   fanoutCap = null,
+  deepRoute = null,
 } = {}) {
   const lengths = normalizePanelLengths(panelLengthByRole);
+  const effectiveUserRoles = deepRoute === null
+    ? userModelRoles
+    : {
+      ...userModelRoles,
+      'architecture-candidate': deepRoute,
+      'qa-reviewer': deepRoute,
+    };
   const resolvedByReviewer = [];
   for (const reviewer of BUNDLED_REVIEWERS) {
     const instruction = readBundledInstruction(root, reviewer.agentName);
-    const inlineRoute = {
+    const declaredInlineRoute = {
       model: instruction.model,
       fallbackModels: instruction.fallbackModels,
       reasoningEffort: instruction.reasoningEffort,
       contextTier: instruction.contextTier,
     };
+    const inlineRoute = deepRoute ?? declaredInlineRoute;
     if (reviewer.role === null) {
       const resolved = resolveInlineModelRoute({
         inlineRoute,
@@ -162,7 +171,7 @@ export function resolveBundledRoastRoster({
       role: reviewer.role,
       inlineDefaults: [inlineRoute],
       repositoryModelRoles,
-      userModelRoles,
+      userModelRoles: effectiveUserRoles,
       runtimeAvailableModels,
       panelLength: lengths[reviewer.role] ?? null,
     });
@@ -240,6 +249,33 @@ export function resolveBundledRoastRoster({
     panels,
     fanoutRequested: requestedTotal,
     fanoutApplied: roster.length + blockedSeats.length,
+  });
+}
+
+export function resolveBundledRoastmasterRoute({
+  root = repositoryRoot(),
+  runtimeAvailableModels = null,
+  deepRoute = null,
+} = {}) {
+  const instruction = readBundledInstruction(root, 'the-roastmaster');
+  const inlineRoute = deepRoute ?? {
+    model: instruction.model,
+    fallbackModels: instruction.fallbackModels,
+    reasoningEffort: instruction.reasoningEffort,
+    contextTier: instruction.contextTier,
+  };
+  const resolved = resolveInlineModelRoute({
+    inlineRoute,
+    runtimeAvailableModels,
+    role: 'architecture-judge',
+    resolutionSource: deepRoute ? 'tiered-deep-policy' : 'inline-default',
+  });
+  return immutable({
+    agentName: instruction.agentName,
+    instructionPath: instruction.instructionPath,
+    tools: instruction.tools,
+    coordinate: resolved,
+    synthesize: resolved,
   });
 }
 
