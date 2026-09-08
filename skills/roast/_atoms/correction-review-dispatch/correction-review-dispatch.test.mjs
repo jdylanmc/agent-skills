@@ -23,22 +23,25 @@ const assessment = {
   })),
   uncertainties: [],
 };
+const BASE = '1'.repeat(40);
+const DEEP_HEAD = '2'.repeat(40);
+const CURRENT_HEAD = '3'.repeat(40);
 
 const input = {
-  current: { headSha: 'head-2' },
-  lastDeep: { headSha: 'head-1' },
+  current: { headSha: CURRENT_HEAD },
+  lastDeep: { headSha: DEEP_HEAD },
   requirements: ['preserve behavior'],
   originalFindingIds: ['F-1'],
   latestDelta: { paths: ['src/a.js'] },
   cumulativeDelta: { paths: ['src/a.js'] },
   affectedConsumers: ['consumer-a'],
-  validation: { complete: true, headSha: 'head-2' },
+  validation: { complete: true, headSha: CURRENT_HEAD },
 };
 
 const response = (overrides = {}) => JSON.stringify({
   schemaVersion: 1,
   status: 'complete',
-  headSha: 'head-2',
+  headSha: CURRENT_HEAD,
   findingDispositions: [{
     findingId: 'F-1',
     disposition: 'addressed',
@@ -119,7 +122,7 @@ test('original findings may be unsupported but unresolved evidence cannot report
     regressions: [{ id: 'R-1', evidence: 'new failure', impact: 'consumer breaks' }],
   })), input), /unresolved evidence/);
   assert.throws(() => validateCorrectionReview(JSON.parse(response({
-    headSha: 'head-1',
+    headSha: DEEP_HEAD,
   })), input), /stale/);
   assert.throws(() => validateCorrectionReview(JSON.parse(response({
     findingDispositions: [],
@@ -157,30 +160,30 @@ test('tiered code review consumes correction transport and falls back to full on
     ...input,
     policy,
     current: {
-      baseSha: 'base',
-      headSha: 'head-2',
+      baseSha: BASE,
+      headSha: CURRENT_HEAD,
       packetDigest: 'a'.repeat(64),
       scopeDigest: 'b'.repeat(64),
       sourceRevision: 'source',
     },
     lastDeep: {
-      baseSha: 'base',
-      headSha: 'head-1',
+      baseSha: BASE,
+      headSha: DEEP_HEAD,
       packetDigest: 'a'.repeat(64),
       scopeDigest: 'b'.repeat(64),
       sourceRevision: 'source',
     },
-    previousHead: 'head-1',
+    previousHead: DEEP_HEAD,
     latestDelta: {
-      baseSha: 'head-1',
-      headSha: 'head-2',
+      baseSha: DEEP_HEAD,
+      headSha: CURRENT_HEAD,
       paths: ['src/a.js'],
       evidenceComplete: true,
       semanticAssessment: assessment,
     },
     cumulativeDelta: {
-      baseSha: 'head-1',
-      headSha: 'head-2',
+      baseSha: DEEP_HEAD,
+      headSha: CURRENT_HEAD,
       paths: ['src/a.js'],
       evidenceComplete: true,
       semanticAssessment: assessment,

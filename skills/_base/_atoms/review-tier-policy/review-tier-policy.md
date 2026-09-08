@@ -21,6 +21,8 @@ The first review is always full. A later correction verification requires the
 exact current revision, the last deep-review receipt, the latest correction
 delta, the cumulative delta from the deep-reviewed head, original requirements
 and findings, affected consumers, and current validation.
+Every Git identity is a full lowercase object ID. Packet and scope identities
+are SHA-256 digests, not labels or movable references.
 Both deltas carry complete per-category semantic assessments with evidence.
 Latest paths must reconcile to the cumulative net diff or to an evidenced
 reversion back to the deep-reviewed baseline. Missing assessment, unexplained

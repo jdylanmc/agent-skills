@@ -12,7 +12,9 @@ import {
   reconcileFleetDiff,
   recordStage,
   remediationDecision,
+  reviewPacketBindingDigest,
   reviewPolicyDigest,
+  reviewScopeBindingDigest,
   runSquadronTieredReview,
   validateReviewLineage,
 } from './quality-evidence.mjs';
@@ -24,6 +26,9 @@ import {
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 const revision = { baseSha: 'base', headSha: 'head' };
+const POLICY_BASE = '1'.repeat(40);
+const POLICY_DEEP_HEAD = '2'.repeat(40);
+const POLICY_CURRENT_HEAD = '3'.repeat(40);
 const identity = { runId: 'run', issue: '1' };
 const REPOSITORY_ROOT = path.resolve('test-fixtures', 'quality-evidence-repository');
 
@@ -88,13 +93,35 @@ function routing(kind) {
   }));
 }
 
-function reviewTier(kind, overrides = {}) {
-  const currentManifest = tieredManifest();
+function packetFor(currentManifest) {
+  const issue = currentManifest.issues[0];
+  return {
+    schemaVersion: 1,
+    manifestDigest: currentManifest.digest,
+    issue: issue.identity,
+    sourceRevision: issue.sourceRevision,
+    acceptanceCriteria: issue.acceptanceCriteria,
+    scope: issue.scope,
+    exclusions: currentManifest.exclusions,
+    allowedPaths: issue.allowedPaths,
+    verification: currentManifest.validationPolicy,
+    reportContract: { summary: 'review', requiredEvidence: currentManifest.validationPolicy },
+    forbiddenAuthorities: ['merge'],
+    taskContract: { goal: currentManifest.goal },
+    branch: 'issue-1',
+    worktree: '/tmp/issue-1',
+    baseSha: 'base',
+    headSha: 'head',
+    reviewPolicy: issue.reviewPolicy,
+  };
+}
+
+function reviewTier(kind, packet, issue, overrides = {}) {
   return {
     kind,
-    policyDigest: reviewPolicyDigest(currentManifest.issues[0].reviewPolicy),
-    packetDigest: 'b'.repeat(64),
-    scopeDigest: 'c'.repeat(64),
+    policyDigest: reviewPolicyDigest(issue.reviewPolicy),
+    packetDigest: reviewPacketBindingDigest(packet),
+    scopeDigest: reviewScopeBindingDigest(issue),
     sourceRevision: 'r1',
     assignmentGeneration: 1,
     modelRouting: routing(kind),
@@ -430,7 +457,7 @@ test('tiered review lineage survives head invalidation and validates after repla
   const issueDefinition = currentManifest.issues[0];
   let record = {
     identity: '1',
-    assignment: { generation: 1 },
+    assignment: { generation: 1, packet: packetFor(currentManifest) },
     continuationChain: [],
     baseSha: 'base',
     headSha: 'head',
@@ -441,7 +468,13 @@ test('tiered review lineage survives head invalidation and validates after repla
       { stage: 'run-ci', evidence: ci() },
     ],
   };
-  const full = roast({ reviewTier: reviewTier('full') });
+  const full = roast({
+    reviewTier: reviewTier(
+      'full',
+      record.assignment.packet,
+      issueDefinition,
+    ),
+  });
   record = recordStage(record, 'roast', full, revision, currentManifest);
   assert.equal(record.qualityEvidence.reviewLineage.lastDeep.headSha, 'head');
   const baseChanged = invalidateRevisionEvidence(record, {
@@ -462,7 +495,11 @@ test('tiered review lineage survives head invalidation and validates after repla
   ];
   const correction = roast({
     ...nextRevision,
-    reviewTier: reviewTier('correction'),
+    reviewTier: reviewTier(
+      'correction',
+      record.assignment.packet,
+      issueDefinition,
+    ),
   });
 
   record = recordStage(record, 'roast', correction, nextRevision, currentManifest);
@@ -495,8 +532,8 @@ test('Squadron callable path consumes correction transport without a second full
   const currentManifest = tieredManifest();
   const policy = currentManifest.issues[0].reviewPolicy;
   const current = {
-    baseSha: 'base',
-    headSha: 'head-2',
+    baseSha: POLICY_BASE,
+    headSha: POLICY_CURRENT_HEAD,
     packetDigest: 'a'.repeat(64),
     scopeDigest: 'b'.repeat(64),
     sourceRevision: 'r1',
@@ -518,11 +555,11 @@ test('Squadron callable path consumes correction transport without a second full
         },
       },
       current,
-      lastDeep: { ...current, headSha: 'head-1' },
-      previousHead: 'head-1',
+      lastDeep: { ...current, headSha: POLICY_DEEP_HEAD },
+      previousHead: POLICY_DEEP_HEAD,
       latestDelta: {
-        baseSha: 'head-1',
-        headSha: 'head-2',
+        baseSha: POLICY_DEEP_HEAD,
+        headSha: POLICY_CURRENT_HEAD,
         paths: ['src/a.js'],
         evidenceComplete: true,
         semanticAssessment: {
@@ -534,8 +571,8 @@ test('Squadron callable path consumes correction transport without a second full
         },
       },
       cumulativeDelta: {
-        baseSha: 'head-1',
-        headSha: 'head-2',
+        baseSha: POLICY_DEEP_HEAD,
+        headSha: POLICY_CURRENT_HEAD,
         paths: ['src/a.js'],
         evidenceComplete: true,
         semanticAssessment: {
@@ -550,7 +587,7 @@ test('Squadron callable path consumes correction transport without a second full
       requirements: ['done'],
       originalFindingIds: ['F-1'],
       affectedConsumers: ['consumer-a'],
-      validation: { headSha: 'head-2', complete: true },
+      validation: { headSha: POLICY_CURRENT_HEAD, complete: true },
       remediationAttempt: 1,
     },
     runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
@@ -559,7 +596,7 @@ test('Squadron callable path consumes correction transport without a second full
       return JSON.stringify({
         schemaVersion: 1,
         status: 'complete',
-        headSha: 'head-2',
+        headSha: POLICY_CURRENT_HEAD,
         findingDispositions: [{
           findingId: 'F-1',
           disposition: 'addressed',

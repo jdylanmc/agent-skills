@@ -35,7 +35,9 @@ import {
 } from '../../../_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.mjs';
 import {
   recordStage,
+  reviewPacketBindingDigest,
   reviewPolicyDigest,
+  reviewScopeBindingDigest,
 } from '../quality-evidence/quality-evidence.mjs';
 import {
   CORRECTION_REVIEW_ROUTE,
@@ -315,8 +317,8 @@ test('tiered manifest policy is bound into the assignment packet', () => {
     reviewTier: {
       kind: 'full',
       policyDigest: reviewPolicyDigest(tieredManifest.issues[0].reviewPolicy),
-      packetDigest: 'a'.repeat(64),
-      scopeDigest: 'b'.repeat(64),
+      packetDigest: reviewPacketBindingDigest(tieredPacket),
+      scopeDigest: reviewScopeBindingDigest(tieredManifest.issues[0]),
       sourceRevision: 'r-a',
       assignmentGeneration: 1,
       modelRouting,
@@ -329,6 +331,17 @@ test('tiered manifest policy is bound into the assignment packet', () => {
   assert.deepEqual(
     replayed.issues.a.qualityEvidence.reviewLineage,
     persisted.issues.a.qualityEvidence.reviewLineage,
+  );
+  const wrongBinding = structuredClone(replayed);
+  const wrongLineage = wrongBinding.issues.a.qualityEvidence.reviewLineage;
+  wrongLineage.packetDigest = 'f'.repeat(64);
+  wrongLineage.lastDeep.receipt.reviewTier.packetDigest = 'f'.repeat(64);
+  wrongLineage.lastDeep.receiptDigest = crypto.createHash('sha256')
+    .update(JSON.stringify(stable(wrongLineage.lastDeep.receipt)))
+    .digest('hex');
+  assert.throws(
+    () => assertFleetState(wrongBinding, tieredManifest),
+    /packet digest does not match assignment authority/,
   );
   const forged = structuredClone(replayed);
   forged.issues.a.qualityEvidence.reviewLineage.lastDeep.receipt = {};

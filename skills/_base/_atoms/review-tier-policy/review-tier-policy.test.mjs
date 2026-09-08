@@ -14,6 +14,9 @@ import {
 } from './review-tier-policy.mjs';
 
 const PACKET_DIGEST = 'a'.repeat(64);
+const BASE = '1'.repeat(40);
+const DEEP_HEAD = '2'.repeat(40);
+const CURRENT_HEAD = '3'.repeat(40);
 const assessment = (changed = [], uncertainties = []) => ({
   complete: true,
   categories: SEMANTIC_ASSESSMENT_CATEGORIES.map((category) => ({
@@ -46,7 +49,7 @@ const policy = (evaluationMode = 'operational') => ({
 });
 
 const identity = (headSha) => ({
-  baseSha: 'base',
+  baseSha: BASE,
   headSha,
   packetDigest: PACKET_DIGEST,
   scopeDigest: 'b'.repeat(64),
@@ -55,19 +58,19 @@ const identity = (headSha) => ({
 
 const eligible = (overrides = {}) => ({
   policy: policy(),
-  current: identity('head-2'),
-  lastDeep: identity('head-1'),
-  previousHead: 'head-1',
+  current: identity(CURRENT_HEAD),
+  lastDeep: identity(DEEP_HEAD),
+  previousHead: DEEP_HEAD,
   latestDelta: {
-    baseSha: 'head-1',
-    headSha: 'head-2',
+    baseSha: DEEP_HEAD,
+    headSha: CURRENT_HEAD,
     paths: ['src/a.js'],
     evidenceComplete: true,
     semanticAssessment: assessment(),
   },
   cumulativeDelta: {
-    baseSha: 'head-1',
-    headSha: 'head-2',
+    baseSha: DEEP_HEAD,
+    headSha: CURRENT_HEAD,
     paths: ['src/a.js'],
     evidenceComplete: true,
     semanticAssessment: assessment(),
@@ -76,7 +79,7 @@ const eligible = (overrides = {}) => ({
   requirements: ['preserve behavior'],
   originalFindingIds: ['F-1'],
   affectedConsumers: ['consumer-a'],
-  validation: { headSha: 'head-2', complete: true },
+  validation: { headSha: CURRENT_HEAD, complete: true },
   remediationAttempt: 1,
   ...overrides,
 });
@@ -90,15 +93,15 @@ test('full review is the default and the first tiered review is deep', () => {
 test('eligible correction is exact-head and cumulative-delta bound', () => {
   const decision = classifyReviewTier(eligible());
   assert.equal(decision.outcome, 'correction-verification');
-  assert.equal(decision.current.headSha, 'head-2');
-  assert.equal(decision.cumulativeDelta.baseSha, 'head-1');
+  assert.equal(decision.current.headSha, CURRENT_HEAD);
+  assert.equal(decision.cumulativeDelta.baseSha, DEEP_HEAD);
 });
 
 test('semantic, repeated, stale, and incomplete inputs cannot enter the fast path', () => {
   assert.equal(classifyReviewTier(eligible({
     latestDelta: {
-      baseSha: 'head-1',
-      headSha: 'head-2',
+      baseSha: DEEP_HEAD,
+      headSha: CURRENT_HEAD,
       paths: ['src/a.js'],
       evidenceComplete: true,
       semanticAssessment: assessment(['authority']),
@@ -106,10 +109,10 @@ test('semantic, repeated, stale, and incomplete inputs cannot enter the fast pat
   })).outcome, 'full-review-required');
   assert.equal(classifyReviewTier(eligible({ remediationAttempt: 2 })).outcome, 'full-review-required');
   assert.equal(classifyReviewTier(eligible({
-    current: { ...identity('head-2'), packetDigest: 'c'.repeat(64) },
+    current: { ...identity(CURRENT_HEAD), packetDigest: 'c'.repeat(64) },
   })).outcome, 'needs-human');
   assert.equal(classifyReviewTier(eligible({
-    validation: { headSha: 'head-1', complete: true },
+    validation: { headSha: DEEP_HEAD, complete: true },
   })).outcome, 'incomplete-evidence');
   assert.throws(
     () => classifyReviewTier(eligible({ cumulativeDelta: null })),
@@ -171,6 +174,14 @@ test('complete semantic and delta reconciliation evidence is mandatory', () => {
       semanticAssessment: assessment([], ['public contract impact is uncertain']),
     },
   })).outcome, 'full-review-required');
+  for (const bad of ['HEAD', 'main', 'abc1234', 'A'.repeat(40)]) {
+    assert.throws(() => classifyReviewTier(eligible({
+      current: { ...identity(CURRENT_HEAD), headSha: bad },
+    })), /canonical full lowercase Git object ID/);
+  }
+  assert.throws(() => classifyReviewTier(eligible({
+    current: { ...identity(CURRENT_HEAD), scopeDigest: 'scope' },
+  })), /SHA-256 digest/);
 });
 
 test('callable seam reduces review work and escalates or shadows to full', async () => {

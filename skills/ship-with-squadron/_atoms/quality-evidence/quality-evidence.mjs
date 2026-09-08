@@ -80,6 +80,47 @@ export function reviewPolicyDigest(policy) {
   return digest(policy);
 }
 
+export function reviewPacketBindingDigest(packet) {
+  if (!packet || typeof packet !== 'object' || Array.isArray(packet)) {
+    throw new Error('review packet binding requires the assignment packet');
+  }
+  return digest({
+    schemaVersion: packet.schemaVersion,
+    manifestDigest: packet.manifestDigest,
+    issue: packet.issue,
+    sourceRevision: packet.sourceRevision,
+    acceptanceCriteria: packet.acceptanceCriteria,
+    scope: packet.scope,
+    exclusions: packet.exclusions,
+    allowedPaths: packet.allowedPaths,
+    verification: packet.verification,
+    reportContract: packet.reportContract,
+    forbiddenAuthorities: packet.forbiddenAuthorities,
+    taskContract: packet.taskContract,
+    branch: packet.branch,
+    worktree: packet.worktree,
+  });
+}
+
+export function reviewScopeBindingDigest(issue) {
+  if (!issue || typeof issue !== 'object' || Array.isArray(issue)) {
+    throw new Error('review scope binding requires the confirmed issue');
+  }
+  return digest({
+    identity: issue.identity,
+    sourceRevision: issue.sourceRevision,
+    acceptanceCriteria: issue.acceptanceCriteria,
+    scope: issue.scope,
+    allowedPaths: issue.allowedPaths,
+  });
+}
+
+function assignmentPacket(issueRecord) {
+  return issueRecord.assignment?.packet
+    ?? issueRecord.continuationChain?.at(-1)?.packet
+    ?? null;
+}
+
 function exactDigest(value, field) {
   if (!/^[a-f0-9]{64}$/u.test(value ?? '')) throw new Error(`${field} must be a SHA-256 digest`);
   return value;
@@ -134,8 +175,13 @@ function validateReviewTierReceipt(receipt, issueRecord, issue, manifest) {
   if (!exactObjectKeys(receipt, expected)) throw new Error('review tier receipt schema is not exact');
   if (!['full', 'correction'].includes(receipt.kind)) throw new Error('review tier kind is invalid');
   if (receipt.policyDigest !== reviewPolicyDigest(issue.reviewPolicy)) throw new Error('review tier policy digest does not match');
-  exactDigest(receipt.packetDigest, 'review tier packetDigest');
-  exactDigest(receipt.scopeDigest, 'review tier scopeDigest');
+  const packet = assignmentPacket(issueRecord);
+  if (receipt.packetDigest !== reviewPacketBindingDigest(packet)) {
+    throw new Error('review tier packet digest does not match assignment authority');
+  }
+  if (receipt.scopeDigest !== reviewScopeBindingDigest(issue)) {
+    throw new Error('review tier scope digest does not match confirmed scope');
+  }
   if (receipt.sourceRevision !== issue.sourceRevision) throw new Error('review tier source revision does not match');
   const assignmentGeneration = issueRecord.assignment?.generation
     ?? issueRecord.continuationChain?.at(-1)?.generation

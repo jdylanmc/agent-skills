@@ -116,6 +116,16 @@ function exactDigest(value, field) {
   return value;
 }
 
+function exactGitOid(value, field) {
+  if (!/^[a-f0-9]{40}$/u.test(value ?? '')) {
+    throw new ReviewTierPolicyError(
+      'invalid_input',
+      `${field} must be a canonical full lowercase Git object ID`,
+    );
+  }
+  return value;
+}
+
 function route(value, expected, field) {
   exactKeys(value, Object.keys(expected), field);
   if (!same(value, expected)) {
@@ -213,10 +223,10 @@ function identity(value, field) {
     field,
   );
   return {
-    baseSha: nonEmpty(value.baseSha, `${field}.baseSha`),
-    headSha: nonEmpty(value.headSha, `${field}.headSha`),
-    packetDigest: nonEmpty(value.packetDigest, `${field}.packetDigest`),
-    scopeDigest: nonEmpty(value.scopeDigest, `${field}.scopeDigest`),
+    baseSha: exactGitOid(value.baseSha, `${field}.baseSha`),
+    headSha: exactGitOid(value.headSha, `${field}.headSha`),
+    packetDigest: exactDigest(value.packetDigest, `${field}.packetDigest`),
+    scopeDigest: exactDigest(value.scopeDigest, `${field}.scopeDigest`),
     sourceRevision: nonEmpty(value.sourceRevision, `${field}.sourceRevision`),
   };
 }
@@ -256,8 +266,8 @@ function delta(value, field, expectedBase, expectedHead, { pathsRequired = true 
     'baseSha', 'headSha', 'paths', 'evidenceComplete', 'semanticAssessment',
   ], field);
   const normalized = {
-    baseSha: nonEmpty(value.baseSha, `${field}.baseSha`),
-    headSha: nonEmpty(value.headSha, `${field}.headSha`),
+    baseSha: exactGitOid(value.baseSha, `${field}.baseSha`),
+    headSha: exactGitOid(value.headSha, `${field}.headSha`),
     paths: stringList(value.paths, `${field}.paths`, { nonEmptyList: pathsRequired }),
     evidenceComplete: value.evidenceComplete,
     semanticAssessment: semanticAssessment(value.semanticAssessment, `${field}.semanticAssessment`),
@@ -317,7 +327,8 @@ export function classifyReviewTier(input = {}) {
   if (lastDeep.headSha === current.headSha) {
     return immutable({ outcome: 'full-review-required', reason: 'no-correction-head', policy });
   }
-  const latestDelta = delta(input.latestDelta, 'latestDelta', input.previousHead, current.headSha);
+  const previousHead = exactGitOid(input.previousHead, 'previousHead');
+  const latestDelta = delta(input.latestDelta, 'latestDelta', previousHead, current.headSha);
   const cumulativeDelta = delta(
     input.cumulativeDelta,
     'cumulativeDelta',

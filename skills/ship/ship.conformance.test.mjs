@@ -84,6 +84,7 @@ const REVIEW_DIGEST = '1'.repeat(64);
 const PRIOR_REVIEW_DIGEST = '0'.repeat(64);
 const HEAD = 'a'.repeat(40);
 const RESULTING_HEAD = 'b'.repeat(40);
+const BASE_OID = 'c'.repeat(40);
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -202,7 +203,7 @@ function tieredInput(semanticSignals = []) {
     },
   };
   const identity = (headSha) => ({
-    baseSha: 'base',
+    baseSha: BASE_OID,
     headSha,
     packetDigest: REVIEW_DIGEST,
     scopeDigest: PRIOR_REVIEW_DIGEST,
