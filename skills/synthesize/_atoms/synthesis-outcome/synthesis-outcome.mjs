@@ -70,6 +70,7 @@ export const BLOCKED_REASONS = [
   'binding-refused',
   'profile-id-missing',
   'unknown-profile',
+  'invalid-profile',
   'candidate-path-missing',
   'candidate-digest-missing',
   'candidate-evidence-mismatch',
@@ -216,16 +217,17 @@ export function resolveOutcome(input) {
 
   // The source is freshly bound. Every remaining piece of evidence must be
   // present and structurally complete, never a bare status stub.
-  if (!isNonEmptyString(profileId)) {
+  if (!isNonEmptyString(profileId) && !isObject(profileId)) {
     return blocked('profile-id-missing');
   }
-  // Resolve the profile the run names. An unknown id proves nothing about the
-  // evidence, so the run is blocked before its own claims are weighed.
+  // Resolve the contract the run obeyed - a named id or a declared reduction. An
+  // unknown id or an incomplete declaration proves nothing about the evidence, so
+  // the run is blocked before its own claims are weighed.
   let profile;
   try {
     profile = resolveProfile(profileId);
-  } catch {
-    return blocked('unknown-profile');
+  } catch (error) {
+    return blocked(error?.code === 'invalid-profile' ? 'invalid-profile' : 'unknown-profile');
   }
   if (!isNonEmptyString(candidatePath)) {
     return blocked('candidate-path-missing');
@@ -242,7 +244,11 @@ export function resolveOutcome(input) {
     || !isNonEmptyString(budget.profileId)) {
     return blocked('budget-evidence-incomplete');
   }
-  if (budget.profileId !== profileId) {
+  // Evidence is compared against the RESOLVED id. For a named profile that is
+  // the id itself; for a declared reduction it is the digest of its own terms,
+  // so evidence produced under edited terms stops matching the run that cites
+  // them.
+  if (budget.profileId !== profile.id) {
     return blocked('evidence-profile-mismatch');
   }
   if (!isObject(ledger) || !isNonEmptyString(ledger.status)) {
@@ -304,7 +310,7 @@ export function resolveOutcome(input) {
   if (ledger.candidatePath !== normalizedCandidate) {
     return blocked('candidate-evidence-mismatch');
   }
-  if (ledger.profileId !== profileId) {
+  if (ledger.profileId !== profile.id) {
     return blocked('evidence-profile-mismatch');
   }
   //  - the clean ledger's digest is the digest of its own entries. An unverified
@@ -333,7 +339,7 @@ export function resolveOutcome(input) {
     if (split.ledgerDigest !== ledger.digest) {
       return blocked('split-ledger-mismatch');
     }
-    if (split.profileId !== profileId) {
+    if (split.profileId !== profile.id) {
       return blocked('split-profile-mismatch');
     }
     if (!Array.isArray(split.proposals) || split.proposals.length < 2
@@ -365,10 +371,16 @@ export function resolveOutcome(input) {
   }
 
   // 5. complete: fresh bound source, budget satisfied, clean ledger, one
-  //    profile named throughout. Not approval — the variant is a candidate.
+  //    contract obeyed throughout. Not approval — the variant is a candidate.
+  //
+  //    The receipt carries the RESOLVED contract id. Persistence is a separate
+  //    step and cannot re-derive which terms this run obeyed; without the id on
+  //    the receipt, a candidate validated under one contract could be published
+  //    under another that happens to name the same destination.
   return {
     status: 'complete',
     reasons: [],
+    contract: profile.id,
     candidate: { path: normalizedCandidate, digest: ledger.candidateDigest },
   };
 }

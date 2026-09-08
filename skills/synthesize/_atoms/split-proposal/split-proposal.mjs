@@ -94,14 +94,25 @@ export function evaluateSplit({ budgetStatus, proposals, ledgerEntries, profileI
 
   if (budgetStatus !== 'over') {
     // Do not refuse an unnecessary proposal; report that no split is required.
-    return { status: 'not-required', proposals: Array.isArray(proposals) ? proposals : [], ledgerDigest: ledgerDigest ?? null, profileId: profileId ?? null };
+    // Resolve before returning. Echoing the caller's raw reference here reported
+    // a whole declared contract object where every other stage reports an id,
+    // and downstream evidence comparison is by id.
+    let resolvedId = null;
+    if (profileId !== undefined && profileId !== null) {
+      try {
+        resolvedId = resolveProfile(profileId).id;
+      } catch (error) {
+        throw new SplitProposalError(error?.code === 'invalid-profile' ? 'invalid-profile' : 'unknown-profile', error.message);
+      }
+    }
+    return { status: 'not-required', proposals: Array.isArray(proposals) ? proposals : [], ledgerDigest: ledgerDigest ?? null, profileId: resolvedId };
   }
 
   let profile;
   try {
     profile = resolveProfile(profileId);
-  } catch {
-    throw new SplitProposalError('unknown-profile', `no synthesis profile is named ${profileId}`);
+  } catch (error) {
+    throw new SplitProposalError(error?.code === 'invalid-profile' ? 'invalid-profile' : 'unknown-profile', error.message);
   }
   const declared = deriveInventory(ledgerEntries, profile);
 

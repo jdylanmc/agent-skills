@@ -20,9 +20,12 @@
  * quietly relocated to the companion document, or an acceptance criterion
  * weakened.
  *
- * The profile is named, never handed in. A caller passes a `profileId` string;
- * this module resolves it from the fixed profile table. A caller can no longer
- * hand in a profile shape that checks nothing.
+ * The contract is resolved here, never taken on trust. A caller passes a
+ * reference - a named profile id, or a complete declared reduction - and this
+ * module resolves it through the one resolver that validates it. A caller still
+ * cannot hand in a shape that checks nothing: an incomplete declaration is
+ * refused, and a declared contract may add to the baseline non-omittable kinds
+ * but never drop one of them.
  *
  * A clean ledger proves that no defect of these named kinds was found. It is not
  * a proof that meaning was preserved, and it approves nothing.
@@ -33,7 +36,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { resolveProfile } from '../synthesis-profile/synthesis-profile.mjs';
+import { LEDGER_KINDS, resolveProfile } from '../synthesis-profile/synthesis-profile.mjs';
 
 export class DisclosureLedgerError extends Error {
   constructor(code, message, detail = {}) {
@@ -46,7 +49,12 @@ export class DisclosureLedgerError extends Error {
 
 export const DISPOSITIONS = ['retained', 'merged', 'reworded', 'omitted'];
 export const CLASSIFICATIONS = ['authoritative', 'supporting'];
-export const KINDS = ['intention', 'criterion', 'non-goal', 'constraint', 'contradiction', 'context'];
+/**
+ * The kind vocabulary, owned by `synthesis-profile.mjs` because a profile is
+ * what decides which kinds may never be dropped, and re-exported here so the
+ * ledger and the profile can never disagree about what a kind is.
+ */
+export const KINDS = LEDGER_KINDS;
 
 /**
  * The defect vocabulary, owned by the `Defect Categories` table in
@@ -639,8 +647,8 @@ export function collectLedgerDefects({ entries, sourceText, variantText, profile
   let profile;
   try {
     profile = resolveProfile(profileId);
-  } catch {
-    throw new DisclosureLedgerError('unknown-profile', `no synthesis profile is named ${profileId}`);
+  } catch (error) {
+    throw new DisclosureLedgerError(error?.code === 'invalid-profile' ? 'invalid-profile' : 'unknown-profile', error.message);
   }
   if (typeof sourcePath !== 'string' || sourcePath.trim() === ''
     || typeof candidatePath !== 'string' || candidatePath.trim() === '') {

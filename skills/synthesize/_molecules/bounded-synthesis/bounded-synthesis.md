@@ -10,11 +10,11 @@ allowed-tools: ["execute"]
 
 # Bounded Synthesis
 
-Convert one bound source into one profile-defined candidate variant, and account
+Convert one bound source into one contract-defined candidate variant, and account
 for every difference.
 
 ```text
-bind the source -> resolve the named profile -> render the candidate variant
+bind the source -> resolve the stated contract -> render the candidate variant
                 -> validate the disclosure ledger against the rendered candidate
                 -> evaluate a split when over budget
                 -> resolve the outcome -> atomically persist complete output
@@ -33,13 +33,15 @@ bind the source -> resolve the named profile -> render the candidate variant
 ## Operation
 
 1. Run [Source binding](../../_atoms/source-binding/source-binding.md) against
-   exactly one identified, revision-bound source beneath `docs/agent/`. Refuse
-   an unbound, out-of-workspace, symlinked, unreadable, or stale source. Retain
-   the returned digest as proof of the exact bytes read.
+   exactly one identified, revision-bound source beneath the workspace the
+   resolved contract fixes. Refuse an unbound, out-of-workspace, symlinked, unreadable, or
+   stale source. Retain the returned digest as proof of the exact bytes read.
 2. Run [Synthesis profile](../../_atoms/synthesis-profile/synthesis-profile.md)
-   with the one profile id the caller named. There is no default; an unknown or
-   absent id refuses. The resolved profile fixes the output pattern, the word
-   budget, the required content, and the kinds that may never be dropped.
+   with the one contract the caller stated — a named profile id, or a complete
+   declared reduction. There is no default; an unknown id or an incomplete
+   declaration refuses. The resolved contract fixes the output pattern, the word
+   budget, the required content, and the kinds that may never be dropped, and
+   carries the id every later piece of evidence cites.
 3. Render the candidate variant from the bound source under the resolved
    profile, then measure it with the profile's deterministic word count. The
    candidate is a real artifact at this point, not a promise.
@@ -85,7 +87,7 @@ node <molecules>/bounded-synthesis/bounded-synthesis.mjs \
 
 ## Output
 
-Return the source binding with its digest, the resolved profile id, the staged
+Return the source binding with its digest, the resolved contract id, the staged
 candidate evidence when rendering occurred, the word count and disclosure
 ledger when those stages occurred, any proposed secondary boundaries, the
 resolved status, and the persistence receipt only for `complete`.
@@ -93,7 +95,7 @@ resolved status, and the persistence receipt only for `complete`.
 ## Determinism
 
 The deterministic layer is binding, budget, ledger, split, and outcome: given
-the same source bytes, profile, candidate text, and ledger, each stage produces
+the same source bytes, contract, candidate text, and ledger, each stage produces
 an identical result and identical digests, run after run. **Rendering the
 candidate is a model act and is not byte-deterministic** — that is precisely why
 the ledger is validated against the rendered candidate rather than trusted, and
@@ -103,7 +105,7 @@ later run can prove it looked at the same artifact and validated the same ledger
 
 ## Boundaries
 
-This molecule binds one source, renders one candidate under one profile,
+This molecule binds one source, renders one candidate under one contract,
 validates the ledger, evaluates a split, and resolves a status. It does not
 author the source, review or roast the candidate, approve it, publish it,
 implement it, or merge it. A `complete` status is a statement about mechanical

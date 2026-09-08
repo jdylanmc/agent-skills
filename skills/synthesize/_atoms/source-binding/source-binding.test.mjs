@@ -258,3 +258,38 @@ test('the documented refusal table matches REFUSAL_CODES in both directions', ()
   const documented = [...table.matchAll(/^\| `([a-z-]+)` \|/gm)].map((match) => match[1]);
   assert.deepEqual(documented.sort(), [...REFUSAL_CODES].sort());
 });
+
+test('the command entry reaches the declared route, not only the named one', (t) => {
+  // Binding is the FIRST step, so a command entry that could not read a declared
+  // contract made the declared route unreachable from the workflow it exists
+  // for - working through one command and not another.
+  const repositoryRoot = workspace(t);
+  const bundle = 'synthesis/intent/demo-adopter.bundle.md';
+  const bytes = '# Bundle: demo-adopter\n\nSelected material.\n';
+  fs.mkdirSync(path.join(repositoryRoot, 'synthesis', 'intent'), { recursive: true });
+  fs.writeFileSync(path.join(repositoryRoot, bundle), bytes);
+  const contract = path.join(repositoryRoot, 'contract.json');
+  fs.writeFileSync(contract, JSON.stringify({
+    goal: 'the human intent of a skill, as plain requirements a person can confirm',
+    sourceKind: 'skill-bundle',
+    variantKind: 'intent-prose',
+    workspaceRoot: 'synthesis/intent/',
+    outputPattern: 'synthesis/intent/<slug>.intent.md',
+    wordBudget: 400,
+    requiredContent: ['subject', 'purpose', 'requirements', 'refusals'],
+    nonOmittableKinds: ['intention', 'criterion', 'non-goal', 'constraint', 'contradiction'],
+    structuralHeadings: [],
+  }));
+
+  const out = [];
+  const revision = createHash('sha256').update(bytes).digest('hex');
+  assert.equal(
+    run(['--root', repositoryRoot, '--source', bundle, '--revision', revision, '--profile', contract],
+      { stdout: { write: (value) => out.push(value) } }),
+    0,
+  );
+  const binding = JSON.parse(out.join(''));
+  assert.equal(binding.status, 'bound');
+  assert.equal(binding.slug, 'demo-adopter');
+  assert.equal(binding.revision, revision);
+});

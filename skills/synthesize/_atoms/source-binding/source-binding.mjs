@@ -26,7 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { resolveProfile } from '../synthesis-profile/synthesis-profile.mjs';
+import { profileReferenceFrom, resolveProfile } from '../synthesis-profile/synthesis-profile.mjs';
 
 export class SourceBindingError extends Error {
   constructor(code, message, detail = {}) {
@@ -47,6 +47,7 @@ const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const REFUSAL_CODES = [
   'unbound-source',
   'unknown-profile',
+  'invalid-profile',
   'outside-workspace',
   'unsafe-path',
   'unreadable',
@@ -78,8 +79,11 @@ function workspaceOf(profileId) {
   let profile;
   try {
     profile = resolveProfile(profileId);
-  } catch {
-    throw new SourceBindingError('unknown-profile', `no synthesis profile is named ${profileId}`);
+  } catch (error) {
+    throw new SourceBindingError(
+      error?.code === 'invalid-profile' ? 'invalid-profile' : 'unknown-profile',
+      error.message,
+    );
   }
   return profile.workspaceRoot;
 }
@@ -208,7 +212,7 @@ export function bindFile(options) {
   return bindSource(options);
 }
 
-export const USAGE = 'Usage: source-binding.mjs --root <absolute-path> --source <workspace-relative-path> --revision <declared-revision> --profile <profile-id>';
+export const USAGE = 'Usage: source-binding.mjs --root <absolute-path> --source <workspace-relative-path> --revision <declared-revision> --profile <profile-id|absolute-declaration-json-path>';
 
 export function run(argv, streams = process) {
   const args = {};
@@ -233,11 +237,15 @@ export function run(argv, streams = process) {
   if (!path.isAbsolute(args.root)) {
     throw new SourceBindingError('usage', USAGE);
   }
+  // The same argument every command entry in this package takes, read the same
+  // way. A second reading of it here is how the declared route works through one
+  // command and not another - and binding is the FIRST step, so a gap here makes
+  // the route unreachable from the workflow it exists for.
   const binding = bindFile({
     repositoryRoot: args.root,
     sourcePath: args.source,
     declaredRevision: args.revision,
-    profileId: args.profile,
+    profileId: profileReferenceFrom(args.profile),
   });
   streams.stdout.write(`${JSON.stringify(binding, null, 2)}\n`);
   return 0;
