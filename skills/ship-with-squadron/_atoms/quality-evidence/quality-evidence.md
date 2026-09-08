@@ -41,6 +41,11 @@ correction receipt. Head mutation clears current correction and pipeline
 evidence but never fabricates or advances the deep anchor. Manifest, source,
 scope, base, generation, digest, or replay mismatch requires full review.
 Legacy and non-opted-in records remain valid without this field.
+The deep anchor retains the complete previously accepted full Roast receipt;
+its digest, revision, tier receipt, routing, and semantic completion are
+revalidated on every reload. Synthetic lineage metadata is not provenance.
+Head-only changes may retain that anchor. Base or assignment-generation changes
+clear it in their owning transition and set the next action to full review.
 
 `runSquadronTieredReview` is the callable review seam. It uses the same
 deterministic policy and Roast correction dispatcher as Ship. A successful

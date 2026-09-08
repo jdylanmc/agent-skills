@@ -757,6 +757,12 @@ export function continueWithFreshWorker(state, manifest, input) {
   next.issues[input.issue].status = 'active';
   next.issues[input.issue].dependencyState = 'active';
   next.issues[input.issue].handoffObligation = null;
+  if (next.issues[input.issue].qualityEvidence?.reviewLineage) {
+    delete next.issues[input.issue].qualityEvidence.reviewLineage;
+    const roastIndex = next.issues[input.issue].pipeline.findIndex((entry) => entry.stage === 'roast');
+    if (roastIndex >= 0) next.issues[input.issue].pipeline = next.issues[input.issue].pipeline.slice(0, roastIndex);
+    next.issues[input.issue].nextAction = 'run-full-review-for-new-assignment-generation';
+  }
   next.events.push({
     type: 'assignment-continuation',
     issue: input.issue,

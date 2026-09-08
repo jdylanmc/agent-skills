@@ -72,6 +72,10 @@ function digest(value) {
   return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 }
 
+function same(left, right) {
+  return JSON.stringify(stable(left)) === JSON.stringify(stable(right));
+}
+
 export function reviewPolicyDigest(policy) {
   return digest(policy);
 }
@@ -133,8 +137,11 @@ function validateReviewTierReceipt(receipt, issueRecord, issue, manifest) {
   exactDigest(receipt.packetDigest, 'review tier packetDigest');
   exactDigest(receipt.scopeDigest, 'review tier scopeDigest');
   if (receipt.sourceRevision !== issue.sourceRevision) throw new Error('review tier source revision does not match');
+  const assignmentGeneration = issueRecord.assignment?.generation
+    ?? issueRecord.continuationChain?.at(-1)?.generation
+    ?? null;
   if (!Number.isInteger(receipt.assignmentGeneration) || receipt.assignmentGeneration < 1
-      || receipt.assignmentGeneration !== issueRecord.assignment?.generation) {
+      || receipt.assignmentGeneration !== assignmentGeneration) {
     throw new Error('review tier assignment generation does not match');
   }
   const normalized = {
@@ -174,11 +181,34 @@ export function validateReviewLineage(lineage, issueRecord, issue, manifest) {
   exactDigest(lineage.packetDigest, 'review lineage packetDigest');
   exactDigest(lineage.scopeDigest, 'review lineage scopeDigest');
   if (!nonEmpty(lineage.cumulativeDiffBase)) throw new Error('review lineage cumulativeDiffBase is absent');
-  if (!exactObjectKeys(lineage.lastDeep, ['baseSha', 'headSha', 'receiptDigest', 'modelRouting'])) {
+  if (!exactObjectKeys(lineage.lastDeep, [
+    'baseSha', 'headSha', 'receiptDigest', 'modelRouting', 'receipt',
+  ])) {
     throw new Error('review lineage lastDeep schema is not exact');
   }
   exactDigest(lineage.lastDeep.receiptDigest, 'review lineage lastDeep.receiptDigest');
   validateModelRouting(lineage.lastDeep.modelRouting, 'full');
+  if (digest(lineage.lastDeep.receipt) !== lineage.lastDeep.receiptDigest
+      || lineage.lastDeep.receipt.baseSha !== lineage.lastDeep.baseSha
+      || lineage.lastDeep.receipt.headSha !== lineage.lastDeep.headSha
+      || !adaptRoastEvidence(
+        lineage.lastDeep.receipt,
+        { baseSha: lineage.lastDeep.baseSha, headSha: lineage.lastDeep.headSha },
+      ).complete) {
+    throw new Error('review lineage lastDeep receipt is not a retained accepted full review');
+  }
+  const retainedTier = validateReviewTierReceipt(
+    lineage.lastDeep.receipt.reviewTier,
+    issueRecord,
+    issue,
+    manifest,
+  );
+  if (retainedTier.kind !== 'full'
+      || retainedTier.packetDigest !== lineage.packetDigest
+      || retainedTier.scopeDigest !== lineage.scopeDigest
+      || !same(retainedTier.modelRouting, lineage.lastDeep.modelRouting)) {
+    throw new Error('review lineage lastDeep receipt authority does not match');
+  }
   if (lineage.lastDeep.baseSha !== issueRecord.baseSha
       || lineage.cumulativeDiffBase !== lineage.lastDeep.headSha) {
     throw new Error('review lineage deep revision binding does not match');
@@ -812,6 +842,7 @@ export function recordStage(issueRecord, stage, evidence, revision, manifest) {
             headSha: evidence.headSha,
             receiptDigest,
             modelRouting: tier.modelRouting,
+            receipt: structuredClone(evidence),
           },
           latestCorrection: null,
         };
@@ -847,11 +878,12 @@ export function recordStage(issueRecord, stage, evidence, revision, manifest) {
 
 export function invalidateRevisionEvidence(issueRecord, revision) {
   const next = structuredClone(issueRecord);
+  const sameBaseAuthority = revision.baseSha === issueRecord.baseSha;
   next.baseSha = revision.baseSha;
   next.headSha = revision.headSha;
   next.pipeline = (next.pipeline ?? []).filter((entry) =>
     entry.stage === 'implementation' && revisionMatches(entry.evidence, revision));
-  const reviewLineage = next.qualityEvidence?.reviewLineage
+  const reviewLineage = sameBaseAuthority && next.qualityEvidence?.reviewLineage
     ? {
       ...next.qualityEvidence.reviewLineage,
       latestCorrection: null,
@@ -863,6 +895,9 @@ export function invalidateRevisionEvidence(issueRecord, revision) {
   next.shepherdDecision = null;
   next.setObligation = null;
   next.terminalDisposition = null;
+  if (!sameBaseAuthority && issueRecord.qualityEvidence?.reviewLineage) {
+    next.nextAction = 'run-full-review-for-new-authority';
+  }
   return next;
 }
 

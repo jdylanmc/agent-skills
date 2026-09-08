@@ -26,6 +26,10 @@ textual claim.
 
 Unavailable or mismatched routing is a named failure. The result is accepted
 only when it is exact-head bound and matches the local correction schema.
+Every original finding, requirement, and affected consumer must appear exactly
+once in the result. Requirement checks carry evidence and negative cases.
+Regressions, new findings, uncertainty, missing coverage, and unresolved
+dispositions cannot return `complete`.
 `runTieredCodeReview` is the callable seam used by Ship and
 Ship-with-Squadron: it invokes this verifier for an eligible correction and
 calls the existing full-review callback for initial, baseline, shadow, or

@@ -40,7 +40,22 @@ function requireRuntimeInventory(value) {
   return value;
 }
 
-export function validateCorrectionReview(receipt, expectedHead) {
+function exactCoverage(actual, expected, field) {
+  if (!sameSet(actual, expected)) throw new Error(`correction review ${field} coverage does not match`);
+}
+
+function sameSet(left, right) {
+  return left.length === right.length
+    && new Set(left).size === left.length
+    && new Set(right).size === right.length
+    && left.every((entry) => new Set(right).has(entry));
+}
+
+export function validateCorrectionReview(receipt, reviewInput) {
+  const expectedHead = nonEmpty(reviewInput?.current?.headSha, 'reviewInput.current.headSha');
+  const expectedFindings = reviewInput.originalFindingIds ?? [];
+  const expectedRequirements = reviewInput.requirements ?? [];
+  const expectedConsumers = reviewInput.affectedConsumers ?? [];
   exactKeys(receipt, [
     'schemaVersion', 'status', 'headSha', 'findingDispositions',
     'requirementChecks', 'affectedConsumersReviewed', 'regressions',
@@ -66,10 +81,63 @@ export function validateCorrectionReview(receipt, expectedHead) {
     nonEmpty(disposition.evidence, `findingDispositions[${index}].evidence`);
     nonEmpty(disposition.reasoning, `findingDispositions[${index}].reasoning`);
   }
+  exactCoverage(
+    receipt.findingDispositions.map((entry) => entry.findingId),
+    expectedFindings,
+    'finding',
+  );
+  for (const [index, check] of receipt.requirementChecks.entries()) {
+    exactKeys(check, ['requirement', 'status', 'evidence', 'negativeCases'], `requirementChecks[${index}]`);
+    nonEmpty(check.requirement, `requirementChecks[${index}].requirement`);
+    if (!['satisfied', 'not-satisfied', 'uncertain'].includes(check.status)) {
+      throw new Error('correction requirement status is invalid');
+    }
+    nonEmpty(check.evidence, `requirementChecks[${index}].evidence`);
+    if (!Array.isArray(check.negativeCases) || check.negativeCases.length === 0
+        || check.negativeCases.some((entry) => !nonEmpty(entry))) {
+      throw new Error('correction requirement negative cases are incomplete');
+    }
+  }
+  exactCoverage(
+    receipt.requirementChecks.map((entry) => entry.requirement),
+    expectedRequirements,
+    'requirement',
+  );
+  for (const [index, consumer] of receipt.affectedConsumersReviewed.entries()) {
+    exactKeys(consumer, ['consumer', 'status', 'evidence'], `affectedConsumersReviewed[${index}]`);
+    nonEmpty(consumer.consumer, `affectedConsumersReviewed[${index}].consumer`);
+    if (!['satisfied', 'regressed', 'uncertain'].includes(consumer.status)) {
+      throw new Error('correction consumer status is invalid');
+    }
+    nonEmpty(consumer.evidence, `affectedConsumersReviewed[${index}].evidence`);
+  }
+  exactCoverage(
+    receipt.affectedConsumersReviewed.map((entry) => entry.consumer),
+    expectedConsumers,
+    'consumer',
+  );
+  for (const [index, regression] of receipt.regressions.entries()) {
+    exactKeys(regression, ['id', 'evidence', 'impact'], `regressions[${index}]`);
+    nonEmpty(regression.id, `regressions[${index}].id`);
+    nonEmpty(regression.evidence, `regressions[${index}].evidence`);
+    nonEmpty(regression.impact, `regressions[${index}].impact`);
+  }
+  for (const [index, finding] of receipt.newFindings.entries()) {
+    exactKeys(finding, ['id', 'evidence', 'priority'], `newFindings[${index}]`);
+    nonEmpty(finding.id, `newFindings[${index}].id`);
+    nonEmpty(finding.evidence, `newFindings[${index}].evidence`);
+    nonEmpty(finding.priority, `newFindings[${index}].priority`);
+  }
+  if (receipt.uncertainties.some((entry) => !nonEmpty(entry))) {
+    throw new Error('correction review uncertainty is invalid');
+  }
   if (receipt.status === 'complete'
       && (receipt.regressions.length || receipt.uncertainties.length
+        || receipt.newFindings.length
         || receipt.findingDispositions.some((entry) =>
-          ['not-addressed', 'uncertain'].includes(entry.disposition)))) {
+          ['not-addressed', 'uncertain'].includes(entry.disposition))
+        || receipt.requirementChecks.some((entry) => entry.status !== 'satisfied')
+        || receipt.affectedConsumersReviewed.some((entry) => entry.status !== 'satisfied'))) {
     throw new Error('complete correction review contains unresolved evidence');
   }
   return structuredClone(receipt);
@@ -141,7 +209,7 @@ export async function dispatchCorrectionReview({
   return {
     status: 'complete',
     dispatch: dispatched,
-    review: validateCorrectionReview(parsed, headSha),
+    review: validateCorrectionReview(parsed, reviewInput),
   };
 }
 

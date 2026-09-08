@@ -19,6 +19,8 @@ import {
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
+  reviewPolicyBindingDigest,
+  SEMANTIC_ASSESSMENT_CATEGORIES,
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 const revision = { baseSha: 'base', headSha: 'head' };
@@ -442,6 +444,12 @@ test('tiered review lineage survives head invalidation and validates after repla
   const full = roast({ reviewTier: reviewTier('full') });
   record = recordStage(record, 'roast', full, revision, currentManifest);
   assert.equal(record.qualityEvidence.reviewLineage.lastDeep.headSha, 'head');
+  const baseChanged = invalidateRevisionEvidence(record, {
+    baseSha: 'base-2',
+    headSha: 'head-2',
+  });
+  assert.equal(Object.hasOwn(baseChanged.qualityEvidence, 'reviewLineage'), false);
+  assert.equal(baseChanged.nextAction, 'run-full-review-for-new-authority');
 
   const nextRevision = { baseSha: 'base', headSha: 'head-2' };
   record = invalidateRevisionEvidence(record, nextRevision);
@@ -501,20 +509,44 @@ test('Squadron callable path consumes correction transport without a second full
         evaluationMode: 'operational',
         promotionDecision: {
           approved: true,
-          actor: 'human',
+          actorType: 'human',
+          actorId: 'operator-1',
           decisionId: 'promotion',
           decidedAt: '2026-09-07T00:00:00Z',
+          packetDigest: 'a'.repeat(64),
+          policyBindingDigest: reviewPolicyBindingDigest({ evaluationMode: 'operational' }),
         },
       },
       current,
       lastDeep: { ...current, headSha: 'head-1' },
       previousHead: 'head-1',
       latestDelta: {
-        baseSha: 'head-1', headSha: 'head-2', paths: ['src/a.js'], semanticSignals: [],
+        baseSha: 'head-1',
+        headSha: 'head-2',
+        paths: ['src/a.js'],
+        evidenceComplete: true,
+        semanticAssessment: {
+          complete: true,
+          categories: SEMANTIC_ASSESSMENT_CATEGORIES.map((category) => ({
+            category, changed: false, evidence: `${category} assessed`,
+          })),
+          uncertainties: [],
+        },
       },
       cumulativeDelta: {
-        baseSha: 'head-1', headSha: 'head-2', paths: ['src/a.js'], semanticSignals: [],
+        baseSha: 'head-1',
+        headSha: 'head-2',
+        paths: ['src/a.js'],
+        evidenceComplete: true,
+        semanticAssessment: {
+          complete: true,
+          categories: SEMANTIC_ASSESSMENT_CATEGORIES.map((category) => ({
+            category, changed: false, evidence: `${category} assessed`,
+          })),
+          uncertainties: [],
+        },
       },
+      deltaReconciliation: { complete: true, revertedPaths: [], unexplainedPaths: [] },
       requirements: ['done'],
       originalFindingIds: ['F-1'],
       affectedConsumers: ['consumer-a'],
@@ -534,8 +566,17 @@ test('Squadron callable path consumes correction transport without a second full
           evidence: 'current evidence',
           reasoning: 'requirement satisfied',
         }],
-        requirementChecks: ['done: satisfied'],
-        affectedConsumersReviewed: ['consumer-a'],
+        requirementChecks: [{
+          requirement: 'done',
+          status: 'satisfied',
+          evidence: 'criterion is satisfied',
+          negativeCases: ['failure path remains rejected'],
+        }],
+        affectedConsumersReviewed: [{
+          consumer: 'consumer-a',
+          status: 'satisfied',
+          evidence: 'consumer remains compatible',
+        }],
         regressions: [],
         newFindings: [],
         uncertainties: [],

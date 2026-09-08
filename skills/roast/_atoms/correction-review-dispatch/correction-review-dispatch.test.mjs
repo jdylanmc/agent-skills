@@ -10,7 +10,19 @@ import {
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
+  reviewPolicyBindingDigest,
+  SEMANTIC_ASSESSMENT_CATEGORIES,
 } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
+
+const assessment = {
+  complete: true,
+  categories: SEMANTIC_ASSESSMENT_CATEGORIES.map((category) => ({
+    category,
+    changed: false,
+    evidence: `${category} checked`,
+  })),
+  uncertainties: [],
+};
 
 const input = {
   current: { headSha: 'head-2' },
@@ -33,8 +45,17 @@ const response = (overrides = {}) => JSON.stringify({
     evidence: 'observable assertion passes',
     reasoning: 'the requirement is satisfied',
   }],
-  requirementChecks: ['preserve behavior: satisfied'],
-  affectedConsumersReviewed: ['consumer-a'],
+  requirementChecks: [{
+    requirement: 'preserve behavior',
+    status: 'satisfied',
+    evidence: 'observable behavior is preserved',
+    negativeCases: ['bad input remains rejected'],
+  }],
+  affectedConsumersReviewed: [{
+    consumer: 'consumer-a',
+    status: 'satisfied',
+    evidence: 'consumer contract remains compatible',
+  }],
   regressions: [],
   newFindings: [],
   uncertainties: [],
@@ -92,14 +113,27 @@ test('original findings may be unsupported but unresolved evidence cannot report
       reasoning: 'the original premise is contradicted',
     }],
   }));
-  assert.equal(validateCorrectionReview(rejected, 'head-2').findingDispositions[0].disposition,
+  assert.equal(validateCorrectionReview(rejected, input).findingDispositions[0].disposition,
     'original-finding-unsupported');
   assert.throws(() => validateCorrectionReview(JSON.parse(response({
-    regressions: ['new failure'],
-  })), 'head-2'), /unresolved evidence/);
+    regressions: [{ id: 'R-1', evidence: 'new failure', impact: 'consumer breaks' }],
+  })), input), /unresolved evidence/);
   assert.throws(() => validateCorrectionReview(JSON.parse(response({
     headSha: 'head-1',
-  })), 'head-2'), /stale/);
+  })), input), /stale/);
+  assert.throws(() => validateCorrectionReview(JSON.parse(response({
+    findingDispositions: [],
+  })), input), /finding coverage/);
+  assert.throws(() => validateCorrectionReview(JSON.parse(response({
+    affectedConsumersReviewed: [{
+      consumer: 'wrong-consumer',
+      status: 'satisfied',
+      evidence: 'wrong surface',
+    }],
+  })), input), /consumer coverage/);
+  assert.throws(() => validateCorrectionReview(JSON.parse(response({
+    newFindings: [{ id: 'N-1', evidence: 'new blocker', priority: 'Must fix' }],
+  })), input), /unresolved evidence/);
 });
 
 test('tiered code review consumes correction transport and falls back to full on escalation', async () => {
@@ -111,9 +145,12 @@ test('tiered code review consumes correction transport and falls back to full on
     correctionRoute: CORRECTION_REVIEW_ROUTE,
     promotionDecision: {
       approved: true,
-      actor: 'human',
+      actorType: 'human',
+      actorId: 'operator-1',
       decisionId: 'promotion',
       decidedAt: '2026-09-07T00:00:00Z',
+      packetDigest: 'a'.repeat(64),
+      policyBindingDigest: reviewPolicyBindingDigest({ evaluationMode: 'operational' }),
     },
   };
   const reviewInput = {
@@ -138,14 +175,17 @@ test('tiered code review consumes correction transport and falls back to full on
       baseSha: 'head-1',
       headSha: 'head-2',
       paths: ['src/a.js'],
-      semanticSignals: [],
+      evidenceComplete: true,
+      semanticAssessment: assessment,
     },
     cumulativeDelta: {
       baseSha: 'head-1',
       headSha: 'head-2',
       paths: ['src/a.js'],
-      semanticSignals: [],
+      evidenceComplete: true,
+      semanticAssessment: assessment,
     },
+    deltaReconciliation: { complete: true, revertedPaths: [], unexplainedPaths: [] },
     remediationAttempt: 1,
   };
   const calls = [];

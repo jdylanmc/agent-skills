@@ -9,7 +9,22 @@ import {
   compareReviewWork,
   executeTieredReview,
   normalizeReviewPolicy,
+  reviewPolicyBindingDigest,
+  SEMANTIC_ASSESSMENT_CATEGORIES,
 } from './review-tier-policy.mjs';
+
+const PACKET_DIGEST = 'a'.repeat(64);
+const assessment = (changed = [], uncertainties = []) => ({
+  complete: true,
+  categories: SEMANTIC_ASSESSMENT_CATEGORIES.map((category) => ({
+    category,
+    changed: changed.includes(category),
+    evidence: changed.includes(category)
+      ? `${category} changed`
+      : `${category} checked and unchanged`,
+  })),
+  uncertainties,
+});
 
 const policy = (evaluationMode = 'operational') => ({
   mode: 'tiered',
@@ -18,15 +33,23 @@ const policy = (evaluationMode = 'operational') => ({
   deepRoute: DEEP_REVIEW_ROUTE,
   correctionRoute: CORRECTION_REVIEW_ROUTE,
   promotionDecision: evaluationMode === 'operational'
-    ? { approved: true, actor: 'human', decisionId: 'promote-1', decidedAt: '2026-09-07T00:00:00Z' }
+    ? {
+      approved: true,
+      actorType: 'human',
+      actorId: 'operator-1',
+      decisionId: 'promote-1',
+      decidedAt: '2026-09-07T00:00:00Z',
+      packetDigest: PACKET_DIGEST,
+      policyBindingDigest: reviewPolicyBindingDigest({ evaluationMode }),
+    }
     : null,
 });
 
 const identity = (headSha) => ({
   baseSha: 'base',
   headSha,
-  packetDigest: 'packet',
-  scopeDigest: 'scope',
+  packetDigest: PACKET_DIGEST,
+  scopeDigest: 'b'.repeat(64),
   sourceRevision: 'source',
 });
 
@@ -35,8 +58,21 @@ const eligible = (overrides = {}) => ({
   current: identity('head-2'),
   lastDeep: identity('head-1'),
   previousHead: 'head-1',
-  latestDelta: { baseSha: 'head-1', headSha: 'head-2', paths: ['src/a.js'], semanticSignals: [] },
-  cumulativeDelta: { baseSha: 'head-1', headSha: 'head-2', paths: ['src/a.js'], semanticSignals: [] },
+  latestDelta: {
+    baseSha: 'head-1',
+    headSha: 'head-2',
+    paths: ['src/a.js'],
+    evidenceComplete: true,
+    semanticAssessment: assessment(),
+  },
+  cumulativeDelta: {
+    baseSha: 'head-1',
+    headSha: 'head-2',
+    paths: ['src/a.js'],
+    evidenceComplete: true,
+    semanticAssessment: assessment(),
+  },
+  deltaReconciliation: { complete: true, revertedPaths: [], unexplainedPaths: [] },
   requirements: ['preserve behavior'],
   originalFindingIds: ['F-1'],
   affectedConsumers: ['consumer-a'],
@@ -60,12 +96,18 @@ test('eligible correction is exact-head and cumulative-delta bound', () => {
 
 test('semantic, repeated, stale, and incomplete inputs cannot enter the fast path', () => {
   assert.equal(classifyReviewTier(eligible({
-    latestDelta: { baseSha: 'head-1', headSha: 'head-2', paths: ['src/a.js'], semanticSignals: ['authority'] },
+    latestDelta: {
+      baseSha: 'head-1',
+      headSha: 'head-2',
+      paths: ['src/a.js'],
+      evidenceComplete: true,
+      semanticAssessment: assessment(['authority']),
+    },
   })).outcome, 'full-review-required');
   assert.equal(classifyReviewTier(eligible({ remediationAttempt: 2 })).outcome, 'full-review-required');
   assert.equal(classifyReviewTier(eligible({
-    current: { ...identity('head-2'), packetDigest: 'changed' },
-  })).outcome, 'full-review-required');
+    current: { ...identity('head-2'), packetDigest: 'c'.repeat(64) },
+  })).outcome, 'needs-human');
   assert.equal(classifyReviewTier(eligible({
     validation: { headSha: 'head-1', complete: true },
   })).outcome, 'incomplete-evidence');
@@ -84,6 +126,51 @@ test('unconfirmed routes and operational use without human promotion are refused
     ...policy(),
     promotionDecision: null,
   }), /explicit human promotion/);
+  for (const actorId of ['agent', 'self', 'system']) {
+    assert.throws(() => normalizeReviewPolicy({
+      ...policy(),
+      promotionDecision: { ...policy().promotionDecision, actorId },
+    }), /not human-owned/);
+  }
+  assert.throws(() => normalizeReviewPolicy({
+    ...policy(),
+    promotionDecision: {
+      ...policy().promotionDecision,
+      policyBindingDigest: 'f'.repeat(64),
+    },
+  }), /policy binding/);
+});
+
+test('complete semantic and delta reconciliation evidence is mandatory', () => {
+  assert.throws(() => classifyReviewTier(eligible({
+    latestDelta: {
+      ...eligible().latestDelta,
+      evidenceComplete: false,
+    },
+  })), /revision binding|incomplete/);
+  assert.throws(() => classifyReviewTier(eligible({
+    cumulativeDelta: {
+      ...eligible().cumulativeDelta,
+      paths: ['test/unrelated.js'],
+    },
+  })), /completely reconciled/);
+  assert.equal(classifyReviewTier(eligible({
+    cumulativeDelta: {
+      ...eligible().cumulativeDelta,
+      paths: [],
+    },
+    deltaReconciliation: {
+      complete: true,
+      revertedPaths: [{ path: 'src/a.js', evidence: 'reverted to the deep-reviewed baseline' }],
+      unexplainedPaths: [],
+    },
+  })).outcome, 'correction-verification');
+  assert.equal(classifyReviewTier(eligible({
+    latestDelta: {
+      ...eligible().latestDelta,
+      semanticAssessment: assessment([], ['public contract impact is uncertain']),
+    },
+  })).outcome, 'full-review-required');
 });
 
 test('callable seam reduces review work and escalates or shadows to full', async () => {
@@ -93,6 +180,22 @@ test('callable seam reduces review work and escalates or shadows to full', async
     correctionReview: async () => {
       calls.push('correction');
       return { status: 'complete' };
+    },
+    fullReview: async () => {
+      calls.push('full');
+      return { status: 'complete' };
+    },
+  });
+
+  assert.deepEqual(calls, ['correction']);
+  assert.equal(operational.authoritative, 'correction');
+
+  calls.length = 0;
+  const escalated = await executeTieredReview({
+    input: eligible(),
+    correctionReview: async () => {
+      calls.push('correction');
+      return { status: 'escalate-full' };
     },
     fullReview: async () => {
       calls.push('full');
@@ -125,21 +228,6 @@ test('callable seam reduces review work and escalates or shadows to full', async
       full: { headSha: 'a', durationMs: 1, dispatchCount: 1, findingIds: [], modelId: 'gpt-5.6-sol' },
       correction: { headSha: 'b', durationMs: 1, dispatchCount: 1, findingIds: [], modelId: 'gpt-5.6-sol' },
     }), /heads do not match/);
-  });
-  assert.deepEqual(calls, ['correction']);
-  assert.equal(operational.authoritative, 'correction');
-
-  calls.length = 0;
-  const escalated = await executeTieredReview({
-    input: eligible(),
-    correctionReview: async () => {
-      calls.push('correction');
-      return { status: 'escalate-full' };
-    },
-    fullReview: async () => {
-      calls.push('full');
-      return { status: 'complete' };
-    },
   });
   assert.deepEqual(calls, ['correction', 'full']);
   assert.equal(escalated.authoritative, 'full');

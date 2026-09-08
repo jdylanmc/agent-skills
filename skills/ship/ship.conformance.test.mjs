@@ -35,6 +35,8 @@ import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
+  reviewPolicyBindingDigest,
+  SEMANTIC_ASSESSMENT_CATEGORIES,
 } from '../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 import {
   runTieredCodeReview,
@@ -174,6 +176,15 @@ function read(relativePath) {
 }
 
 function tieredInput(semanticSignals = []) {
+  const assessment = {
+    complete: true,
+    categories: SEMANTIC_ASSESSMENT_CATEGORIES.map((category) => ({
+      category,
+      changed: semanticSignals.includes(category),
+      evidence: `${category} assessed`,
+    })),
+    uncertainties: [],
+  };
   const policy = {
     mode: 'tiered',
     policyVersion: 1,
@@ -182,9 +193,12 @@ function tieredInput(semanticSignals = []) {
     correctionRoute: CORRECTION_REVIEW_ROUTE,
     promotionDecision: {
       approved: true,
-      actor: 'human',
+      actorType: 'human',
+      actorId: 'operator-1',
       decisionId: 'ship-tier-pilot',
       decidedAt: '2026-09-07T00:00:00Z',
+      packetDigest: REVIEW_DIGEST,
+      policyBindingDigest: reviewPolicyBindingDigest({ evaluationMode: 'operational' }),
     },
   };
   const identity = (headSha) => ({
@@ -203,14 +217,17 @@ function tieredInput(semanticSignals = []) {
       baseSha: HEAD,
       headSha: RESULTING_HEAD,
       paths: ['src/fix.js'],
-      semanticSignals,
+      evidenceComplete: true,
+      semanticAssessment: assessment,
     },
     cumulativeDelta: {
       baseSha: HEAD,
       headSha: RESULTING_HEAD,
       paths: ['src/fix.js'],
-      semanticSignals,
+      evidenceComplete: true,
+      semanticAssessment: assessment,
     },
+    deltaReconciliation: { complete: true, revertedPaths: [], unexplainedPaths: [] },
     requirements: ['preserve the confirmed behavior'],
     originalFindingIds: ['F-1'],
     affectedConsumers: ['consumer-a'],
@@ -236,8 +253,17 @@ test('Ship opt-in calls one correction review after the initial full review and 
           evidence: 'the current assertion passes',
           reasoning: 'the original requirement is satisfied',
         }],
-        requirementChecks: ['confirmed behavior: satisfied'],
-        affectedConsumersReviewed: ['consumer-a'],
+        requirementChecks: [{
+          requirement: 'preserve the confirmed behavior',
+          status: 'satisfied',
+          evidence: 'behavior is preserved',
+          negativeCases: ['invalid input remains rejected'],
+        }],
+        affectedConsumersReviewed: [{
+          consumer: 'consumer-a',
+          status: 'satisfied',
+          evidence: 'consumer remains compatible',
+        }],
         regressions: [],
         newFindings: [],
         uncertainties: [],

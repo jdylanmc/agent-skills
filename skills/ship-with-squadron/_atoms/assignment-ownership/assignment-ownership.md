@@ -29,6 +29,10 @@ When an issue opts into tiered review, its exact normalized `reviewPolicy` is
 copied into the assignment packet. Full-review packets omit the field.
 Continuation requires the unchanged original packet, so replacement cannot
 silently enable, disable, or reroute tiering.
+Because continuation advances assignment generation, it clears any retained
+review lineage and removes the current Roast stage before the new owner is
+persisted. The continued run therefore remains valid and explicitly requires a
+new full review.
 Assignment also consumes a scheduler lease bound to the confirmed manifest,
 provider configuration, exact fleet-state revision, recomputed dependency
 frontier, current `capacity.dispatch`, and active count. The compare-and-swap

@@ -21,6 +21,10 @@ The first review is always full. A later correction verification requires the
 exact current revision, the last deep-review receipt, the latest correction
 delta, the cumulative delta from the deep-reviewed head, original requirements
 and findings, affected consumers, and current validation.
+Both deltas carry complete per-category semantic assessments with evidence.
+Latest paths must reconcile to the cumulative net diff or to an evidenced
+reversion back to the deep-reviewed baseline. Missing assessment, unexplained
+paths, or uncertainty escalates.
 
 The verifier checks the requirement and the correction, including negative
 cases and regressions. It may reject the original finding or escalate. It never
@@ -38,7 +42,9 @@ use high effort and default context. Runtime default, mini, flash, older, and
 unlisted models are forbidden.
 
 Baseline and shadow modes keep full review authoritative. Operational use
-requires an explicit human promotion receipt. This atom approves nothing and
+requires an explicit human-owned promotion receipt bound to the confirmed
+packet digest and the normalized policy digest; agent, self, and system actors
+are refused. This atom approves nothing and
 owns no persistence, dispatch, cancellation, or orchestration.
 
 Compare baseline and correction work only for the same exact head. Record

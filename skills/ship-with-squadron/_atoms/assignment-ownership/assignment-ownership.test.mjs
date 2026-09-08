@@ -33,7 +33,10 @@ import {
 import {
   persistOrchestrationHandoff,
 } from '../../../_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.mjs';
-import { reviewPolicyDigest } from '../quality-evidence/quality-evidence.mjs';
+import {
+  recordStage,
+  reviewPolicyDigest,
+} from '../quality-evidence/quality-evidence.mjs';
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
@@ -258,36 +261,68 @@ test('tiered manifest policy is bound into the assignment packet', () => {
     assignedState.issues.a.assignment.packet.reviewPolicy,
     tieredManifest.issues[0].reviewPolicy,
   );
-  assignedState.issues.a.qualityEvidence.reviewLineage = {
-    policyDigest: reviewPolicyDigest(tieredManifest.issues[0].reviewPolicy),
-    packetDigest: 'a'.repeat(64),
-    scopeDigest: 'b'.repeat(64),
-    sourceRevision: 'r-a',
-    assignmentGeneration: 1,
-    cumulativeDiffBase: currentRevision(),
-    lastDeep: {
-      baseSha: currentRevision(),
-      headSha: currentRevision(),
-      receiptDigest: 'c'.repeat(64),
-      modelRouting: [
-        'architecture-candidate',
-        'qa-reviewer',
-        'security-reviewer',
-        'roastmaster-coordinate',
-        'roastmaster-synthesize',
-      ].map((seat) => ({
-        seat,
-        role: seat,
-        requestedModel: 'gpt-6-astra',
-        selectedModel: 'gpt-6-astra',
-        actualModel: 'gpt-6-astra',
-        actualModelStatus: 'matched-selection',
-        reasoningEffort: 'high',
-        contextTier: 'default',
-      })),
+  const revision = { baseSha: currentRevision(), headSha: currentRevision() };
+  let reviewed = assignedState.issues.a;
+  reviewed = recordStage(reviewed, 'implementation', {
+    ...revision,
+    status: 'completed',
+    complete: true,
+    terminal: true,
+    completedAt: '2026-08-30T00:02:00Z',
+  }, revision, tieredManifest);
+  reviewed = recordStage(reviewed, 'diff-reconciliation', {
+    ...revision,
+    verdict: 'reconciled',
+    complete: true,
+    terminal: true,
+    completedAt: '2026-08-30T00:03:00Z',
+  }, revision, tieredManifest);
+  reviewed = recordStage(reviewed, 'run-ci', {
+    invocation: { skill: 'run-ci', id: 'ci-tiered', runId: 'tiered-run', issue: 'a' },
+    ...revision,
+    status: 'passed',
+    complete: true,
+    terminal: true,
+    evidenceComplete: true,
+    completedAt: '2026-08-30T00:04:00Z',
+    steps: [{ name: 'tests', status: 'passed' }],
+  }, revision, tieredManifest);
+  const modelRouting = [
+    'architecture-candidate',
+    'qa-reviewer',
+    'security-reviewer',
+    'roastmaster-coordinate',
+    'roastmaster-synthesize',
+  ].map((seat) => ({
+    seat,
+    role: seat,
+    requestedModel: 'gpt-6-astra',
+    selectedModel: 'gpt-6-astra',
+    actualModel: 'gpt-6-astra',
+    actualModelStatus: 'matched-selection',
+    reasoningEffort: 'high',
+    contextTier: 'default',
+  }));
+  reviewed = recordStage(reviewed, 'roast', {
+    invocation: { skill: 'roast', id: 'roast-tiered', runId: 'tiered-run', issue: 'a' },
+    ...revision,
+    status: 'completed',
+    complete: true,
+    terminal: true,
+    evidenceComplete: true,
+    completedAt: '2026-08-30T00:05:00Z',
+    findings: [],
+    reviewTier: {
+      kind: 'full',
+      policyDigest: reviewPolicyDigest(tieredManifest.issues[0].reviewPolicy),
+      packetDigest: 'a'.repeat(64),
+      scopeDigest: 'b'.repeat(64),
+      sourceRevision: 'r-a',
+      assignmentGeneration: 1,
+      modelRouting,
     },
-    latestCorrection: null,
-  };
+  }, revision, tieredManifest);
+  assignedState.issues.a = reviewed;
   const file = fleetStatePath(REPOSITORY, 'tiered-run');
   const persisted = persistFleetState(file, assignedState, 0, tieredManifest);
   const replayed = loadFleetState(file, tieredManifest);
@@ -296,7 +331,12 @@ test('tiered manifest policy is bound into the assignment packet', () => {
     persisted.issues.a.qualityEvidence.reviewLineage,
   );
   const forged = structuredClone(replayed);
-  forged.issues.a.pipeline = [{
+  forged.issues.a.qualityEvidence.reviewLineage.lastDeep.receipt = {};
+  forged.issues.a.qualityEvidence.reviewLineage.lastDeep.receiptDigest =
+    reviewPolicyDigest({});
+  assert.throws(() => assertFleetState(forged, tieredManifest), /retained accepted full review/);
+  const missing = structuredClone(replayed);
+  missing.issues.a.pipeline = [{
     stage: 'implementation',
     evidence: {
       baseSha: currentRevision(),
@@ -343,8 +383,8 @@ test('tiered manifest policy is bound into the assignment packet', () => {
       findings: [],
     },
   }];
-  forged.issues.a.qualityEvidence = {};
-  assert.throws(() => assertFleetState(forged, tieredManifest), /lacks review lineage/);
+  missing.issues.a.qualityEvidence = {};
+  assert.throws(() => assertFleetState(missing, tieredManifest), /lacks review lineage/);
 });
 
 function handoffPayload(target = 'worker-2') {
@@ -866,7 +906,12 @@ test('continues only after rereading actual orchestration-handoff persistence ou
     now: new Date('2026-08-30T00:02:30Z'),
   });
 
-  const continued = continueWithFreshWorker(assigned(), manifest, {
+  const priorState = assigned();
+  priorState.issues.a.qualityEvidence.reviewLineage = { stale: true };
+  priorState.issues.a.pipeline = [
+    { stage: 'roast', evidence: { baseSha: currentRevision(), headSha: currentRevision() } },
+  ];
+  const continued = continueWithFreshWorker(priorState, manifest, {
     issue: 'a',
     reason: 'stalled',
     handoff: persisted,
@@ -880,6 +925,9 @@ test('continues only after rereading actual orchestration-handoff persistence ou
   });
   assert.equal(continued.issues.a.status, 'active');
   assert.equal(continued.issues.a.assignment.generation, 2);
+  assert.equal(Object.hasOwn(continued.issues.a.qualityEvidence, 'reviewLineage'), false);
+  assert.equal(continued.issues.a.pipeline.some((entry) => entry.stage === 'roast'), false);
+  assert.equal(continued.issues.a.nextAction, 'run-full-review-for-new-assignment-generation');
   assert.equal(continued.issues.a.continuationChain[0].endReason, 'stalled');
   assert.equal(
     continued.issues.a.continuationChain[0].handoff.identity.targetAgent,
