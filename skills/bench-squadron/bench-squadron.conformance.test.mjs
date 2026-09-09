@@ -149,3 +149,63 @@ test('adapts validated Bench transitions to Atomic Transition and its Fleet Stat
   assert.match(documentation, /compare-and-swap adapter/i);
   assert.match(control, /delegates the compatible durable write/i);
 });
+
+test('bounds preparation separately and exits without silently renewing or changing authority', () => {
+  const entry = read(ENTRY).replace(/\s+/g, ' ');
+  const control = read(MOLECULE).replace(/\s+/g, ' ');
+  assert.match(entry, /same confirmation, bound preparation separately from execution/i);
+  assert.match(entry, /preparation exit before promising overnight delivery/i);
+  for (const requirement of [
+    /finite preparation budget, its start time, the execution budget/i,
+    /absolute cutoff and timezone/i,
+    /Retries and changed probe designs consume that same budget/i,
+    /Before each preparation action, compare the current time/i,
+    /Reaching either deadline ends preparation/i,
+    /Preparation does not extend the overall cutoff/i,
+    /coordination checks, not a claim of runtime hard cancellation/i,
+    /whether execution and notification require this session to remain open/i,
+    /Prepared:.*This is not a running claim/i,
+    /Authorized fallback:.*operator's prior authorization/i,
+    /different workflow is an explicit handoff/i,
+    /Without an authorized fallback, do not silently switch modes/i,
+    /Do not begin another setup project at exhaustion/i,
+  ]) assert.match(control.replaceAll('**', ''), requirement);
+});
+
+test('running requires accepted revision-bound ownership and fresh execution, not setup artifacts', () => {
+  const entry = read(ENTRY).replace(/\s+/g, ' ');
+  const control = read(MOLECULE).replace(/\s+/g, ' ');
+  assert.match(entry, /Report `running` only after accepted delivery ownership and a current runtime observation/i);
+  for (const requirement of [
+    /exact run, assignment, agent identity, owned worktree and candidate revision, Fleet State revision, and Bench epoch/i,
+    /acknowledgement accepting that bounded assignment from its actual delivery owner/i,
+    /generic task-registry `running` label without accepted assignment evidence is insufficient/i,
+    /cannot replace a Fleet State reservation or proposal signature/i,
+    /`waiting` \| The accepted owner is waiting, idle, or awaiting a result/i,
+    /`unconfirmed` \| Ownership or current execution evidence is missing, stale, or mismatched/i,
+    /worktree, plan, probe, queued dispatch, or scheduled morning reminder cannot establish `running`/i,
+    /Name the receipt and observation time/i,
+    /rebind acceptance and reobserve execution before renewing the claim/i,
+    /After a session gap, report the gap and reobserve/i,
+    /never imply completed delivery, review readiness, or confirmed cancellation/i,
+  ]) assert.match(control, requirement);
+});
+
+test('inconclusive probes block dependent operations without excusing required gates', () => {
+  const entry = read(ENTRY).replace(/\s+/g, ' ');
+  const control = read(MOLECULE).replace(/\s+/g, ' ');
+  assert.match(entry, /pre-readiness timeout is `inconclusive`/i);
+  for (const requirement of [
+    /Before a probe, name the capability, the operations that require it/i,
+    /Exercise the behavior only after observing that handshake/i,
+    /startup timeout or cancellation before the tested boundary is reached is `inconclusive`, not `unsupported`/i,
+    /cancellation acknowledgement is not proof of termination/i,
+    /root-session observation does not prove descendant coverage/i,
+    /Failed or unproven required prerequisites block that operation and its dependent operations/i,
+    /mandatory global gate still blocks every operation it governs/i,
+    /Continue independent work only when its own prerequisites are satisfied/i,
+    /Unknown dependency or authority is not evidence of independence/i,
+    /do not treat uncertainty as permission/i,
+    /Preserve the unresolved condition in every partial result and handoff/i,
+  ]) assert.match(control, requirement);
+});
