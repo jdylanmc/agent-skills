@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "node scripts/compaction-rehydration-hook.mjs sessionStart",
+        "powershell": "node scripts/compaction-rehydration-hook.mjs sessionStart",
+        "cwd": ".",
+        "timeoutSec": 3
+      }
+    ],
+    "preCompact": [
+      {
+        "type": "command",
+        "bash": "node scripts/compaction-rehydration-hook.mjs preCompact",
+        "powershell": "node scripts/compaction-rehydration-hook.mjs preCompact",
+        "cwd": ".",
+        "timeoutSec": 3
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "node scripts/compaction-rehydration-hook.mjs preToolUse",
+        "powershell": "node scripts/compaction-rehydration-hook.mjs preToolUse",
+        "cwd": ".",
+        "timeoutSec": 3
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "node scripts/compaction-rehydration-hook.mjs postToolUse",
+        "powershell": "node scripts/compaction-rehydration-hook.mjs postToolUse",
+        "cwd": ".",
+        "timeoutSec": 3
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "node scripts/compaction-rehydration-hook.mjs agentStop",
+        "powershell": "node scripts/compaction-rehydration-hook.mjs agentStop",
+        "cwd": ".",
+        "timeoutSec": 3
+      }
+    ]
+  }
+}

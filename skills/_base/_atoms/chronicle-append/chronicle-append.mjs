@@ -2,12 +2,14 @@
 /**
  * The one emit entry point for Chronicle consumers.
  *
- * Exit 0 means the event was appended. Any non-zero exit prints a stable
- * failure category on standard error; the caller reports it, marks evidence
- * incomplete, and continues delivery.
+ * Chronicle recording is best effort. Run lifecycle registration is a separate
+ * required control operation: non-timeout failures return non-zero, while an
+ * actual registration timeout remains explicitly fail-open.
  */
 
 import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { emitEvent, ChronicleError } from '../../_molecules/chronicler/chronicler.mjs';
@@ -91,7 +93,9 @@ export function parseArguments(argv) {
   };
 }
 
-export function run(argv, streams = process) {
+export function run(argv, streams = process, options = {}) {
+  const spawn = options.spawnSync ?? spawnSync;
+  const registrationTimeoutMs = options.registrationTimeoutMs ?? 3000;
   let parsed;
   try {
     parsed = parseArguments(argv);
@@ -107,6 +111,63 @@ export function run(argv, streams = process) {
 
   try {
     emitEvent(parsed.input, parsed.context);
+    {
+      const logDirectory = path.dirname(parsed.context.log_path);
+      const lifecycleRegistration =
+        parsed.input.event === 'run' &&
+        (parsed.input.phase === 'before' || parsed.input.phase === 'after');
+      if (path.basename(logDirectory) !== '.skill-log') {
+        const reason = 'invalid-log-root: log is not directly below .skill-log';
+        if (lifecycleRegistration) {
+          streams.stdout.write(`${JSON.stringify({ recorded: true, rehydrationTracked: false })}\n`);
+          streams.stderr.write(`rehydration_registration_failed: Chronicle event recorded; ${reason}\n`);
+          return 2;
+        }
+        streams.stderr.write(`rehydration_tracking_failed: ${reason}\n`);
+      } else {
+        const repositoryRoot = path.dirname(logDirectory);
+        const tracker = path.join(repositoryRoot, 'scripts', 'compaction-rehydration-register.mjs');
+        const result = spawn(process.execPath, [tracker], {
+          input: JSON.stringify({
+            repositoryRoot,
+            sessionId: parsed.context.session_id,
+            runId: parsed.context.run_id,
+            rootSkill: parsed.context.root_skill,
+            skill: parsed.input.skill,
+            logPath: parsed.context.log_path,
+            event: parsed.input.event,
+            phase: parsed.input.phase,
+            operation: parsed.input.operation,
+            outcome: parsed.input.outcome,
+          }),
+          encoding: 'utf8',
+          timeout: registrationTimeoutMs,
+        });
+        if (result.status !== 0) {
+          const reason = result.error?.message ?? result.stderr.trim() ?? `exit ${result.status}`;
+          if (result.error?.code === 'ETIMEDOUT') {
+            if (lifecycleRegistration) {
+              streams.stderr.write(`rehydration_registration_timeout: ${reason}; continuing fail-open\n`);
+              streams.stdout.write(`${JSON.stringify({
+                recorded: true,
+                rehydrationTracked: false,
+                registrationTimeout: true,
+              })}\n`);
+              return 0;
+            }
+            streams.stderr.write(`rehydration_tracking_timeout: ${reason}; continuing fail-open\n`);
+          } else if (lifecycleRegistration) {
+            streams.stdout.write(`${JSON.stringify({ recorded: true, rehydrationTracked: false })}\n`);
+            streams.stderr.write(
+              `rehydration_registration_failed: Chronicle event recorded; ${reason}\n`,
+            );
+            return 2;
+          } else {
+            streams.stderr.write(`rehydration_tracking_failed: ${reason}\n`);
+          }
+        }
+      }
+    }
     streams.stdout.write(`${JSON.stringify({ recorded: true })}\n`);
     return 0;
   } catch (error) {

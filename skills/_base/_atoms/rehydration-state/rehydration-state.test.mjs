@@ -1,0 +1,588 @@
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import {
+  acknowledgeRead,
+  agentStopFallback,
+  arm,
+  buildCanonicalManifest,
+  correlateSession,
+  expectedRead,
+  MAX_AGENT_STOP_BLOCKS,
+  readState,
+  registerRun,
+  statePath,
+  STATES,
+} from './rehydration-state.mjs';
+
+const ROOT = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..', '..', '..', '..',
+  '.test-sandbox',
+  'rehydration-state',
+);
+
+function repo(name) {
+  const root = path.join(ROOT, name);
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.mkdirSync(path.join(root, 'skills', 'root'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'skills', 'nested'), { recursive: true });
+  fs.mkdirSync(path.join(root, '.skill-log'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'intent.md'), '# fixture\n');
+  fs.writeFileSync(
+    path.join(root, 'skills', 'root', 'SKILL.md'),
+    '---\nname: root\nincludes: ["root/ref.md"]\ncomposes: []\n---\nroot instructions\n',
+  );
+  fs.writeFileSync(
+    path.join(root, 'skills', 'root', 'ref.md'),
+    '---\nname: ref\nincludes: []\ncomposes: []\n---\nroot reference\n',
+  );
+  fs.writeFileSync(
+    path.join(root, 'skills', 'nested', 'SKILL.md'),
+    '---\nname: nested\nincludes: []\ncomposes: []\n---\nnested instructions\n',
+  );
+  fs.writeFileSync(path.join(root, '.skill-log', 'root.jsonl'), '');
+  return root;
+}
+
+function register(root, skill = 'root', runId = 'run-1') {
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    runId,
+    rootSkill: 'root',
+    skill,
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+}
+
+function resultEvidence(root, relativePath) {
+  const bytes = fs.readFileSync(path.join(root, relativePath));
+  return {
+    status: 'success',
+    bytes: bytes.length,
+    digest: crypto.createHash('sha256').update(bytes).digest('hex'),
+  };
+}
+
+test.after(() => fs.rmSync(ROOT, { recursive: true, force: true }));
+
+test('root and nested runs arm one ordered canonical read set', () => {
+  const root = repo('nested');
+  register(root);
+  register(root, 'nested', 'run-1');
+  const result = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  assert.equal(result.status, STATES.required);
+  assert.deepEqual(result.files, [
+    'skills/root/SKILL.md',
+    'skills/root/ref.md',
+    'skills/nested/SKILL.md',
+  ]);
+});
+
+test('a nested run ending during recovery persists a blocked marker', () => {
+  const root = repo('nested-after');
+  register(root);
+  register(root, 'nested', 'run-1');
+  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    runId: 'run-1',
+    rootSkill: 'root',
+    skill: 'nested',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'after',
+  });
+
+  const state = readState(root, 'session-1');
+  assert.equal(state.status, STATES.degraded);
+  assert.equal(state.degradedReason, 'active-run-ended-during-rehydration');
+  assert.equal(state.latch, undefined);
+  assert.equal(expectedRead(root, 'session-1').status, STATES.degraded);
+});
+
+test('the final active run ending mid-rehydration cannot impersonate successful delivery', () => {
+  const root = repo('final-after');
+  register(root);
+  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    runId: 'run-1',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'after',
+  });
+
+  const state = readState(root, 'session-1');
+  assert.equal(state.status, STATES.degraded);
+  assert.equal(state.degradedReason, 'all-runs-ended-during-rehydration');
+  assert.equal(state.stack.length, 0);
+  assert.equal(agentStopFallback(root, 'session-1', false).decision, 'block');
+  assert.equal(agentStopFallback(root, 'session-1', false).decision, 'allow');
+});
+
+test('a run starting during recovery cannot disable the armed latch', () => {
+  const root = repo('nested-before');
+  register(root);
+  const armed = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  register(root, 'nested', 'run-2');
+  const state = readState(root, 'session-1');
+  assert.equal(state.status, STATES.required);
+  assert.deepEqual(state.latch.remaining.map((file) => file.path), [
+    ...armed.files,
+    'skills/nested/SKILL.md',
+  ]);
+});
+
+test('malformed persisted status, generation, and latch state fails closed', () => {
+  const cases = [
+    ['unknown status', (state) => { state.status = 'active-ish'; }],
+    ['transient status', (state) => { state.status = STATES.compacting; }],
+    ['negative generation', (state) => { state.generation = -1; }],
+    ['fractional generation', (state) => { state.generation = 1.5; }],
+    ['latch generation mismatch', (state) => { state.latch.generation += 1; }],
+    ['missing latch', (state) => { delete state.latch; }],
+    ['empty latch', (state) => { state.latch.remaining = []; }],
+    ['latch outside required state', (state) => { state.status = STATES.active; }],
+    ['removed latch disguised as active', (state) => {
+      delete state.latch;
+      state.status = STATES.active;
+    }],
+    ['removed latch disguised as rehydrated', (state) => {
+      delete state.latch;
+      state.status = STATES.rehydrated;
+    }],
+    ['armed generation marked complete', (state) => {
+      state.lastCompletedGeneration = state.generation;
+    }],
+    ['lifecycle generation mismatch', (state) => {
+      state.lifecycle.generation += 1;
+    }],
+    ['malformed latch counter', (state) => { state.latch.agentStopBlocks = -1; }],
+    ['malformed latch flag', (state) => { state.latch.enforcementRecorded = 'false'; }],
+    ['unsafe unread path', (state) => { state.latch.remaining[0].path = '../outside'; }],
+    ['unbound unread identity', (state) => { state.latch.remaining[0].runId = 'other-run'; }],
+    ['wrong persisted session', (state) => { state.sessionId = 'other-session'; }],
+  ];
+
+  for (const [name, mutate] of cases) {
+    const root = repo(`malformed-${name.replaceAll(' ', '-')}`);
+    register(root);
+    arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+    const target = statePath(root, 'session-1');
+    const state = JSON.parse(fs.readFileSync(target, 'utf8'));
+    mutate(state);
+    fs.writeFileSync(target, `${JSON.stringify(state)}\n`);
+
+    assert.throws(
+      () => expectedRead(root, 'session-1'),
+      (error) => error?.code === 'invalid-state',
+      name,
+    );
+  }
+});
+
+test('a later registration cannot clear a mid-rehydration degraded marker', () => {
+  const root = repo('degraded-before');
+  register(root);
+  register(root, 'nested', 'run-1');
+  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    runId: 'run-1',
+    rootSkill: 'root',
+    skill: 'nested',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'after',
+  });
+  register(root, 'nested', 'run-2');
+  assert.equal(readState(root, 'session-1').status, STATES.degraded);
+  assert.equal(arm({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    trigger: 'auto',
+  }).status, STATES.degraded);
+});
+
+test('resume correlation cannot replace a terminal degraded marker', () => {
+  const root = repo('degraded-correlation');
+  register(root);
+  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    runId: 'run-1',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'after',
+  });
+  registerRun({
+    repositoryRoot: root,
+    runId: 'run-2',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+
+  assert.deepEqual(correlateSession(root, 'session-1'), {
+    status: STATES.degraded,
+    reason: 'all-runs-ended-during-rehydration',
+  });
+  const state = readState(root, 'session-1');
+  assert.equal(state.status, STATES.degraded);
+  assert.equal(state.degradedReason, 'all-runs-ended-during-rehydration');
+  assert.equal(agentStopFallback(root, 'session-1', false).decision, 'block');
+  assert.equal(agentStopFallback(root, 'session-1', false).decision, 'allow');
+});
+
+test('a complete exact read sequence clears once and returns a bounded checkpoint', () => {
+  const root = repo('complete');
+  register(root);
+  const armed = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'manual' });
+  let result;
+  for (const relativePath of armed.files) {
+    result = acknowledgeRead({
+      repositoryRoot: root,
+      sessionId: 'session-1',
+      generation: armed.generation,
+      relativePath,
+      resultEvidence: resultEvidence(root, relativePath),
+    });
+  }
+  assert.equal(result.status, STATES.rehydrated);
+  assert.match(result.checkpoint, /do not invoke those skills again/);
+  assert.equal(acknowledgeRead({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    generation: armed.generation,
+    relativePath: armed.files.at(-1),
+    resultEvidence: resultEvidence(root, armed.files.at(-1)),
+  }).status, 'inactive');
+});
+
+test('repeated compaction replaces the latch with a fresh generation', () => {
+  const root = repo('repeat');
+  register(root);
+  const first = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  const second = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  assert.equal(second.generation, first.generation + 1);
+  assert.deepEqual(second.files, first.files);
+  const stale = acknowledgeRead({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    generation: first.generation,
+    relativePath: first.files[0],
+    resultEvidence: resultEvidence(root, first.files[0]),
+  });
+  assert.equal(stale.reason, 'stale-packet');
+  assert.equal(readState(root, 'session-1').status, STATES.required);
+});
+
+test('wrong path identity and digest drift degrade explicitly', () => {
+  const wrong = repo('wrong');
+  register(wrong);
+  const wrongArmed = arm({ repositoryRoot: wrong, sessionId: 'session-1', trigger: 'auto' });
+  assert.equal(acknowledgeRead({
+    repositoryRoot: wrong,
+    sessionId: 'session-1',
+    generation: wrongArmed.generation,
+    relativePath: 'skills/nested/SKILL.md',
+    resultEvidence: resultEvidence(wrong, wrongArmed.files[0]),
+  }).reason, 'wrong-identity');
+
+  const drift = repo('drift');
+  register(drift);
+  const driftArmed = arm({ repositoryRoot: drift, sessionId: 'session-1', trigger: 'auto' });
+  const delivered = resultEvidence(drift, driftArmed.files[0]);
+  fs.appendFileSync(path.join(drift, driftArmed.files[0]), '\ndrift\n');
+  assert.equal(acknowledgeRead({
+    repositoryRoot: drift,
+    sessionId: 'session-1',
+    generation: driftArmed.generation,
+    relativePath: driftArmed.files[0],
+    resultEvidence: delivered,
+  }).reason, 'digest-drift');
+});
+
+test('model-facing result evidence must be successful, well-formed, and canonical', () => {
+  const malformed = repo('evidence-malformed');
+  register(malformed);
+  const malformedArmed = arm({
+    repositoryRoot: malformed,
+    sessionId: 'session-1',
+    trigger: 'auto',
+  });
+  assert.equal(acknowledgeRead({
+    repositoryRoot: malformed,
+    sessionId: 'session-1',
+    generation: malformedArmed.generation,
+    relativePath: malformedArmed.files[0],
+  }).reason, 'tool-result-malformed');
+
+  const unsuccessful = repo('evidence-unsuccessful');
+  register(unsuccessful);
+  const unsuccessfulArmed = arm({
+    repositoryRoot: unsuccessful,
+    sessionId: 'session-1',
+    trigger: 'auto',
+  });
+  assert.equal(acknowledgeRead({
+    repositoryRoot: unsuccessful,
+    sessionId: 'session-1',
+    generation: unsuccessfulArmed.generation,
+    relativePath: unsuccessfulArmed.files[0],
+    resultEvidence: { status: 'not-success' },
+  }).reason, 'tool-result-not-success');
+
+  const mismatch = repo('evidence-mismatch');
+  register(mismatch);
+  const mismatchArmed = arm({
+    repositoryRoot: mismatch,
+    sessionId: 'session-1',
+    trigger: 'auto',
+  });
+  assert.equal(acknowledgeRead({
+    repositoryRoot: mismatch,
+    sessionId: 'session-1',
+    generation: mismatchArmed.generation,
+    relativePath: mismatchArmed.files[0],
+    resultEvidence: {
+      status: 'success',
+      bytes: 1,
+      digest: crypto.createHash('sha256').update('B').digest('hex'),
+    },
+  }).reason, 'tool-result-content-mismatch');
+});
+
+test('wrong run, skill, and session identities never acknowledge the packet', () => {
+  const root = repo('identity');
+  register(root);
+  const armed = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  assert.equal(acknowledgeRead({
+    repositoryRoot: root,
+    sessionId: 'other-session',
+    generation: armed.generation,
+    relativePath: armed.files[0],
+    resultEvidence: resultEvidence(root, armed.files[0]),
+  }).status, 'inactive');
+  assert.equal(acknowledgeRead({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    generation: armed.generation,
+    relativePath: armed.files[0],
+    runId: 'forged-run',
+    skill: 'root',
+    resultEvidence: resultEvidence(root, armed.files[0]),
+  }).reason, 'wrong-identity');
+});
+
+test('persisted state survives restart without prompt, transcript, or content bytes', () => {
+  const root = repo('restart');
+  register(root);
+  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  const serialized = JSON.stringify(readState(root, 'session-1'));
+  assert.doesNotMatch(serialized, /root instructions|root reference|prompt|transcript|secret/i);
+  assert.equal(readState(root, 'session-1').status, STATES.required);
+});
+
+test('correlation reuses empty completed state for a later pending run', () => {
+  const root = repo('reuse-terminal');
+  register(root);
+  const armed = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  for (const relativePath of armed.files) {
+    acknowledgeRead({
+      repositoryRoot: root,
+      sessionId: 'session-1',
+      generation: armed.generation,
+      relativePath,
+      resultEvidence: resultEvidence(root, relativePath),
+    });
+  }
+  registerRun({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    runId: 'run-1',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'after',
+  });
+  registerRun({
+    repositoryRoot: root,
+    runId: 'run-2',
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+
+  assert.equal(correlateSession(root, 'session-1').status, 'correlated');
+  const reused = readState(root, 'session-1');
+  assert.equal(reused.status, STATES.active);
+  assert.deepEqual(reused.stack.map((frame) => frame.runId), ['run-2']);
+  assert.equal(arm({
+    repositoryRoot: root,
+    sessionId: 'session-1',
+    trigger: 'auto',
+  }).status, STATES.required);
+});
+
+test('correlation excludes entries assigned to other sessions', () => {
+  const root = repo('assigned-other');
+  const pending = (runId) => registerRun({
+    repositoryRoot: root,
+    runId,
+    rootSkill: 'root',
+    skill: 'root',
+    logPath: path.join(root, '.skill-log', 'root.jsonl'),
+    phase: 'before',
+  });
+  pending('run-other');
+  assert.equal(correlateSession(root, 'other-session').status, 'correlated');
+  pending('run-target');
+  assert.equal(correlateSession(root, 'target-session').status, 'correlated');
+  assert.deepEqual(readState(root, 'target-session').stack.map((frame) => frame.runId), ['run-target']);
+});
+
+test('ambiguous correlation persists a session-keyed degraded marker', () => {
+  const root = repo('ambiguous');
+  for (const runId of ['run-a', 'run-b']) {
+    registerRun({
+      repositoryRoot: root,
+      runId,
+      rootSkill: 'root',
+      skill: 'root',
+      logPath: path.join(root, '.skill-log', 'root.jsonl'),
+      phase: 'before',
+    });
+  }
+  const result = correlateSession(root, 'session-ambiguous');
+  assert.equal(result.status, STATES.degraded);
+  assert.equal(readState(root, 'session-ambiguous').degradedReason, 'ambiguous-active-runs');
+  assert.equal(expectedRead(root, 'session-ambiguous').status, STATES.degraded);
+  const firstStop = agentStopFallback(root, 'session-ambiguous', false);
+  assert.equal(firstStop.decision, 'block');
+  assert.match(firstStop.reason, /ambiguous-active-runs/);
+  assert.equal(readState(root, 'session-ambiguous').degradedAgentStopBlocks, 1);
+  assert.equal(agentStopFallback(root, 'session-ambiguous', false).decision, 'allow');
+});
+
+test('agent stop forces one turn then yields below the eight-block ceiling', () => {
+  const root = repo('stop');
+  register(root);
+  arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  assert.equal(MAX_AGENT_STOP_BLOCKS, 1);
+  assert.equal(agentStopFallback(root, 'session-1', false).decision, 'block');
+  const second = agentStopFallback(root, 'session-1', true);
+  assert.equal(second.decision, 'allow');
+  assert.equal(second.degraded, true);
+});
+
+test('degraded stop handling preserves active-hook re-entry safety without consuming its one block', () => {
+  const root = repo('degraded-stop-reentry');
+  for (const runId of ['run-a', 'run-b']) {
+    registerRun({
+      repositoryRoot: root,
+      runId,
+      rootSkill: 'root',
+      skill: 'root',
+      logPath: path.join(root, '.skill-log', 'root.jsonl'),
+      phase: 'before',
+    });
+  }
+  correlateSession(root, 'session-degraded');
+
+  assert.equal(agentStopFallback(root, 'session-degraded', true).decision, 'allow');
+  assert.equal(readState(root, 'session-degraded').degradedAgentStopBlocks, 0);
+  assert.equal(agentStopFallback(root, 'session-degraded', false).decision, 'block');
+  assert.equal(agentStopFallback(root, 'session-degraded', true).decision, 'allow');
+  assert.equal(agentStopFallback(root, 'session-degraded', false).decision, 'allow');
+});
+
+test('canonical manifests are bounded and reject symlinked instructions', () => {
+  const root = repo('unsafe');
+  const target = path.join(root, 'outside.md');
+  fs.writeFileSync(target, 'outside');
+  fs.rmSync(path.join(root, 'skills', 'root', 'ref.md'));
+  fs.symlinkSync(target, path.join(root, 'skills', 'root', 'ref.md'));
+  assert.throws(() => buildCanonicalManifest(root, 'root'), { code: 'unsafe-path' });
+});
+
+test('state storage refuses symlinked control directories', () => {
+  const root = repo('state-symlink');
+  const outside = path.join(root, 'outside-state');
+  fs.mkdirSync(outside);
+  fs.rmSync(path.join(root, '.skill-log'), { recursive: true });
+  fs.symlinkSync(outside, path.join(root, '.skill-log'));
+  assert.throws(() => register(root), { code: 'invalid-state' });
+});
+
+test('concurrent subprocess registrations serialize without losing frames', async () => {
+  const root = repo('concurrent');
+  const moduleUrl = new URL('./rehydration-state.mjs', import.meta.url).href;
+  const children = Array.from({ length: 8 }, (_, index) => new Promise((resolve, reject) => {
+    const input = {
+      repositoryRoot: root,
+      sessionId: 'session-1',
+      runId: `run-${index}`,
+      rootSkill: 'root',
+      skill: 'root',
+      logPath: path.join(root, '.skill-log', 'root.jsonl'),
+      phase: 'before',
+    };
+    const child = spawn(process.execPath, [
+      '--input-type=module',
+      '--eval',
+      `import {registerRun} from ${JSON.stringify(moduleUrl)}; registerRun(${JSON.stringify(input)});`,
+    ]);
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error(`child exited ${code}: ${stderr.trim()}`)));
+  }));
+  await Promise.all(children);
+  assert.equal(readState(root, 'session-1').stack.length, 8);
+});
+
+test('oversized final checkpoint degrades before the latch can be silently cleared', () => {
+  const root = repo('oversized-checkpoint');
+  for (let index = 0; index < 16; index += 1) {
+    registerRun({
+      repositoryRoot: root,
+      sessionId: 'session-1',
+      runId: `run-${index}-${'x'.repeat(80)}`,
+      rootSkill: `root-${'y'.repeat(90)}`,
+      skill: 'root',
+      logPath: path.join(root, '.skill-log', 'root.jsonl'),
+      phase: 'before',
+    });
+  }
+  const armed = arm({ repositoryRoot: root, sessionId: 'session-1', trigger: 'auto' });
+  let result;
+  for (const relativePath of armed.files) {
+    result = acknowledgeRead({
+      repositoryRoot: root,
+      sessionId: 'session-1',
+      generation: armed.generation,
+      relativePath,
+      resultEvidence: resultEvidence(root, relativePath),
+    });
+  }
+  assert.equal(result.status, STATES.degraded);
+  assert.equal(result.reason, 'checkpoint-too-large');
+  assert.equal(readState(root, 'session-1').degradedReason, 'checkpoint-too-large');
+});

@@ -1,6 +1,6 @@
 ---
 name: chronicle-append
-description: Append one bounded event to a Skill Run Log. Recording is best effort; a failure is reported and never blocks delivery.
+description: Append one bounded event to a Skill Run Log, while reporting required run-lifecycle rehydration registration failures separately from best-effort recording.
 level: atom
 allowed-tools: ["execute"]
 includes: []
@@ -14,8 +14,11 @@ Append exactly one bounded event to a Skill Run Log. This atom observes what
 happened. It owns no claims, merges, provider state, or delivery authority, and
 it holds no mutable control state.
 
-Recording is best effort. A caller that cannot record reports the failure,
-marks its evidence incomplete, and continues delivering.
+Chronicle event recording is best effort. Rehydration registration for
+`run/before` and `run/after` is a separate required control operation. A
+non-timeout registration failure returns non-zero after explicitly reporting
+that the Chronicle event was recorded but registration was not. An actual
+registration timeout is reported and remains fail-open.
 
 ## Operation
 
@@ -29,9 +32,13 @@ node <atoms>/chronicle-append.mjs \
   [--operation <operation-id>] [--outcome <outcome>] [--evidence <reference>]...
 ```
 
-Exit `0` means the event was appended. Any non-zero exit prints a stable
-failure category on standard error. Report that category, mark evidence
-incomplete, and continue. Check availability with `--probe`.
+Exit `0` means the event was appended and any required registration either
+succeeded or explicitly timed out fail-open. A non-zero
+`rehydration_registration_failed` may occur after the event was appended; its
+JSON output says `recorded: true` and `rehydrationTracked: false`. Treat that as
+a required control failure rather than a Chronicle recording failure. Other
+non-zero exits print a stable recording failure category on standard error.
+Check availability with `--probe`.
 
 ## Caller Fields
 

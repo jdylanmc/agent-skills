@@ -17,6 +17,11 @@ import { run as runAppend } from './chronicle-append.mjs';
 
 function workspace(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chronicle-append-'));
+  fs.mkdirSync(path.join(root, 'scripts'));
+  fs.writeFileSync(
+    path.join(root, 'scripts', 'compaction-rehydration-register.mjs'),
+    "process.stdin.resume(); process.stdin.on('end', () => process.stdout.write('{\"tracked\":true}\\n'));\n",
+  );
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return root;
 }
@@ -214,4 +219,95 @@ test('refuses a session identity that is a path rather than an opaque identifier
   );
   assert.match(streams.errors(), /invalid_input: session_id must be a non-empty identifier/);
   assert.equal(fs.existsSync(logPath), false);
+});
+
+test('required initial registration fails closed when the tracker is missing', (t) => {
+  const root = workspace(t);
+  fs.rmSync(path.join(root, 'scripts', 'compaction-rehydration-register.mjs'));
+  const logPath = logPathIn(root);
+  const streams = captureStreams();
+
+  const code = runAppend([
+    '--log', logPath,
+    '--run', 'run-1',
+    '--root-skill', 'ship-with-squadron',
+    '--event', 'run',
+    '--phase', 'before',
+    '--summary', 'Run started.',
+  ], streams);
+
+  assert.equal(code, 2);
+  assert.deepEqual(JSON.parse(streams.output()), {
+    recorded: true,
+    rehydrationTracked: false,
+  });
+  assert.match(streams.errors(), /rehydration_registration_failed: Chronicle event recorded/);
+  assert.equal(fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean).length, 1);
+});
+
+test('required initial registration fails closed on tracker crash and explicit nonzero', (t) => {
+  for (const [name, source] of [
+    ['crash', "throw new Error('tracker crashed');\n"],
+    ['nonzero', "process.stderr.write('tracker refused\\n'); process.exitCode = 7;\n"],
+  ]) {
+    const root = workspace(t);
+    fs.writeFileSync(path.join(root, 'scripts', 'compaction-rehydration-register.mjs'), source);
+    const streams = captureStreams();
+    const code = runAppend([
+      '--log', logPathIn(root),
+      '--run', `run-${name}`,
+      '--root-skill', 'ship-with-squadron',
+      '--event', 'run',
+      '--phase', 'before',
+      '--summary', 'Run started.',
+    ], streams);
+
+    assert.equal(code, 2, name);
+    assert.match(streams.errors(), /rehydration_registration_failed/, name);
+  }
+});
+
+test('an actual registration timeout is explicit and fail-open', (t) => {
+  const logPath = logPathIn(workspace(t));
+  const streams = captureStreams();
+  const timeout = Object.assign(new Error('spawnSync timed out'), { code: 'ETIMEDOUT' });
+
+  const code = runAppend([
+    '--log', logPath,
+    '--run', 'run-timeout',
+    '--root-skill', 'ship-with-squadron',
+    '--event', 'run',
+    '--phase', 'before',
+    '--summary', 'Run started.',
+  ], streams, {
+    spawnSync: () => ({ status: null, signal: 'SIGTERM', error: timeout, stderr: '' }),
+  });
+
+  assert.equal(code, 0);
+  assert.deepEqual(JSON.parse(streams.output()), {
+    recorded: true,
+    rehydrationTracked: false,
+    registrationTimeout: true,
+  });
+  assert.match(streams.errors(), /rehydration_registration_timeout: .*continuing fail-open/);
+});
+
+test('non-lifecycle tracker failure remains separate best-effort checkpoint recording', (t) => {
+  const root = workspace(t);
+  fs.rmSync(path.join(root, 'scripts', 'compaction-rehydration-register.mjs'));
+  const streams = captureStreams();
+
+  const code = runAppend([
+    '--log', logPathIn(root),
+    '--run', 'run-observation',
+    '--root-skill', 'ship-with-squadron',
+    '--event', 'delegation',
+    '--phase', 'observation',
+    '--summary', 'Observed.',
+  ], streams);
+
+  assert.equal(code, 0);
+  assert.deepEqual(JSON.parse(streams.output()), { recorded: true });
+  assert.match(streams.errors(), /rehydration_tracking_failed/);
+  assert.doesNotMatch(streams.errors(), /rehydration_registration_failed/);
 });
