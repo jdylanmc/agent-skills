@@ -341,6 +341,12 @@ below is unreleased and no comparison links are available.
 
 ### Changed
 
+- **Bench Squadron preparation and execution reporting.** Preparation has a
+  separately confirmed bound and explicit exit. Running claims require accepted,
+  revision-bound delivery ownership and a current runtime observation. Probes
+  that never reach their readiness checkpoint remain inconclusive; only dependent
+  operations block, while all required safety and publication gates remain intact.
+
 - **Deep-then-verify is now the explicit default for new code-review intake.**
   Ship and Ship-with-Squadron run one deep review, then use bounded correction
   verification until manual deep review, file-scope or semantic escalation, or

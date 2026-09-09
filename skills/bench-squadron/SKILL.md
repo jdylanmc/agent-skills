@@ -15,8 +15,10 @@ Run one review-ready delivery experiment with bounded delegation and an exact,
 replayable proposal epoch.
 
 ```text
-human boundary -> validate current Fleet State -> configure pool and quorum
-  -> dispatch delivery pool + async Slop Sniper -> validate current proposal
+human boundary -> bounded preparation -> validate current Fleet State
+  -> configure pool and quorum -> dispatch
+  -> verify accepted ownership and current runtime execution observation
+  -> async Slop Sniper -> validate current proposal
   -> mutate epoch and invalidate claims -> complete publication gates
   -> publish review-ready candidate -> human-only downstream decisions
 ```
@@ -36,6 +38,13 @@ alone owns quorum, epoch, and same-turn mutator rules.
 
 ## Workflow
 
+The operator is the human who confirms scope, budgets, cutoffs, and fallback
+authority. A caller may be that human or an invoking workflow; a caller's
+assertion is not human authorization. Record the actual agent identity holding
+the separate orchestrator role. Neither that agent nor a delivery-pool agent can
+make an operator-only decision. An existing write or publication owner retains
+only the authority it already holds.
+
 1. Create or reuse the caller's Chronicler run context. Recording is best
    effort and never changes an epoch, a proposal, a gate, or human authority.
 
@@ -43,6 +52,10 @@ alone owns quorum, epoch, and same-turn mutator rules.
    exclusions, delivery-pool membership, quorum, risk boundaries, and
    publication target. Refuse an unconfirmed scope, an unbounded pool, or any
    request to let the workflow decide scope or risk.
+   In that same confirmation, bound preparation separately from execution,
+   resolve any absolute cutoff and timezone, and record any authorized fallback.
+   Apply Bench control's preparation exit before promising overnight delivery;
+   an overnight duration does not authorize a daemon or a different workflow.
 
 3. Validate the current, persisted Fleet State before accepting any proposal.
    Configure one separate orchestrator, one separate asynchronous Slop Sniper,
@@ -55,6 +68,11 @@ alone owns quorum, epoch, and same-turn mutator rules.
    scope. Dispatch Slop Sniper separately and asynchronously over one sealed
    checkpoint snapshot; it audits and returns evidence, but never owns the
    fleet, signs a proposal, changes state, or publishes.
+   Report `running` only after accepted delivery ownership and a current runtime
+   observation satisfy Bench control's launch evidence contract. A plan,
+   worktree, probe, dispatched request, or scheduled reminder is not that proof.
+   Handle probe uncertainty only for the operations that depend on it; a
+   pre-readiness timeout is `inconclusive`, not proof of an unsupported runtime.
 
 5. Route each mutation proposal through Bench Epoch with the exact current
    epoch, Fleet State revision, mutator, turn, bounded mutation, and distinct
@@ -80,6 +98,9 @@ alone owns quorum, epoch, and same-turn mutator rules.
    alone decides approval, merge, promotion, retirement, scope changes, and
    risk acceptance. The workflow neither performs nor implies any of those
    decisions.
+   If preparation or an operation is blocked, return the actual completed work,
+   affected operations, remaining gates, and next required decision instead of
+   claiming an active run or a review-ready candidate.
 
 ## Boundaries
 
