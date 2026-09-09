@@ -2,7 +2,7 @@
 name: artifact-run-budget
 description: Bound artifact-roast coordination and synthesis time, surface failed attempts immediately, and reject results returned after their recorded deadline.
 level: atom
-allowed-tools: ["task"]
+allowed-tools: ["execute","task"]
 includes: []
 composes: []
 used-by: ["roast/_molecules/roast-artifact-branch/roast-artifact-branch.md"]
@@ -25,13 +25,23 @@ Capture an absolute start time and deadline before every Agent spawn:
 | Whole artifact coordination path | 30 minutes |
 
 Pass the absolute deadline and remaining whole-run budget in the authoritative
-task prompt. Require the spawned agent to stop launching work early enough to
-validate and return the complete contracted output before that deadline.
+task prompt, but never treat that prompt as enforcement. A spawned agent may
+miss or ignore its deadline.
 
-Use a background-capable or timeout-capable launch so the parent orchestrator
-retains control. If the runtime cannot preserve parent control while the task is
-running, return `Status: Insufficient review` before dispatch and name bounded
-execution as unavailable. Never enter an open-ended synchronous wait.
+Before every spawn, start one parent-owned, non-detached deadline signal through
+`execute`. Launch the agent through `task` in background mode, then wait for the
+runtime's completion notification from either operation. Do not poll.
+
+- Agent completes first: stop the specific deadline process, collect the
+  response, and evaluate whether it arrived on time.
+- Deadline completes first: classify the attempt as `deadline-exceeded`, send a
+  bounded stop request when the runtime supports agent messaging, and stop
+  waiting for that agent.
+
+If the runtime cannot launch the task in background and independently notify
+the parent when a deadline signal completes, return `Status: Insufficient
+review` before dispatch and name bounded execution as unavailable. Never enter
+an open-ended synchronous wait.
 
 ## Deadline Evaluation
 
@@ -47,6 +57,10 @@ what completed; it is not a finished roast.
 
 The whole-run deadline wins over every phase deadline. Do not start a phase that
 cannot receive its full bounded budget before the whole-run deadline.
+
+The deadline process is attached to the current run and is stopped when its
+agent completes. Never detach it, leave it running after the phase, use a broad
+process kill, or confuse its completion with the review agent's completion.
 
 ## Immediate Failure Disclosure
 
@@ -65,9 +79,9 @@ immediately. Do not start another Roast invocation automatically.
 
 ## Boundaries
 
-Deadlines bound acceptance and waiting; they do not claim to terminate a remote
-process the runtime cannot cancel. A late process has no authority to change the
-returned result. Never weaken the envelope contract, omit a mandatory reviewer,
-accept partial findings as synthesized, or substitute a cheaper model to meet a
-deadline.
-
+Deadlines bound acceptance and waiting. They do not claim to terminate a remote
+process when the runtime lacks cancellation; a bounded stop request is
+best-effort, and a late process has no authority to change the returned result.
+A prompt deadline alone never satisfies this contract. Never weaken the
+envelope contract, omit a mandatory reviewer, accept partial findings as
+synthesized, or substitute a cheaper model to meet a deadline.

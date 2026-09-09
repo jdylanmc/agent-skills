@@ -60,9 +60,11 @@ supports one decision: ship it, revise it, or hand the work somewhere else. See
 
 4. Keep artifact coordination bounded. Each coordinate attempt and synthesis
    has a ten-minute deadline; the complete artifact coordination path has a
-   thirty-minute deadline. Report the first failed attempt before its single
-   replacement runs, reject late responses, and never silently restart a Roast
-   after the contracted retry is exhausted.
+   thirty-minute deadline. Race every background review task against a
+   parent-owned deadline signal; a deadline in the agent prompt alone does not
+   count. Report the first failed attempt before its single replacement runs,
+   reject late responses, and never silently restart a Roast after the
+   contracted retry is exhausted.
 
 5. Return what the branch returned, with the doctrine selection and its
    reasoning attached, so a surprising recommendation can be traced to the
@@ -142,9 +144,12 @@ status, the run status, and everything that was not reviewed.
 ## Permissions
 
 `read` and `search` resolve evidence and trusted sources. `task` launches the
-coordinator and the council. `execute` is limited to Chronicle invocation
-recording, doctrine selection and evaluation, artifact-profile resolution, and
-allowlisted read-only digest and identity commands.
+coordinator and the council in background mode for bounded artifact
+coordination. `execute` is limited to Chronicle invocation recording, doctrine
+selection and evaluation, artifact-profile resolution, allowlisted read-only
+digest and identity commands, and one non-detached deadline signal per active
+artifact-review task. Deadline cleanup targets only the recorded process for
+that phase.
 
 This grant is exactly the grant each of the four predecessor skills declared,
 and consolidation widens nothing. It is pinned by

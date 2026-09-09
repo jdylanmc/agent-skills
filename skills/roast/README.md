@@ -39,8 +39,11 @@ reported before its single replacement runs. Late results are ignored, and a
 final schema, transport, or deadline failure returns the documented incomplete
 Roast immediately instead of silently restarting.
 
-The deadline bounds waiting and result acceptance. It does not claim to
-terminate a remote process when the runtime has no cancellation primitive.
+Each background review task is raced against a parent-owned, non-detached
+deadline signal. A deadline written only in the agent prompt is not treated as
+enforcement. The deadline bounds waiting and result acceptance; it does not
+claim to terminate a remote process when the runtime has no cancellation
+primitive.
 
 ## Why One Skill
 

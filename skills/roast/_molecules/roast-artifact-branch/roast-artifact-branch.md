@@ -118,9 +118,11 @@ shape.
    [Artifact run budget](../../_atoms/artifact-run-budget/artifact-run-budget.md).
    Each coordinate attempt and synthesis receives a ten-minute absolute
    deadline, and the complete artifact coordination path receives thirty
-   minutes. Launch in a mode that preserves parent control; reject late results
-   and never enter an open-ended synchronous wait. Surface the first failed
-   attempt and its exact defect before the one permitted replacement runs.
+   minutes. Race each background Agent spawn against a parent-owned,
+   non-detached deadline signal; a deadline written only in the task prompt is
+   not enforcement. Reject late results and never enter an open-ended
+   synchronous wait. Surface the first failed attempt and its exact defect
+   before the one permitted replacement runs.
 
    For a specification pair, envelope validation also runs
    [Spec authority screen](../../_atoms/spec-authority-screen/spec-authority-screen.md)
