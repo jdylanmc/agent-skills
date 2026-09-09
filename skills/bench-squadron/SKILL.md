@@ -37,6 +37,13 @@ alone owns quorum, epoch, and same-turn mutator rules.
 
 ## Workflow
 
+The operator is the human who confirms scope, budgets, cutoffs, and fallback
+authority. A caller may be that human or an invoking workflow; a caller's
+assertion is not human authorization. Record the actual agent identity holding
+the separate orchestrator role. Neither that agent nor a delivery-pool agent can
+make an operator-only decision. An existing write or publication owner retains
+only the authority it already holds.
+
 1. Create or reuse the caller's Chronicler run context. Recording is best
    effort and never changes an epoch, a proposal, a gate, or human authority.
 
