@@ -158,6 +158,8 @@ test('bounds preparation separately and exits without silently renewing or chang
   for (const requirement of [
     /finite preparation budget in seconds, its start time as a UTC timestamp, the execution budget/i,
     /overall cutoff and its timezone/i,
+    /any authorized fallback/i,
+    /Each execution-budget value carries its operator-confirmed unit in that same confirmation/i,
     /preparation deadline is its start time plus its budget in seconds/i,
     /effective preparation limit is the earlier of those two timestamps/i,
     /Retries and changed probe designs consume that same budget/i,
@@ -173,6 +175,7 @@ test('bounds preparation separately and exits without silently renewing or chang
     /Without an authorized fallback, do not silently switch modes/i,
     /Do not begin another setup project at exhaustion/i,
   ]) assert.match(control.replaceAll('**', ''), requirement);
+  assert.doesNotMatch(control, /disposition at preparation exhaustion/i);
   assert.match(entry, /operator is the human who confirms scope, budgets, cutoffs, and fallback authority/i);
   assert.match(entry, /caller's assertion is not human authorization/i);
   assert.match(entry, /Record the actual agent identity holding the separate orchestrator role/i);
@@ -182,6 +185,7 @@ test('running requires accepted revision-bound ownership and fresh execution, no
   const entry = read(ENTRY).replace(/\s+/g, ' ');
   const control = read(MOLECULE).replace(/\s+/g, ' ');
   assert.match(entry, /Report `running` only after accepted delivery ownership and a current runtime observation/i);
+  assert.match(entry, /verify accepted ownership and current runtime execution observation/i);
   for (const requirement of [
     /exact run, assignment, agent identity, owned worktree and candidate revision, Fleet State revision, and Bench epoch/i,
     /acknowledgement accepting that bounded assignment from its actual delivery owner/i,
@@ -190,7 +194,11 @@ test('running requires accepted revision-bound ownership and fresh execution, no
     /first matching row/i,
     /Missing acceptance or execution evidence alone uses `unconfirmed`, not `blocked`/i,
     /`waiting` \| The accepted, matching owner is observed waiting or idle, or its assignment result has returned/i,
-    /`unconfirmed` \| Dispatch was attempted but acceptance or current matching execution evidence is missing, stale, or mismatched/i,
+    /`unconfirmed` \| Dispatch was attempted but acceptance or current matching runtime state evidence is missing, stale, or mismatched/i,
+    /Current matching runtime state evidence means a runtime event or status response/i,
+    /including executing, waiting, idle, or a returned assignment result/i,
+    /It does not mean proof of active execution alone/i,
+    /For `waiting` and `unconfirmed`, name the matched row and the observed or missing evidence condition/i,
     /worktree, plan, probe, queued dispatch, or scheduled morning reminder cannot establish `running`/i,
     /Name the receipt and observation time/i,
     /rebind acceptance and reobserve execution before renewing the claim/i,
@@ -239,9 +247,20 @@ const PREPARATION_AND_PHASE_CONTRACT = [
   '| `preparing` | Preparation disposition is unset and bounded setup can continue. |',
   "| `waiting` | Preparation disposition is `hand-off`; Bench does not claim the other workflow's execution. |",
   '| `prepared` | Preparation disposition is `continue-bench` and no delivery dispatch has been attempted. |',
-  '| `unconfirmed` | Dispatch was attempted but acceptance or current matching execution evidence is missing, stale, or mismatched. |',
+  '| `unconfirmed` | Dispatch was attempted but acceptance or current matching runtime state evidence is missing, stale, or mismatched. |',
   '| `waiting` | The accepted, matching owner is observed waiting or idle, or its assignment result has returned. |',
   '| `running` | Bound assignment acceptance and a current matching runtime observation explicitly show execution. |',
+];
+
+const PHASE_WITNESSES = [
+  '| A required global gate prevents the current operation, even with an executing owner. | `blocked` |',
+  '| Preparation disposition is unset; budget remains, and an authorized fallback is recorded but not selected. | `preparing` |',
+  '| Preparation exited with `hand-off` to the authorized alternative. | `waiting` |',
+  '| Preparation exited with `continue-bench`; no dispatch was attempted. | `prepared` |',
+  '| Dispatch was attempted; assignment acceptance or a current matching state observation is absent. | `unconfirmed` |',
+  '| Accepted, matching owner is observed idle in the current reporting cycle. | `waiting` |',
+  "| Accepted, matching owner's returned assignment result is observed in the current reporting cycle. | `waiting` |",
+  '| Accepted, matching owner is explicitly observed executing in the current reporting cycle. | `running` |',
 ];
 
 function assertPreparationAndPhaseContract(text) {
@@ -268,4 +287,15 @@ test('preparation exits and every phase remain required, including under deletio
   const reordered = control.replace(blocked, '__ROW_SWAP__').replace(running, blocked)
     .replace('__ROW_SWAP__', running);
   assert.throws(() => assertPreparationAndPhaseContract(reordered));
+});
+
+test('phase witnesses distinguish recorded fallback, accepted idle, returned result, and absent evidence', () => {
+  const control = read(MOLECULE).replace(/\s+/g, ' ');
+  const assertWitnesses = (text) => {
+    for (const witness of PHASE_WITNESSES) assert.ok(text.includes(witness), `Missing witness: ${witness}`);
+  };
+  assertWitnesses(control);
+  for (const witness of PHASE_WITNESSES) {
+    assert.throws(() => assertWitnesses(control.replace(witness, '')));
+  }
 });

@@ -46,8 +46,10 @@ remain human-only decisions.
 
 During the existing operator scope confirmation, record a finite preparation
 budget in seconds, its start time as a UTC timestamp, the execution budget,
-any overall cutoff and its timezone, and the disposition at preparation
-exhaustion. The preparation deadline is its start time plus its budget in
+any overall cutoff and its timezone, and any authorized fallback. Each
+execution-budget value carries its operator-confirmed unit in that same
+confirmation; do not infer its unit from preparation's seconds.
+The preparation deadline is its start time plus its budget in
 seconds. Normalize the confirmed overall cutoff to UTC; resolve an ambiguous
 time or timezone with the operator before using it. Use a supplied preparation
 budget; otherwise propose a short budget for confirmation. Preparation includes capability
@@ -96,13 +98,20 @@ checks below; that work does not make the blocked path ready.
 Bind a delivery launch receipt to the exact run, assignment, agent identity,
 owned worktree and candidate revision, Fleet State revision, and Bench epoch.
 Require an acknowledgement accepting that bounded assignment from its actual
-delivery owner, plus a current runtime observation that the same agent is
-executing it. Obtain that observation in the current reporting cycle, not from a
+delivery owner. A `running` claim additionally requires a current runtime
+observation that the same agent is executing it. Obtain that observation in the current reporting cycle, not from a
 previous status report. Use a runtime event or status response identifying the
 same agent and its execution state; an owner acknowledgement alone does not
 prove current execution. A generic task-registry `running` label without accepted
 assignment evidence is insufficient. A receipt records evidence, not authority,
 and cannot replace a Fleet State reservation or proposal signature.
+
+Current matching runtime state evidence means a runtime event or status response
+obtained for this reporting cycle that matches the delivery launch binding and
+identifies the owner's state, including executing, waiting, idle, or a returned
+assignment result. It does not mean proof of active execution alone. A matching
+idle or returned-result observation supports `waiting`; it is not missing
+evidence merely because the owner is not executing.
 
 Choose exactly one reported phase using the first matching row below. Missing
 acceptance or execution evidence alone uses `unconfirmed`, not `blocked`;
@@ -115,9 +124,24 @@ a recorded refusal, or a `stop` preparation disposition.
 | `preparing` | Preparation disposition is unset and bounded setup can continue. |
 | `waiting` | Preparation disposition is `hand-off`; Bench does not claim the other workflow's execution. |
 | `prepared` | Preparation disposition is `continue-bench` and no delivery dispatch has been attempted. |
-| `unconfirmed` | Dispatch was attempted but acceptance or current matching execution evidence is missing, stale, or mismatched. |
+| `unconfirmed` | Dispatch was attempted but acceptance or current matching runtime state evidence is missing, stale, or mismatched. |
 | `waiting` | The accepted, matching owner is observed waiting or idle, or its assignment result has returned. |
 | `running` | Bound assignment acceptance and a current matching runtime observation explicitly show execution. |
+
+For `waiting` and `unconfirmed`, name the matched row and the observed or missing
+evidence condition, not just the phase label. These witnesses assume the earlier
+rows do not apply unless stated:
+
+| Witness | Phase |
+| --- | --- |
+| A required global gate prevents the current operation, even with an executing owner. | `blocked` |
+| Preparation disposition is unset; budget remains, and an authorized fallback is recorded but not selected. | `preparing` |
+| Preparation exited with `hand-off` to the authorized alternative. | `waiting` |
+| Preparation exited with `continue-bench`; no dispatch was attempted. | `prepared` |
+| Dispatch was attempted; assignment acceptance or a current matching state observation is absent. | `unconfirmed` |
+| Accepted, matching owner is observed idle in the current reporting cycle. | `waiting` |
+| Accepted, matching owner's returned assignment result is observed in the current reporting cycle. | `waiting` |
+| Accepted, matching owner is explicitly observed executing in the current reporting cycle. | `running` |
 
 A worktree, plan, probe, queued dispatch, or scheduled morning reminder cannot
 establish `running`. Name the receipt and observation time when reporting it.

@@ -16,7 +16,8 @@ replayable proposal epoch.
 
 ```text
 human boundary -> bounded preparation -> validate current Fleet State
-  -> configure pool and quorum -> dispatch and verify accepted ownership
+  -> configure pool and quorum -> dispatch
+  -> verify accepted ownership and current runtime execution observation
   -> async Slop Sniper -> validate current proposal
   -> mutate epoch and invalidate claims -> complete publication gates
   -> publish review-ready candidate -> human-only downstream decisions
