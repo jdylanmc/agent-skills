@@ -4,17 +4,62 @@ import {
   normalizeUpToDatePolicy,
   requiresUpToDateBranch,
 } from '../../../_base/_atoms/landability/landability.mjs';
+import { ProviderCommandError, currentRequiredChecksStatus, liveBaseIsCurrent, validatedBranchRef } from '../provider-state/provider-state.mjs';
 
 export { isTerminalDisposition };
 
 const GREEN_LOCAL = new Set(['passed']);
 const BLOCKED_LOCAL = new Set(['cancelled', 'environment-failed', 'unsupported-provider', 'incomplete']);
-const COMPLETE_REMOTE = new Set(['passed', 'success']);
-const PENDING_REMOTE = new Set(['pending', 'queued', 'in_progress', 'waiting', 'requested']);
 const MERGEABLE_STATES = new Set(['mergeable', 'clean', 'has_hooks']);
 
-function allRemoteChecksGreen(checks) {
-  return Array.isArray(checks) && checks.length > 0 && checks.every((check) => COMPLETE_REMOTE.has(check.status));
+export function pushReceiptIsValid(receipt, { headTarget, previousHead, resultingHead, strategy } = {}) {
+  if (!headTarget?.repository || typeof headTarget.ref !== 'string'
+    || !headTarget.ref.startsWith('refs/heads/')) return false;
+  try {
+    validatedBranchRef(headTarget.ref.slice('refs/heads/'.length));
+  } catch (error) {
+    if (error instanceof ProviderCommandError) return false;
+    throw error;
+  }
+  const objectId = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+  if (!objectId.test(previousHead ?? '') || !objectId.test(resultingHead ?? '')
+    || receipt?.repository !== headTarget.repository || receipt.ref !== headTarget.ref
+    || receipt.previousHead !== previousHead || receipt.headSha !== resultingHead
+    || receipt.capturedHeadVerified !== true || receipt.strategy !== strategy) return false;
+  if (strategy === 'merge-base-into-head') return receipt.status === 'pushed';
+  return strategy === 'rebase' && receipt.status === 'pushed-with-lease'
+    && receipt.leaseVerified === true
+    && receipt.lease?.ref === headTarget.ref && receipt.lease.expectedHead === previousHead;
+}
+
+function currentBase(signals) {
+  return liveBaseIsCurrent(signals.liveBase, signals.target)
+    && signals.mergeability?.baseSha === signals.liveBase.sha;
+}
+
+export function branchUpdateStrategy(signals = {}) {
+  const policy = signals.branchPolicy;
+  const basePolicy = signals.baseBranchPolicy;
+  const boundPolicy = (value, repository, ref) => value?.observed === true
+    && value.trusted === true && Number.isFinite(Date.parse(value.observedAt))
+    && repository && ref && value.repository === repository && value.ref === ref
+    && typeof value.allowForcePushes === 'boolean'
+    && typeof value.requireLinearHistory === 'boolean';
+  if (!boundPolicy(policy, signals.headTarget?.repository, signals.headTarget?.ref)
+    || !boundPolicy(basePolicy, signals.target?.repository, `refs/heads/${signals.target?.baseBranch}`)
+    || basePolicy.sha !== signals.liveBase?.sha
+    || typeof basePolicy.squashMergeAllowed !== 'boolean'
+    || typeof policy.directUpdatesAllowed !== 'boolean') {
+    return { strategy: 'blocked', reason: 'branch-update-policy-unobserved' };
+  }
+  if (!policy.directUpdatesAllowed) {
+    return { strategy: 'blocked', reason: 'head-policy-forbids-direct-update' };
+  }
+  const linear = policy.requireLinearHistory
+    || (basePolicy.requireLinearHistory && !basePolicy.squashMergeAllowed);
+  if (!linear) return { strategy: 'merge-base-into-head', reason: 'merge-commits-permitted' };
+  if (policy.allowForcePushes) return { strategy: 'rebase', reason: 'linear-history-with-leased-rewrite' };
+  return { strategy: 'blocked', reason: 'linear-history-forbids-merge-and-force-push' };
 }
 
 /**
@@ -46,6 +91,7 @@ function behindUnderRequiredPolicy(signals) {
 function branchBehindBase(signals) {
   const providerBehind = signals.mergeability?.behind;
   const gitBehind = signals.base?.behind;
+  if (providerBehind === true || gitBehind === true) return true;
   if (typeof providerBehind === 'boolean') {
     return providerBehind;
   }
@@ -57,27 +103,27 @@ export function classifyShepherdPlan(signals = {}) {
   const requiredCheckExpired = signals.requiredChecks?.some((check) => check.expired === true) === true;
   const mergeability = signals.mergeability ?? {};
   const local = signals.localValidation ?? {};
-  const remoteChecks = signals.remoteChecks?.checks ?? [];
   const conflicted = signals.conflicts?.some((conflict) => ['authored', 'ambiguous', 'conflicted'].includes(conflict.kind)) === true;
-  const mergeable = MERGEABLE_STATES.has(mergeability.state) && mergeability.isDraft !== true;
-  const green = local.status === 'passed' && local.evidenceComplete === true && allRemoteChecksGreen(remoteChecks);
+  const mergeable = MERGEABLE_STATES.has(mergeability.state) && mergeability.isDraft === false;
+  const unmergeable = ['conflicted', 'dirty', 'unmergeable'].includes(mergeability.state);
+  const green = local.status === 'passed' && local.evidenceComplete === true
+    && currentRequiredChecksStatus(signals.remoteChecks, mergeability.headSha).status === 'success'
+    && signals.provider?.status === 'supported-provider';
   const upToDatePolicy = normalizeUpToDatePolicy(signals.basePolicy?.upToDate);
   const behindStrictBase = behindUnderRequiredPolicy(signals);
   const receipt = freshnessReceipt(signals);
 
-  // A rebase cannot clear a policy/administrative block or a blocking review,
-  // and an unobserved merge gate (`blocked === null`) is not clearance either.
-  // So content that is mergeable and green must NOT read as a green no-op when
-  // any of these is reported: it falls through to watch-or-report, and the
-  // authoritative terminal classifier renders `blocked`/`needs-human`. Strict
-  // comparisons keep hand-built green signals (both fields `undefined`) and a
-  // real clean PR (`blocked: false`, review `approved`/`unobserved`) on the
-  // no-op path; only an explicit block, an explicit blocking review, or an
-  // explicitly-unobserved gate is excluded.
-  const blockedOrReviewGated = mergeability.blocked === true
-    || mergeability.blocked === null
+  const blockedOrReviewGated = mergeability.blocked !== false
     || mergeability.reviewDecision === 'review-required'
     || mergeability.reviewDecision === 'changes-requested';
+
+  if (signals.authority?.mode !== 'ship-continuation') {
+    return { disposition: 'blocked', action: 'observe-state', shouldRebase: false, shouldForcePush: false,
+      reason: signals.authority?.mode === 'observation-only' ? 'observation-only-authority' : 'authority-unobserved', receipt };
+  }
+  if (!currentBase(signals)) {
+    return { disposition: 'blocked', action: 'observe-state', shouldRebase: false, shouldForcePush: false, reason: 'live-base-unobserved-or-mismatched', receipt };
+  }
 
   if (
     signals.base?.moved === true
@@ -111,11 +157,16 @@ export function classifyShepherdPlan(signals = {}) {
     };
   }
 
-  if (operatorAsked || requiredCheckExpired || conflicted || !mergeable || behindStrictBase) {
+  if (operatorAsked || requiredCheckExpired || conflicted || unmergeable || behindStrictBase) {
+    const update = operatorAsked || conflicted || unmergeable || behindStrictBase;
+    const selected = update ? branchUpdateStrategy(signals) : { strategy: 'revalidate' };
+    if (selected.strategy === 'blocked') {
+      return { disposition: 'blocked', action: 'observe-policy', shouldRebase: false, shouldForcePush: false, reason: selected.reason, upToDatePolicy };
+    }
     return {
       disposition: 'shepherd-required',
-      action: 'rebase-or-revalidate',
-      shouldRebase: operatorAsked || conflicted || !mergeable || behindStrictBase,
+      action: selected.strategy,
+      shouldRebase: selected.strategy === 'rebase',
       shouldForcePush: false,
       reason: operatorAsked
         ? 'operator-requested'
@@ -123,7 +174,7 @@ export function classifyShepherdPlan(signals = {}) {
           ? 'required-check-expired'
           : conflicted
             ? 'conflicted'
-            : !mergeable
+            : unmergeable
               ? 'not-mergeable'
               : 'base-advanced-under-required-up-to-date-policy',
       upToDatePolicy,
@@ -176,8 +227,8 @@ function missingRequired(signals) {
 export function freshnessReceipt(signals = {}) {
   return buildFreshnessReceipt({
     observedAt: signals.observedAt,
-    baseSha: signals.mergeability?.baseSha ?? signals.rebase?.baseSha,
-    headSha: signals.push?.headSha ?? signals.mergeability?.headSha,
+    baseSha: currentBase(signals) ? signals.liveBase.sha : null,
+    headSha: signals.mergeability?.headSha,
     upToDatePolicy: signals.basePolicy?.upToDate,
     provider: signals.provider?.status,
   });
@@ -218,6 +269,10 @@ function nextHumanActionFor(outcome) {
 }
 
 function classifyOutcome(signals, receipt) {
+  if (signals.authority?.mode !== 'ship-continuation') {
+    return { disposition: 'blocked',
+      reason: signals.authority?.mode === 'observation-only' ? 'observation-only-authority' : 'authority-unobserved', defects: [] };
+  }
   const defects = missingRequired(signals);
   if (defects.length > 0) {
     return { disposition: 'blocked', reason: 'missing-required-evidence', defects };
@@ -245,14 +300,20 @@ function classifyOutcome(signals, receipt) {
   }
 
   const localStatus = signals.localValidation.status;
-  if (BLOCKED_LOCAL.has(localStatus) || signals.localValidation?.evidenceComplete === false) {
+  if (BLOCKED_LOCAL.has(localStatus) || signals.localValidation?.evidenceComplete !== true) {
     return { disposition: 'blocked', reason: `local-validation-${localStatus}`, defects };
   }
   if (!GREEN_LOCAL.has(localStatus)) {
     return { disposition: 'failing', reason: `local-validation-${localStatus}`, defects };
   }
 
-  if (signals.push?.status !== 'pushed-with-lease') {
+  const strategy = branchUpdateStrategy(signals).strategy;
+  if (signals.rebase.strategy !== strategy || !pushReceiptIsValid(signals.push, {
+    headTarget: signals.headTarget,
+    previousHead: signals.preflight.capturedRemoteHead,
+    resultingHead: signals.mergeability?.headSha ?? signals.push?.headSha,
+    strategy,
+  })) {
     return { disposition: 'blocked', reason: 'push-not-confirmed-with-lease', defects };
   }
 
@@ -265,18 +326,19 @@ function classifyOutcome(signals, receipt) {
   }
 
   const mergeability = signals.mergeability;
+  if (signals.provider?.status !== 'supported-provider') {
+    return { disposition: 'blocked', reason: 'provider-state-unobserved', defects };
+  }
+  if (!currentBase(signals)) {
+    return { disposition: 'blocked', reason: 'live-base-unobserved-or-mismatched', defects };
+  }
   if (mergeability.baseSha !== signals.rebase.baseSha || mergeability.headSha !== signals.push.headSha) {
     return { disposition: 'blocked', reason: 'stale-mergeability-evidence', defects };
   }
-  if (mergeability.isDraft === true || !['mergeable', 'clean', 'has_hooks'].includes(mergeability.state)) {
+  if (mergeability.isDraft !== false || !['mergeable', 'clean', 'has_hooks'].includes(mergeability.state)) {
     return { disposition: 'needs-human', reason: `pull-request-${mergeability.state ?? 'not-mergeable'}`, defects };
   }
 
-  // A policy or administrative block and a required/changes-requested review are
-  // carried separately from content merge state, and neither is cleared by a
-  // rebase. Both send the change request to a person. These gates fire only on
-  // an explicit block (`blocked === true`) or an explicit blocking review
-  // decision, so a hand-built green signal that omits them is unaffected.
   if (mergeability.blocked === true) {
     return { disposition: 'needs-human', reason: 'pull-request-blocked', defects };
   }
@@ -284,15 +346,7 @@ function classifyOutcome(signals, receipt) {
     return { disposition: 'needs-human', reason: `review-${mergeability.reviewDecision}`, defects };
   }
 
-  // Content merged and neither an explicit block nor a blocking review is not
-  // yet clearance: the provider may not have computed the merge gate at all.
-  // A merge-block state read as `null` — GitHub `mergeStateStatus` UNKNOWN or
-  // absent, carried through as `blocked: null` — is unobserved, not permissive,
-  // and an unobserved block must never read as green. The check is strict
-  // `=== null`: a hand-built green signal omits `blocked` entirely (`undefined`)
-  // and a real clean reading normalizes to `blocked: false`; only the genuinely
-  // unobserved `null` is gated here.
-  if (mergeability.blocked === null) {
+  if (mergeability.blocked !== false) {
     return { disposition: 'blocked', reason: 'merge-block-state-unobserved', defects };
   }
 
@@ -311,17 +365,9 @@ function classifyOutcome(signals, receipt) {
     };
   }
 
-  const checks = signals.remoteChecks?.checks;
-  if (!Array.isArray(checks) || checks.length === 0) {
-    return { disposition: 'blocked', reason: 'missing-remote-checks', defects };
-  }
-  const pending = checks.filter((check) => PENDING_REMOTE.has(check.status));
-  if (pending.length > 0) {
-    return { disposition: 'blocked', reason: 'remote-checks-incomplete', defects: pending.map((check) => check.name) };
-  }
-  const red = checks.filter((check) => !COMPLETE_REMOTE.has(check.status));
-  if (red.length > 0) {
-    return { disposition: 'failing', reason: 'remote-checks-failing', defects: red.map((check) => check.name) };
+  const checks = currentRequiredChecksStatus(signals.remoteChecks, mergeability.headSha);
+  if (checks.status !== 'success') {
+    return { disposition: checks.status === 'failure' ? 'failing' : 'blocked', reason: checks.reason, defects };
   }
 
   // A green result nobody can date or place is a claim rather than evidence:

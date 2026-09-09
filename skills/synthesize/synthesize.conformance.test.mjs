@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import { DECLARED_FIELDS, PROFILES } from './_atoms/synthesis-profile/synthesis-profile.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(ROOT, 'skills');
@@ -35,12 +36,66 @@ test('synthesize is routable, pinned, and depends on no other skill', () => {
   assert.deepEqual(parsed.allowedTools, PINNED_TOOLS);
   assert.deepEqual(parsed.requiresSkills, []);
   assert.match(parsed.description, /one identified, revision-bound source artifact/);
-  assert.match(parsed.description, /one named synthesis profile/);
+  assert.match(parsed.description, /one stated reduction contract/);
   assert.match(parsed.description, /spec-nano/);
   assert.match(parsed.description, /500 words/);
+  assert.match(parsed.description, /caller-declared reduction/);
   for (const refusal of ['author the source specification', 'review or roast', 'approve', 'publish', 'implement', 'shepherd', 'merge']) {
     assert.match(parsed.description, new RegExp(refusal, 'i'));
   }
+});
+
+test('the package publishes no capability registry a consumer would have to probe', () => {
+  // A machine-readable list of offered reductions was tried and removed. It made
+  // every new request a registry entry, and it made consumers probe a
+  // declaration and block when it was absent - failing on the shape of this
+  // package's frontmatter rather than on anything about the work.
+  const head = read(ENTRY).split('\n---\n')[0];
+  const declared = ['name', 'description', 'allowed-tools', 'includes', 'composes',
+    'disable-model-invocation', 'user-invocable', 'requires-skills'];
+  for (const line of head.split('\n').slice(1)) {
+    if (line.trim() === '') continue;
+    const [, field] = /^([a-z-]+):/.exec(line) ?? [];
+    assert.ok(field === undefined || declared.includes(field), `unexpected frontmatter field: ${line}`);
+  }
+  const skill = flat(ENTRY);
+  assert.doesNotMatch(skill, /declares exactly the ids/i);
+  // Every desired result is stated by the caller, so no vocabulary of offered
+  // reductions exists here for a consumer to look one up in.
+  assert.match(skill, /## Declared Reductions/);
+});
+
+test('a result the named table has never heard of is declared, not registered', () => {
+  const skill = flat(ENTRY);
+  assert.match(skill, /## Declared Reductions/);
+  assert.match(skill, /human intent of a skill as plain requirements/i);
+  assert.match(skill, /relaxes exactly one thing/i);
+  assert.match(skill, /where the contract comes from/i);
+  assert.match(skill, /The contract never comes from the source/i);
+  assert.match(skill, /candidate text only/i);
+  // The declared route must not be able to grant itself a reduction that
+  // constrains nothing.
+  assert.match(skill, /may not be empty/i);
+  // Every term the module requires is named in the unit that owns the field list.
+  const unit = read('synthesize/_atoms/synthesis-profile/synthesis-profile.md');
+  for (const field of DECLARED_FIELDS) {
+    assert.ok(unit.includes(`\`${field}\``), `synthesis-profile.md does not document ${field}`);
+  }
+});
+
+test('the spec-nano profile is preserved exactly, and remains the only named one', () => {
+  const profile = PROFILES['spec-nano'];
+  assert.deepEqual(Object.keys(PROFILES), ['spec-nano']);
+  assert.equal(profile.outputPattern, 'docs/agent/specs/<slug>.nano.md');
+  assert.equal(profile.workspaceRoot, 'docs/agent/');
+  assert.equal(profile.wordBudget, 500);
+  assert.deepEqual([...profile.requiredContent], [
+    'spec-identity', 'source-identity', 'source-revision', 'full-link',
+    'intention', 'acceptance-criteria', 'non-goals',
+  ]);
+  const skill = flat(ENTRY);
+  assert.match(skill, /## Specification Nano Profile/);
+  assert.match(skill, /docs\/agent\/specs\/<slug>\.nano\.md/);
 });
 
 test('composition reaches chronicler, the molecule, and every atom without widening the grant', () => {

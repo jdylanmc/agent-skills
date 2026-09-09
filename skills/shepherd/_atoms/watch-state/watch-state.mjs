@@ -10,6 +10,15 @@ import {
 } from '../../../ship/_atoms/provider-review/provider-review.mjs';
 import { digestConfirmedLedger } from '../../../ship/_atoms/continuation-remediation/continuation-remediation.mjs';
 import { isTerminalDisposition } from '../../../_base/_atoms/landability/landability.mjs';
+import { normalizeGitHubRepository } from '../../../_base/_atoms/provider-detect/provider-detect.mjs';
+import {
+  authoritativeChecks,
+  currentRequiredChecksStatus,
+  liveBaseCommand,
+  liveBaseIsCurrent,
+  validatedBranchRef,
+} from '../provider-state/provider-state.mjs';
+import { pushReceiptIsValid } from '../shepherd-disposition/shepherd-disposition.mjs';
 
 export const WATCH_SCHEMA = 1;
 export const MAX_GAPS = 20;
@@ -90,16 +99,45 @@ function normalizedChecks(checks = []) {
     name: check.name === undefined || check.name === null ? null : String(check.name),
     nativeId: check.nativeId === undefined || check.nativeId === null ? null : String(check.nativeId),
     runId: check.runId === undefined || check.runId === null ? null : String(check.runId),
+    workflowId: check.workflowId === undefined || check.workflowId === null ? null : String(check.workflowId),
+    runNumber: Number.isInteger(check.runNumber) && check.runNumber > 0 ? check.runNumber : null,
     attempt: Number.isInteger(check.attempt) && check.attempt > 0 ? check.attempt : null,
     headSha: check.headSha === undefined || check.headSha === null ? null : String(check.headSha),
-    required: check.required === true,
+    required: typeof check.required === 'boolean' ? check.required : null,
+    appId: check.appId ?? null,
     status: String(check.status),
     url: check.url === undefined || check.url === null ? null : String(check.url),
+    untrusted: true,
   })).sort((a, b) => digest(a).localeCompare(digest(b)));
 }
 
 export function reviewProbeCommand(detection, target) {
   return reviewThreadsCommand(detection, target);
+}
+
+export function projectWatchIdentity(resolved, { detection, repository, changeRequest, issue = null } = {}) {
+  if (detection?.provider !== 'github' || resolved?.observed !== true) {
+    throw new Error('watch identity projection requires an observed GitHub target');
+  }
+  return {
+    provider: 'github',
+    repository: normalizeGitHubRepository(repository, detection),
+    changeRequest: nonEmpty(String(changeRequest ?? ''), 'change-request id'),
+    issue: issue === null ? null : nonEmpty(String(issue), 'issue id'),
+    branch: validatedBranchRef(resolved.branch),
+    baseBranch: validatedBranchRef(resolved.base),
+    headRepository: normalizeGitHubRepository(
+      nonEmpty(resolved.headRepository?.nameWithOwner, 'resolved head repository'),
+      detection,
+    ),
+  };
+}
+
+export function watchBaseCommand(detection, observation) {
+  return liveBaseCommand(detection, {
+    repository: { slug: observation.identity.repository.split('/').slice(-2).join('/') },
+    baseBranch: observation.pullRequest.baseBranch,
+  });
 }
 
 export function reviewProbeLatestPageCommand(detection, target, page) {
@@ -111,6 +149,13 @@ export function reviewProbeThreadPageCommand(detection, target, page) {
 }
 
 export function normalizeObservation(observation = {}) {
+  const liveBase = liveBaseIsCurrent(observation.liveBase, {
+    repository: observation.identity?.repository,
+    baseBranch: observation.pullRequest?.baseBranch,
+  }) ? observation.liveBase : null;
+  const evidenceChecks = normalizedChecks(observation.checkEvidence?.checks ?? []);
+  const suppliedChecks = normalizedChecks(observation.checks ?? observation.checkEvidence?.checks ?? []);
+  const checkListsMatch = digest(evidenceChecks) === digest(suppliedChecks);
   return canonical({
     identity: {
       provider: observation.identity?.provider ?? null,
@@ -118,11 +163,13 @@ export function normalizeObservation(observation = {}) {
       changeRequest: observation.identity?.changeRequest ?? null,
       issue: observation.identity?.issue ?? null,
       branch: observation.identity?.branch ?? null,
+      headRepository: observation.identity?.headRepository ?? null,
+      baseBranch: observation.pullRequest?.baseBranch ?? null,
     },
     pullRequest: {
       state: observation.pullRequest?.state ?? null,
       baseBranch: observation.pullRequest?.baseBranch ?? null,
-      baseSha: observation.pullRequest?.baseSha ?? null,
+      baseSha: liveBase?.sha ?? null,
       headSha: observation.pullRequest?.headSha ?? null,
       mergeState: observation.pullRequest?.mergeState ?? null,
       mergeStateStatus: observation.pullRequest?.mergeStateStatus ?? null,
@@ -132,13 +179,24 @@ export function normalizeObservation(observation = {}) {
       upToDatePolicy: observation.pullRequest?.upToDatePolicy ?? 'unobserved',
       reviewDecision: observation.pullRequest?.reviewDecision ?? null,
     },
+    liveBase: liveBase ? {
+      observed: true, identityBound: true, repository: liveBase.repository,
+      ref: liveBase.ref, sha: liveBase.sha, observedAt: liveBase.observedAt,
+    } : null,
+    checkEvidence: {
+      observed: observation.checkEvidence?.observed === true,
+      complete: observation.checkEvidence?.complete === true && checkListsMatch,
+      headSha: observation.checkEvidence?.headSha ?? null,
+      requiredChecks: observation.checkEvidence?.requiredChecks ?? null,
+      checks: evidenceChecks,
+    },
     review: {
       observed: observation.review?.observed === true,
       complete: observation.review?.complete === true,
       identityBound: observation.review?.identityBound === true,
       observationDigest: observation.review?.observationDigest ?? null,
     },
-    checks: normalizedChecks(observation.checks),
+    checks: suppliedChecks,
     ownership: {
       branchOwned: observation.ownership?.branchOwned === true,
       providerAvailable: observation.ownership?.providerAvailable === true,
@@ -147,14 +205,17 @@ export function normalizeObservation(observation = {}) {
   });
 }
 
-function validateObservation(observation, { initial = false } = {}) {
+function validateObservation(observation, { initial = false, observationOnly = false } = {}) {
   for (const [field, value] of Object.entries(observation.identity)) {
+    if (observationOnly && field === 'issue' && value === null) continue;
     nonEmpty(value, `identity.${field}`);
   }
+  validatedBranchRef(observation.identity.branch);
+  validatedBranchRef(observation.identity.baseBranch);
   if (!['open', 'merged', 'closed'].includes(observation.pullRequest.state)) {
     throw new Error('pull request state must be open, merged, or closed');
   }
-  objectId(observation.pullRequest.baseSha, 'base head');
+  if (observation.pullRequest.baseSha !== null) objectId(observation.pullRequest.baseSha, 'base head');
   objectId(observation.pullRequest.headSha, 'observed head');
   nonEmpty(observation.pullRequest.baseBranch, 'base branch');
   nonEmpty(observation.pullRequest.mergeState, 'merge state');
@@ -170,7 +231,7 @@ function validateObservation(observation, { initial = false } = {}) {
   if (!['required', 'not-required', 'unobserved'].includes(observation.pullRequest.upToDatePolicy)) {
     throw new Error('up-to-date policy must use normalized vocabulary');
   }
-  if (initial && (!observation.review.observed
+  if (initial && !observationOnly && (!observation.review.observed
     || !observation.review.complete
     || !observation.review.identityBound
     || !/^[0-9a-f]{64}$/.test(observation.review.observationDigest ?? ''))) {
@@ -180,18 +241,26 @@ function validateObservation(observation, { initial = false } = {}) {
     && !/^[0-9a-f]{64}$/.test(observation.review.observationDigest ?? '')) {
     throw new Error('a complete review observation must be digest-bound');
   }
-  if (initial && (!observation.ownership.branchOwned
-    || !observation.ownership.providerAvailable
-    || !observation.ownership.evidenceComplete)) {
+  if (initial && (!observation.ownership.providerAvailable
+    || (!observationOnly && (!observation.ownership.branchOwned || !observation.ownership.evidenceComplete)))) {
     throw new Error('provider, ownership, and evidence must be available');
+  }
+  if (!observationOnly && (observation.checkEvidence.observed !== true
+    || observation.checkEvidence.complete !== true
+    || observation.checkEvidence.headSha !== observation.pullRequest.headSha
+    || digest(observation.checkEvidence.checks) !== digest(observation.checks))) {
+    throw new Error('check evidence must be complete, atomic, and bound to the observed head');
   }
   for (const check of observation.checks) {
     nonEmpty(check.name, 'check name');
     nonEmpty(check.status, 'check status');
-    if (check.headSha !== observation.pullRequest.headSha) {
+    if (!observationOnly && typeof check.required !== 'boolean') {
+      throw new Error('check requiredness must be observed');
+    }
+    if (!observationOnly && check.headSha !== observation.pullRequest.headSha) {
       throw new Error('every check must be bound to the observed head');
     }
-    if (check.required && check.status === 'failure'
+    if (!observationOnly && check.required && check.status === 'failure'
       && (!check.runId || !check.nativeId || !check.attempt)) {
       throw new Error('a failed required check needs provider-native run, check, and attempt identity');
     }
@@ -203,7 +272,9 @@ function validateObservation(observation, { initial = false } = {}) {
 }
 
 export function observationDigest(observation) {
-  return digest(normalizeObservation(observation));
+  const normalized = normalizeObservation(observation);
+  if (normalized.liveBase) delete normalized.liveBase.observedAt;
+  return digest(normalized);
 }
 
 function stateIntegrity(state) {
@@ -254,6 +325,8 @@ function normalizeContinuation(value = {}, expectedHead) {
       branch: nonEmpty(changeRequest.branch, 'change-request branch'),
       provider: nonEmpty(changeRequest.provider, 'change-request provider'),
       repository: nonEmpty(changeRequest.repository, 'change-request repository'),
+      headRepository: nonEmpty(changeRequest.headRepository, 'head repository'),
+      baseBranch: nonEmpty(changeRequest.baseBranch, 'base branch'),
     },
     ledger: value.ledger,
     priorDeliveryEvidence: prior,
@@ -267,6 +340,8 @@ function identityFromContinuation(continuation) {
     changeRequest: continuation.changeRequest.id,
     issue: continuation.originalIssue,
     branch: continuation.changeRequest.branch,
+    headRepository: continuation.changeRequest.headRepository,
+    baseBranch: continuation.changeRequest.baseBranch,
   });
 }
 
@@ -279,8 +354,10 @@ function handledFromPrior(prior) {
 
 function changedFields(previous, current) {
   const fields = [];
-  for (const key of ['identity', 'pullRequest', 'review', 'checks', 'ownership']) {
-    if (digest(previous?.[key] ?? null) !== digest(current?.[key] ?? null)) {
+  for (const key of ['identity', 'pullRequest', 'liveBase', 'checkEvidence', 'review', 'checks', 'ownership']) {
+    const comparable = (value) => key === 'liveBase' && value
+      ? { ...value, observedAt: null } : value ?? null;
+    if (digest(comparable(previous?.[key])) !== digest(comparable(current?.[key]))) {
       fields.push(key);
     }
   }
@@ -295,11 +372,17 @@ function nextPoll(startedAt, observedAt) {
   };
 }
 
-export function createWatchState({ observation, observedAt, continuation }) {
-  const normalized = validateObservation(normalizeObservation(observation), { initial: true });
+export function createWatchState({ observation, observedAt, continuation, readAuthority }) {
+  const observationOnly = continuation === undefined || continuation === null;
+  const normalized = validateObservation(normalizeObservation(observation), { initial: true, observationOnly });
   const expectedHead = objectId(normalized.pullRequest.headSha, 'observed head');
-  const normalizedContinuation = normalizeContinuation(continuation, expectedHead);
-  if (digest(normalized.identity) !== digest(identityFromContinuation(normalizedContinuation))) {
+  const normalizedContinuation = observationOnly ? null : normalizeContinuation(continuation, expectedHead);
+  if (observationOnly && (readAuthority?.source !== 'operator-explicit-target'
+    || !readAuthority.owningParent
+    || digest(readAuthority.targetIdentity) !== digest(normalized.identity))) {
+    throw new Error('observation-only watch requires explicit operator target read authority and owning parent');
+  }
+  if (!observationOnly && digest(normalized.identity) !== digest(identityFromContinuation(normalizedContinuation))) {
     throw new Error('observation identity does not match Ship continuation identity');
   }
   const { delayMs, nextPollAt } = nextPoll(observedAt, observedAt);
@@ -312,12 +395,15 @@ export function createWatchState({ observation, observedAt, continuation }) {
     nextPollAt,
     delayMs,
     observation: normalized,
-    observationDigest: digest(normalized),
+    observationDigest: observationDigest(normalized),
     targetIdentity: normalized.identity,
     expectedHead,
+    authority: observationOnly
+      ? { mode: 'observation-only', provenance: 'operator-explicit-target', owningParent: readAuthority.owningParent }
+      : { mode: 'ship-continuation', provenance: 'validated-ship-context' },
     continuation: normalizedContinuation,
     handledEvidenceKeys: [...new Set([
-      ...handledFromPrior(normalizedContinuation.priorDeliveryEvidence),
+      ...(observationOnly ? [] : handledFromPrior(normalizedContinuation.priorDeliveryEvidence)),
       ...(continuation?.handledEvidenceKeys ?? []),
     ])],
     shipReceipts: [],
@@ -358,17 +444,23 @@ export function recordObservation(state, { observation, observedAt }) {
   if (state.status !== 'running') {
     throw new Error('only a running watch accepts observations');
   }
+  if (!['observation-only', 'ship-continuation'].includes(state.authority?.mode)) {
+    return stopWatch(state, { reason: 'ownership-failure', stoppedAt: observedAt });
+  }
   if (instant(observedAt, 'observedAt') < instant(state.lastObservedAt, 'lastObservedAt')) {
     throw new Error('observation time must not move backward');
   }
-  const normalized = validateObservation(normalizeObservation(observation));
+  const normalized = validateObservation(normalizeObservation(observation), {
+    observationOnly: state.authority?.mode === 'observation-only',
+  });
   if (digest(normalized.identity) !== digest(state.targetIdentity)) {
     return stopWatch(state, { reason: 'ownership-failure', stoppedAt: observedAt });
   }
-  if (normalized.pullRequest.headSha !== state.expectedHead) {
+  const observationOnly = state.authority?.mode === 'observation-only';
+  if (!observationOnly && normalized.pullRequest.headSha !== state.expectedHead) {
     return stopWatch(state, { reason: 'ownership-failure', stoppedAt: observedAt });
   }
-  const nextDigest = digest(normalized);
+  const nextDigest = observationDigest(normalized);
   const fields = changedFields(state.observation, normalized);
   const meaningful = nextDigest !== state.observationDigest;
   const { delayMs, nextPollAt } = nextPoll(state.startedAt, observedAt);
@@ -381,6 +473,7 @@ export function recordObservation(state, { observation, observedAt }) {
     nextPollAt: terminal ? null : nextPollAt,
     delayMs: terminal ? null : delayMs,
     observation: normalized,
+    expectedHead: observationOnly ? normalized.pullRequest.headSha : state.expectedHead,
     observationDigest: nextDigest,
     lastChange: { meaningful, fields, observedAt },
     observationCount: state.observationCount + 1,
@@ -418,7 +511,7 @@ function evidenceKeys(state) {
     keys.push(`review-packet:${reviewDigest}`);
   }
   if (state.lastChange.fields.includes('checks')) {
-    for (const check of state.observation.checks.filter((item) => item.required && item.status === 'failure')) {
+    for (const check of authoritativeChecks(state.observation.checks).filter((item) => item.required && ['failure', 'cancelled'].includes(item.status))) {
       if (!check.runId || !check.nativeId || !check.attempt || !check.headSha) {
         keys.push('checks:incomplete');
       } else {
@@ -434,6 +527,9 @@ export function recordShipResult(state, {
   shipResult,
   recordedAt,
 }) {
+  if (state.authority?.mode !== 'ship-continuation') {
+    return stopWatch(state, { reason: 'ship-blocked', stoppedAt: recordedAt });
+  }
   if (!state.inFlightShip
     || digest(state.inFlightShip.evidence) !== digest(evidence)) {
     return stopWatch(state, { reason: 'ship-blocked', stoppedAt: recordedAt });
@@ -491,11 +587,18 @@ export function recordShipResult(state, {
 export function recordMaintainedHead(state, {
   previousHead,
   resultingHead,
-  leaseVerified,
+  pushReceipt,
   continuation,
   recordedAt,
 }) {
-  if (previousHead !== state.expectedHead || !resultingHead || leaseVerified !== true) {
+  if (state.authority?.mode !== 'ship-continuation') {
+    return stopWatch(state, { reason: 'ownership-failure', stoppedAt: recordedAt });
+  }
+  if (previousHead !== state.expectedHead || !pushReceiptIsValid(pushReceipt, {
+    headTarget: { repository: state.targetIdentity.headRepository,
+      ref: `refs/heads/${validatedBranchRef(state.targetIdentity.branch)}` },
+    previousHead, resultingHead, strategy: pushReceipt?.strategy,
+  })) {
     return stopWatch(state, { reason: 'ownership-failure', stoppedAt: recordedAt });
   }
   const nextHead = objectId(resultingHead, 'maintained head');
@@ -523,7 +626,7 @@ export function recordMaintainedHead(state, {
     maintenanceReceipt: {
       previousHead,
       resultingHead: nextHead,
-      leaseVerified: true,
+      pushReceipt: canonical(pushReceipt),
       continuationDigest: digest(nextContinuation),
       recordedAt,
     },
@@ -539,12 +642,30 @@ export function watchAction(state) {
     return { action: 'stop', reason: 'ship-blocked' };
   }
   if (!ownership.providerAvailable) return { action: 'stop', reason: 'provider-failure' };
+  if (state.authority?.mode === 'observation-only') {
+    return state.lastChange.meaningful
+      ? { action: 'notify-parent', reason: 'observation-only-change', owningParent: state.authority.owningParent, nextPollAt: state.nextPollAt }
+      : { action: 'wait', reason: 'unchanged-observation-only', nextPollAt: state.nextPollAt };
+  }
+  if (state.authority?.mode !== 'ship-continuation') return { action: 'stop', reason: 'ownership-failure' };
   if (!ownership.branchOwned) return { action: 'stop', reason: 'ownership-failure' };
-  if (!ownership.evidenceComplete || !review.observed || !review.complete || !review.identityBound) {
+  if (!state.observation.liveBase || !ownership.evidenceComplete || !review.observed || !review.complete || !review.identityBound
+    || state.observation.checkEvidence.observed !== true || state.observation.checkEvidence.complete !== true
+    || state.observation.checkEvidence.headSha !== state.expectedHead
+    || digest(state.observation.checkEvidence.checks) !== digest(state.observation.checks)) {
+    return { action: 'stop', reason: 'evidence-failure' };
+  }
+  const checks = currentRequiredChecksStatus(state.observation.checkEvidence, state.expectedHead);
+  if (checks.status === 'incomplete' && checks.reason !== 'remote-checks-incomplete') {
     return { action: 'stop', reason: 'evidence-failure' };
   }
   if (!state.lastChange.meaningful) {
     return { action: 'wait', reason: 'unchanged', nextPollAt: state.nextPollAt };
+  }
+  const pr = state.observation.pullRequest;
+  if (['conflicted', 'dirty', 'unmergeable'].includes(pr.mergeState)
+    || (pr.upToDatePolicy === 'required' && pr.behind === true)) {
+    return { action: 'run-shepherd-cycle', reason: 'maintenance-required-before-functional-work' };
   }
   const pendingEvidence = evidenceKeys(state).filter((key) => !state.handledEvidenceKeys.includes(key));
   if (pendingEvidence.includes('checks:incomplete')) {
@@ -563,7 +684,11 @@ export function watchAction(state) {
 }
 
 export function beginShipDispatch(state, { evidence, startedAt }) {
-  if (state.inFlightShip || !Array.isArray(evidence) || evidence.length === 0) {
+  if (state.authority?.mode !== 'ship-continuation') {
+    return stopWatch(state, { reason: 'ship-blocked', stoppedAt: startedAt });
+  }
+  if (watchAction(state).action !== 'invoke-ship'
+    || state.inFlightShip || !Array.isArray(evidence) || evidence.length === 0) {
     return stopWatch(state, { reason: 'ship-blocked', stoppedAt: startedAt });
   }
   const pending = evidenceKeys(state).filter((key) => !state.handledEvidenceKeys.includes(key));
@@ -587,10 +712,49 @@ export function bootstrapAcceptance(state, {
   disposition,
   receipt,
 } = {}) {
-  const accepted = workerStatus === 'running'
+  const workerAccepted = workerStatus === 'running'
     && digest(acceptedIdentity) === digest(state.targetIdentity)
     && acceptedStateDigest === state.integrityDigest
+    && state.status === 'running';
+  if (workerAccepted && state.authority?.mode === 'observation-only') {
+    return {
+      status: 'observation-only',
+      result: {
+        disposition: 'blocked', reason: 'missing-ship-continuation-context',
+        authority: state.authority,
+        receipt: {
+          observedAt: state.lastObservedAt, baseSha: state.observation.pullRequest.baseSha,
+          headSha: state.expectedHead, upToDatePolicy: state.observation.pullRequest.upToDatePolicy,
+          complete: false,
+        },
+        watch: { status: 'watch-accepted', identity: state.targetIdentity, stateDigest: state.integrityDigest },
+      },
+    };
+  }
+  const green = ['mergeable-and-green', 'no-op-mergeable-and-green'].includes(disposition);
+  const pr = state.observation.pullRequest;
+  const greenSupported = !green || (
+    state.authority?.mode === 'ship-continuation'
+    &&
+    state.observation.ownership.evidenceComplete
+    && state.observation.ownership.branchOwned
+    && state.observation.ownership.providerAvailable
+    && state.observation.review.observed && state.observation.review.complete
+    && state.observation.review.identityBound
+    && receipt?.provider === 'supported-provider'
+    && pr.blocked === false && pr.isDraft === false
+    && ['mergeable', 'clean', 'has_hooks'].includes(pr.mergeState)
+    && !['review-required', 'changes-requested', 'REVIEW_REQUIRED', 'CHANGES_REQUESTED'].includes(pr.reviewDecision)
+    && (pr.upToDatePolicy !== 'required' || pr.behind === false)
+    && currentRequiredChecksStatus({
+      ...state.observation.checkEvidence, checks: state.observation.checks,
+    }, pr.headSha).status === 'success'
+  );
+  const accepted = workerAccepted && state.authority?.mode === 'ship-continuation' && greenSupported
     && isTerminalDisposition(disposition)
+    && liveBaseIsCurrent(state.observation.liveBase, {
+      repository: state.targetIdentity.repository, baseBranch: pr.baseBranch,
+    })
     && receipt?.complete === true
     && receipt.baseSha === state.observation.pullRequest.baseSha
     && receipt.headSha === state.observation.pullRequest.headSha
@@ -605,6 +769,7 @@ export function bootstrapAcceptance(state, {
         receipt,
         watch: {
           status: 'watch-accepted',
+          authority: state.authority,
           identity: state.targetIdentity,
           stateDigest: state.integrityDigest,
         },
@@ -689,10 +854,27 @@ export function loadWatchState(statePath, { fileSystem = fs } = {}) {
   if (digest(state.observation?.identity) !== digest(state.targetIdentity)) {
     throw new Error('watch state observation identity does not match its immutable target');
   }
-  normalizeContinuation(state.continuation, state.expectedHead);
-  if (digest(identityFromContinuation(state.continuation)) !== digest(state.targetIdentity)) {
-    throw new Error('watch state continuation identity does not match its immutable target');
+  const observationOnly = state.authority?.mode === 'observation-only';
+  if (observationOnly) {
+    if (state.authority.provenance !== 'operator-explicit-target' || !state.authority.owningParent
+      || state.continuation !== null || state.inFlightShip || state.shipReceipts.length) {
+      throw new Error('invalid observation-only authority or remediation state');
+    }
+  } else if (state.authority?.mode === 'ship-continuation') {
+    normalizeContinuation(state.continuation, state.expectedHead);
+    if (digest(identityFromContinuation(state.continuation)) !== digest(state.targetIdentity)) {
+      throw new Error('watch state continuation identity does not match its immutable target');
+    }
+  } else {
+    throw new Error('watch authority must be explicitly observation-only or ship-continuation');
   }
-  validateObservation(state.observation);
+  validateObservation(state.observation, { observationOnly });
+  if (state.observation.liveBase
+    && (!liveBaseIsCurrent(state.observation.liveBase, {
+      repository: state.targetIdentity.repository,
+      baseBranch: state.observation.pullRequest.baseBranch,
+    }) || state.observation.liveBase.sha !== state.observation.pullRequest.baseSha)) {
+    throw new Error('watch state live base does not match its observed target');
+  }
   return state;
 }

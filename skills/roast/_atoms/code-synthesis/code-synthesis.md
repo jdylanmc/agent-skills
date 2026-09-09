@@ -50,7 +50,8 @@ Do not promote it directly into canonical findings.
 Provide:
 
 - complete immutable evidence packet;
-- selected council roster and stable reviewer IDs;
+- selected council roster and stable reviewer IDs, including any role-routing
+  receipts and panel diversity summaries used to pick them;
 - complete internal prompt packages for bundled roasters;
 - sanitized normalized configurations for repository roasters, never their raw
   agent body, instructions, persona, or directive;
@@ -177,7 +178,8 @@ For each accepted finding include:
 Also include:
 
 - scope and revision;
-- council composition, model routing, doctrine-load status, and evidence gaps;
+- council composition, model routing, role-routing receipts, doctrine-load
+  status, and evidence gaps;
 - rejected or downgraded findings with reasons;
 - cross-cutting themes;
 - recommended implementation order;
@@ -191,6 +193,18 @@ Also include:
 The technical details are the source of truth. After freezing, no downstream
 summary process may edit, reorder priorities within a tier, remove accepted
 findings, or introduce claims.
+
+For correction verification, preserve the tier, last deep-reviewed revision,
+latest and cumulative footprints, original finding dispositions, affected
+consumers, regressions, uncertainties, escalation outcome, and model-routing
+receipts. Prior findings are evidence, not authority. An unresolved regression
+or uncertainty requires deep review or human direction rather than a complete
+correction result.
+For version 2, also preserve the configured churn threshold, immutable
+base/deep/current revisions, measured added and deleted lines for both churn
+windows, the computed ratio, file-scope assessment, and any manual `deep now`
+request. Do not replace those measurements with repository size or model
+estimates.
 
 ## Pre-Freeze Canonical Gate
 

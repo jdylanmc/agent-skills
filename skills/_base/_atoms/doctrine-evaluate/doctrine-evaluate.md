@@ -39,8 +39,8 @@ taken as an exception.
 
 A selector is `id`, `id#section`, `id#section::opening phrase`, or
 `id::opening phrase`. A section is matched by its number, its title, or its
-heading. A rule is matched by its stable reference such as `code#3.2`, or by an
-opening phrase of the rule text.
+heading. A rule is matched by its stable reference such as
+`code#principles.2`, or by an opening phrase of the rule text.
 
 An artifact packet is a JSON object with one `artifacts` array. Each artifact
 declares a `locator`, an optional `kind` of `file` or `diff`, and a string
@@ -87,7 +87,7 @@ Each finding carries:
 | --- | --- |
 | `doctrine_id` | The canonical identifier of the doctrine that was selected and verified. |
 | `rule` | The exact rule label or opening phrase. |
-| `rule_ref` | The stable reference of that rule, such as `code#3.2`. |
+| `rule_ref` | The stable reference of that rule, such as `code#principles.2`. |
 | `section` | The section the rule belongs to. |
 | `locator` | The stable locator of the artifact the packet supplied. |
 | `observation` | What was observed in that artifact, in at most 500 UTF-8 bytes and no control characters. |

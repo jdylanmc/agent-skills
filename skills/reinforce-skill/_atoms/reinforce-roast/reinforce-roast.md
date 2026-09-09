@@ -36,10 +36,9 @@ a correction edited a repository gate. A reinforcement mutates a working package
 that sits beside every other skill, so a correction made to silence a finding
 could reach for a *neighbour* — another skill's `SKILL.md`, a shared `_base`
 unit, the intent of a skill nobody asked about. The shared gate permits all
-three. `assertReinforcementChangeSet` refuses them by layering the
+three. `assertReinforcementChangeSet` refuses unaccounted edits by layering the
 reinforcement write boundary over the gate check, so a remediation change set
-must answer both questions: did it weaken a gate, and did it stay inside the one
-skill being reinforced.
+must answer both questions: did it weaken a gate, and did it stay inside the one target behavior and its justified companions.
 
 Reusing another unit's script is a code dependency, not unit composition; the
 two are separate graphs. The price is that a change to the shared ledger changes
@@ -99,7 +98,17 @@ and a halted loop.
 
 ## Boundaries
 
+Remediation uses the same companion contract as the final publication audit.
+Use `reinforce-roast.mjs --root <root> --skill <target> --base <commit>
+--snapshot <run-state.json> --snapshot-digest <pinned-sha256>
+--companions <ledger.json>` for immutable Git enumeration and residue detection; low-level callers pass
+the same `companions` and actual `contents` through to the shared audit.
+Companions never bypass `assertGateIntegrity` or authorize a reviewer edit.
+The publication audit requires preserved baseline evidence for self-reinforcement.
+An uncommitted candidate or a head/tree that differs from the pinned snapshot
+cannot complete that audit.
+
 This atom invokes review and coordinates resolution. It never weakens a gate,
 the validator, the deriver, or `AGENTS.md` to silence a finding; never edits
-`/roast`; never edits another skill; and never treats a roast as approval. The
+`/roast`; never changes another skill's behavior; and never treats a roast as approval. The
 rubber duck advises and its verdict is not a sign-off.

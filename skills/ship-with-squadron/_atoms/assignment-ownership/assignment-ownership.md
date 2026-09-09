@@ -24,6 +24,17 @@ supported validation policy; workers cannot silently omit or invent checks. The
 packet rejects unknown fields and seals the complete task contract: goal, scope,
 context, acceptance, verification, timebox, forbidden authority, report, and
 standing instruction. Workers never select more backlog work.
+
+When an issue carries a review policy, its exact normalized `reviewPolicy` is
+copied into the assignment packet. New version 2 packets always carry either
+`deep-then-verify` or `repeated-full`; only historical full-review packets omit
+the field.
+Continuation requires the unchanged original packet, so replacement cannot
+silently enable, disable, or reroute tiering.
+Because continuation advances assignment generation, it clears any retained
+review lineage and removes the current Roast stage before the new owner is
+persisted. The continued run therefore remains valid and explicitly requires a
+new full review.
 Assignment also consumes a scheduler lease bound to the confirmed manifest,
 provider configuration, exact fleet-state revision, recomputed dependency
 frontier, current `capacity.dispatch`, and active count. The compare-and-swap

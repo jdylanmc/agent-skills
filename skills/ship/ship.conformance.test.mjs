@@ -32,6 +32,12 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import {
+  SEMANTIC_ASSESSMENT_CATEGORIES,
+} from '../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
+import {
+  runNewCodeReviewFromGit,
+} from '../roast/_atoms/correction-review-dispatch/correction-review-dispatch.mjs';
 import { classifyTerminalDisposition } from '../shepherd/_atoms/shepherd-disposition/shepherd-disposition.mjs';
 import { MERGE_GRANT_TOKEN, evaluateMergeGate, mayMerge } from './_atoms/merge-gate/merge-gate.mjs';
 import { reconcile as reconcileDiff } from './_atoms/diff-reconciliation/diff-reconciliation.mjs';
@@ -75,6 +81,7 @@ const REVIEW_DIGEST = '1'.repeat(64);
 const PRIOR_REVIEW_DIGEST = '0'.repeat(64);
 const HEAD = 'a'.repeat(40);
 const RESULTING_HEAD = 'b'.repeat(40);
+const BASE_OID = 'c'.repeat(40);
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -165,6 +172,125 @@ function defaultThreadEvidence() {
 function read(relativePath) {
   return fs.readFileSync(path.join(SKILLS_ROOT, ...relativePath.split('/')), 'utf8');
 }
+
+function tieredInput(semanticSignals = []) {
+  const assessment = {
+    complete: true,
+    categories: SEMANTIC_ASSESSMENT_CATEGORIES.map((category) => ({
+      category,
+      changed: semanticSignals.includes(category),
+      evidence: `${category} assessed`,
+    })),
+    uncertainties: [],
+  };
+  const identity = (headSha) => ({
+    baseSha: BASE_OID,
+    headSha,
+    packetDigest: REVIEW_DIGEST,
+    scopeDigest: PRIOR_REVIEW_DIGEST,
+    sourceRevision: 'source',
+  });
+  return {
+    current: identity(RESULTING_HEAD),
+    lastDeep: identity(HEAD),
+    previousHead: HEAD,
+    latestDelta: {
+      baseSha: HEAD,
+      headSha: RESULTING_HEAD,
+      paths: ['src/fix.js'],
+      evidenceComplete: true,
+      semanticAssessment: assessment,
+    },
+    cumulativeDelta: {
+      baseSha: HEAD,
+      headSha: RESULTING_HEAD,
+      paths: ['src/fix.js'],
+      evidenceComplete: true,
+      semanticAssessment: assessment,
+    },
+    deltaReconciliation: { complete: true, revertedPaths: [], unexplainedPaths: [] },
+    fileScopeAssessment: {
+      complete: true,
+      newOrOutOfScopeFiles: false,
+      evidence: 'scope unchanged',
+    },
+    requirements: ['preserve the confirmed behavior'],
+    originalFindingIds: ['F-1'],
+    affectedConsumers: ['consumer-a'],
+    validation: { headSha: RESULTING_HEAD, complete: true },
+    remediationAttempt: 1,
+  };
+}
+
+test('Ship new default calls correction after initial deep and escalates semantic changes', async () => {
+  const calls = [];
+  const fast = await runNewCodeReviewFromGit({
+    input: tieredInput(),
+    repositoryRoot: '/repo',
+    reviewBaseSha: BASE_OID,
+    lastDeepHead: HEAD,
+    currentHead: RESULTING_HEAD,
+    runGit: (_root, args) =>
+      args.includes(BASE_OID) ? '60\t40\tsrc/base.js\n' : '10\t0\tsrc/fix.js\n',
+    runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
+    correctionTransport: async () => {
+      calls.push('correction');
+      return JSON.stringify({
+        schemaVersion: 1,
+        status: 'complete',
+        headSha: RESULTING_HEAD,
+        findingDispositions: [{
+          findingId: 'F-1',
+          disposition: 'addressed',
+          evidence: 'the current assertion passes',
+          reasoning: 'the original requirement is satisfied',
+        }],
+        requirementChecks: [{
+          requirement: 'preserve the confirmed behavior',
+          status: 'satisfied',
+          evidence: 'behavior is preserved',
+          negativeCases: ['invalid input remains rejected'],
+        }],
+        affectedConsumersReviewed: [{
+          consumer: 'consumer-a',
+          status: 'satisfied',
+          evidence: 'consumer remains compatible',
+        }],
+        regressions: [],
+        newFindings: [],
+        uncertainties: [],
+      });
+    },
+    fullReview: async () => {
+      calls.push('full');
+      return { status: 'complete' };
+    },
+  });
+  assert.deepEqual(calls, ['correction']);
+  assert.equal(fast.authoritative, 'correction');
+
+  calls.length = 0;
+  const escalated = await runNewCodeReviewFromGit({
+    input: tieredInput(['public-contract']),
+    repositoryRoot: '/repo',
+    reviewBaseSha: BASE_OID,
+    lastDeepHead: HEAD,
+    currentHead: RESULTING_HEAD,
+    runGit: (_root, args) =>
+      args.includes(BASE_OID) ? '60\t40\tsrc/base.js\n' : '10\t0\tsrc/fix.js\n',
+    runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
+    correctionTransport: async () => {
+      calls.push('correction');
+      return '{}';
+    },
+    fullReview: async () => {
+      calls.push('full');
+      return { status: 'complete' };
+    },
+  });
+  assert.deepEqual(calls, ['full']);
+  assert.equal(escalated.authoritative, 'full');
+});
 
 function continuationInput(overrides = {}) {
   const entries = [{ id: 'L1', classification: 'in-scope' }];
@@ -360,6 +486,7 @@ test('the execute-bearing closure is pinned, because execute can mutate', () => 
     '_base/_atoms/chronicle-append/chronicle-append.md',
     '_base/_atoms/chronicle-replay/chronicle-replay.md',
     '_base/_atoms/provider-detect/provider-detect.md',
+    '_base/_atoms/review-tier-policy/review-tier-policy.md',
     '_base/_molecules/chronicler/chronicler.md',
     'ship/SKILL.md',
     'ship/_atoms/change-request/change-request.md',
@@ -1735,29 +1862,52 @@ test('the handoff is a nested invocation the run waits for, not a described one'
 });
 
 test('ship accepts the actual terminal result shape shepherd produces', () => {
+  const baseSha = 'a'.repeat(40);
+  const headSha = 'b'.repeat(40);
   const signals = {
+    authority: { mode: 'ship-continuation' },
     observedAt: '2026-08-25T20:36:00Z',
+    target: { repository: 'example/repo', baseBranch: 'main' },
+    liveBase: {
+      observed: true, identityBound: true, repository: 'example/repo',
+      ref: 'refs/heads/main', sha: baseSha, observedAt: '2026-08-25T20:36:00Z',
+    },
     provider: { status: 'supported-provider', provider: 'github' },
-    preflight: { status: 'ok' },
-    rebase: { status: 'completed', baseSha: 'base' },
+    headTarget: { repository: 'example/repo', ref: 'refs/heads/issue-1' },
+    branchPolicy: { observed: true, trusted: true, observedAt: '2026-08-25T20:36:00Z',
+      repository: 'example/repo', ref: 'refs/heads/issue-1', allowForcePushes: true,
+      requireLinearHistory: true, directUpdatesAllowed: true },
+    baseBranchPolicy: { observed: true, trusted: true, observedAt: '2026-08-25T20:36:00Z',
+      repository: 'example/repo', ref: 'refs/heads/main', sha: baseSha,
+      allowForcePushes: false, requireLinearHistory: false, squashMergeAllowed: true },
+    preflight: { status: 'ok', capturedRemoteHead: 'c'.repeat(40) },
+    rebase: { status: 'completed', baseSha, strategy: 'rebase' },
     regeneration: { status: 'not-applicable' },
     localValidation: { status: 'passed', evidenceComplete: true },
-    push: { status: 'pushed-with-lease', headSha: 'head' },
+    push: { status: 'pushed-with-lease', headSha, previousHead: 'c'.repeat(40),
+      repository: 'example/repo', ref: 'refs/heads/issue-1', strategy: 'rebase',
+      capturedHeadVerified: true, leaseVerified: true,
+      lease: { ref: 'refs/heads/issue-1', expectedHead: 'c'.repeat(40) } },
     basePolicy: { upToDate: 'required' },
     mergeability: {
       state: 'mergeable',
       isDraft: false,
-      baseSha: 'base',
-      headSha: 'head',
+      blocked: false,
+      baseSha,
+      headSha,
       behind: false,
     },
-    remoteChecks: { checks: [{ name: 'validate', status: 'passed' }] },
   };
 
-  for (const [remoteChecks, disposition] of [
-    [{ checks: [{ name: 'validate', status: 'passed' }] }, 'mergeable-and-green'],
-    [{ checks: [{ name: 'validate', status: 'failed' }] }, 'failing'],
+  for (const [status, disposition] of [
+    ['passed', 'mergeable-and-green'],
+    ['failed', 'failing'],
   ]) {
+    const remoteChecks = {
+      observed: true, complete: true, headSha,
+      requiredChecks: [{ name: 'validate', appId: null }],
+      checks: [{ name: 'validate', status, required: true, headSha }],
+    };
     const shepherdResult = classifyTerminalDisposition({ ...signals, remoteChecks });
     const evaluation = evaluateHandoff({
       intent: 'yes',
@@ -1779,8 +1929,8 @@ test('ship accepts the actual terminal result shape shepherd produces', () => {
       result: shepherdResult,
       observedBase: {
         observedAt: '2026-08-25T20:36:01Z',
-        baseSha: 'base',
-        headSha: 'head',
+        baseSha,
+        headSha,
       },
     });
 

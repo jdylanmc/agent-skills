@@ -25,7 +25,9 @@ the thing that produced the candidate.
 `resolveOutcome({profileId, candidatePath, binding, budget, ledger, split})`
 requires STRUCTURAL evidence, never a bare status stub:
 
-- top-level `profileId` and `candidatePath` (non-empty strings);
+- top-level `candidatePath` (a non-empty string) and `profileId` — the contract
+  reference this run obeyed, either a non-empty named id or a complete declared
+  reduction, resolved here before any of the run's own claims are weighed;
 - `binding`: `{status, sourcePath, revision, digest}` — `status` is `bound` or
   `stale-source`, `sourcePath` and `revision` are non-empty, and `digest`
   matches `^[0-9a-f]{64}$`;
@@ -47,8 +49,16 @@ requires STRUCTURAL evidence, never a bare status stub:
   When the budget is not over, split evidence must be absent or carry
   `not-required`/`within-budget`; contradictory `needs-split` evidence blocks.
 
-The `profileId` must be identical across the top level, the budget, and the
-clean ledger. A mismatch is `blocked` with reason `evidence-profile-mismatch`.
+The **resolved** contract id must be identical across the budget, the clean
+ledger, and the split. Evidence carries the resolved id, not the reference, so a
+declared contract compares as the digest of its own terms and a contract edited
+mid-run stops matching the evidence citing it. A mismatch is `blocked` with
+reason `evidence-profile-mismatch`.
+
+A `complete` result carries that id as `contract`, alongside the candidate path
+and digest. Persistence runs afterwards and cannot re-derive which terms this run
+obeyed; without the id on the receipt, a candidate validated under one contract
+could be published under another that happens to name the same destination.
 
 ## Resolution
 
@@ -79,8 +89,9 @@ and appears here — so a prose reason emitted anywhere fails the suite.
 | --- | --- |
 | `binding-missing` | No `binding` object was supplied. Missing evidence is unmet evidence. |
 | `binding-refused` | The binding refused for a non-staleness reason (a `status` other than `bound` or `stale-source`). The refusing status or reason rides in `detail`. |
-| `profile-id-missing` | No non-empty top-level `profileId` accompanies the evidence. |
-| `unknown-profile` | The top-level `profileId` names no profile in the table. |
+| `profile-id-missing` | No top-level contract accompanies the evidence: neither a non-empty profile id nor a declared reduction. |
+| `unknown-profile` | The top-level contract names no profile in the table. |
+| `invalid-profile` | The top-level contract is a declared reduction that does not state every term. |
 | `candidate-path-missing` | No non-empty `candidatePath` accompanies the evidence. |
 | `candidate-digest-missing` | The clean ledger carries no 64-hex digest pinning the exact rendered candidate bytes it validated. |
 | `candidate-evidence-mismatch` | The clean ledger's candidate path differs from the profile-derived candidate path. |

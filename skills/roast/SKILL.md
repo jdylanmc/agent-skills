@@ -52,6 +52,11 @@ supports one decision: ship it, revise it, or hand the work somewhere else. See
    - `code` — a pull request, branch diff, working-tree change set, named
      source files, a unified diff, or pasted code. Run
      [Code branch](./_molecules/roast-code-branch/roast-code-branch.md).
+     New confirmed Ship and Ship-with-Squadron code-review packets default to
+     one deep review followed by bounded correction verification. Repeated full
+     review is explicit opt-in, and `deep now` forces the full council for the
+     current head. Historical missing-policy and version 1 packets keep their
+     recorded behavior.
 
 4. Return what the branch returned, with the doctrine selection and its
    reasoning attached, so a surprising recommendation can be traced to the

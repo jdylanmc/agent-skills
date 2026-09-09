@@ -15,8 +15,10 @@ import {
 import { computeFrontier } from '../dependency-frontier/dependency-frontier.mjs';
 import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 import {
+  assertFleetState,
   canonicalFilesystemIdentity,
   captureIsolatedGitWorktreeIdentity,
+  isFencedLegacyAssignment,
   mutateFleetState,
   reconcileFrontier,
   verifyActiveAssignmentIdentities,
@@ -115,7 +117,10 @@ function validateBoundedPacket(packet, state, manifest, issue, input) {
   if (!packet || typeof packet !== 'object' || Array.isArray(packet)) {
     return { valid: false, defects: ['implementation packet is absent'] };
   }
-  if (!exactObjectKeys(packet, PACKET_FIELDS)) {
+  const expectedPacketFields = issue.reviewPolicy
+    ? [...PACKET_FIELDS, 'reviewPolicy']
+    : PACKET_FIELDS;
+  if (!exactObjectKeys(packet, expectedPacketFields)) {
     defects.push('implementation packet schema is not exact');
   }
   if (packet.schemaVersion !== 1) defects.push('packet schema version is invalid');
@@ -128,6 +133,13 @@ function validateBoundedPacket(packet, state, manifest, issue, input) {
   if (!same(packet.scope, issue.scope)) defects.push('packet scope does not match manifest');
   if (!same(packet.exclusions, manifest.exclusions)) defects.push('packet exclusions do not match manifest');
   if (!same(packet.allowedPaths, issue.allowedPaths)) defects.push('packet allowed paths do not match manifest');
+  if (issue.reviewPolicy) {
+    if (!same(packet.reviewPolicy, issue.reviewPolicy)) {
+      defects.push('packet review policy does not match manifest');
+    }
+  } else if (Object.hasOwn(packet, 'reviewPolicy')) {
+    defects.push('full-review packet must not invent a review policy');
+  }
   if (!same(packet.verification, manifest.validationPolicy)) {
     defects.push('packet verification contract does not exactly match confirmed validation policy');
   }
@@ -745,6 +757,12 @@ export function continueWithFreshWorker(state, manifest, input) {
   next.issues[input.issue].status = 'active';
   next.issues[input.issue].dependencyState = 'active';
   next.issues[input.issue].handoffObligation = null;
+  if (next.issues[input.issue].qualityEvidence?.reviewLineage) {
+    delete next.issues[input.issue].qualityEvidence.reviewLineage;
+    const roastIndex = next.issues[input.issue].pipeline.findIndex((entry) => entry.stage === 'roast');
+    if (roastIndex >= 0) next.issues[input.issue].pipeline = next.issues[input.issue].pipeline.slice(0, roastIndex);
+    next.issues[input.issue].nextAction = 'run-full-review-for-new-assignment-generation';
+  }
   next.events.push({
     type: 'assignment-continuation',
     issue: input.issue,
@@ -758,24 +776,33 @@ export function continueWithFreshWorker(state, manifest, input) {
 export function releaseAfterValidatedHandoff(state, manifest, input) {
   if (!manifest) throw new Error('confirmed manifest is required for handoff release');
   assertManifestAuthority(state, manifest);
-  verifyActiveAssignmentIdentities(state, manifest);
+  verifyActiveAssignmentIdentities(state, manifest, { allowFencedLegacy: true });
   const record = state.issues?.[input.issue];
   const issue = manifestIssue(manifest, input.issue);
   if (!record?.assignment?.active || record.status !== 'active') {
     throw new Error('handoff release requires an active prior assignment');
   }
-  verifyPersistedGitWorktreeIdentity(
-    record.assignment.worktreeIdentity,
-    manifest.repository.root,
-    record.assignment.branch,
-  );
-  verifyPersistedAssignmentRevisions(
-    manifest.repository.root,
-    record.assignment.worktree,
-    manifest.repository.baseBranch,
-    record.assignment.baseSha,
-    record.assignment.headSha,
-  );
+  const fencedLegacy = isFencedLegacyAssignment(state, record);
+  if (fencedLegacy) {
+    assertFleetState(state, manifest);
+    if (state.reShepherdQueue.some((entry) =>
+      entry.issue === input.issue && entry.action === 'await-safe-ownership-transition')) {
+      throw new Error('legacy handoff release requires explicit reconciliation of the queued publication revision');
+    }
+  } else {
+    verifyPersistedGitWorktreeIdentity(
+      record.assignment.worktreeIdentity,
+      manifest.repository.root,
+      record.assignment.branch,
+    );
+    verifyPersistedAssignmentRevisions(
+      manifest.repository.root,
+      record.assignment.worktree,
+      manifest.repository.baseBranch,
+      record.assignment.baseSha,
+      record.assignment.headSha,
+    );
+  }
   if (!['stalled', 'exhausted', 'timed-out', 'crashed', 'cancelled'].includes(input.reason)) {
     throw new Error('handoff release reason is not a terminal worker condition');
   }
@@ -858,9 +885,9 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
   } else if (queuedRevision) {
     next.reShepherdQueue = next.reShepherdQueue.filter((entry) => entry.issue !== input.issue);
   }
-  next.issues[input.issue].status = releaseReason === 'timed-out' ? 'timed-out' : 'blocked';
+  next.issues[input.issue].status = releaseReason === 'timed-out' && !fencedLegacy ? 'timed-out' : 'blocked';
   next.issues[input.issue].statusReason = releaseReason;
-  next.issues[input.issue].terminalDisposition = releaseReason === 'timed-out'
+  next.issues[input.issue].terminalDisposition = releaseReason === 'timed-out' && !fencedLegacy
     ? 'timed-out-with-handoff'
     : 'blocked';
   next.issues[input.issue].nextAction = input.nextAction ?? (queuedRevision && releaseReason !== 'timed-out'
@@ -868,7 +895,7 @@ export function releaseAfterValidatedHandoff(state, manifest, input) {
       ? 'consume-fresh-re-shepherd-receipt'
       : 'rerun-quality-and-provider-observation'
     : 'await-human-direction');
-  next.issues[input.issue].checkActivity = null;
+  if (!fencedLegacy) next.issues[input.issue].checkActivity = null;
   next.events.push({
     type: 'assignment-released-after-handoff',
     issue: input.issue,

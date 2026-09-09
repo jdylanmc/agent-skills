@@ -13,6 +13,8 @@ allowed-tools: ["execute","read","search","task"]
 ## Required References
 
 1. Build and explicitly confirm [Fleet manifest](../../_atoms/fleet-manifest/fleet-manifest.md).
+   New runs use `normalizeNewFleetManifest`; saved runs are loaded and asserted
+   without applying new defaults.
 2. Create and persist [Fleet state](../../_atoms/fleet-state/fleet-state.md).
 3. Compute [Dependency frontier](../../_atoms/dependency-frontier/dependency-frontier.md).
 4. Fill available capacity with [Assignment ownership](../../_atoms/assignment-ownership/assignment-ownership.md).

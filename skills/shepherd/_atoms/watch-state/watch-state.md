@@ -20,24 +20,72 @@ Own the durable observation record for one change request.
 
 One canonical observation contains:
 
-- provider, repository, change-request, issue, and branch identity;
+- provider, base repository/branch, head repository/branch, change-request and issue identity;
 - open, merged, or closed state;
-- base SHA, head SHA, merge state, and branch-ownership evidence;
+- live target branch tip with repository/ref identity, head SHA, merge state, and branch-ownership evidence;
 - review decision plus a complete, identity-bound review observation digest;
-- required check identities, attempts, tested head, and normalized states; and
+- required check identities, attempts, tested head, completeness, and normalized states; and
 - provider and evidence availability.
+
+For GitHub, call `projectWatchIdentity(interpretTarget(...), { detection,
+repository, changeRequest, issue })`. It projects the provider's rich
+`headRepository` object to the canonical `[host/]owner/repo` string used by
+watch identity and `continuation.changeRequest.headRepository`; it also supplies
+`baseBranch`. Keep the rich metadata separately for diagnostics, never pass the
+object where an identity string is required. Missing identity is an error, not
+an assumption that the PR comes from the base repository.
 
 The local review probe reuses Ship's validated provider-review command builders,
 pagination interpreter, and completeness checks as a code dependency, then
 returns only completeness, identity, decision, counts, and the observation
 digest. Comment bodies are not returned to Shepherd and are never classification
 inputs here. A provider whose official tool cannot prove a complete review read
-cannot support a continuing watch and stops with evidence failure.
+cannot support remediation and stops with evidence failure in full-continuation
+mode. Observation-only mode records the gap and notifies the owning parent.
+
+Each cycle calls `watchBaseCommand`, interprets the response with
+`interpretLiveBase`, and supplies it as `observation.liveBase`. The canonical
+`pullRequest.baseSha` comes only from that identity-bound live read, never
+`baseRefOid`. Missing or mismatched live evidence produces null, not freshness.
+Supply the whole `interpretGitHubCheckIdentities` envelope as `checkEvidence`,
+including configured `requiredChecks` and returned `checks`, against the exact
+head read in the same cycle. An optional parallel `checks` list must match
+exactly; missing requiredness is not optionality. Full-authority action requires
+complete exact-head check evidence, even while valid observed checks are pending.
+Re-read head
+and target after dependent reads; discard and observe again if either changed.
+
+## Observation-Only Authority
+
+When Ship context is absent, `createWatchState` accepts explicit operator target
+read authority (`source: operator-explicit-target`, exact `targetIdentity`, and
+`owningParent`). Issue identity may be null. State declares
+`authority.mode: observation-only` and its provenance; no ledger, approval,
+prior delivery, or handled watermark is manufactured. Invalid supplied Ship
+context still fails strict intake rather than silently degrading.
+
+This mode persists actual checks even if review, base, ownership-for-writing, or
+functional failure identities are incomplete. Changes notify the owning parent;
+they never invoke Ship, branch maintenance, validation, or push. Bootstrap
+returns `status: observation-only`, a blocked result and declared authority, not
+a successful remediation handoff or readiness. Worker identity/digest acceptance
+is still mandatory. Follow ordinary head updates and notify the parent without
+acquiring mutation authority. Merge/close, operator stop, target identity drift,
+provider loss, and session-gap behavior remain intact.
+
+After a full-authority mechanical update, `recordMaintainedHead` consumes
+`pushReceipt`: status, strategy, destination repository/ref, `previousHead`,
+`headSha`, and `capturedHeadVerified`. A rebase also needs `leaseVerified` and
+`lease: { ref, expectedHead }` matching the captured destination. The shared
+`pushReceiptIsValid` check is also used by terminal classification. Bare booleans
+and successful-looking labels do not advance state. Strict continuation checks
+still apply. This records a completed push; it does not authorize one.
+Observation-only or unknown authority rejects either update.
 
 ## Persistence
 
 The caller supplies a run-owned state path outside the repository. The state
-binds immutable target identity, the exact confirmed Ship ledger and digest,
+binds immutable target identity and authority; in full-continuation mode it also binds the exact confirmed Ship ledger and digest,
 Ship's versioned prior-delivery evidence packet, expected head, current
 review/check watermarks, an in-flight Ship dispatch when one exists, and bounded
 Ship receipts. Writes use a
@@ -72,7 +120,11 @@ For unchanged observations, measured from the original start:
 | afterward | 60 minutes |
 
 A meaningful change does not reset the age. The initial persisted observation
-is a baseline, not a newly discovered change. Green persists and waits.
+is a baseline, not a newly discovered change. If it is already conflicted or
+behind a required-current base, start the maintenance cycle immediately;
+otherwise green persists and waits. Mechanical prerequisites take precedence
+over simultaneous review/check failures; re-observe after maintenance before
+computing functional evidence for Ship.
 
 ## Meaningful Change
 
@@ -90,7 +142,8 @@ from Ship's latest prior-delivery evidence rather than an evicting history.
 
 Persist a stop only for merge, close, explicit operator stop, semantic conflict,
 a human-owned or blocked Ship result, provider or ownership failure, or missing
-required evidence. Process or session loss records no fabricated stop; it is
+required evidence. Missing remediation evidence does not stop observation-only
+monitoring; provider loss and immutable-target drift still do. Process or session loss records no fabricated stop; it is
 represented by the next resume gap.
 
 ## Boundaries

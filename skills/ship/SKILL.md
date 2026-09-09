@@ -91,6 +91,10 @@ judges the change is grading its own work.
    reconciles every hunk of the diff against the ledger, validates through
    `run-ci`, reviews through `roast`, remediates through at most five fresh
    bounded attempts, and returns a criterion-by-criterion verdict.
+   New confirmed code-review packets explicitly default to one deep Roast then
+   bounded verification. Repeated full review is explicit opt-in, and the
+   orchestrator may request `deep now`. Every refusal or escalation returns to
+   full review or human direction.
 
 5. **Evaluate the merge gate** with
    [Merge gate](./_atoms/merge-gate/merge-gate.md). The disposition starts

@@ -81,6 +81,7 @@ export const MODES = Object.freeze({
 });
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const REVISION_RE = /^[a-f0-9]{64}$/;
 const DISCOVERY_DIR_SEGMENTS = ['docs', 'agent', 'discovery'];
 
 const INTAKE_FIELDS = Object.freeze(['version', 'repositoryRoot', 'subject', 'expected']);
@@ -110,12 +111,12 @@ function nonEmptyString(value, label) {
 
 /**
  * Encode a continuation reference as one canonical, unambiguous line suitable
- * for a bounded handoff's Artifacts and References section. The next invocation
- * parses it back and feeds it as `expected`.
+ * for a bounded handoff's Current Progress section. The next invocation parses
+ * it back and feeds it as `expected`.
  */
 export function renderContinuation({ locator, revision } = {}) {
   validateBoundedLocator(locator, makeRehydrateError);
-  if (typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision)) {
+  if (typeof revision !== 'string' || !REVISION_RE.test(revision)) {
     throw new FoundationRehydrateError('invalid-input', 'revision must be a SHA-256 digest');
   }
   return `${CONTINUATION_PREFIX} ${locator}@${revision}`;
@@ -197,9 +198,13 @@ function normalizeIntake(intake) {
     if (expUnknown.length) {
       throw new FoundationRehydrateError('invalid-input', `expected has unknown field(s): ${expUnknown.join(', ')}`);
     }
+    const revision = nonEmptyString(intake.expected.revision, 'expected.revision');
+    if (!REVISION_RE.test(revision)) {
+      throw new FoundationRehydrateError('invalid-input', 'expected.revision must be an exact lowercase 64-character SHA-256 digest');
+    }
     expected = {
       locator: validateBoundedLocator(intake.expected.locator, makeRehydrateError).locator,
-      revision: nonEmptyString(intake.expected.revision, 'expected.revision'),
+      revision,
     };
   }
 
@@ -324,6 +329,15 @@ function rehydratedState(subject, artifact, mode, ignored) {
   };
   for (const field of FOUNDATION_FIELDS) {
     rehydrated[field] = artifact.parsed[field];
+  }
+  // Genuine schema-1 artifacts carry no lineage receipts. Schema 2 artifacts
+  // are accepted only after parseFoundation has recomputed and verified every
+  // link, so these values are safe next-cycle evidence rather than caller
+  // assertions.
+  for (const field of ['alignedFindingsDigest', 'domainModelBasisDigest', 'domainModelDigest', 'frontierBasisDigest', 'frontierDigest']) {
+    if (artifact.parsed[field] !== undefined) {
+      rehydrated[field] = artifact.parsed[field];
+    }
   }
   return rehydrated;
 }

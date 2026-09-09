@@ -6,8 +6,14 @@ import {
   assertFleetManifest,
   manifestDigest,
   normalizeFleetManifest,
+  normalizeNewFleetManifest,
   validateSourceRevisionReceipt,
 } from './fleet-manifest.mjs';
+import {
+  CORRECTION_REVIEW_ROUTE,
+  DEEP_REVIEW_ROUTE,
+  newCodeReviewDefaultPolicy,
+} from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 function sourceReceipt(issue, revision, overrides = {}) {
   return {
@@ -70,11 +76,75 @@ test('normalizes a confirmed closed manifest and provider-bound source receipts'
   assert.match(result.providerConfigurationDigest, /^[a-f0-9]{64}$/);
   assert.deepEqual(result.humanDecisions, []);
   assert.deepEqual(result.exclusions, []);
+  assert.equal(Object.hasOwn(result.issues[0], 'reviewPolicy'), false);
   assert.equal(validateSourceRevisionReceipt(
     sourceReceipt('1', 'r1', { observedAt: '2026-08-30T00:01:00Z' }),
     result,
     '1',
   ).revision, 'r1');
+});
+
+test('normalizes an explicit per-issue tiered policy while absent policy remains full', () => {
+  const tiered = issue('1', 'r1');
+  tiered.reviewPolicy = {
+    mode: 'tiered',
+    policyVersion: 1,
+    evaluationMode: 'shadow',
+    deepRoute: DEEP_REVIEW_ROUTE,
+    correctionRoute: CORRECTION_REVIEW_ROUTE,
+    promotionDecision: null,
+  };
+  const result = normalizeFleetManifest(manifest({ issues: [tiered, issue('2', 'r2')] }));
+  assert.equal(result.issues[0].reviewPolicy.mode, 'tiered');
+  assert.equal(Object.hasOwn(result.issues[1], 'reviewPolicy'), false);
+  assert.equal(assertFleetManifest(result), result);
+  assert.throws(() => normalizeFleetManifest(manifest({
+    issues: [{
+      ...tiered,
+      reviewPolicy: {
+        ...tiered.reviewPolicy,
+        correctionRoute: { ...CORRECTION_REVIEW_ROUTE, model: 'gpt-5-mini' },
+      },
+    }],
+  })), /human-confirmed full-strength route/);
+});
+
+test('version 2 intake requires an explicit new default or repeated-full choice', () => {
+  assert.throws(() => normalizeFleetManifest(manifest({
+    reviewPolicyContractVersion: 2,
+  })), /reviewPolicy must be explicit/);
+  const deep = issue('1', 'r1');
+  deep.reviewPolicy = newCodeReviewDefaultPolicy();
+  const repeated = issue('2', 'r2');
+  repeated.reviewPolicy = {
+    mode: 'repeated-full',
+    policyVersion: 2,
+    deepRoute: DEEP_REVIEW_ROUTE,
+  };
+  const normalized = normalizeFleetManifest(manifest({
+    reviewPolicyContractVersion: 2,
+    issues: [deep, repeated],
+  }));
+  assert.equal(normalized.reviewPolicyContractVersion, 2);
+  assert.equal(normalized.issues[0].reviewPolicy.mode, 'deep-then-verify');
+  assert.equal(normalized.issues[1].reviewPolicy.mode, 'repeated-full');
+  assert.equal(assertFleetManifest(normalized), normalized);
+});
+
+test('ordinary new Fleet intake injects the v2 default and preserves explicit repeated-full', () => {
+  const ordinary = normalizeNewFleetManifest(manifest({
+    issues: [issue('1', 'r1')],
+  }));
+  assert.equal(ordinary.reviewPolicyContractVersion, 2);
+  assert.equal(ordinary.issues[0].reviewPolicy.mode, 'deep-then-verify');
+  const repeated = issue('1', 'r1');
+  repeated.reviewPolicy = {
+    mode: 'repeated-full',
+    policyVersion: 2,
+    deepRoute: DEEP_REVIEW_ROUTE,
+  };
+  const explicit = normalizeNewFleetManifest(manifest({ issues: [repeated] }));
+  assert.equal(explicit.issues[0].reviewPolicy.mode, 'repeated-full');
 });
 
 test('refuses source and query observations unless their provider reads are allow-listed', () => {

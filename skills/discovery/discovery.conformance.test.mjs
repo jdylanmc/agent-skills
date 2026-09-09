@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import {
+  FOUNDATION_FIELDS,
+  domainModelDigestOf,
+  frontierDigestOf,
+} from './_atoms/foundation-persist/foundation-persist.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
@@ -46,11 +51,17 @@ test('the routing description merges discovery-loop while excluding neighbors', 
   const { description } = frontmatter(ENTRY);
 
   assert.match(description, /Use when/);
+  assert.match(description, /asks to run discovery/);
   assert.match(description, /discovery loop/);
+  assert.match(description, /investigate requirements/);
+  assert.match(description, /unsettled product, engineering, or workflow question/);
   assert.match(description, /maintain discovery state/);
+  assert.match(description, /aligned domain model/);
   assert.match(description, /Do not use/);
   assert.match(description, /interrogate/);
-  assert.match(description, /map a domain/);
+  assert.match(description, /terminology.*relationships are unclear/);
+  assert.match(description, /GitHub issues/);
+  assert.match(description, /critical paths/);
   assert.match(description, /write a spec/);
 });
 
@@ -69,7 +80,10 @@ test('the skill composes chronicler, the rehydrate atom, the cycle controller, a
     '_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md',
     'discovery/_molecules/cycle-controller/cycle-controller.md',
     'discovery/_molecules/discovery-loop/discovery-loop.md',
+    'discovery/_atoms/documented-findings/documented-findings.md',
     'discovery/_atoms/alignment-check/alignment-check.md',
+    'discovery/_molecules/aligned-domain-model/aligned-domain-model.md',
+    'discovery/_atoms/aligned-domain-inventory/aligned-domain-inventory.md',
     'discovery/_atoms/evidence-reconcile/evidence-reconcile.md',
     'discovery/_atoms/frontier-ledger/frontier-ledger.md',
     'discovery/_atoms/foundation-rehydrate/foundation-rehydrate.md',
@@ -107,7 +121,7 @@ test('tracker mutation is isolated to exactly one approval-gated unit', () => {
 
   const loop = flat('discovery/_molecules/discovery-loop/discovery-loop.md');
   assert.match(loop, /Read-only body/);
-  assert.match(loop, /cannot perform one/);
+  assert.match(loop, /No alignment, domain modeling, frontier mapping/);
 });
 
 test('alignment is mandatory before every discovery handoff', () => {
@@ -116,27 +130,154 @@ test('alignment is mandatory before every discovery handoff', () => {
   const alignment = flat('discovery/_atoms/alignment-check/alignment-check.md');
 
   assert.match(entry, /No handoff is written before an offered interactive alignment check/);
-  assert.match(entry, /Only a verified shared understanding can be persisted/);
+  assert.match(entry, /Only aligned context can be modeled or persisted/);
   assert.match(entry, /Every cycle handoff is read back/);
   assert.match(controller, /The goal is shared understanding with the human/);
   assert.match(controller, /A handoff cannot be written until the human verifies or corrects/);
-  assert.match(controller, /Compact the reread handoff into the continuation focus/);
+  assert.match(controller, /Use the reread compact handoff as the continuation focus/);
   assert.match(alignment, /Summarize what was found and uncovered/);
   assert.match(alignment, /Offer an interactive alignment check/);
   assert.match(alignment, /Do not treat silence, a status report,\s+or an unrelated response as alignment/);
-  assert.match(alignment, /mandatory before every discovery handoff/);
+  assert.match(alignment, /mandatory before domain modeling, frontier mapping, foundation\s+persistence, and every discovery handoff/);
 });
 
-test('discovery routes bounded prototype questions to proof-of-concept', () => {
+test('the canonical cycle order is mechanically pinned by composition and workflow order', () => {
+  const controllerPath = 'discovery/_molecules/cycle-controller/cycle-controller.md';
+  const controller = flat(controllerPath);
+  const parsed = frontmatter(controllerPath);
+
+  assert.ok(parsed.composes.includes('discovery/_atoms/alignment-check/alignment-check.md'));
+  assert.ok(parsed.composes.includes('discovery/_molecules/aligned-domain-model/aligned-domain-model.md'));
+  assert.ok(parsed.composes.includes('discovery/_atoms/frontier-ledger/frontier-ledger.md'));
+  assert.ok(parsed.composes.includes('discovery/_atoms/foundation-persist/foundation-persist.md'));
+  assert.ok(parsed.composes.includes('_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md'));
+
+  const ordered = [
+    'Begin knowledge acquisition with',
+    'identifies a bounded external-knowledge gap',
+    'When acquisition includes a not-yet-attempted human-supplied URI or path',
+    'After all acquisition routes for this pass return',
+    'Offer and run [Alignment check]',
+    'Only after alignment is `verified` or `corrected`',
+    'Feed the aligned domain model into',
+    'Record the next action selected from the resulting frontier',
+    'First, persist the durable foundation',
+    'Reread the full persisted foundation',
+    'Persist the compact handoff and read back',
+    'continue or exit according to the next action',
+  ];
+  let cursor = -1;
+  for (const marker of ordered) {
+    const next = controller.indexOf(marker);
+    assert.ok(next > cursor, `${marker} must appear after the prior cycle stage`);
+    cursor = next;
+  }
+});
+
+test('domain modeling is structurally limited and preserves Discovery authority', () => {
+  const domainMap = frontmatter('discovery/_molecules/aligned-domain-model/aligned-domain-model.md');
+  assert.deepEqual(domainMap.usedBy, [
+    'discovery/_molecules/cycle-controller/cycle-controller.md',
+  ]);
+  assert.deepEqual(domainMap.allowedTools, []);
+  assert.deepEqual(
+    frontmatter('discovery/_atoms/aligned-domain-inventory/aligned-domain-inventory.md').allowedTools,
+    [],
+  );
+
+  const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+  assert.match(controller, /The map receives no alignment, persistence, tracker, specification, implementation,\s+handoff, compaction, or next-cycle authority/);
+  assert.match(controller, /Do not dispatch,\s+hand off, continue, or exit yet/);
+  const inventory = flat('discovery/_atoms/aligned-domain-inventory/aligned-domain-inventory.md');
+  const model = flat('discovery/_molecules/aligned-domain-model/aligned-domain-model.md');
+  assert.match(inventory, /Preserve the aligned relationship claims and boundary claims/);
+  assert.match(inventory, /exactly `source`, `target`, `relationship`, `direction`,\s+`evidence`, `confidence`, and `notes`/);
+  assert.match(model, /inventory's preserved relationship and boundary claims/);
+  assert.match(model, /Entity\s+co-occurrence alone never produces a relationship/);
+});
+
+test('foundation rehydrate documentation names every exported field and schema-1 default', () => {
+  const rehydrate = flat('discovery/_atoms/foundation-rehydrate/foundation-rehydrate.md');
+  for (const field of FOUNDATION_FIELDS) {
+    assert.match(rehydrate, new RegExp(`\\\`${field}\\\``), `${field} must be documented in the success payload`);
+  }
+  for (const field of ['sourceClaims', 'relationshipClaims', 'boundaryClaims', 'risks', 'domainModel']) {
+    assert.match(rehydrate, new RegExp(`\\\`${field}\\\``), `${field} must be documented as a schema-1 empty default`);
+  }
+  assert.match(rehydrate, /genuine schema-1 foundation/);
+  assert.match(rehydrate, /returned as empty arrays/);
+});
+
+test('every post-persistence continuation action has an authorized mechanism', () => {
+  const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+  const entry = flat(ENTRY);
+
+  assert.match(controller, /Discovery dispatches only the research route/);
+  assert.match(controller, /does not dispatch\s+`interrogate` or `proof-of-concept`/);
+  assert.match(controller, /named terminal handoffs after\s+persistence and both rereads/);
+  assert.match(entry, /`task` exists for one purpose: dispatching to the runtime \*\*research route\*\*/);
+  assert.match(controller, /`needs-domain-evidence`,\s+`needs-more-evidence`, and `needs-uri-seed` continue Discovery acquisition/);
+  assert.match(controller, /`needs-research` dispatches one research thread/);
+  assert.match(controller, /`needs-interrogate` and\s+`needs-proof-of-concept` are terminal handoff recommendations/);
+  assert.match(controller, /`ready` is the\s+named downstream handoff/);
+  assert.match(controller, /`blocked` stops/);
+  assert.match(controller, /`stop` terminates/);
+});
+
+test('needs-domain-evidence means continue Discovery and never domain-mapping', () => {
+  const entry = flat(ENTRY);
+  const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+  const frontier = flat('discovery/_atoms/frontier-ledger/frontier-ledger.md');
+
+  assert.match(entry, /`needs-domain-evidence`/);
+  assert.doesNotMatch(entry, /`needs-domain-mapping`/);
+  assert.match(frontier, /`needs-domain-evidence` \| Evidence for terms, actors, systems, boundaries, relationships, or unsettled domain seams is still missing; continue Discovery acquisition/);
+  assert.match(frontier, /never invokes or recommends the standalone `\/domain-mapping` wrapper/);
+  assert.match(controller, /public `needs-domain-evidence` state mechanically selects another\s+Discovery acquisition cycle and no other route/);
+});
+
+test('the Discovery root returns the structured domain model and complete receipt chain', () => {
+  const entry = flat(ENTRY);
+
+  assert.match(entry, /the structured aligned `domainModel`, its canonical `domainModelDigest`,\s+its `domainModelBasisDigest`\/`aligned-findings-digest` receipt, and the\s+frontier's `frontierBasisDigest`\/`domainModelDigest` receipt plus canonical\s+`frontierDigest` binding the model digest, complete frontier, and next action/);
+});
+
+test('backlog and dependency prompts cannot route to domain mapping', () => {
+  const discoveryDescription = frontmatter(ENTRY).description;
+  const domainDescription = frontmatter('domain-mapping/SKILL.md').description;
+  for (const term of [
+    'GitHub issues',
+    'tickets',
+    'work items',
+    'backlog',
+    'dependencies',
+    'critical paths',
+    'delivery sequencing',
+    'roadmaps',
+    'ready work',
+  ]) {
+    assert.match(discoveryDescription, new RegExp(term));
+    const domainTerm = term === 'dependencies'
+      ? 'dependency chains'
+      : term === 'ready work'
+        ? 'readiness decisions'
+        : term;
+    assert.match(domainDescription, new RegExp(domainTerm));
+  }
+  assert.equal(frontmatter('domain-mapping/SKILL.md').disableModelInvocation, true);
+  assert.equal(frontmatter('domain-mapping/SKILL.md').userInvocable, true);
+});
+
+test('discovery records bounded prototype questions for a post-persistence handoff', () => {
   const entry = flat(ENTRY);
   const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
   const frontier = flat('discovery/_atoms/frontier-ledger/frontier-ledger.md');
 
   assert.match(entry, /needs-proof-of-concept/);
   assert.match(entry, /Use `proof-of-concept` when a small bounded prototype/);
-  assert.match(controller, /frontier is `needs-proof-of-concept`/);
-  assert.match(controller, /route the scoped prototype\s+question to `proof-of-concept`/);
-  assert.match(controller, /Discovery owns alignment, handoff, compaction,\s+and next-cycle selection/);
+  assert.match(controller, /Record the next action selected from the resulting frontier:\s+`interrogate`, `proof-of-concept`/);
+  assert.match(controller, /exit with a handoff recommendation to `interrogate`,\s+`proof-of-concept`/);
+  assert.match(controller, /The map receives no alignment, persistence/);
   assert.match(frontier, /small bounded prototype is the cheapest way/);
 });
 
@@ -144,7 +285,8 @@ test('discovery explicitly refuses neighboring jobs', () => {
   const entry = flat(ENTRY);
 
   assert.match(entry, /Not interrogate\./);
-  assert.match(entry, /Not domain mapping\./);
+  assert.match(entry, /Domain modeling is a Discovery-owned post-alignment step\./);
+  assert.match(entry, /Not backlog or delivery graphing\./);
   assert.match(entry, /Not specification\./);
   assert.match(entry, /Not ticketing or implementation\./);
 });
@@ -169,7 +311,9 @@ test('the package carries a plain human-readable intent', () => {
   assert.ok(!intent.startsWith('---'));
   const normalized = intent.replace(/\s+/g, ' ');
   assert.match(normalized, /evidence-preserving loop/);
-  assert.match(normalized, /must not absorb interrogation, domain mapping, specification, ticketing, or implementation/);
+  assert.match(normalized, /Discovery must not absorb interrogation, specification, ticketing, or implementation/);
+  assert.match(normalized, /Every cycle preserves this exact order/);
+  assert.match(normalized, /user-attachments\/assets\/8e735137-b759-422b-bf31-4852e5eb1b62/);
 });
 
 test('the workflow registers the discovery conformance suite explicitly', () => {
@@ -204,7 +348,7 @@ test('the frontier can say that external knowledge is the blocker', () => {
   const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
 
   assert.match(entry, /`needs-research`/);
-  assert.match(controller, /If the frontier is `needs-research`, route the blocking external-knowledge\s+question/);
+  assert.match(controller, /identifies a bounded external-knowledge\s+gap, route the blocking question/);
 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
   assert.ok(
@@ -380,7 +524,7 @@ test('the controller routes needs-uri-seed to the uri-seed atom, which is reacha
 
   assert.match(
     controller,
-    /If the frontier is `needs-uri-seed`, route each not-yet-attempted human-supplied URI or path to/,
+    /When acquisition includes a not-yet-attempted human-supplied URI or path, route each seed to/,
   );
 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
@@ -558,6 +702,47 @@ async function rehydrateMod() {
   return import('./_atoms/foundation-rehydrate/foundation-rehydrate.mjs');
 }
 
+function emptyDomainModel() {
+  return [{
+    actors: [],
+    concepts: [],
+    systems: [],
+    terms: [],
+    states: [],
+    events: [],
+    relationships: [],
+    boundaries: [],
+    confidence: 'unknown',
+    unsettledSeams: [],
+  }];
+}
+
+function canonicalPersistIntake(payload, alignedFindingsDigestOf) {
+  const canonical = {
+    sourceClaims: [],
+    relationshipClaims: [],
+    boundaryClaims: [],
+    risks: [],
+    domainModel: emptyDomainModel(),
+    ...payload,
+  };
+  const alignedFindingsDigest = alignedFindingsDigestOf(canonical);
+  const domainModelDigest = domainModelDigestOf(canonical.domainModel);
+  const frontierDigest = frontierDigestOf({
+    domainModelDigest,
+    frontier: canonical.frontier,
+    nextAction: canonical.nextAction,
+  });
+  return {
+    ...canonical,
+    alignedFindingsDigest,
+    domainModelBasisDigest: alignedFindingsDigest,
+    domainModelDigest,
+    frontierBasisDigest: domainModelDigest,
+    frontierDigest,
+  };
+}
+
 test.after(() => {
   fs.rmSync(FOUNDATION_SANDBOX, { recursive: true, force: true });
 });
@@ -565,7 +750,11 @@ test.after(() => {
 // Persist a genuine foundation into a real repository root and return its
 // persist result, so rehydration is exercised against real persisted output.
 async function seedFoundation(root, overrides = {}) {
-  const { persistFoundation, alignedPayloadDigestOf, revisionOf } = await persistMod();
+  const {
+    persistFoundation,
+    alignedFindingsDigestOf,
+    revisionOf,
+  } = await persistMod();
   const payload = {
     version: 1,
     repositoryRoot: root,
@@ -592,8 +781,22 @@ async function seedFoundation(root, overrides = {}) {
   try {
     expectedPriorRevision = revisionOf(fs.readFileSync(dest, 'utf8'));
   } catch { /* first cycle */ }
-  return persistFoundation({ ...payload, expectedPriorRevision, alignedPayloadDigest: alignedPayloadDigestOf(payload) });
+  return persistFoundation(canonicalPersistIntake(
+    { ...payload, expectedPriorRevision },
+    alignedFindingsDigestOf,
+  ));
 }
+
+test('the Markdown controller declares the actual foundation-to-handoff adapter contract', () => {
+  const controller = flat('discovery/_molecules/cycle-controller/cycle-controller.md');
+
+  assert.match(controller, /compact the reread full foundation into the payload for\s+\[Persist bounded handoff\]/);
+  assert.match(controller, /`current_progress` must also preserve the actionable domain\s+seams from the reread foundation: its relationship claims, boundary claims,\s+and unsettled seams/);
+  assert.match(controller, /always carries that line in `current_progress`/);
+  assert.match(controller, /`artifacts_and_references` separately carries the whitespace-free\s+`<locator>@<revision>` artifact locator/);
+  assert.match(controller, /\| `current_progress` \| Verified shared understanding, aligned facts, decisions, frontier, cycle count, and actionable domain seams/);
+  assert.match(controller, /\| `artifacts_and_references` \| Evidence sources, prior handoffs, maps, interrogation packets, and the persisted foundation/);
+});
 
 function rehydrateIntake(root, overrides = {}) {
   return {
@@ -625,7 +828,9 @@ test('AC1/AC2: rehydration precedes the cycle and reads the artifact, not memory
   const entry = flat(ENTRY);
   assert.match(entry, /Before selecting or beginning any cycle, run/);
   assert.match(entry, /rehydrate Discovery state from the artifact rather than from conversation\s+memory/);
-  assert.match(entry, /record -> rehydrate foundation -> cycle -> align -> persist foundation -> reread -> compact/);
+  assert.match(entry, /record -> rehydrate foundation -> acquire knowledge -> document findings -> align/);
+  assert.match(entry, /model aligned domain -> map frontier -> persist full foundation/);
+  assert.match(entry, /reread full foundation -> compact and persist handoff/);
 });
 
 test('the new atoms are well-formed and grant no more than the pinned set', () => {
@@ -665,7 +870,7 @@ test('AC5: cold-start rehydration reads real bytes and returns the complete pers
 
   assert.equal(result.status, REHYDRATED);
   assert.equal(result.mode, MODES.coldStart);
-  assert.equal(FOUNDATION_FIELDS.length, 11);
+  assert.equal(FOUNDATION_FIELDS.length, 16);
   for (const field of FOUNDATION_FIELDS) {
     assert.ok(Object.prototype.hasOwnProperty.call(result, field), `${field} must be a distinct field`);
   }
@@ -728,7 +933,7 @@ test('AC3/AC4: every recovery state is genuinely producible against real bytes',
   await seedFoundation(ambiguousRoot);
   const adir = path.join(ambiguousRoot, 'docs', 'agent', 'discovery');
   const canonical = fs.readFileSync(path.join(adir, `${REHYDRATE_SLUG}.md`), 'utf8');
-  fs.writeFileSync(path.join(adir, 'duplicate.md'), canonical.replace('A confirmed fact.', 'Another fact.'));
+  fs.writeFileSync(path.join(adir, 'duplicate.md'), canonical);
   producible.add(rehydrateFoundation(rehydrateIntake(ambiguousRoot)).status); // ambiguous
 
   const unreadableRoot = freshFoundationRepo();
@@ -745,7 +950,7 @@ test('AC3/AC4: every recovery state is genuinely producible against real bytes',
 
   const staleRoot = freshFoundationRepo();
   await seedFoundation(staleRoot);
-  producible.add(rehydrateFoundation(rehydrateIntake(staleRoot, { expected: { locator: REHYDRATE_LOCATOR, revision: 'nope' } })).status); // stale
+  producible.add(rehydrateFoundation(rehydrateIntake(staleRoot, { expected: { locator: REHYDRATE_LOCATOR, revision: '0'.repeat(64) } })).status); // stale
 
   assert.deepEqual([...producible].sort(), [REHYDRATED, ...Object.values(RECOVERY)].sort());
 });
@@ -769,10 +974,11 @@ test('AC4: a stale continuation whose artifact moved or vanished never degrades 
 
   const bumpedRoot = freshFoundationRepo();
   const bumped = await seedFoundation(bumpedRoot);
-  const result = rehydrateFoundation(rehydrateIntake(bumpedRoot, { expected: { locator: REHYDRATE_LOCATOR, revision: 'stale-revision' } }));
+  const expectedRevision = '0'.repeat(64);
+  const result = rehydrateFoundation(rehydrateIntake(bumpedRoot, { expected: { locator: REHYDRATE_LOCATOR, revision: expectedRevision } }));
   assert.equal(result.status, RECOVERY.stale);
   assert.equal(result.currentRevision, bumped.revision);
-  assert.equal(result.expectedRevision, 'stale-revision');
+  assert.equal(result.expectedRevision, expectedRevision);
   for (const field of FOUNDATION_FIELDS) {
     assert.equal(result[field], undefined, `stale must not hand back ${field}`);
   }
@@ -810,7 +1016,7 @@ test('AC4: every documented recovery state is one the helper can emit, and vice 
 });
 
 test('F9/F10: the documented persist codes match the source, and no injected IO failure escapes them', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const atom = flat(PERSIST_ATOM);
   const documented = new Set([...atom.matchAll(/\| `([a-z-]+)` \|/g)].map((m) => m[1]));
 
@@ -850,7 +1056,10 @@ test('F9/F10: the documented persist codes match the source, and no injected IO 
       assumptions: [], contradictions: [], openQuestions: [], scope: ['In scope.'], exclusions: ['Excluded.'],
       frontier: ['ready'], nextAction: 'Go.', resolved: [],
     };
-    return { ...payload, expectedPriorRevision: null, alignedPayloadDigest: alignedPayloadDigestOf(payload) };
+    return canonicalPersistIntake(
+      { ...payload, expectedPriorRevision: null },
+      alignedFindingsDigestOf,
+    );
   }
 
   // A component lstat fails, mkdir fails, and staged write fails — each on a
@@ -910,7 +1119,7 @@ test('F9/F10: the documented persist codes match the source, and no injected IO 
 });
 
 test('F9/R3: a post-commit reread failure is post-commit-verification-failed, naming the replaced destination', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const root = freshFoundationRepo();
   const dest = path.join(root, 'docs', 'agent', 'discovery', `${REHYDRATE_SLUG}.md`);
   const realBase = {
@@ -935,7 +1144,10 @@ test('F9/R3: a post-commit reread failure is post-commit-verification-failed, na
   };
   let thrown = null;
   try {
-    persistFoundation({ ...payload, expectedPriorRevision: null, alignedPayloadDigest: alignedPayloadDigestOf(payload) }, { io });
+    persistFoundation(canonicalPersistIntake(
+      { ...payload, expectedPriorRevision: null },
+      alignedFindingsDigestOf,
+    ), { io });
   } catch (error) {
     thrown = error;
   }
@@ -979,8 +1191,8 @@ test('R5: an unreadable artifact makes rehydration a recovery state, never a raw
   assert.ok(documentedStates.has(warm.status));
 });
 
-test('F3: the alignment gate is bound by a payload digest, not a caller token', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+test('F3: the alignment gate is bound by a findings digest, not a caller token', async () => {
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const root = freshFoundationRepo();
   const payload = {
     version: 1, repositoryRoot: root, subject: { id: REHYDRATE_SLUG, slug: REHYDRATE_SLUG },
@@ -989,11 +1201,14 @@ test('F3: the alignment gate is bound by a payload digest, not a caller token', 
     assumptions: [], contradictions: [], openQuestions: [], scope: ['In scope.'], exclusions: ['Excluded.'],
     frontier: ['ready'], nextAction: 'Go.', resolved: [],
   };
-  const digest = alignedPayloadDigestOf(payload);
-  // Handing in aligned bytes that differ from the digest shown to the human is unbound.
+  const bound = canonicalPersistIntake(
+    { ...payload, expectedPriorRevision: null },
+    alignedFindingsDigestOf,
+  );
+  // Handing in findings that differ from the digest shown to the human is unbound.
   let unbound = null;
   try {
-    persistFoundation({ ...payload, confirmedFacts: ['A fact never shown.'], expectedPriorRevision: null, alignedPayloadDigest: digest });
+    persistFoundation({ ...bound, confirmedFacts: ['A fact never shown.'] });
   } catch (error) {
     if (error instanceof FoundationPersistError) unbound = error.code;
   }
@@ -1001,7 +1216,7 @@ test('F3: the alignment gate is bound by a payload digest, not a caller token', 
 });
 
 test('F3: persisting a different subject over an existing foundation is refused', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const root = freshFoundationRepo();
   const seeded = await seedFoundation(root);
   const payload = {
@@ -1014,7 +1229,10 @@ test('F3: persisting a different subject over an existing foundation is refused'
   };
   let mismatch = null;
   try {
-    persistFoundation({ ...payload, expectedPriorRevision: seeded.revision, alignedPayloadDigest: alignedPayloadDigestOf(payload) });
+    persistFoundation(canonicalPersistIntake(
+      { ...payload, expectedPriorRevision: seeded.revision },
+      alignedFindingsDigestOf,
+    ));
   } catch (error) {
     if (error instanceof FoundationPersistError) mismatch = error.code;
   }
@@ -1022,7 +1240,7 @@ test('F3: persisting a different subject over an existing foundation is refused'
 });
 
 test('F6: a concurrent modification of the destination is refused, not overwritten', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const root = freshFoundationRepo();
   const seeded = await seedFoundation(root);
   const dest = path.join(root, 'docs', 'agent', 'discovery', `${REHYDRATE_SLUG}.md`);
@@ -1052,7 +1270,10 @@ test('F6: a concurrent modification of the destination is refused, not overwritt
   };
   let refused = null;
   try {
-    persistFoundation({ ...payload, expectedPriorRevision: seeded.revision, alignedPayloadDigest: alignedPayloadDigestOf(payload) }, { io });
+    persistFoundation(canonicalPersistIntake(
+      { ...payload, expectedPriorRevision: seeded.revision },
+      alignedFindingsDigestOf,
+    ), { io });
   } catch (error) {
     if (error instanceof FoundationPersistError) refused = error.code;
   }
@@ -1060,7 +1281,7 @@ test('F6: a concurrent modification of the destination is refused, not overwritt
 });
 
 test('AC7: the persist atom names its reread as write verification, and refuses to drop evidence', async () => {
-  const { persistFoundation, alignedPayloadDigestOf, FoundationPersistError } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf, FoundationPersistError } = await persistMod();
   const root = freshFoundationRepo();
   const base = {
     version: 1, repositoryRoot: root, subject: { id: REHYDRATE_SLUG, slug: REHYDRATE_SLUG },
@@ -1069,14 +1290,20 @@ test('AC7: the persist atom names its reread as write verification, and refuses 
     assumptions: [], contradictions: [], openQuestions: [], scope: ['In scope.'], exclusions: ['Excluded.'],
     frontier: ['ready'], nextAction: 'Go.', resolved: [],
   };
-  const first = persistFoundation({ ...base, expectedPriorRevision: null, alignedPayloadDigest: alignedPayloadDigestOf(base) });
+  const first = persistFoundation(canonicalPersistIntake(
+    { ...base, expectedPriorRevision: null },
+    alignedFindingsDigestOf,
+  ));
   assert.equal(first.writeVerified, true);
   assert.match(first.writeVerificationNote, /not evidence that a later run rehydrated/);
 
   const dropPayload = { ...base, cycle: 'c-0002', timestamp: '2026-08-29T02:00:00Z', confirmedFacts: [] };
   let dropped = null;
   try {
-    persistFoundation({ ...dropPayload, expectedPriorRevision: first.revision, alignedPayloadDigest: alignedPayloadDigestOf(dropPayload) });
+    persistFoundation(canonicalPersistIntake(
+      { ...dropPayload, expectedPriorRevision: first.revision },
+      alignedFindingsDigestOf,
+    ));
   } catch (error) {
     if (error instanceof FoundationPersistError) dropped = error.code;
   }
@@ -1130,7 +1357,7 @@ test('the workflow registers both new atom test suites', () => {
 });
 
 test('the lifecycle builds every cycle after the first only from prior rehydration output', async () => {
-  const { persistFoundation, alignedPayloadDigestOf } = await persistMod();
+  const { persistFoundation, alignedFindingsDigestOf } = await persistMod();
   const { rehydrateFoundation, renderContinuation, parseContinuation, REHYDRATED, MODES } = await rehydrateMod();
   const root = freshFoundationRepo();
   const slug = 'lifecycle-subject';
@@ -1157,7 +1384,7 @@ test('the lifecycle builds every cycle after the first only from prior rehydrati
       expectedPriorRevision: state?.continuation?.revision ?? null,
       ...overrides,
     };
-    return { ...payload, alignedPayloadDigest: alignedPayloadDigestOf(payload) };
+    return canonicalPersistIntake(payload, alignedFindingsDigestOf);
   };
   const rehydrateIn = (expected = null) => ({ version: 1, repositoryRoot: root, subject: { id: 'issue-119', slug }, expected });
 

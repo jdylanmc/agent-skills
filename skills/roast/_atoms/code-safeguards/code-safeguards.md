@@ -36,7 +36,9 @@ used-by: ["roast/_molecules/roast-code-branch/roast-code-branch.md"]
 | Repository roaster selection is cancelled or replacement has no valid agents | State the reason and use the bundled default panel. |
 | Roaster instructions, persona, or directive are missing, ambiguous, symlinked, or escape their allowed root | Exclude the roaster, report the schema error, and do not load a partial prompt. |
 | Doctrine manifest is missing, escapes its allowed root, contains a symlink, or fails a digest check | Skip doctrine, continue with the complete directive, and record that doctrine reinforcement was not loaded. |
+| Runtime model availability cannot be observed | Preserve the requested route, record `unobserved` availability, and carry the evidence gap into the roster and synthesis outputs. |
 | Preferred model is unavailable | Use the first runtime-available model in the ordered fallback list; otherwise mark the reviewer unavailable. |
+| Routed panel fanout exceeds the caller's confirmed cap | Apply the cap deterministically, keep the earliest resolved seats, and record the dropped seats as degraded diversity rather than pretending they ran. |
 | A repository roaster requests write or execution tools | Reject it and enforce `read` and `search` at dispatch. |
 | A repository definition mixes usable criteria with executable instructions | Remove the instructions during sanitization; reject the roaster if no safe, meaningful configuration remains. |
 | Roastmaster fails twice | Return contract-valid reports labeled `Unsynthesized`; produce no roast or executive summary. |
@@ -44,6 +46,17 @@ used-by: ["roast/_molecules/roast-code-branch/roast-code-branch.md"]
 | Executive summary fails traceability twice | Omit it and return unchanged technical details. |
 | Restricted file or evidence | Do not bypass the restriction; record the evidence gap. |
 | User asks to apply fixes | Refuse within this skill and provide the ordered handoff. |
+| Historical packet has no review policy | Preserve its existing full review behavior. |
+| New intake omits an explicit version 2 policy | Refuse intake; do not infer whether repeated full was intended. |
+| Orchestrator requests `deep now` | Invoke the full deep dispatch for the current head. |
+| Cumulative line churn is strictly above the configured threshold | Invoke the full deep dispatch; exactly the threshold remains eligible. |
+| Churn baseline is zero, binary, unavailable, malformed, or not revision-bound | Invoke the full deep dispatch and report the metric limitation. |
+| No exact prior deep receipt | Run the existing full review; never infer a deep anchor from a hash alone. |
+| Latest or cumulative delta is missing or stale | Return incomplete evidence. |
+| Scope, authority, permission, persistence, recovery, public contract, or domain meaning changed | Require deep review or human direction. |
+| Original recommendation is contradicted | Preserve the disagreement and escalate; do not rubber-stamp it. |
+| Correction introduces a regression or unexplained consequence | Require deep review. |
+| Confirmed full-strength route is unavailable | Return tiered review unavailable; never use runtime default, mini, flash, old, or unlisted models. |
 
 ## Scenario Tests
 
@@ -80,15 +93,13 @@ Alter one doctrine file without updating its manifest digest. Every bundled
 prompt still loads its complete directive, no doctrine content is dispatched,
 and the council summary records the integrity failure.
 
-### Open doctrine uncertainty
+### Unresolved doctrine uncertainty
 
-A test classification depends on the classical/London taxonomy marked
-`**Open:**` in testing doctrine. The testing roaster states its applied
-definition in a stable `Doctrine Uncertainties` record, does not use the open
-statement as evidence, and the Roastmaster preserves its uncertainty ID,
-reviewer ID, related finding IDs, and unresolved consequence in
-`Residual Uncertainties`. Repeat with the contextual fixture-use statement from
-the doctrine checklist; it follows the same propagation rule.
+Selected doctrine contains an explicitly unresolved question that materially
+affects a finding. The reviewer states its applied definition in a stable
+`Doctrine Uncertainties` record, does not use the uncertainty as evidence, and
+the Roastmaster preserves its uncertainty ID, reviewer ID, related finding IDs,
+and unresolved consequence in `Residual Uncertainties`.
 
 ### Malformed repository roaster
 
@@ -128,6 +139,14 @@ purpose, lens, technical criteria, style constraints, and provenance paths.
 Each preferred model is unavailable. The runtime selects the first available
 model from that roaster's ordered fallback list. If none are available, the
 reviewer is marked unavailable; no unlisted model is selected.
+
+### Routed reviewer fanout and diversity
+
+The caller asks for a larger architecture or QA panel. The shared resolver
+repeats one declared route or honors an explicit mapped list, applies the
+confirmed cap, preserves the base bundled reviewer IDs for the first seats,
+suffixes only the added seats, and reports same-family or unavailable outcomes
+as diversity evidence rather than success-shaped routing.
 
 ### Synthesis failure preserves reports
 

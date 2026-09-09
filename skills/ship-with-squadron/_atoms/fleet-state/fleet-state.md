@@ -33,21 +33,35 @@ run ID. State reads use `O_NOFOLLOW` where available and verified
 path/descriptor identity otherwise. Lock acquisition prepares ownership
 metadata in a private claim directory and atomically renames the complete claim
 into canonical lock presence, so a live writer never exposes an ownerless
-initialization window. Stale ownerless or malformed locks are quarantined only
-after directory identity is claimed and rechecked. Cleanup and release rename
-only the verified directory identity out of the canonical path before removal,
-so a contender's replacement lock is never moved or deleted. Lock ownership
+initialization window. Stale, malformed, and released locks are removed from the
+canonical pathname only by renaming the observed candidate to a high-entropy
+private sibling quarantine. The moved object is then revalidated against the
+observed filesystem and owner identity. Quarantines are never restored, unlinked,
+or recursively deleted by the mutation protocol. A mismatched, unsafe,
+unreadable, or otherwise unknown moved object is retained byte-for-byte and the
+operation fails with its quarantine path. Normal release may therefore leave a
+verified lock tombstone.
+Only positively established missing or malformed ownership is eligible for
+malformed-lock recovery; permission, sharing, and I/O failures propagate.
+Lock ownership
 records both PID and immutable process-start identity where available: Linux
 boot/start ticks, Darwin boot/start time without mutable command/title data,
 and Windows process creation time. PID reuse therefore does not permanently
 wedge a stale lock; platforms without that proof fail closed for a live PID
 while still recovering safely aged ownerless or malformed locks. Writes fsync a sibling pending file whose name contains the random lock token
-and an independent nonce. The pinned run-directory chain and lock owner are
-reverified before the pending open, immediately before commit, and after the
-atomic rename, so a substituted run-directory pathname cannot receive the
-replacement state. The parent directory is then fsynced. Well-formed crash
-residue is recovered only while the current lock identity is held and
-reverified.
+and an independent nonce. The pending file is fsynced, then atomically hard
+linked to the deterministic same-directory commit slot
+`fleet-state.json.commit-r<revision>`. Creating that immutable slot is the
+compare-and-swap linearization point: exactly one writer can create a revision,
+and `EEXIST` is the stable revision conflict. The slot contains the complete
+validated state and is authoritative. The winner then renames the pending path
+over `fleet-state.json` as a canonical projection. Reads and later writes use
+the highest valid commit slot, so a crash after slot creation cannot lose the
+committed state and a deposed writer cannot overwrite it. When no commit slot
+exists, the canonical file remains authoritative for backward compatibility.
+Committed slots are never deleted. Pending files are not scavenged because
+they may still belong to a writer whose lock pathname was displaced. Directory
+ancestry remains pinned through slot creation and projection.
 
 Persist and reread after assignment, handoff, publication, Shepherd return,
 observed merge, readiness expiry, and terminal transition. Per-issue state
@@ -56,6 +70,11 @@ branch/worktree, base/head, implementation and quality evidence, change
 request, Shepherd receipt, set obligation, disposition, and next action. Fleet
 state retains frontier, blockers, capacity, completions, merges, expiry,
 re-Shepherd queue, budget use, and unresolved human decisions.
+Tiered issues persist exact review lineage inside the existing
+`qualityEvidence` container. State validation rechecks its policy, source,
+assignment generation, digests, deep anchor, and current correction revision
+after every reload. The optional field does not reinterpret or migrate legacy
+full-review success.
 It also persists exact query-membership reobservations, revision-specific
 publication observations, full normalized merge records, and explicit check
 activity, including merge-watermark blocking state, plus a persistent
@@ -95,3 +114,34 @@ disposition.
 
 Chronicler records operations. This record owns control decisions. Neither is a
 substitute for the other.
+
+Worktree identity version 2 adds exact positive decimal `birthtimeNs` and
+`schemaVersion: 2` to the existing Git/device/inode identity. Capture fails
+closed when filesystem creation time is unavailable. Recreation remains
+invalid even when a filesystem reuses the device/inode pair.
+
+Schema-v5 archived, unversioned identities remain historical version-1
+evidence, unchanged and without invented birthtime. Active version-1 owners
+are untrusted; unfenced owners cannot load or write, and legacy ownership
+cannot continue or deliver work. Stop the workers first and call
+`recoverLegacyAssignmentsPersisted` with the
+exact expected ledger revision and an acknowledgment for every legacy owner:
+`{issue, generation, workerContext, stopped: true, evidence}`. The recovery
+validates under the existing lock and records fencing evidence. Owners without
+quality, publication, or stop obligations are archived and returned to the
+scheduler for a fresh worker and different worktree at a new generation.
+Other owners remain readable, fenced ownership reservations with an explicit
+blocked handoff obligation. Existing publication identities, quality evidence,
+readiness obligations, cancellation, and budget state are retained. In-flight
+checks become blocked, with their original activity retained in the event log;
+existing merge-watermark blockers are unchanged.
+
+`releaseAfterValidatedHandoff` can retire a fenced legacy reservation using
+the existing exact, revision-bound, reread handoff artifact. This is historical
+retirement, not proof of a current worktree: it neither measures birthtime for
+the old owner nor grants continuation authority. The released issue stays
+blocked, preserves publication and check obligations, and requires human
+direction rather than redispatch. A queued ownership-bound publication
+revision remains blocked until explicitly reconciled; release does not
+silently adopt that revision or discard the current PR binding. Cancellation
+and terminal budget state are never reset by recovery or retirement.

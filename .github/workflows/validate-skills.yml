@@ -71,8 +71,12 @@ jobs:
           skills/_base/_molecules/chronicler/chronicler.test.mjs
           skills/_base/_molecules/chronicler/chronicler.adversarial.test.mjs
           skills/_base/_molecules/roast-coordinate-review/roast-coordinate-review.adversarial.test.mjs
+          skills/_base/_atoms/agent-spawn/agent-spawn.test.mjs
+          skills/_base/_atoms/review-tier-policy/review-tier-policy.test.mjs
           skills/roast/roast.conformance.test.mjs
           skills/roast/_atoms/artifact-profile/artifact-profile.test.mjs
+          skills/roast/_atoms/code-reviewer-panel/code-reviewer-panel.test.mjs
+          skills/roast/_atoms/correction-review-dispatch/correction-review-dispatch.test.mjs
           skills/roast/_atoms/intent-screen/intent-screen.test.mjs
           skills/roast/_atoms/intent-screen/intent-screen.adversarial.test.mjs
           skills/roast/_atoms/intent-source/intent-source.test.mjs
@@ -118,6 +122,8 @@ jobs:
           skills/discovery/_atoms/foundation-rehydrate/foundation-rehydrate.test.mjs
           skills/proof-of-concept/proof-of-concept.conformance.test.mjs
           skills/next-step-selection/next-step-selection.conformance.test.mjs
+          skills/status-report/status-report.conformance.test.mjs
+          skills/status-report/_atoms/concise-report/concise-report.test.mjs
           skills/sanity-check/sanity-check.conformance.test.mjs
           skills/shepherd/shepherd.conformance.test.mjs
           skills/shepherd/_atoms/shepherd-disposition/shepherd-disposition.test.mjs
@@ -146,6 +152,13 @@ jobs:
           skills/ship-with-squadron/_atoms/readiness-set/readiness-set.test.mjs
           skills/ship-with-squadron/_atoms/fleet-disposition/fleet-disposition.test.mjs
           skills/ship-with-squadron/ship-with-squadron.conformance.test.mjs
+          skills/_base/_atoms/atomic-transition/atomic-transition.test.mjs
+          skills/bench-squadron/_atoms/bench-epoch/bench-epoch.test.mjs
+          skills/bench-squadron/_atoms/atomic-proposal/atomic-proposal.test.mjs
+          skills/bench-squadron/bench-squadron.conformance.test.mjs
+          skills/tdd-squadron/_atoms/tdd-lifecycle/tdd-lifecycle.test.mjs
+          skills/tdd-squadron/_atoms/atomic-proposal/atomic-proposal.test.mjs
+          skills/tdd-squadron/tdd-squadron.conformance.test.mjs
           skills/eli5/_atoms/explanation-ladder/explanation-ladder.test.mjs
           skills/eli5/_atoms/explanation-ladder/explanation-ladder.adversarial.test.mjs
           skills/eli5/eli5.conformance.test.mjs
@@ -168,6 +181,7 @@ jobs:
           skills/synthesize/_atoms/split-proposal/split-proposal.test.mjs
           skills/synthesize/_atoms/synthesis-outcome/synthesis-outcome.test.mjs
           skills/synthesize/_molecules/bounded-synthesis/bounded-synthesis.test.mjs
+          skills/synthesize/_molecules/bounded-synthesis/bounded-synthesis.declared.test.mjs
           skills/reinforce-skill/reinforce-skill.conformance.test.mjs
           skills/reinforce-skill/_atoms/reinforcement-target/reinforcement-target.test.mjs
           skills/reinforce-skill/_atoms/report-intake/report-intake.test.mjs
@@ -180,7 +194,20 @@ jobs:
           skills/post-mortem/_atoms/session-evidence-adapter/session-evidence-adapter.test.mjs
           skills/post-mortem/_atoms/reinforcement-assign-state/reinforcement-assign-state.test.mjs
           skills/post-mortem/post-mortem.regression.test.mjs
+          skills/slop-sniper/_atoms/snapshot-contract/snapshot-contract.test.mjs
+          skills/slop-sniper/_atoms/snapshot-contract/snapshot-contract.adversarial.test.mjs
+          skills/slop-sniper/_atoms/report-contract/report-contract.test.mjs
+          skills/slop-sniper/_atoms/report-contract/report-contract.adversarial.test.mjs
+          skills/slop-sniper/slop-sniper.conformance.test.mjs
           skills/setup-repository/setup-repository.conformance.test.mjs
           skills/setup-repository/_atoms/repository-context/repository-context.test.mjs
           skills/setup-repository/_atoms/context-artifacts/context-artifacts.test.mjs
           skills/setup-repository/_atoms/write-gate/write-gate.test.mjs
+          skills/snipe-skill/_atoms/source-evidence/source-evidence.test.mjs
+          skills/snipe-skill/_atoms/destination-resolve/destination-resolve.test.mjs
+          skills/snipe-skill/_atoms/duplicate-capability/duplicate-capability.test.mjs
+          skills/snipe-skill/_atoms/intent-request/intent-request.test.mjs
+          skills/snipe-skill/_atoms/intent-request/intent-request.contract.test.mjs
+          skills/snipe-skill/_atoms/adoption-gate/adoption-gate.test.mjs
+          skills/snipe-skill/_atoms/adoption-outcome/adoption-outcome.test.mjs
+          skills/snipe-skill/snipe-skill.conformance.test.mjs

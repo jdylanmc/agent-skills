@@ -40,7 +40,7 @@ export class DoctrineSelectionError extends Error {
 export const GOVERNANCE = {
   agent: {
     primary: [
-      { id: 'code', reason: 'explicit contracts, boundaries, errors, and validation' },
+      { id: 'code', reason: 'explicit contracts, errors, clarity, and validation' },
       {
         id: 'pragmatic',
         reason: 'ownership, coupling, feedback, reversibility, automation, and stopping points',
@@ -55,7 +55,22 @@ export const GOVERNANCE = {
       {
         id: 'data',
         trigger: 'data-contract',
-        reason: 'state, persistence, retries, schemas, lineage, or distributed behavior are central',
+        reason: 'storage, schema, lineage, or single-store consistency are central',
+      },
+      {
+        id: 'boundaries',
+        trigger: 'bounded-context-meaning',
+        reason: 'bounded-context ownership, inter-model relationships, or meaning-preserving translation are central',
+      },
+      {
+        id: 'data-processing',
+        trigger: 'replay-order-time',
+        reason: 'replay, ordering, time, or duplicate processing semantics are central',
+      },
+      {
+        id: 'distributed-data',
+        trigger: 'distributed-coordination',
+        reason: 'coordination across nodes or stores is central',
       },
     ],
   },
@@ -76,7 +91,22 @@ export const GOVERNANCE = {
       {
         id: 'data',
         trigger: 'data-contract',
-        reason: 'the requested output depends on lineage, schemas, consistency, or temporal data',
+        reason: 'the requested output depends on storage, lineage, schemas, or single-store consistency',
+      },
+      {
+        id: 'boundaries',
+        trigger: 'bounded-context-meaning',
+        reason: 'the request depends on bounded-context ownership, inter-model relationships, or meaning-preserving translation',
+      },
+      {
+        id: 'data-processing',
+        trigger: 'replay-order-time',
+        reason: 'the request depends on replay, ordering, time, or duplicate processing semantics',
+      },
+      {
+        id: 'distributed-data',
+        trigger: 'distributed-coordination',
+        reason: 'the request depends on coordination across nodes or stores',
       },
     ],
   },
@@ -100,12 +130,37 @@ export const GOVERNANCE = {
       {
         id: 'data',
         trigger: 'data-contract',
-        reason: 'persistence, retries, replay, ordering, schemas, consistency, or lineage drive behavior',
+        reason: 'storage, schemas, migrations, lineage, or single-store consistency drive behavior',
       },
       {
         id: 'testing',
         trigger: 'validation',
-        reason: 'the package declares a regression suite or validation gate under review',
+        reason: 'test value, scope, regression economics, or a validation gate are under review',
+      },
+      {
+        id: 'boundaries',
+        trigger: 'bounded-context-meaning',
+        reason: 'bounded-context ownership, inter-model relationships, or meaning-preserving translation drive behavior',
+      },
+      {
+        id: 'data-processing',
+        trigger: 'replay-order-time',
+        reason: 'replay, ordering, time, or duplicate processing semantics drive behavior',
+      },
+      {
+        id: 'distributed-data',
+        trigger: 'distributed-coordination',
+        reason: 'coordination across nodes or stores drives behavior',
+      },
+      {
+        id: 'test-seams',
+        trigger: 'test-doubles',
+        reason: 'test doubles, substitution, interaction checks, or seam placement are under review',
+      },
+      {
+        id: 'integration-testing',
+        trigger: 'real-boundary-fidelity',
+        reason: 'tests must prove behavior against a real process, service, database, or system boundary',
       },
     ],
   },
@@ -129,12 +184,37 @@ export const GOVERNANCE = {
       {
         id: 'data',
         trigger: 'data-contract',
-        reason: 'persistence, lineage, schemas, consistency, retention, or temporal behavior are central to the stated outcomes',
+        reason: 'storage, lineage, schemas, retention, or single-store consistency are central to the stated outcomes',
       },
       {
         id: 'testing',
         trigger: 'validation',
-        reason: 'whether an acceptance criterion is observable is a verification question',
+        reason: 'test value, scope, regression economics, or observability are central to acceptance',
+      },
+      {
+        id: 'boundaries',
+        trigger: 'bounded-context-meaning',
+        reason: 'bounded-context ownership, inter-model relationships, or meaning-preserving translation carry the intention',
+      },
+      {
+        id: 'data-processing',
+        trigger: 'replay-order-time',
+        reason: 'replay, ordering, time, or duplicate processing semantics are central to the outcomes',
+      },
+      {
+        id: 'distributed-data',
+        trigger: 'distributed-coordination',
+        reason: 'coordination across nodes or stores is central to the outcomes',
+      },
+      {
+        id: 'test-seams',
+        trigger: 'test-doubles',
+        reason: 'acceptance depends on where substitution or test doubles are permitted',
+      },
+      {
+        id: 'integration-testing',
+        trigger: 'real-boundary-fidelity',
+        reason: 'acceptance depends on fidelity at a real process, service, database, or system boundary',
       },
     ],
   },
@@ -143,24 +223,74 @@ export const GOVERNANCE = {
       { id: 'code', reason: 'contracts, clarity, bounded complexity, errors, and validation' },
       {
         id: 'pragmatic',
-        reason: 'coupling, reversibility, feedback, and stopping points in the change set',
+        reason: 'reversibility, uncertainty, feedback, and stopping points in the change set',
       },
     ],
     conditional: [
       {
         id: 'testing',
         trigger: 'validation',
-        reason: 'tests or a validation gate are inside the reviewed change set',
+        reason: 'test value, scope, regression economics, or a validation gate are inside the reviewed change set',
       },
       {
         id: 'data',
         trigger: 'data-contract',
-        reason: 'persistence, schemas, migrations, ordering, or lineage are inside the change set',
+        reason: 'storage, schemas, migrations, lineage, or single-store consistency are inside the change set',
       },
       {
         id: 'domain',
         trigger: 'domain-model',
         reason: 'domain vocabulary, invariants, or lifecycle are inside the change set',
+      },
+      {
+        id: 'boundaries',
+        trigger: 'bounded-context-meaning',
+        reason: 'bounded-context ownership, inter-model relationships, or meaning-preserving translation are inside the change set',
+      },
+      {
+        id: 'data-processing',
+        trigger: 'replay-order-time',
+        reason: 'replay, ordering, time, or duplicate processing semantics are inside the change set',
+      },
+      {
+        id: 'distributed-data',
+        trigger: 'distributed-coordination',
+        reason: 'coordination across nodes or stores is inside the change set',
+      },
+      {
+        id: 'test-seams',
+        trigger: 'test-doubles',
+        reason: 'test doubles, substitution, interaction checks, or seam placement are inside the change set',
+      },
+      {
+        id: 'integration-testing',
+        trigger: 'real-boundary-fidelity',
+        reason: 'tests exercise a real process, service, database, or system boundary',
+      },
+      {
+        id: 'solid',
+        trigger: 'object-design',
+        reason: 'class or module responsibilities, substitution, or dependency inversion are inside the change set',
+      },
+      {
+        id: 'laziness',
+        trigger: 'implementation-economy',
+        reason: 'unnecessary features, layers, abstractions, wrappers, or generalized mechanisms are inside the change set',
+      },
+      {
+        id: 'documentation',
+        trigger: 'durable-authority',
+        reason: 'durable knowledge or configuration needs one canonical artifact and clearly derived representations',
+      },
+      {
+        id: 'machine',
+        trigger: 'automation',
+        reason: 'automation economics, bounds, rerunnability, or independent validation are inside the change set',
+      },
+      {
+        id: 'debugging',
+        trigger: 'causal-debugging',
+        reason: 'causal investigation, root-cause repair, or proof beyond symptom disappearance is inside the change set',
       },
     ],
   },
@@ -290,6 +420,9 @@ export function selectDoctrine(input = {}) {
         input.artifactType
           ? `The inferred selection for ${input.artifactType} was not used.`
           : 'No artifact type was supplied, so nothing was inferred.',
+        ...available
+          .filter((id) => !requested.includes(id))
+          .map((id) => `Skipped ${id}: it was not included in the caller's explicit selection.`),
       ],
       selectors: requested.map((id) => `--select ${id}`),
     };
@@ -329,12 +462,12 @@ export function selectDoctrine(input = {}) {
   const reasoning = [
     `Artifact type ${artifactType} was classified, so its declared primary doctrine applies.`,
   ];
+  const conditionalById = new Map(
+    governance.conditional.map((entry) => [entry.id, entry]),
+  );
 
   for (const entry of governance.conditional) {
     if (!triggers.includes(entry.trigger)) {
-      reasoning.push(
-        `Skipped ${entry.id}: its trigger ${entry.trigger} was not observed, and selecting it anyway would load doctrine merely because it is available.`,
-      );
       continue;
     }
     if (!available.includes(entry.id)) {
@@ -353,6 +486,19 @@ export function selectDoctrine(input = {}) {
   for (const trigger of unusedTriggers) {
     reasoning.push(
       `Ignored trigger ${trigger}: no doctrine is conditional on it for artifact type ${artifactType}.`,
+    );
+  }
+
+  const selectedIds = new Set(selection.map((entry) => entry.id));
+  for (const id of available) {
+    if (selectedIds.has(id)) {
+      continue;
+    }
+    const conditional = conditionalById.get(id);
+    reasoning.push(
+      conditional
+        ? `Skipped ${id}: its trigger ${conditional.trigger} was not observed, and selecting it anyway would load doctrine merely because it is available.`
+        : `Skipped ${id}: artifact type ${artifactType} declares no governance route for it.`,
     );
   }
 

@@ -1,5 +1,9 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
+import {
+  newCodeReviewDefaultPolicy,
+  normalizeReviewPolicy,
+} from '../../../_base/_atoms/review-tier-policy/review-tier-policy.mjs';
 
 const ISSUE_STATUSES = new Set([
   'pending', 'completed', 'blocked', 'failed', 'timed-out', 'deferred',
@@ -18,7 +22,7 @@ const MANIFEST_INPUT_FIELDS = new Set([
   'confirmation', 'goal', 'acceptedScope', 'issues', 'issueSet', 'dependencies',
   'exclusions', 'concurrency', 'budget', 'repository', 'provider',
   'validationPolicy', 'stopConditions', 'shepherdIntent', 'humanBoundaries',
-  'humanDecisions',
+  'humanDecisions', 'reviewPolicyContractVersion',
 ]);
 const MANIFEST_FIELDS = new Set([
   'schemaVersion', 'goal', 'acceptedScope', 'issues', 'dependencies',
@@ -26,6 +30,7 @@ const MANIFEST_FIELDS = new Set([
   'providerConfigurationDigest', 'validationPolicy', 'stopConditions',
   'shepherdIntent', 'humanBoundaries', 'humanDecisions',
   'confirmationBindingDigest', 'issueSet', 'confirmation', 'closedSet', 'digest',
+  'reviewPolicyContractVersion',
 ]);
 
 function nonEmpty(value, field) {
@@ -312,12 +317,17 @@ export function normalizeFleetManifest(input = {}) {
   if (input.confirmation !== 'confirmed') {
     throw new Error('fleet manifest requires one explicit confirmed state');
   }
+
   const goal = nonEmpty(input.goal, 'goal');
   if (!Array.isArray(input.issues) || input.issues.length === 0) {
     throw new Error('issues must be a non-empty closed set');
   }
   const acceptedScope = explicitStringArray(input, 'acceptedScope');
   const exclusions = explicitStringArray(input, 'exclusions');
+  const reviewPolicyContractVersion = input.reviewPolicyContractVersion ?? null;
+  if (reviewPolicyContractVersion !== null && reviewPolicyContractVersion !== 2) {
+    throw new Error('reviewPolicyContractVersion must be 2 when supplied');
+  }
   const repository = input.repository;
   if (!repository || typeof repository !== 'object' || Array.isArray(repository)) {
     throw new Error('repository configuration is required');
@@ -358,7 +368,7 @@ export function normalizeFleetManifest(input = {}) {
   const issues = input.issues.map((issue, index) => {
     assertOnlyKeys(issue, new Set([
       'identity', 'sourceRevision', 'sourceReceipt', 'acceptanceCriteria',
-      'scope', 'allowedPaths', 'status',
+      'scope', 'allowedPaths', 'status', 'reviewPolicy',
     ]), `issues[${index}]`);
     const identity = nonEmpty(issue?.identity, `issues[${index}].identity`);
     if (identities.has(identity)) throw new Error(`duplicate issue identity: ${identity}`);
@@ -376,6 +386,14 @@ export function normalizeFleetManifest(input = {}) {
       revision: sourceRevision,
       issueStatus: status,
     }, `${identity}.sourceReceipt`);
+    if (reviewPolicyContractVersion === 2 && !Object.hasOwn(issue, 'reviewPolicy')) {
+      throw new Error(`${identity}.reviewPolicy must be explicit for review policy contract version 2`);
+    }
+    const reviewPolicy = normalizeReviewPolicy(issue.reviewPolicy);
+    if (reviewPolicyContractVersion === 2
+        && !['deep-then-verify', 'repeated-full'].includes(reviewPolicy.mode)) {
+      throw new Error(`${identity}.reviewPolicy must use a version 2 explicit mode`);
+    }
     return {
       identity,
       sourceRevision,
@@ -385,6 +403,7 @@ export function normalizeFleetManifest(input = {}) {
       allowedPaths,
       status,
       order: index,
+      ...(reviewPolicy.mode !== 'full' ? { reviewPolicy } : {}),
     };
   });
 
@@ -539,6 +558,7 @@ export function normalizeFleetManifest(input = {}) {
     humanBoundaries,
     issueSet,
     humanDecisionCores,
+    ...(reviewPolicyContractVersion === 2 ? { reviewPolicyContractVersion } : {}),
   });
   const humanDecisions = humanDecisionCores.map((decision) => ({
     ...decision,
@@ -565,12 +585,27 @@ export function normalizeFleetManifest(input = {}) {
     shepherdIntent: input.shepherdIntent,
     humanBoundaries,
     humanDecisions,
+    ...(reviewPolicyContractVersion === 2 ? { reviewPolicyContractVersion } : {}),
     confirmationBindingDigest,
     issueSet,
     confirmation: 'confirmed',
     closedSet: true,
   };
   return { ...manifest, digest: manifestDigest(manifest) };
+}
+
+export function normalizeNewFleetManifest(input = {}) {
+  if (!Array.isArray(input.issues) || input.issues.length === 0) {
+    throw new Error('new fleet manifest issues must be a non-empty array');
+  }
+  return normalizeFleetManifest({
+    ...input,
+    reviewPolicyContractVersion: 2,
+    issues: input.issues.map((issue) => ({
+      ...issue,
+      reviewPolicy: issue.reviewPolicy ?? newCodeReviewDefaultPolicy(),
+    })),
+  });
 }
 
 function manifestInput(manifest) {
@@ -611,6 +646,7 @@ function manifestInput(manifest) {
       scope: structuredClone(issue.scope),
       allowedPaths: structuredClone(issue.allowedPaths),
       status: issue.status,
+      ...(issue.reviewPolicy ? { reviewPolicy: structuredClone(issue.reviewPolicy) } : {}),
     })),
     issueSet,
     dependencies: structuredClone(manifest.dependencies),
@@ -625,6 +661,9 @@ function manifestInput(manifest) {
     humanBoundaries: structuredClone(manifest.humanBoundaries),
     humanDecisions: manifest.humanDecisions.map(({ manifestDigest: ignored, ...decision }) =>
       structuredClone(decision)),
+    ...(manifest.reviewPolicyContractVersion === 2
+      ? { reviewPolicyContractVersion: 2 }
+      : {}),
   };
 }
 

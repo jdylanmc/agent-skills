@@ -5,15 +5,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { normalizeFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
+import {
+  normalizeFleetManifest,
+  normalizeNewFleetManifest,
+} from '../fleet-manifest/fleet-manifest.mjs';
 import {
   assertFleetState,
+  cancelFleet,
+  consumeBudget,
   createFleetState,
   fleetStatePath,
   loadFleetState,
   persistFleetState,
   recordSourceRevisionObservation,
+  recoverLegacyAssignmentsPersisted,
+  transitionIssue,
+  startCheckActivity,
 } from '../fleet-state/fleet-state.mjs';
+import { publicationKey } from '../provider-seam/provider-seam.mjs';
 import {
   FORBIDDEN_AUTHORITIES,
   assignFreshWorker,
@@ -27,6 +36,12 @@ import {
 import {
   persistOrchestrationHandoff,
 } from '../../../_base/_molecules/persist-orchestration-handoff/persist-orchestration-handoff.mjs';
+import {
+  recordStage,
+  reviewPacketBindingDigest,
+  reviewPolicyDigest,
+  reviewScopeBindingDigest,
+} from '../quality-evidence/quality-evidence.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SANDBOX = path.join(ROOT, '.test-sandbox', 'ship-with-squadron-handoff');
@@ -172,6 +187,210 @@ function assigned() {
     startedAt: '2026-08-30T00:02:00Z',
   });
 }
+
+test('tiered manifest policy is bound into the assignment packet', () => {
+  ensureGitWorktrees();
+  const tieredInput = {
+    confirmation: 'confirmed',
+    goal: 'deliver',
+    acceptedScope: [],
+    exclusions: ['unrelated files'],
+    humanDecisions: [],
+    issues: [{
+      identity: 'a',
+      sourceRevision: 'r-a',
+      sourceReceipt: source('a'),
+      acceptanceCriteria: ['done'],
+      scope: ['issue a'],
+      allowedPaths: ['src/a/**'],
+    }],
+    dependencies: [],
+    concurrency: 1,
+    budget: { cost: 10, timeMinutes: 60, retries: 2 },
+    repository: { id: 'owner/repo', root: REPOSITORY, baseBranch: 'main' },
+    provider: { name: 'github', allowedOperations: ['read-issue', 'publish-change-request', 'observe-merge', 'observe-change-request-revision'] },
+    validationPolicy: ['run-ci', 'roast', 'blast-radius-proof'],
+    stopConditions: ['cancelled'],
+    humanBoundaries: ['human merge'],
+    shepherdIntent: 'yes',
+  };
+  const tieredManifest = normalizeNewFleetManifest(tieredInput);
+  assert.equal(tieredManifest.issues[0].reviewPolicy.mode, 'deep-then-verify');
+  let current = createFleetState(tieredManifest, 'tiered-run');
+  current = recordSourceRevisionObservation(
+    current,
+    tieredManifest,
+    'a',
+    source('a', '2026-08-30T00:01:00Z'),
+    '2026-08-30T00:01:01Z',
+  );
+  const basePacket = packet('a', 'issue-a', WORKTREE_A);
+  const tieredPacket = {
+    ...basePacket,
+    manifestDigest: tieredManifest.digest,
+    reviewPolicy: tieredManifest.issues[0].reviewPolicy,
+  };
+  const schedulerLease = createSchedulerLease(current, tieredManifest, 'a');
+  assert.throws(() => assignFreshWorker(current, tieredManifest, {
+    issue: 'a',
+    branch: 'issue-a',
+    worktree: WORKTREE_A,
+    workerContext: 'tiered-worker-missing-policy',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
+    packet: { ...tieredPacket, reviewPolicy: undefined },
+    schedulerLease,
+  }), /packet schema is not exact|review policy/);
+  const assignedState = assignFreshWorker(current, tieredManifest, {
+    issue: 'a',
+    branch: 'issue-a',
+    worktree: WORKTREE_A,
+    workerContext: 'tiered-worker',
+    baseSha: currentRevision(),
+    headSha: currentRevision(),
+    packet: tieredPacket,
+    schedulerLease,
+  });
+  assert.deepEqual(
+    assignedState.issues.a.assignment.packet.reviewPolicy,
+    tieredManifest.issues[0].reviewPolicy,
+  );
+  const revision = { baseSha: currentRevision(), headSha: currentRevision() };
+  let reviewed = assignedState.issues.a;
+  reviewed = recordStage(reviewed, 'implementation', {
+    ...revision,
+    status: 'completed',
+    complete: true,
+    terminal: true,
+    completedAt: '2026-08-30T00:02:00Z',
+  }, revision, tieredManifest);
+  reviewed = recordStage(reviewed, 'diff-reconciliation', {
+    ...revision,
+    verdict: 'reconciled',
+    complete: true,
+    terminal: true,
+    completedAt: '2026-08-30T00:03:00Z',
+  }, revision, tieredManifest);
+  reviewed = recordStage(reviewed, 'run-ci', {
+    invocation: { skill: 'run-ci', id: 'ci-tiered', runId: 'tiered-run', issue: 'a' },
+    ...revision,
+    status: 'passed',
+    complete: true,
+    terminal: true,
+    evidenceComplete: true,
+    completedAt: '2026-08-30T00:04:00Z',
+    steps: [{ name: 'tests', status: 'passed' }],
+  }, revision, tieredManifest);
+  const modelRouting = [
+    'architecture-candidate',
+    'qa-reviewer',
+    'security-reviewer',
+    'roastmaster-coordinate',
+    'roastmaster-synthesize',
+  ].map((seat) => ({
+    seat,
+    role: seat,
+    requestedModel: 'gpt-6-astra',
+    selectedModel: 'gpt-6-astra',
+    actualModel: 'gpt-6-astra',
+    actualModelStatus: 'matched-selection',
+    reasoningEffort: 'high',
+    contextTier: 'default',
+  }));
+  reviewed = recordStage(reviewed, 'roast', {
+    invocation: { skill: 'roast', id: 'roast-tiered', runId: 'tiered-run', issue: 'a' },
+    ...revision,
+    status: 'completed',
+    complete: true,
+    terminal: true,
+    evidenceComplete: true,
+    completedAt: '2026-08-30T00:05:00Z',
+    findings: [],
+    reviewTier: {
+      kind: 'full',
+      policyDigest: reviewPolicyDigest(tieredManifest.issues[0].reviewPolicy),
+      packetDigest: reviewPacketBindingDigest(tieredPacket),
+      scopeDigest: reviewScopeBindingDigest(tieredManifest.issues[0]),
+      sourceRevision: 'r-a',
+      assignmentGeneration: 1,
+      modelRouting,
+    },
+  }, revision, tieredManifest);
+  assignedState.issues.a = reviewed;
+  const file = fleetStatePath(REPOSITORY, 'tiered-run');
+  const persisted = persistFleetState(file, assignedState, 0, tieredManifest);
+  const replayed = loadFleetState(file, tieredManifest);
+  assert.deepEqual(
+    replayed.issues.a.qualityEvidence.reviewLineage,
+    persisted.issues.a.qualityEvidence.reviewLineage,
+  );
+  const wrongBinding = structuredClone(replayed);
+  const wrongLineage = wrongBinding.issues.a.qualityEvidence.reviewLineage;
+  wrongLineage.packetDigest = 'f'.repeat(64);
+  wrongLineage.lastDeep.receipt.reviewTier.packetDigest = 'f'.repeat(64);
+  wrongLineage.lastDeep.receiptDigest = crypto.createHash('sha256')
+    .update(JSON.stringify(stable(wrongLineage.lastDeep.receipt)))
+    .digest('hex');
+  assert.throws(
+    () => assertFleetState(wrongBinding, tieredManifest),
+    /packet digest does not match assignment authority/,
+  );
+  const forged = structuredClone(replayed);
+  forged.issues.a.qualityEvidence.reviewLineage.lastDeep.receipt = {};
+  forged.issues.a.qualityEvidence.reviewLineage.lastDeep.receiptDigest =
+    reviewPolicyDigest({});
+  assert.throws(() => assertFleetState(forged, tieredManifest), /retained accepted full review/);
+  const missing = structuredClone(replayed);
+  missing.issues.a.pipeline = [{
+    stage: 'implementation',
+    evidence: {
+      baseSha: currentRevision(),
+      headSha: currentRevision(),
+      status: 'completed',
+      complete: true,
+      terminal: true,
+      completedAt: '2026-08-30T00:02:00Z',
+    },
+  }, {
+    stage: 'diff-reconciliation',
+    evidence: {
+      baseSha: currentRevision(),
+      headSha: currentRevision(),
+      verdict: 'reconciled',
+      complete: true,
+      terminal: true,
+      completedAt: '2026-08-30T00:03:00Z',
+    },
+  }, {
+    stage: 'run-ci',
+    evidence: {
+      invocation: { skill: 'run-ci', id: 'ci', runId: 'tiered-run', issue: 'a' },
+      baseSha: currentRevision(),
+      headSha: currentRevision(),
+      status: 'passed',
+      complete: true,
+      terminal: true,
+      evidenceComplete: true,
+      completedAt: '2026-08-30T00:04:00Z',
+      steps: [{ name: 'tests', status: 'passed' }],
+    },
+  }, {
+    stage: 'roast',
+    evidence: {
+      invocation: { skill: 'roast', id: 'roast', runId: 'tiered-run', issue: 'a' },
+      baseSha: currentRevision(),
+      headSha: currentRevision(),
+      status: 'completed',
+      complete: true,
+      terminal: true,
+      evidenceComplete: true,
+      completedAt: '2026-08-30T00:05:00Z',
+      findings: [],
+    },
+  }];
+  missing.issues.a.qualityEvidence = {};
+  assert.throws(() => assertFleetState(missing, tieredManifest), /lacks review lineage/);
+});
 
 function handoffPayload(target = 'worker-2') {
   const original = packet('a', 'issue-a', WORKTREE_A);
@@ -445,6 +664,213 @@ test('rejects delete-and-recreate of an assigned worktree at the same path', (t)
   );
 });
 
+test('rejects a recreated worktree even when the filesystem reuses the same device and inode', (t) => {
+  // Some filesystems (observed on Linux ext4 in CI) can hand a freshly (re)created
+  // directory the exact same device/inode pair a deleted directory just released,
+  // especially when the deletion and recreation happen back to back. Device+inode
+  // alone is then insufficient to prove the worktree at a path is still the same
+  // directory instance. This test simulates that exact collision — real device and
+  // inode held constant, only the directory's filesystem creation time advances,
+  // which is what actually happens on a real delete-and-recreate regardless of
+  // whether the OS reuses the inode number — and proves the identity check still
+  // rejects it, independent of whatever inode-reuse behavior the host OS has.
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const current = assigned();
+  const resolvedWorktree = fs.realpathSync.native
+    ? fs.realpathSync.native(WORKTREE_A)
+    : fs.realpathSync(WORKTREE_A);
+  const realLstatSync = fs.lstatSync;
+  t.mock.method(fs, 'lstatSync', (targetPath, options) => {
+    const stat = realLstatSync(targetPath, options);
+    if (!options?.bigint || path.resolve(String(targetPath)) !== resolvedWorktree) return stat;
+    return Object.create(Object.getPrototypeOf(stat), {
+      ...Object.getOwnPropertyDescriptors(stat),
+      birthtimeNs: { value: stat.birthtimeNs + 1_000_000_000n, enumerable: true, configurable: true },
+    });
+  });
+  assert.throws(
+    () => assertFleetState(current, manifest),
+    /persisted worktree filesystem or Git identity changed/,
+  );
+});
+
+test('schema-v5 legacy active ownership is fenced explicitly before a fresh durable assignment', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const legacy = assigned();
+  legacy.revision = 1;
+  delete legacy.issues.a.assignment.worktreeIdentity.birthtimeNs;
+  delete legacy.issues.a.assignment.worktreeIdentity.schemaVersion;
+  const historicalIdentity = structuredClone(legacy.issues.a.assignment.worktreeIdentity);
+  const file = fleetStatePath(REPOSITORY, 'run');
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, JSON.stringify(legacy), { mode: 0o600 });
+  fs.linkSync(file, `${file}.commit-r1`);
+  assert.equal(legacy.schemaVersion, 5);
+  assert.throws(() => loadFleetState(file, manifest), /legacy worktree identity is untrusted/);
+  assert.throws(() => persistFleetState(file, legacy, 1, manifest), /legacy worktree identity is untrusted/);
+  const acknowledgment = {
+    issue: 'a', generation: 1, workerContext: 'worker-1', stopped: true,
+    evidence: 'runtime confirms worker-1 stopped before ownership fencing',
+  };
+  assert.throws(() => recoverLegacyAssignmentsPersisted(file, manifest, 1, [{
+    ...acknowledgment, stopped: false,
+  }]), /stopped-owner identity/);
+  const recovered = recoverLegacyAssignmentsPersisted(file, manifest, 1, [acknowledgment]);
+  assert.equal(recovered.issues.a.status, 'pending');
+  assert.equal(recovered.issues.a.assignment, null);
+  assert.deepEqual(recovered.issues.a.continuationChain[0].worktreeIdentity, historicalIdentity);
+  assert.equal(Object.hasOwn(recovered.issues.a.continuationChain[0].worktreeIdentity, 'birthtimeNs'), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(`${file}.commit-r1`, 'utf8')), legacy);
+  assert.throws(() => recoverLegacyAssignmentsPersisted(file, manifest, 1, [acknowledgment]), /revision conflict/);
+  const reassigned = assignFreshWorkerPersisted(file, manifest, {
+    issue: 'a', branch: 'issue-b', worktree: WORKTREE_B, workerContext: 'worker-fresh',
+    baseSha: currentRevision(), headSha: currentRevision(),
+    packet: packet('a', 'issue-b', WORKTREE_B),
+    schedulerLease: createSchedulerLease(recovered, manifest, 'a'),
+  });
+  assert.equal(reassigned.issues.a.assignment.generation, 2);
+  assert.equal(reassigned.issues.a.assignment.worktreeIdentity.schemaVersion, 2);
+  assert.match(reassigned.issues.a.assignment.worktreeIdentity.birthtimeNs, /^[1-9][0-9]*$/u);
+  assert.deepEqual(loadFleetState(file, manifest), reassigned);
+});
+
+test('schema-v5 archived legacy evidence reloads unchanged without invented birthtime', (t) => {
+  fs.rmSync(SANDBOX, { recursive: true, force: true });
+  t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+  const archived = transitionIssue(assigned(), manifest, 'a', 'blocked', {
+    reason: 'pre-change blocked assignment', terminalDisposition: 'blocked',
+    assignmentEnd: { generation: 1, workerContext: 'worker-1', reason: 'blocked' },
+  });
+  const identity = archived.issues.a.continuationChain[0].worktreeIdentity;
+  delete identity.birthtimeNs;
+  delete identity.schemaVersion;
+  const file = fleetStatePath(REPOSITORY, 'run');
+  persistFleetState(file, archived, 0, manifest);
+  const loaded = loadFleetState(file, manifest);
+  assert.deepEqual(loaded.issues.a.continuationChain[0].worktreeIdentity, identity);
+  assert.equal(Object.hasOwn(loaded.issues.a.continuationChain[0].worktreeIdentity, 'birthtimeNs'), false);
+});
+
+test('schema-v5 obligated legacy owners recover without losing provenance', async (t) => {
+  for (const stage of ['quality', 'shepherd-check', 'publication-intent', 'published-handoff', 'timed-out', 'cancelled', 'budget']) {
+    await t.test(stage, (t) => {
+      fs.rmSync(SANDBOX, { recursive: true, force: true });
+      t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
+      setRuntimeTemp(t);
+      let legacy = assigned();
+      legacy.issues.a.pipeline = [{
+        stage: 'implementation',
+        evidence: {
+          baseSha: currentRevision(), headSha: currentRevision(),
+          complete: true, terminal: true, status: 'completed',
+          completedAt: '2026-08-30T00:02:10Z',
+        },
+      }];
+      legacy.issues.a.qualityEvidence = { implementation: structuredClone(legacy.issues.a.pipeline[0].evidence) };
+      legacy = startCheckActivity(legacy, manifest, 'a',
+        stage === 'shepherd-check' ? 'shepherd-check' : 'quality-check', '2026-08-30T00:02:11Z');
+      if (stage === 'publication-intent' || stage === 'published-handoff') {
+        const published = stage === 'published-handoff';
+        const publication = {
+          manifestDigest: manifest.digest, providerConfigurationDigest: manifest.providerConfigurationDigest,
+          provider: 'github', repository: 'owner/repo', issue: 'a', sourceRevision: 'r-a',
+          headBranch: 'issue-a', baseBranch: 'main',
+        };
+        publication.key = publicationKey(publication);
+        publication.identifier = published ? 'PR-197' : null;
+        publication.observations = [{
+          baseSha: currentRevision(), headSha: currentRevision(),
+          state: published ? 'confirmed' : 'intent-recorded',
+          intentAt: '2026-08-30T00:02:12Z',
+          confirmedAt: published ? '2026-08-30T00:02:13Z' : null,
+          attempts: published ? [{
+            invocation: { id: 'publish-a', operation: 'publish-change-request', providerKey: publication.key },
+            status: 'published', observedAt: '2026-08-30T00:02:13Z',
+            terminal: true, complete: true, provider: 'github', repository: 'owner/repo',
+            issue: 'a', baseBranch: 'main', headBranch: 'issue-a',
+            baseSha: currentRevision(), headSha: currentRevision(), identifier: 'PR-197',
+          }] : [],
+        }];
+        legacy.publications.push(publication);
+        if (published) {
+          legacy.issues.a.changeRequest = {
+            identifier: 'PR-197', provider: 'github', repository: 'owner/repo',
+            baseBranch: 'main', headBranch: 'issue-a',
+            baseSha: currentRevision(), headSha: currentRevision(), publicationKey: publication.key,
+          };
+          legacy = transitionIssue(legacy, manifest, 'a', 'blocked', {
+            assignmentEnd: { generation: 1, workerContext: 'worker-1', reason: 'crashed' },
+          });
+        }
+      }
+      if (stage === 'cancelled') legacy = cancelFleet(legacy, manifest, 'operator stop');
+      if (stage === 'budget') legacy = consumeBudget(legacy, manifest, { cost: 10 }).state;
+      if (stage === 'timed-out') {
+        legacy = transitionIssue(legacy, manifest, 'a', 'timed-out', {
+          assignmentEnd: { generation: 1, workerContext: 'worker-1', reason: 'timed-out' },
+        });
+      }
+      assertFleetState(legacy, manifest);
+      legacy.revision = 1;
+      const staleWorker = structuredClone(legacy);
+      delete legacy.issues.a.assignment.worktreeIdentity.schemaVersion;
+      delete legacy.issues.a.assignment.worktreeIdentity.birthtimeNs;
+      const before = structuredClone(legacy);
+      const file = fleetStatePath(REPOSITORY, 'run');
+      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+      fs.writeFileSync(file, JSON.stringify(legacy), { mode: 0o600 });
+      const recovered = recoverLegacyAssignmentsPersisted(file, manifest, 1, [{
+        issue: 'a', generation: 1, workerContext: 'worker-1', stopped: true,
+        evidence: 'runtime confirmed stopped legacy worker',
+      }]);
+      assert.deepEqual(loadFleetState(file, manifest), recovered);
+      for (const field of ['pipeline', 'qualityEvidence', 'changeRequest', 'assignment', 'setObligation']) {
+        assert.deepEqual(recovered.issues.a[field], before.issues.a[field], field);
+      }
+      for (const field of ['publications', 'budgetUse', 'control', 'fleetDisposition']) {
+        assert.deepEqual(recovered[field], before[field], field);
+      }
+      assert.equal(recovered.issues.a.statusReason, 'legacy-worktree-identity-fenced');
+      assert.equal(recovered.issues.a.checkActivity.state, 'blocked');
+      assert.equal(recovered.issues.a.nextAction, 'capture-validated-orchestration-handoff');
+      if (before.issues.a.handoffObligation) {
+        assert.deepEqual(recovered.issues.a.handoffObligation, before.issues.a.handoffObligation);
+      }
+      assert.throws(() => persistFleetState(file, before, 1, manifest), /legacy worktree identity/);
+      assert.throws(() => persistFleetState(file, staleWorker, 1, manifest), /revision conflict/);
+      assert.throws(() => continueWithFreshWorker(recovered, manifest, { issue: 'a' }), /legacy worktree identity/);
+      assert.throws(() => transitionIssue(recovered, manifest, 'a', 'failed', {}), /legacy worktree identity/);
+      const payload = handoffPayload('fleet-owner');
+      payload.inputs.find((entry) => entry.name === 'state_revision').value = String(recovered.revision);
+      const handoff = persistOrchestrationHandoff(payload, { now: new Date('2026-08-30T00:04:00Z') });
+      const release = {
+        issue: 'a', reason: 'stalled', targetAgent: 'fleet-owner',
+        handoff, handoffPayload: payload, endedAt: '2026-08-30T00:05:00Z',
+      };
+      assert.throws(() => releaseAfterValidatedHandoff(before, manifest, release), /legacy worktree identity/);
+      assert.throws(() => releaseAfterValidatedHandoff(recovered, manifest, {
+        ...release, handoff: { ...handoff, bytes: handoff.bytes + 1 },
+      }), /invalid orchestration handoff/);
+      const released = releaseAfterValidatedHandoff(recovered, manifest, release);
+      assert.equal(released.issues.a.assignment, null);
+      assert.equal(released.issues.a.handoffObligation, null);
+      assert.equal(released.issues.a.status, 'blocked');
+      assert.deepEqual(released.issues.a.checkActivity, recovered.issues.a.checkActivity);
+      assert.deepEqual(released.issues.a.changeRequest, before.issues.a.changeRequest);
+      assert.deepEqual(released.publications, before.publications);
+      assert.deepEqual(released.budgetUse, before.budgetUse);
+      assert.deepEqual(released.control, before.control);
+      assert.equal(released.fleetDisposition, before.fleetDisposition);
+      assert.deepEqual(released.issues.a.continuationChain.at(-1).worktreeIdentity,
+        before.issues.a.assignment.worktreeIdentity);
+      persistFleetState(file, released, recovered.revision, manifest);
+      assert.equal(loadFleetState(file, manifest).issues.a.status, 'blocked');
+    });
+  }
+});
+
 test('rejects continuation and release after the assigned Git HEAD moves', (t) => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
   t.after(() => fs.rmSync(SANDBOX, { recursive: true, force: true }));
@@ -485,7 +911,12 @@ test('continues only after rereading actual orchestration-handoff persistence ou
     now: new Date('2026-08-30T00:02:30Z'),
   });
 
-  const continued = continueWithFreshWorker(assigned(), manifest, {
+  const priorState = assigned();
+  priorState.issues.a.qualityEvidence.reviewLineage = { stale: true };
+  priorState.issues.a.pipeline = [
+    { stage: 'roast', evidence: { baseSha: currentRevision(), headSha: currentRevision() } },
+  ];
+  const continued = continueWithFreshWorker(priorState, manifest, {
     issue: 'a',
     reason: 'stalled',
     handoff: persisted,
@@ -499,6 +930,9 @@ test('continues only after rereading actual orchestration-handoff persistence ou
   });
   assert.equal(continued.issues.a.status, 'active');
   assert.equal(continued.issues.a.assignment.generation, 2);
+  assert.equal(Object.hasOwn(continued.issues.a.qualityEvidence, 'reviewLineage'), false);
+  assert.equal(continued.issues.a.pipeline.some((entry) => entry.stage === 'roast'), false);
+  assert.equal(continued.issues.a.nextAction, 'run-full-review-for-new-assignment-generation');
   assert.equal(continued.issues.a.continuationChain[0].endReason, 'stalled');
   assert.equal(
     continued.issues.a.continuationChain[0].handoff.identity.targetAgent,

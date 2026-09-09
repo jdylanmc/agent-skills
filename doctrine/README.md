@@ -1,16 +1,15 @@
 # Engineering Doctrine
 
-Doctrine files are this repository's source of truth for how software should be
-shaped. They state reasoned engineering positions - for example, that a unit
-test asserts behavior rather than implementation - which skills apply
-systematically so that review is consistent rather than a matter of whoever is
-looking.
+Doctrine files capture this repository's human-authored, opinionated
+engineering philosophy for how software should be shaped. They state reasoned
+positions - for example, that a unit test asserts behavior rather than
+implementation - rather than generic industry best practices. Skills apply the
+relevant positions selectively so that review reflects that judgment
+consistently rather than the preferences of whoever is looking.
 
-- `code.doctrine.md`
-- `domain.doctrine.md`
-- `pragmatic.doctrine.md`
-- `data.doctrine.md`
-- `testing.doctrine.md`
+The canonical current doctrine inventory is [`manifest.md`](manifest.md). Each
+entry records a doctrine ID, file path, and integrity hash; the manifest, rather
+than a copied list here, defines the trusted set.
 
 ## Authorship
 

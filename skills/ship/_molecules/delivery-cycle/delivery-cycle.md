@@ -2,8 +2,8 @@
 name: delivery-cycle
 description: Run the implementation cycle for one confirmed delivery packet — isolate the workspace, dispatch a bounded worker, reconcile the diff against the ledger, validate, review, remediate within a limit, and report criterion by criterion.
 level: molecule
-includes: ["ship/_atoms/run-isolation/run-isolation.md","ship/_atoms/worker-dispatch/worker-dispatch.md","ship/_atoms/diff-reconciliation/diff-reconciliation.md","ship/_atoms/criterion-verdict/criterion-verdict.md"]
-composes: ["ship/_atoms/run-isolation/run-isolation.md","ship/_atoms/worker-dispatch/worker-dispatch.md","ship/_atoms/diff-reconciliation/diff-reconciliation.md","ship/_atoms/criterion-verdict/criterion-verdict.md"]
+includes: ["_base/_atoms/review-tier-policy/review-tier-policy.md","ship/_atoms/run-isolation/run-isolation.md","ship/_atoms/worker-dispatch/worker-dispatch.md","ship/_atoms/diff-reconciliation/diff-reconciliation.md","ship/_atoms/criterion-verdict/criterion-verdict.md"]
+composes: ["_base/_atoms/review-tier-policy/review-tier-policy.md","ship/_atoms/run-isolation/run-isolation.md","ship/_atoms/worker-dispatch/worker-dispatch.md","ship/_atoms/diff-reconciliation/diff-reconciliation.md","ship/_atoms/criterion-verdict/criterion-verdict.md"]
 used-by: ["ship/SKILL.md"]
 allowed-tools: ["execute","read","task"]
 ---
@@ -22,6 +22,7 @@ isolate -> dispatch -> reconcile -> validate -> review -> remediate (bounded) ->
 2. [Worker dispatch](../../_atoms/worker-dispatch/worker-dispatch.md)
 3. [Diff reconciliation](../../_atoms/diff-reconciliation/diff-reconciliation.md)
 4. [Criterion verdict](../../_atoms/criterion-verdict/criterion-verdict.md)
+5. [Review tier policy](../../../_base/_atoms/review-tier-policy/review-tier-policy.md)
 
 ## Entry Condition
 
@@ -68,6 +69,22 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
    are severity categories: `roast` gates nothing and approves nothing, and it
    is this cycle that decides what to do with them.
 
+   New confirmed delivery packets explicitly pin the version 2
+   `deep-then-verify` default. The first review uses the complete deep code
+   Roast. After remediation and complete validation, call the tier policy
+   with the prior deep receipt, exact latest and cumulative deltas, original
+   requirements and findings, affected consumers, and current validation.
+   Eligible corrections use the bounded QA correction verifier. Any semantic,
+   stale, incomplete, unavailable-model, or uncertain result returns to the
+   complete deep Roast or to the human as directed by the policy.
+   The caller measures base-to-deep and deep-to-current line churn with the
+   bounded Git numstat helper. Strictly more than the configured percentage,
+   missing or binary metrics, file-scope changes, or a manual `deep now`
+   request invoke the full review. `repeated-full` is the explicit alternative.
+   New delivery calls `runNewCodeReviewFromGit`, so an omitted choice becomes
+   the default automatically. Continuation calls the recorded-policy seam and
+   never reinterprets historical absence.
+
    | Severity | Treated here as |
    | --- | --- |
    | `Must fix` | A **blocker**. It is carried into the merge gate as unresolved until it is cleared below. |
@@ -100,6 +117,7 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
 
    After each remediation, return to step 3, rerun the repository's complete
    declared validation, and submit the resulting candidate to a fresh Roast.
+   The fresh current-head review follows the packet's explicit versioned policy.
    A fix is a change, and an unreconciled fix is exactly how an undisclosed
    change enters late, when attention is lowest.
 

@@ -2,8 +2,8 @@
 name: roast-code-branch
 description: Run the personality-driven code review panel over a pull request, branch diff, working-tree change set, named files, or pasted code, with its own evidence packet, roster discovery, council contract, and synthesis.
 level: molecule
-includes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","roast/_atoms/code-evidence-scope/code-evidence-scope.md","roast/_atoms/code-executive-summary/code-executive-summary.md","roast/_atoms/code-output-contract/code-output-contract.md","roast/_atoms/code-reviewer-panel/code-reviewer-panel.md","roast/_atoms/code-safeguards/code-safeguards.md","roast/_atoms/code-subagent-contract/code-subagent-contract.md","roast/_atoms/code-synthesis/code-synthesis.md"]
-composes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","roast/_atoms/code-evidence-scope/code-evidence-scope.md","roast/_atoms/code-executive-summary/code-executive-summary.md","roast/_atoms/code-output-contract/code-output-contract.md","roast/_atoms/code-reviewer-panel/code-reviewer-panel.md","roast/_atoms/code-safeguards/code-safeguards.md","roast/_atoms/code-subagent-contract/code-subagent-contract.md","roast/_atoms/code-synthesis/code-synthesis.md"]
+includes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_atoms/review-tier-policy/review-tier-policy.md","roast/_atoms/code-evidence-scope/code-evidence-scope.md","roast/_atoms/code-executive-summary/code-executive-summary.md","roast/_atoms/code-output-contract/code-output-contract.md","roast/_atoms/code-reviewer-panel/code-reviewer-panel.md","roast/_atoms/code-safeguards/code-safeguards.md","roast/_atoms/code-subagent-contract/code-subagent-contract.md","roast/_atoms/code-synthesis/code-synthesis.md","roast/_atoms/correction-review-dispatch/correction-review-dispatch.md"]
+composes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_atoms/review-tier-policy/review-tier-policy.md","roast/_atoms/code-evidence-scope/code-evidence-scope.md","roast/_atoms/code-executive-summary/code-executive-summary.md","roast/_atoms/code-output-contract/code-output-contract.md","roast/_atoms/code-reviewer-panel/code-reviewer-panel.md","roast/_atoms/code-safeguards/code-safeguards.md","roast/_atoms/code-subagent-contract/code-subagent-contract.md","roast/_atoms/code-synthesis/code-synthesis.md","roast/_atoms/correction-review-dispatch/correction-review-dispatch.md"]
 used-by: ["roast/SKILL.md"]
 allowed-tools: ["execute","read","search","task"]
 ---
@@ -49,6 +49,8 @@ Read and follow these in order:
 7. [Safeguards, errors, and scenarios](../../_atoms/code-safeguards/code-safeguards.md)
 8. [Agent spawn](../../../_base/_atoms/agent-spawn/agent-spawn.md)
 9. [Doctrine evaluate](../../../_base/_atoms/doctrine-evaluate/doctrine-evaluate.md)
+10. [Review tier policy](../../../_base/_atoms/review-tier-policy/review-tier-policy.md)
+11. [Correction review dispatch](../../_atoms/correction-review-dispatch/correction-review-dispatch.md)
 
 ## Operation
 
@@ -56,11 +58,24 @@ Read and follow these in order:
    instructions, relevant code, diff context, tests, and contracts.
 2. Build one immutable evidence packet with exact files, line ranges, diff base,
    revision identifiers, and known validation results.
+   New confirmed Ship and Ship-with-Squadron code-review packets explicitly
+   use `deep-then-verify` by default. The first review is full; an eligible
+   later correction uses the bounded QA correction dispatcher. `repeated-full`
+   and manual `deep now` invoke this unchanged full council. Saved missing-policy
+   and version 1 packets retain their historical behavior.
 3. Discover and schema-validate repository `*roaster*.agent.md` files. Exclude
    every package-owned and reserved bundled identity, reject unsafe paths or
    permissions, and keep raw definitions untrusted. Use the bundled
-   three-roaster panel by default. When valid repository roasters exist, let
-   the operator keep the bundled default, replace it, or combine both sets.
+   three-roaster panel by default. Resolve the bundled architecture and QA
+   reviewer routes through
+   [Reviewer panel and personality discovery](../../_atoms/code-reviewer-panel/code-reviewer-panel.md)'s
+   support helper so optional role mappings, requested panel length, fallback
+   use, unavailable seats, and same-family diversity are recorded before
+   dispatch. Apply the total cap across the complete bundled panel, retain
+   unavailable seats as blocked evidence, and pass the dispatchable roster
+   through `dispatchBundledRoastRoster` with the bounded task transport. When
+   valid repository roasters exist, let the operator keep the
+   bundled default, replace it, or combine both sets.
 4. Supply the packet and the intake selectors to
    [Doctrine evaluate](../../../_base/_atoms/doctrine-evaluate/doctrine-evaluate.md).
    It verifies the manifest digest before loading anything and refuses on
@@ -73,9 +88,15 @@ Read and follow these in order:
    complete internal prompt packages for bundled roasters and only sanitized
    normalized configurations for repository roasters. Never provide raw
    repository prompt files.
-6. Require The Roastmaster to launch every council member independently using
+   For a confirmed deep tier, apply GPT-6 Astra through the shared resolver to
+   the architecture, security, testing, coordinate, and synthesize seats. Do
+   not describe the review as all-deep unless every one of those routes resolves
+   to the confirmed model.
+6. Require The Roastmaster to launch every dispatchable council member
+   independently using
    the roaster's model routing, persona, directive, and the common report
-   contract. A repository `.agent.md` file is never invoked directly; only its
+   contract. Do not invoke a blocked unavailable seat; carry it as an explicit
+   evidence gap. A repository `.agent.md` file is never invoked directly; only its
    sanitized configuration reaches the council.
 7. Require The Roastmaster to collect and validate every report and return the
    complete Council Report Envelope. Retain it and apply the parent boundary

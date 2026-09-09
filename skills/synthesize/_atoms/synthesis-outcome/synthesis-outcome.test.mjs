@@ -77,6 +77,10 @@ test('a fresh bound source with complete budget and ledger evidence is complete'
   assert.deepEqual(resolveOutcome(evidence()), {
     status: 'complete',
     reasons: [],
+    // The receipt names the contract it was validated under. Persistence runs
+    // later and cannot re-derive it; without this a candidate validated under
+    // one contract could be published under another naming the same destination.
+    contract: 'spec-nano',
     candidate: { path: 'docs/agent/specs/faster-checkout.nano.md', digest: CANDIDATE_DIGEST },
   });
   assert.equal(
@@ -384,6 +388,10 @@ const BLOCKED_PATHS = {
   'binding-refused': evidence({ binding: { status: 'unbound-source' } }),
   'profile-id-missing': evidence({ profileId: undefined }),
   'unknown-profile': evidence({ profileId: 'fabricated-profile' }),
+  // A declared reduction that does not state every term resolves to nothing, so
+  // the run is blocked before its own claims are weighed - the same treatment an
+  // unknown name gets, under its own reason so the two are told apart.
+  'invalid-profile': evidence({ profileId: { goal: 'a contract that states almost nothing' } }),
   'candidate-path-missing': evidence({ candidatePath: '' }),
   'candidate-digest-missing': evidence({ ledger: { ...CLEAN, candidateDigest: '' } }),
   'candidate-evidence-mismatch': evidence({ ledger: { ...CLEAN, candidatePath: 'docs/agent/specs/other.nano.md' } }),

@@ -29,25 +29,50 @@ const GITHUB = detectProvider({
 // The commits the reading is taken against must match the rebase base and the
 // pushed head, or the disposition blocks as stale before it ever weighs the
 // blocking signals. That is what makes this an end-to-end contract.
-const BASE_SHA = 'base000';
-const HEAD_SHA = 'head000';
+const BASE_SHA = 'a'.repeat(40);
+const HEAD_SHA = 'b'.repeat(40);
+const TARGET = { repository: 'example/repo', baseBranch: 'main' };
+const LIVE_BASE = {
+  observed: true, identityBound: true, repository: TARGET.repository,
+  ref: 'refs/heads/main', sha: BASE_SHA, observedAt: '2026-08-28T00:00:00Z',
+};
+const CHECKS = {
+  observed: true, complete: true, headSha: HEAD_SHA,
+  requiredChecks: [{ name: 'validate', appId: null }],
+  checks: [{ name: 'validate', status: 'success', required: true, headSha: HEAD_SHA }],
+};
 
 function greenSignalsWith(mergeability) {
   return {
+    authority: { mode: 'ship-continuation' },
     provider: { status: 'supported-provider', provider: 'github' },
     observedAt: '2026-08-28T00:00:00Z',
-    preflight: { status: 'ok' },
-    rebase: { status: 'completed', baseSha: BASE_SHA },
+    target: TARGET,
+    liveBase: LIVE_BASE,
+    headTarget: { repository: 'example/repo', ref: 'refs/heads/feature' },
+    branchPolicy: { observed: true, trusted: true, observedAt: LIVE_BASE.observedAt,
+      repository: 'example/repo', ref: 'refs/heads/feature', allowForcePushes: true,
+      requireLinearHistory: true, directUpdatesAllowed: true },
+    baseBranchPolicy: { observed: true, trusted: true, observedAt: LIVE_BASE.observedAt,
+      repository: 'example/repo', ref: 'refs/heads/main', sha: BASE_SHA,
+      allowForcePushes: false, requireLinearHistory: false, squashMergeAllowed: true },
+    preflight: { status: 'ok', capturedRemoteHead: 'c'.repeat(40) },
+    rebase: { status: 'completed', baseSha: BASE_SHA, strategy: 'rebase' },
     regeneration: { status: 'completed' },
     localValidation: { status: 'passed', evidenceComplete: true },
-    push: { status: 'pushed-with-lease', headSha: HEAD_SHA },
-    remoteChecks: { checks: [{ name: 'validate', status: 'success' }] },
+    push: { status: 'pushed-with-lease', headSha: HEAD_SHA, previousHead: 'c'.repeat(40),
+      repository: 'example/repo', ref: 'refs/heads/feature', strategy: 'rebase',
+      capturedHeadVerified: true, leaseVerified: true,
+      lease: { ref: 'refs/heads/feature', expectedHead: 'c'.repeat(40) } },
+    remoteChecks: CHECKS,
     mergeability,
   };
 }
 
 function signalFor(payload) {
-  return normalizeMergeabilitySignal(interpretMergeState(GITHUB, payload));
+  return normalizeMergeabilitySignal(interpretMergeState(GITHUB, {
+    isDraft: false, baseRefName: 'main', ...payload,
+  }, { ...TARGET, liveBase: LIVE_BASE }));
 }
 
 test('a provider-blocked change request reaches needs-human, never mergeable-and-green', () => {
@@ -156,7 +181,7 @@ test('the full chain from detection through a provider-native blocked payload la
     headRefOid: HEAD_SHA,
     isDraft: false,
   };
-  const signal = normalizeMergeabilitySignal(interpretMergeState(detection, payload));
+  const signal = signalFor(payload);
   const result = classifyTerminalDisposition(greenSignalsWith(signal));
   assert.equal(result.disposition, 'needs-human');
   assert.notEqual(result.disposition, 'mergeable-and-green');
@@ -169,16 +194,10 @@ test('the full chain from detection through a provider-native blocked payload la
 // `watch-or-report`, never a green no-op.
 function greenPlanSignals(mergeabilityOverrides = {}) {
   return {
-    provider: { status: 'supported-provider', provider: 'github' },
-    observedAt: '2026-08-28T00:00:00Z',
-    preflight: { status: 'ok' },
-    rebase: { status: 'completed', baseSha: BASE_SHA },
-    regeneration: { status: 'completed' },
-    localValidation: { status: 'passed', evidenceComplete: true },
-    push: { status: 'pushed-with-lease', headSha: HEAD_SHA },
-    remoteChecks: { checks: [{ name: 'validate', status: 'success' }] },
+    ...greenSignalsWith({}),
     mergeability: {
       state: 'mergeable',
+      blocked: false,
       isDraft: false,
       baseSha: BASE_SHA,
       headSha: HEAD_SHA,
@@ -236,4 +255,108 @@ test('the planner still greens a base-moved change request whose review is unobs
   const result = classifyShepherdPlan(greenPlanSignals({ blocked: false, reviewDecision: 'unobserved' }));
   assert.equal(result.disposition, 'no-op-mergeable-and-green');
   assert.equal(result.shouldRebase, false);
+});
+
+test('both green gates reject missing, stale, incomplete, pending, cancelled, and failed checks', () => {
+  for (const evidence of [
+    undefined, { checks: CHECKS.checks }, { ...CHECKS, complete: false },
+    { ...CHECKS, headSha: 'c'.repeat(40) }, { ...CHECKS, checks: [] },
+    ...['pending', 'cancelled', 'failure'].map((status) => ({
+      ...CHECKS, checks: [{ ...CHECKS.checks[0], status }],
+    })),
+    { ...CHECKS, checks: [{ ...CHECKS.checks[0], headSha: 'c'.repeat(40) }] },
+  ]) {
+    const signals = { ...greenPlanSignals(), remoteChecks: evidence };
+    assert.notEqual(classifyShepherdPlan(signals).disposition, 'no-op-mergeable-and-green');
+    assert.notEqual(classifyTerminalDisposition(signals).disposition, 'mergeable-and-green');
+  }
+  for (const liveBase of [undefined, { ...LIVE_BASE, repository: 'other/repo' }, { ...LIVE_BASE, ref: 'refs/heads/other' }]) {
+    const signals = { ...greenPlanSignals(), liveBase };
+    assert.equal(classifyShepherdPlan(signals).disposition, 'blocked');
+    assert.equal(classifyTerminalDisposition(signals).disposition, 'blocked');
+    assert.equal(classifyTerminalDisposition(signals).receipt.complete, false);
+  }
+});
+
+test('strict behind maintenance uses normal merge when no-force policy permits merges', () => {
+  const signals = {
+    ...greenPlanSignals({ behind: true }),
+    basePolicy: { upToDate: 'required' },
+    headTarget: { repository: 'example/repo', ref: 'refs/heads/feature' },
+    branchPolicy: {
+      observed: true, trusted: true, observedAt: LIVE_BASE.observedAt,
+      repository: 'example/repo', ref: 'refs/heads/feature',
+      allowForcePushes: false, requireLinearHistory: false, directUpdatesAllowed: true,
+    },
+    baseBranchPolicy: {
+      observed: true, trusted: true, observedAt: LIVE_BASE.observedAt,
+      repository: 'example/repo', ref: 'refs/heads/main', sha: BASE_SHA,
+      allowForcePushes: false, requireLinearHistory: false, squashMergeAllowed: true,
+    },
+  };
+  assert.equal(classifyShepherdPlan(signals).action, 'merge-base-into-head');
+  assert.equal(classifyShepherdPlan(signals).shouldRebase, false);
+  const maintained = {
+    ...signals, mergeability: { ...signals.mergeability, behind: false },
+    rebase: { status: 'completed', baseSha: BASE_SHA, strategy: 'merge-base-into-head' },
+    push: { status: 'pushed', headSha: HEAD_SHA, capturedHeadVerified: true,
+      previousHead: 'c'.repeat(40), repository: 'example/repo', ref: 'refs/heads/feature',
+      strategy: 'merge-base-into-head' },
+  };
+  assert.equal(classifyTerminalDisposition(maintained).disposition, 'mergeable-and-green');
+  assert.equal(classifyTerminalDisposition({ ...maintained, push: { ...maintained.push, capturedHeadVerified: false } }).disposition, 'blocked');
+  assert.equal(classifyShepherdPlan({ ...signals, branchPolicy: undefined }).disposition, 'blocked');
+  assert.equal(classifyShepherdPlan({ ...signals, baseBranchPolicy: undefined }).disposition, 'blocked');
+  signals.branchPolicy.directUpdatesAllowed = false;
+  assert.equal(classifyShepherdPlan(signals).reason, 'head-policy-forbids-direct-update');
+  signals.branchPolicy.directUpdatesAllowed = true;
+  signals.baseBranchPolicy.requireLinearHistory = true;
+  signals.baseBranchPolicy.squashMergeAllowed = false;
+  assert.equal(classifyShepherdPlan(signals).reason, 'linear-history-forbids-merge-and-force-push');
+  signals.baseBranchPolicy.squashMergeAllowed = true;
+  assert.equal(classifyShepherdPlan(signals).action, 'merge-base-into-head');
+  signals.branchPolicy.requireLinearHistory = true;
+  assert.equal(classifyShepherdPlan(signals).reason, 'linear-history-forbids-merge-and-force-push');
+  signals.branchPolicy.allowForcePushes = true;
+  assert.equal(classifyShepherdPlan(signals).action, 'rebase');
+  signals.branchPolicy.ref = 'refs/heads/other';
+  assert.equal(classifyShepherdPlan(signals).disposition, 'blocked');
+});
+
+test('unknown mergeability or draft status alone never authorizes a branch rewrite', () => {
+  for (const mergeability of [{ state: 'unknown' }, { isDraft: true }]) {
+    const result = classifyShepherdPlan(greenPlanSignals(mergeability));
+    assert.equal(result.shouldRebase, false);
+    assert.equal(result.disposition, 'watch-or-report');
+  }
+});
+
+test('a provider summary cannot override ancestry proving the current base is missing', () => {
+  const signals = {
+    ...greenPlanSignals({ behind: false }),
+    base: { behind: true }, basePolicy: { upToDate: 'required' },
+  };
+  assert.notEqual(classifyShepherdPlan(signals).disposition, 'no-op-mergeable-and-green');
+  assert.equal(classifyTerminalDisposition(signals).disposition, 'blocked');
+});
+
+test('missing or unknown authority never implies maintenance or readiness', () => {
+  for (const authority of [undefined, {}, { mode: 'unknown' }]) {
+    const signals = { ...greenPlanSignals(), authority };
+    assert.equal(classifyShepherdPlan(signals).reason, 'authority-unobserved');
+    assert.equal(classifyTerminalDisposition(signals).reason, 'authority-unobserved');
+  }
+});
+
+test('a leased push label alone or a mismatched destination cannot establish readiness', () => {
+  const signals = greenPlanSignals();
+  for (const change of [
+    { lease: undefined }, { leaseVerified: false }, { status: 'failed' },
+    { repository: 'other/repo' }, { ref: 'refs/heads/main' },
+    { lease: { ref: 'refs/heads/feature', expectedHead: 'd'.repeat(40) } },
+    { previousHead: 'd'.repeat(40) }, { strategy: 'merge-base-into-head' },
+  ]) {
+    assert.equal(classifyTerminalDisposition({ ...signals, push: { ...signals.push, ...change } }).disposition, 'blocked');
+  }
+  assert.equal(classifyTerminalDisposition(signals).disposition, 'mergeable-and-green');
 });
