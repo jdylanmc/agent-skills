@@ -58,7 +58,13 @@ supports one decision: ship it, revise it, or hand the work somewhere else. See
      current head. Historical missing-policy and version 1 packets keep their
      recorded behavior.
 
-4. Return what the branch returned, with the doctrine selection and its
+4. Keep artifact coordination bounded. Each coordinate attempt and synthesis
+   has a ten-minute deadline; the complete artifact coordination path has a
+   thirty-minute deadline. Report the first failed attempt before its single
+   replacement runs, reject late responses, and never silently restart a Roast
+   after the contracted retry is exhausted.
+
+5. Return what the branch returned, with the doctrine selection and its
    reasoning attached, so a surprising recommendation can be traced to the
    guidance that produced it.
 
@@ -128,6 +134,10 @@ status, the run status, and everything that was not reviewed.
   never blocks.
 - Humor targets the artifact, its decisions, and its failure modes, never its
   author.
+- Never hide a failed or overdue coordination attempt behind an active-worker
+  status. Artifact coordination preserves parent control, reports its first
+  failure before retry, and returns a bounded failure no later than its
+  thirty-minute whole-run deadline.
 
 ## Permissions
 

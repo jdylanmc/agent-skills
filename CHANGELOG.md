@@ -15,6 +15,11 @@ below is unreleased and no comparison links are available.
 
 ### Added
 
+- **Bounded Roast artifact coordination.** Artifact Roast coordination now
+  surfaces a failed first attempt before retrying, limits each coordinate and
+  synthesis task to ten minutes and the full path to thirty minutes, rejects
+  late results, and returns the contracted failure immediately instead of
+  silently restarting or appearing active indefinitely.
 - **Opt-in tiered code review for Ship and Ship-with-Squadron.** Initial review
   remains the complete deep Roast. Confirmed callers can use one bounded
   current-head Quality Assurance correction verifier after remediation, with

@@ -30,6 +30,18 @@ category, a confidence, and a bounded fix with a way to validate it.
 is not a gate: it returns no verdict, approves nothing, and blocks nothing. A
 human reads the list and decides.
 
+## Bounded Artifact Coordination
+
+Agent, prompt, skill, and specification reviews use a finite coordination path.
+Each coordinate attempt and synthesis receives a ten-minute deadline, and the
+whole path receives thirty minutes. The first failed coordinate attempt is
+reported before its single replacement runs. Late results are ignored, and a
+final schema, transport, or deadline failure returns the documented incomplete
+Roast immediately instead of silently restarting.
+
+The deadline bounds waiting and result acceptance. It does not claim to
+terminate a remote process when the runtime has no cancellation primitive.
+
 ## Why One Skill
 
 Four sibling skills carried near-identical routing text and differed only by
@@ -81,6 +93,7 @@ authority by invoking it.
 | `_molecules/roast-artifact-branch/` | The shared agent, prompt, skill, and spec roast. |
 | `_molecules/roast-code-branch/` | The code-review council. |
 | `_atoms/artifact-profile/` | The per-artifact-type variation, in one table. |
+| `_atoms/artifact-run-budget/` | Deadlines, failure disclosure, and late-result handling for artifact coordination. |
 | `_atoms/doctrine-select/` | Which doctrine governs what, with reasoning. Local under ADR 0001. |
 | `_atoms/roast-contract/` | The roast contract, authored once. |
 | `_atoms/roast-failure-recovery/` | Statuses, recovery actions, degraded states, authored once. |

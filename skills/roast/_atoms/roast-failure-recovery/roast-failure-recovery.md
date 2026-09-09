@@ -25,7 +25,7 @@ genuinely varies by type is a double-brace placeholder resolved by the
 | --- | --- |
 | `Complete` | Every mandatory lens reviewed the {{evidenceNoun}} and the report is final. |
 | `Insufficient review` | A mandatory lens did not produce a valid report. Some dimensions were never examined. |
-| `Unsynthesized` | The envelope failed schema validation twice, so no findings were verified. |
+| `Unsynthesized` | The envelope failed schema validation twice or synthesis failed its deadline, so no findings were verified. |
 | `Stale evidence` | {{staleEvidenceMeaning}} |
 | `Awaiting artifact` | {{awaitingArtifactMeaning}} |
 | `Unsupported artifact type` | {{unsupportedTypeMeaning}} |
@@ -53,9 +53,10 @@ recommendations for a human to weigh.
   path and list every dimension as uncovered. Recovery: restore
   `agents/artifact-roastmaster.agent.md`.
 - **`Unsynthesized`** — name the schema defect. The branch already retried
-  `coordinate` once. Recovery: rerun the branch; if it fails again, the
-  coordinator resolution is the suspect, so verify which source the
-  `roast-trusted-lenses` order resolved.
+  `coordinate` once, or synthesis exceeded its fixed deadline. Return the
+  failure immediately and do not start another Roast invocation automatically.
+  A later human-invoked run may retry after the coordinator source or runtime
+  failure is understood.
 {{staleRecovery}}
 {{awaitingRecovery}}
 - **`Unsupported artifact type`** — name the supplied target and route it:
@@ -72,10 +73,13 @@ The **Validate** operation in the shared coordination molecule validates the
 envelope against the Envelope schema 1 checklist in the `roast-contract` atom.
 
 1. On the first failure, repeat the `coordinate` step once with a new Artifact
-   Roastmaster instance and no prior roast context.
+   Roastmaster instance and no prior roast context. Before launching it, report
+   the failed attempt and exact defect as a diagnostic progress update.
 2. On the second failure, stop. Do not run `synthesize` on an invalid envelope.
 3. Return `Status: Unsynthesized` and name the missing, duplicated, or
    misordered heading or field in `## What Was Not Reviewed`.
+4. Do not silently rerun the complete branch. The failure is the result until a
+   person explicitly invokes a later Roast.
 
 ## Degraded but Valid States
 
