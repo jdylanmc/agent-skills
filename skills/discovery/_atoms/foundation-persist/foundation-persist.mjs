@@ -12,7 +12,7 @@
  * prior authority untouched.
  *
  * Retention is per field and by multiset. A durable entry the human previously
- * aligned on — in any of the nine durable sets or the frontier — is never
+ * aligned on — in any durable set or the frontier — is never
  * removed by a write. It must reappear in the SAME field with at least its prior
  * multiplicity, or be discharged by a field-qualified, count-aware `Resolved`
  * record. A resolution record is `{field, entry, resolution}`; it discharges
@@ -26,23 +26,24 @@
  * conflicting resolution for the same `(field, entry)` is refused unless it is
  * byte-identical to the existing one.
  *
- * The retention check compares entries by exact text. It proves no prior entry
- * silently *vanished*. It cannot prove an entry's *meaning* survived: a reworded
- * entry whose original text no longer appears reads as a drop, and a caller
- * intent on hiding a change could keep the original text verbatim in `Resolved`
- * while burying an altered meaning elsewhere. That proxy is the seam this check
- * cannot see.
+ * The retention check compares scalar entries by exact text and structured
+ * entries by canonical JSON. It proves no prior entry silently *vanished*. It
+ * cannot prove an entry's *meaning* survived: a reworded entry whose canonical
+ * value no longer appears reads as a drop, and a caller intent on hiding a
+ * change could keep the original entry in `Resolved` while burying an altered
+ * meaning elsewhere. That proxy is the seam this check cannot see.
  *
- * The alignment gate is bound, not asserted. A caller cannot hand in
- * `alignment: "verified"` beside arbitrary bytes: it must also hand in
- * `alignedPayloadDigest`, the canonical digest of the aligned payload it showed
- * the human. The helper recomputes that digest over the normalized payload and
- * refuses (`alignment-unbound`) on any mismatch. The binding proves the persisted
- * payload is byte-for-byte the payload that was digested; it does NOT prove a
- * human understood it. `cycle`, `timestamp`, `expectedPriorRevision`, and
- * `history` are deliberately excluded from the digest, since the write appends
- * or checks them and they cannot be known at alignment time — so the digest
- * proves the aligned content, not the bookkeeping the write adds.
+ * The alignment gate is bound, not asserted. Every new write must carry the
+ * complete canonical findings packet, `alignedFindingsDigest`, an explicit
+ * `domainModel`, and a receipt chain. `domainModelBasisDigest` must equal the
+ * aligned-findings digest, `domainModelDigest` must equal the canonical digest
+ * of the validated domain model, and `frontierBasisDigest` must equal that
+ * domain-model digest. `frontierDigest` must equal the canonical digest of that
+ * model digest plus the validated frontier and next action. The helper
+ * recomputes all content digests and refuses
+ * (`alignment-unbound` or `derivation-unbound`) on mismatch. The binding proves
+ * the persisted findings and model are byte-for-byte the values that were
+ * digested; it does NOT prove a human understood them.
  *
  * Persistence is bound to the revision the cycle rehydrated. The intake carries
  * `expectedPriorRevision` (`null` only for a genuine first cycle). It is checked
@@ -109,10 +110,11 @@ export class FoundationPersistError extends Error {
 }
 
 export const STATE_VERSION = 1;
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+const SUPPORTED_SCHEMA_VERSIONS = new Set(['1', String(SCHEMA_VERSION)]);
 
 /**
- * The nine durable sets the retention guarantee protects. Frontier is the
+ * The durable sets the retention guarantee protects. Frontier is the
  * current cycle's disposition but is also retained, because an unresolved
  * frontier entry must survive across runs.
  */
@@ -124,8 +126,13 @@ export const DURABLE_SETS = Object.freeze([
   'assumptions',
   'contradictions',
   'openQuestions',
+  'sourceClaims',
+  'relationshipClaims',
+  'boundaryClaims',
+  'risks',
   'scope',
   'exclusions',
+  'domainModel',
 ]);
 
 /** Every distinct field a rehydrated Discovery state exposes (AC5). */
@@ -134,8 +141,38 @@ export const FOUNDATION_FIELDS = Object.freeze([...DURABLE_SETS, 'frontier', 'ne
 /** The fields whose prior entries must be retained across a write. */
 export const RETAINED_FIELDS = Object.freeze([...DURABLE_SETS, 'frontier']);
 
+/** Fields whose upstream contracts produce JSON-compatible records, not text. */
+export const STRUCTURED_RECORD_FIELDS = Object.freeze([
+  'relationshipClaims',
+  'boundaryClaims',
+  'domainModel',
+]);
+
+const STRUCTURED_RECORD_FIELD_SET = new Set(STRUCTURED_RECORD_FIELDS);
+
 /** Discovery's alignment vocabulary. Only these two aligned results persist. */
 export const PERSISTABLE_ALIGNMENT = Object.freeze(['verified', 'corrected']);
+
+/** Human-aligned fields, excluding post-alignment domain/frontier derivations. */
+export const ALIGNED_FINDING_FIELDS = Object.freeze(
+  DURABLE_SETS.filter((field) => field !== 'domainModel'),
+);
+
+/** Every field emitted by the documented-findings atom. */
+export const DOCUMENTED_FINDINGS_FIELDS = Object.freeze([
+  ...ALIGNED_FINDING_FIELDS,
+  'resolved',
+]);
+
+/** Fields introduced by issue #156; genuine schema-1 artifacts omit all five. */
+const POST_SCHEMA_1_FIELDS = Object.freeze([
+  'sourceClaims',
+  'relationshipClaims',
+  'boundaryClaims',
+  'risks',
+  'domainModel',
+]);
+const POST_SCHEMA_1_FIELD_SET = new Set(POST_SCHEMA_1_FIELDS);
 
 /** The token the persisted artifact records, matching what discovery-source requires. */
 export const CONFIRMED = 'confirmed';
@@ -233,7 +270,11 @@ const INTAKE_FIELDS = Object.freeze([
   'repositoryRoot',
   'subject',
   'alignment',
-  'alignedPayloadDigest',
+  'alignedFindingsDigest',
+  'domainModelBasisDigest',
+  'domainModelDigest',
+  'frontierBasisDigest',
+  'frontierDigest',
   'expectedPriorRevision',
   'cycle',
   'timestamp',
@@ -251,12 +292,21 @@ const SECTION_TITLES = Object.freeze({
   assumptions: 'Assumptions',
   contradictions: 'Contradictions',
   openQuestions: 'Open Questions',
+  sourceClaims: 'Source Claims',
+  relationshipClaims: 'Relationship Claims',
+  boundaryClaims: 'Boundary Claims',
+  risks: 'Risks',
   scope: 'Scope',
   exclusions: 'Exclusions',
+  domainModel: 'Domain Model',
   frontier: 'Frontier',
 });
 
 const LIST_SECTIONS = Object.freeze([...DURABLE_SETS, 'frontier']);
+const SCHEMA_1_LIST_SECTIONS = Object.freeze(
+  LIST_SECTIONS.filter((field) => !POST_SCHEMA_1_FIELD_SET.has(field)),
+);
+const SCHEMA_1_RETAINED_FIELD_SET = new Set(SCHEMA_1_LIST_SECTIONS);
 
 const NONE_MARKER = '_None recorded._';
 const HEADING = '# Discovery Foundation';
@@ -286,12 +336,9 @@ function canonicalize(value) {
 }
 
 /**
- * The canonical digest of the aligned payload — the subject, the nine durable
- * sets, the frontier, the next action, and the resolved list. `cycle`,
- * `timestamp`, and `history` are excluded because the write appends them. A
- * caller computes this exact value over the payload it shows the human before
- * alignment, so `persistFoundation` can prove the bytes it persists are that
- * payload.
+ * Legacy whole-payload digest utility retained for compatibility with callers
+ * that must identify old inputs. `persistFoundation` does not accept this as a
+ * schema-2 write binding; new writes use `alignedFindingsDigestOf`.
  */
 export function alignedPayloadDigestOf(payload) {
   const canonical = {
@@ -301,7 +348,27 @@ export function alignedPayloadDigestOf(payload) {
     resolved: (payload.resolved ?? []).map((item) => ({ field: item.field, entry: item.entry, resolution: item.resolution })),
   };
   for (const field of DURABLE_SETS) {
-    canonical[field] = payload[field];
+    canonical[field] = payload[field] ?? [];
+  }
+  return createHash('sha256').update(canonicalize(canonical), 'utf8').digest('hex');
+}
+
+/**
+ * Digest only the findings shown at the human alignment gate. Domain model,
+ * frontier, and next action are produced afterward and bind back to this
+ * digest through their basis receipts.
+ */
+export function alignedFindingsDigestOf(payload) {
+  const canonical = {
+    subject: { id: payload.subject.id, slug: payload.subject.slug },
+    resolved: (payload.resolved ?? []).map((item) => ({
+      field: item.field,
+      entry: item.entry,
+      resolution: item.resolution,
+    })),
+  };
+  for (const field of ALIGNED_FINDING_FIELDS) {
+    canonical[field] = payload[field] ?? [];
   }
   return createHash('sha256').update(canonicalize(canonical), 'utf8').digest('hex');
 }
@@ -356,6 +423,288 @@ function assertStringList(value, label) {
   return value.map((entry, index) => assertSingleLine(entry, `${label}[${index}]`));
 }
 
+function assertJsonCompatible(value, label, ancestors = new Set()) {
+  if (value === null || typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    assertNoControlChars(value, label);
+    return value;
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || Object.is(value, -0)) {
+      throw new FoundationPersistError('invalid-input', `${label} must contain only canonical finite JSON numbers`);
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) {
+      throw new FoundationPersistError('invalid-input', `${label} must not contain a circular reference`);
+    }
+    ancestors.add(value);
+    const result = [];
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.prototype.hasOwnProperty.call(value, index)) {
+        throw new FoundationPersistError('invalid-input', `${label} must not contain sparse arrays`);
+      }
+      result.push(assertJsonCompatible(value[index], `${label}[${index}]`, ancestors));
+    }
+    ancestors.delete(value);
+    return result;
+  }
+  if (isPlainObject(value) && Object.getPrototypeOf(value) === Object.prototype) {
+    if (ancestors.has(value)) {
+      throw new FoundationPersistError('invalid-input', `${label} must not contain a circular reference`);
+    }
+    ancestors.add(value);
+    const result = {};
+    for (const key of Object.keys(value)) {
+      assertNoControlChars(key, `${label} key`);
+      Object.defineProperty(result, key, {
+        value: assertJsonCompatible(value[key], `${label}.${key}`, ancestors),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+    ancestors.delete(value);
+    return result;
+  }
+  throw new FoundationPersistError(
+    'invalid-input',
+    `${label} must contain only JSON-compatible null, boolean, finite number, string, array, and plain-object values`,
+  );
+}
+
+function assertStructuredRecord(value, label) {
+  if (!isPlainObject(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new FoundationPersistError('invalid-input', `${label} must be a JSON-compatible object record`);
+  }
+  return assertJsonCompatible(value, label);
+}
+
+const CLAIM_KEYS = Object.freeze([
+  'source',
+  'target',
+  'relationship',
+  'direction',
+  'evidence',
+  'confidence',
+  'notes',
+]);
+const DIRECTION_VALUES = Object.freeze(['directed', 'bidirectional', 'unknown']);
+const CONFIDENCE_VALUES = Object.freeze(['confirmed', 'likely', 'contested', 'unknown']);
+
+function assertExactKeys(value, requiredKeys, label) {
+  const actual = Object.keys(value).sort();
+  const required = [...requiredKeys].sort();
+  const missing = required.filter((key) => !Object.prototype.hasOwnProperty.call(value, key));
+  const unknown = actual.filter((key) => !requiredKeys.includes(key));
+  if (missing.length || unknown.length) {
+    const details = [
+      missing.length ? `missing field(s): ${missing.join(', ')}` : null,
+      unknown.length ? `unknown field(s): ${unknown.join(', ')}` : null,
+    ].filter(Boolean).join('; ');
+    throw new FoundationPersistError('invalid-input', `${label} must contain exactly ${required.join(', ')} (${details})`);
+  }
+}
+
+function assertEvidenceList(value, label) {
+  if (!Array.isArray(value)) {
+    throw new FoundationPersistError('invalid-input', `${label} must be an array of JSON-compatible object records`);
+  }
+  return value.map((entry, index) => assertStructuredRecord(entry, `${label}[${index}]`));
+}
+
+function assertEnum(value, allowed, label) {
+  const checked = assertSingleLine(value, label);
+  if (!allowed.includes(checked)) {
+    throw new FoundationPersistError('invalid-input', `${label} must be one of ${allowed.join(', ')}`);
+  }
+  return checked;
+}
+
+function assertClaimRecord(value, label, kind) {
+  if (!isPlainObject(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new FoundationPersistError('invalid-input', `${label} must be a ${kind} object record`);
+  }
+  assertExactKeys(value, CLAIM_KEYS, label);
+  return {
+    source: assertSingleLine(value.source, `${label}.source`),
+    target: assertSingleLine(value.target, `${label}.target`),
+    relationship: assertSingleLine(value.relationship, `${label}.relationship`),
+    direction: assertEnum(value.direction, DIRECTION_VALUES, `${label}.direction`),
+    evidence: assertEvidenceList(value.evidence, `${label}.evidence`),
+    confidence: assertEnum(value.confidence, CONFIDENCE_VALUES, `${label}.confidence`),
+    notes: assertStringList(value.notes, `${label}.notes`),
+  };
+}
+
+function assertRelationshipClaim(value, label) {
+  return assertClaimRecord(value, label, 'relationship claim');
+}
+
+function assertBoundaryClaim(value, label) {
+  return assertClaimRecord(value, label, 'boundary claim');
+}
+
+export const DOMAIN_MODEL_KEYS = Object.freeze([
+  'actors',
+  'concepts',
+  'systems',
+  'terms',
+  'states',
+  'events',
+  'relationships',
+  'boundaries',
+  'confidence',
+  'unsettledSeams',
+]);
+
+const DOMAIN_ITEM_KEYS = Object.freeze([
+  'kind',
+  'name',
+  'aliases',
+  'evidence',
+  'confidence',
+  'notes',
+]);
+const DOMAIN_ITEM_KIND_BY_FIELD = Object.freeze({
+  actors: 'actor',
+  concepts: 'concept',
+  systems: 'system',
+});
+const TERM_KEYS = Object.freeze([...DOMAIN_ITEM_KEYS, 'contested']);
+const STATE_KEYS = Object.freeze([...DOMAIN_ITEM_KEYS, 'transitionsTo']);
+const EVENT_KEYS = Object.freeze([...DOMAIN_ITEM_KEYS, 'emittedBy']);
+const UNSETTLED_SEAM_KEYS = Object.freeze([
+  'kind',
+  'question',
+  'evidence',
+  'confidence',
+  'notes',
+]);
+
+function assertDomainItem(value, label, expectedKind, requiredKeys = DOMAIN_ITEM_KEYS) {
+  if (!isPlainObject(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new FoundationPersistError('invalid-input', `${label} must be a ${expectedKind} object record`);
+  }
+  assertExactKeys(value, requiredKeys, label);
+  const kind = assertSingleLine(value.kind, `${label}.kind`);
+  if (kind !== expectedKind) {
+    throw new FoundationPersistError('invalid-input', `${label}.kind must be ${expectedKind}`);
+  }
+  const record = {
+    kind,
+    name: assertSingleLine(value.name, `${label}.name`),
+    aliases: assertStringList(value.aliases, `${label}.aliases`),
+    evidence: assertEvidenceList(value.evidence, `${label}.evidence`),
+    confidence: assertEnum(value.confidence, CONFIDENCE_VALUES, `${label}.confidence`),
+    notes: assertStringList(value.notes, `${label}.notes`),
+  };
+  if (expectedKind === 'term') {
+    if (typeof value.contested !== 'boolean') {
+      throw new FoundationPersistError('invalid-input', `${label}.contested must be a boolean`);
+    }
+    record.contested = value.contested;
+  } else if (expectedKind === 'state') {
+    record.transitionsTo = assertStringList(value.transitionsTo, `${label}.transitionsTo`);
+  } else if (expectedKind === 'event') {
+    record.emittedBy = assertSingleLine(value.emittedBy, `${label}.emittedBy`);
+  }
+  return record;
+}
+
+function assertDomainItemList(value, label, expectedKind, requiredKeys = DOMAIN_ITEM_KEYS) {
+  if (!Array.isArray(value)) {
+    throw new FoundationPersistError('invalid-input', `${label} must be an array`);
+  }
+  return value.map((entry, index) => assertDomainItem(entry, `${label}[${index}]`, expectedKind, requiredKeys));
+}
+
+function assertUnsettledSeams(value, label) {
+  if (!Array.isArray(value)) {
+    throw new FoundationPersistError('invalid-input', `${label} must be an array`);
+  }
+  return value.map((entry, index) => {
+    const itemLabel = `${label}[${index}]`;
+    if (!isPlainObject(entry) || Object.getPrototypeOf(entry) !== Object.prototype) {
+      throw new FoundationPersistError('invalid-input', `${itemLabel} must be an unsettled-seam object record`);
+    }
+    assertExactKeys(entry, UNSETTLED_SEAM_KEYS, itemLabel);
+    const kind = assertSingleLine(entry.kind, `${itemLabel}.kind`);
+    if (kind !== 'unsettled-seam') {
+      throw new FoundationPersistError('invalid-input', `${itemLabel}.kind must be unsettled-seam`);
+    }
+    return {
+      kind,
+      question: assertSingleLine(entry.question, `${itemLabel}.question`),
+      evidence: assertEvidenceList(entry.evidence, `${itemLabel}.evidence`),
+      confidence: assertEnum(entry.confidence, CONFIDENCE_VALUES, `${itemLabel}.confidence`),
+      notes: assertStringList(entry.notes, `${itemLabel}.notes`),
+    };
+  });
+}
+
+function assertDomainModelAggregate(value, label) {
+  if (!isPlainObject(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new FoundationPersistError('invalid-input', `${label} must be an aggregate domain-model object record`);
+  }
+  assertExactKeys(value, DOMAIN_MODEL_KEYS, label);
+  return {
+    actors: assertDomainItemList(value.actors, `${label}.actors`, DOMAIN_ITEM_KIND_BY_FIELD.actors),
+    concepts: assertDomainItemList(value.concepts, `${label}.concepts`, DOMAIN_ITEM_KIND_BY_FIELD.concepts),
+    systems: assertDomainItemList(value.systems, `${label}.systems`, DOMAIN_ITEM_KIND_BY_FIELD.systems),
+    terms: assertDomainItemList(value.terms, `${label}.terms`, 'term', TERM_KEYS),
+    states: assertDomainItemList(value.states, `${label}.states`, 'state', STATE_KEYS),
+    events: assertDomainItemList(value.events, `${label}.events`, 'event', EVENT_KEYS),
+    relationships: assertStructuredRecordList(value.relationships, 'relationshipClaims', `${label}.relationships`),
+    boundaries: assertStructuredRecordList(value.boundaries, 'boundaryClaims', `${label}.boundaries`),
+    confidence: assertEnum(value.confidence, CONFIDENCE_VALUES, `${label}.confidence`),
+    unsettledSeams: assertUnsettledSeams(value.unsettledSeams, `${label}.unsettledSeams`),
+  };
+}
+
+function assertStructuredRecordForField(value, field, label) {
+  if (field === 'relationshipClaims') return assertRelationshipClaim(value, label);
+  if (field === 'boundaryClaims') return assertBoundaryClaim(value, label);
+  if (field === 'domainModel') return assertDomainModelAggregate(value, label);
+  return assertStructuredRecord(value, label);
+}
+
+function assertStructuredRecordList(value, field, label) {
+  if (!Array.isArray(value)) {
+    throw new FoundationPersistError('invalid-input', `${label} must be an array`);
+  }
+  if (field === 'domainModel' && value.length !== 1) {
+    throw new FoundationPersistError('invalid-input', `${label} must contain exactly one aggregate domain-model record`);
+  }
+  return value.map((entry, index) => assertStructuredRecordForField(entry, field, `${label}[${index}]`));
+}
+
+/** SHA-256 of the canonical, validated aggregate domain model. */
+export function domainModelDigestOf(domainModel) {
+  const validated = assertStructuredRecordList(domainModel, 'domainModel', 'domainModel');
+  return createHash('sha256').update(canonicalize(validated), 'utf8').digest('hex');
+}
+
+/** SHA-256 of the model-bound frontier content and selected next action. */
+export function frontierDigestOf({ domainModelDigest, frontier, nextAction } = {}) {
+  if (typeof domainModelDigest !== 'string' || !REVISION_RE.test(domainModelDigest)) {
+    throw new FoundationPersistError('invalid-input', 'domainModelDigest must be a SHA-256 digest');
+  }
+  const canonical = {
+    domainModelDigest,
+    frontier: assertStringList(frontier, 'frontier'),
+    nextAction: assertFreeTextLine(nextAction, 'nextAction'),
+  };
+  return createHash('sha256').update(canonicalize(canonical), 'utf8').digest('hex');
+}
+
+function assertFieldEntries(value, field) {
+  return STRUCTURED_RECORD_FIELD_SET.has(field)
+    ? assertStructuredRecordList(value, field, field)
+    : assertStringList(value, field);
+}
+
 function assertResolved(value) {
   if (!Array.isArray(value)) {
     throw new FoundationPersistError('invalid-input', 'resolved must be an array');
@@ -373,9 +722,14 @@ function assertResolved(value) {
     if (!RETAINED_FIELDS.includes(field)) {
       throw new FoundationPersistError('invalid-input', `resolved[${index}].field must be one of the retained fields (${RETAINED_FIELDS.join(', ')}): ${field}`);
     }
-    const text = assertSingleLine(entry.entry, `resolved[${index}].entry`);
+    let resolvedEntry;
+    if (STRUCTURED_RECORD_FIELD_SET.has(field)) {
+      resolvedEntry = assertStructuredRecordForField(entry.entry, field, `resolved[${index}].entry`);
+    } else {
+      resolvedEntry = assertSingleLine(entry.entry, `resolved[${index}].entry`);
+    }
     const resolution = assertFreeTextLine(entry.resolution, `resolved[${index}].resolution`);
-    return { field, entry: text, resolution };
+    return { field, entry: resolvedEntry, resolution };
   });
 
   // A second, conflicting resolution for the same (field, entry) is refused
@@ -404,7 +758,31 @@ function assertResolved(value) {
  * refusal alone (R6).
  */
 function pairKey(field, entry) {
-  return JSON.stringify([field, entry]);
+  return canonicalize([field, entry]);
+}
+
+const STRUCTURED_ENTRY_PREFIX = 'JSON: ';
+
+function renderStructuredEntry(entry) {
+  return `${STRUCTURED_ENTRY_PREFIX}${canonicalize(entry)}`;
+}
+
+function parseStructuredEntry(value, field, schema, label) {
+  if (!value.startsWith(STRUCTURED_ENTRY_PREFIX)) {
+    throw new FoundationPersistError('invalid-input', `${label} must use the "${STRUCTURED_ENTRY_PREFIX}" structured encoding in schema ${SCHEMA_VERSION}`);
+  }
+  const encoded = value.slice(STRUCTURED_ENTRY_PREFIX.length);
+  let parsed;
+  try {
+    parsed = JSON.parse(encoded);
+  } catch (error) {
+    throw new FoundationPersistError('invalid-input', `${label} contains malformed structured JSON: ${error.message}`);
+  }
+  const record = assertStructuredRecordForField(parsed, field, label);
+  if (canonicalize(record) !== encoded) {
+    throw new FoundationPersistError('invalid-input', `${label} must use canonical JSON with sorted object keys`);
+  }
+  return record;
 }
 
 /**
@@ -452,6 +830,11 @@ export function renderFoundation(foundation) {
   lines.push(`- Subject: ${foundation.subject.id}`);
   lines.push(`- Slug: ${foundation.subject.slug}`);
   lines.push(`- Alignment: ${foundation.alignment}`);
+  lines.push(`- Aligned Findings Digest: ${foundation.alignedFindingsDigest}`);
+  lines.push(`- Domain Model Basis Digest: ${foundation.domainModelBasisDigest}`);
+  lines.push(`- Domain Model Digest: ${foundation.domainModelDigest}`);
+  lines.push(`- Frontier Basis Digest: ${foundation.frontierBasisDigest}`);
+  lines.push(`- Frontier Digest: ${foundation.frontierDigest}`);
 
   for (const field of LIST_SECTIONS) {
     lines.push('', `## ${SECTION_TITLES[field]}`, '');
@@ -460,7 +843,7 @@ export function renderFoundation(foundation) {
       lines.push(NONE_MARKER);
     } else {
       for (const entry of entries) {
-        lines.push(`- ${entry}`);
+        lines.push(`- ${STRUCTURED_RECORD_FIELD_SET.has(field) ? renderStructuredEntry(entry) : entry}`);
       }
     }
   }
@@ -472,7 +855,11 @@ export function renderFoundation(foundation) {
     lines.push(NONE_MARKER);
   } else {
     for (const item of foundation.resolved) {
-      lines.push(`- ${item.field}: ${escapeResolvedField(item.entry)} — ${escapeResolvedField(item.resolution)}`);
+      if (isPlainObject(item.entry)) {
+        lines.push(`- JSON: ${canonicalize(item)}`);
+      } else {
+        lines.push(`- ${item.field}: ${escapeResolvedField(item.entry)} — ${escapeResolvedField(item.resolution)}`);
+      }
     }
   }
 
@@ -538,23 +925,33 @@ function splitSections(body) {
   return sections;
 }
 
-/** The complete, exact set of `## ` section headings a foundation must carry. */
-const REQUIRED_SECTION_TITLES = Object.freeze([
+/** The complete, exact ordered section headings for each readable schema. */
+const SCHEMA_1_SECTION_TITLES = Object.freeze([
+  ...SCHEMA_1_LIST_SECTIONS.map((field) => SECTION_TITLES[field]),
+  'Next Action',
+  'Resolved',
+  'History',
+]);
+const SCHEMA_2_SECTION_TITLES = Object.freeze([
   ...LIST_SECTIONS.map((field) => SECTION_TITLES[field]),
   'Next Action',
   'Resolved',
   'History',
 ]);
 
+function sectionTitlesForSchema(schema) {
+  return schema === '1' ? SCHEMA_1_SECTION_TITLES : SCHEMA_2_SECTION_TITLES;
+}
+
 /**
- * Read the exact, ordered metadata header. The renderer emits the four lines
- * `- Schema:`, `- Subject:`, `- Slug:`, `- Alignment:` in that order, once each,
- * immediately after the document heading and its blank line, and before the
- * first section. Parsing them positionally — rather than searching the whole
+ * Read the exact, ordered metadata header. Schema 1 emits four identity lines;
+ * schema 2 follows those lines with the complete lineage receipt
+ * block, in exact order immediately after the document heading and its blank
+ * line, and before the first section. Parsing them positionally — rather than searching the whole
  * document for a matching prefix — means a legitimate list entry that merely
  * looks like `Subject: ...` can never be mistaken for metadata, and a metadata
  * line moved into a section can never masquerade as the header (R2/MF-3).
- * Returns `{ schema, subjectId, slug, alignment }`.
+ * Returns the identity metadata and, for schema 2 only, its declared lineage.
  */
 function readHeader(allLines) {
   if (allLines[1] !== '') {
@@ -575,10 +972,20 @@ function readHeader(allLines) {
   const subjectId = readMeta(3, 'Subject');
   const slug = readMeta(4, 'Slug');
   const alignment = readMeta(5, 'Alignment');
-  if (allLines[6] !== '') {
+  const lineage = schema === '1'
+    ? {}
+    : {
+      alignedFindingsDigest: readMeta(6, 'Aligned Findings Digest'),
+      domainModelBasisDigest: readMeta(7, 'Domain Model Basis Digest'),
+      domainModelDigest: readMeta(8, 'Domain Model Digest'),
+      frontierBasisDigest: readMeta(9, 'Frontier Basis Digest'),
+      frontierDigest: readMeta(10, 'Frontier Digest'),
+    };
+  const headerEnd = schema === '1' ? 6 : 11;
+  if (allLines[headerEnd] !== '') {
     throw new FoundationPersistError('invalid-input', 'foundation must carry a blank line after its header block');
   }
-  return { schema, subjectId, slug, alignment };
+  return { schema, subjectId, slug, alignment, lineage };
 }
 
 /**
@@ -587,18 +994,34 @@ function readHeader(allLines) {
  * is not one of the required sections, would restructure the document or smuggle
  * content past the section grammar, so it is refused (MF-3).
  */
-function assertNoRogueHeadings(allLines) {
+function assertNoRogueHeadings(allLines, allowedSectionTitles) {
   for (let i = 0; i < allLines.length; i += 1) {
     const line = allLines[i];
     if (!HEADING_RE.test(line)) continue;
     if (i === 0 && line === HEADING) continue;
     const section = /^## (.+)$/.exec(line);
-    if (section && REQUIRED_SECTION_TITLES.includes(section[1])) continue;
+    if (section && allowedSectionTitles.includes(section[1])) continue;
     throw new FoundationPersistError('invalid-input', `foundation contains an unexpected heading: ${line}`);
   }
 }
 
-function listFrom(sectionLines, title) {
+function assertSectionOrder(allLines, expectedTitles) {
+  const actualTitles = allLines
+    .map((line) => /^## (.+)$/.exec(line))
+    .filter(Boolean)
+    .map((match) => match[1]);
+  if (
+    actualTitles.length !== expectedTitles.length
+    || actualTitles.some((title, index) => title !== expectedTitles[index])
+  ) {
+    throw new FoundationPersistError(
+      'invalid-input',
+      `foundation sections must appear exactly in schema order: ${expectedTitles.join(', ')}`,
+    );
+  }
+}
+
+function listFrom(sectionLines, title, field, schema) {
   if (!sectionLines) {
     throw new FoundationPersistError('invalid-input', `foundation is missing the ${title} section`);
   }
@@ -611,7 +1034,9 @@ function listFrom(sectionLines, title) {
     if (!match) {
       throw new FoundationPersistError('invalid-input', `malformed entry in ${title}: ${line}`);
     }
-    return assertNoControlChars(match[1], `${title} entry`);
+    return STRUCTURED_RECORD_FIELD_SET.has(field)
+      ? parseStructuredEntry(match[1], field, schema, `${title} entry`)
+      : assertNoControlChars(match[1], `${title} entry`);
   });
 }
 
@@ -659,12 +1084,13 @@ export function parseFoundation(bytes) {
     throw new FoundationPersistError('invalid-input', `foundation must begin with "${HEADING}"`);
   }
 
-  assertNoRogueHeadings(allLines);
-
-  const { schema, subjectId, slug, alignment } = readHeader(allLines);
-  if (schema !== String(SCHEMA_VERSION)) {
-    throw new FoundationPersistError('unsupported-schema', `foundation schema ${schema} is not supported; this build reads schema ${SCHEMA_VERSION}`);
+  const { schema, subjectId, slug, alignment, lineage } = readHeader(allLines);
+  if (!SUPPORTED_SCHEMA_VERSIONS.has(schema)) {
+    throw new FoundationPersistError('unsupported-schema', `foundation schema ${schema} is not supported; this build reads schemas 1 and ${SCHEMA_VERSION}`);
   }
+  const requiredSectionTitles = sectionTitlesForSchema(schema);
+  assertNoRogueHeadings(allLines, requiredSectionTitles);
+  assertSectionOrder(allLines, requiredSectionTitles);
   if (!subjectId || !slug) {
     throw new FoundationPersistError('invalid-input', 'foundation is missing subject identity');
   }
@@ -673,11 +1099,11 @@ export function parseFoundation(bytes) {
 
   const sections = splitSections(normalized);
   for (const title of sections.keys()) {
-    if (!REQUIRED_SECTION_TITLES.includes(title)) {
+    if (!requiredSectionTitles.includes(title)) {
       throw new FoundationPersistError('invalid-input', `foundation contains an unknown section: ${title}`);
     }
   }
-  for (const title of REQUIRED_SECTION_TITLES) {
+  for (const title of requiredSectionTitles) {
     if (!sections.has(title)) {
       throw new FoundationPersistError('invalid-input', `foundation is missing the ${title} section`);
     }
@@ -691,7 +1117,9 @@ export function parseFoundation(bytes) {
   };
 
   for (const field of LIST_SECTIONS) {
-    foundation[field] = listFrom(sections.get(SECTION_TITLES[field]), SECTION_TITLES[field]);
+    foundation[field] = schema === '1' && POST_SCHEMA_1_FIELD_SET.has(field)
+      ? []
+      : listFrom(sections.get(SECTION_TITLES[field]), SECTION_TITLES[field], field, schema);
   }
 
   const nextActionLines = sections.get('Next Action');
@@ -707,9 +1135,28 @@ export function parseFoundation(bytes) {
     throw new FoundationPersistError('invalid-input', 'foundation Resolved section is empty');
   }
   if (!(resolvedTrimmed.length === 1 && resolvedTrimmed[0] === NONE_MARKER)) {
+    const parsedResolved = [];
     for (const line of resolvedTrimmed) {
+      if (line.startsWith('- JSON: ')) {
+        if (schema === '1') {
+          throw new FoundationPersistError('invalid-input', 'schema 1 does not support structured Resolved entries');
+        }
+        const encoded = line.slice('- JSON: '.length);
+        let parsed;
+        try {
+          parsed = JSON.parse(encoded);
+        } catch (error) {
+          throw new FoundationPersistError('invalid-input', `malformed Resolved JSON entry: ${error.message}`);
+        }
+        if (!isPlainObject(parsed) || canonicalize(parsed) !== encoded) {
+          throw new FoundationPersistError('invalid-input', `malformed or noncanonical Resolved JSON entry: ${line}`);
+        }
+        parsedResolved.push(parsed);
+        continue;
+      }
       const match = /^- ([a-zA-Z]+): (.*)$/.exec(line);
-      if (!match || !RETAINED_FIELDS.includes(match[1])) {
+      const allowedResolvedFields = schema === '1' ? SCHEMA_1_RETAINED_FIELD_SET : new Set(RETAINED_FIELDS);
+      if (!match || !allowedResolvedFields.has(match[1])) {
         throw new FoundationPersistError('invalid-input', `malformed Resolved entry: ${line}`);
       }
       const parts = match[2].split(' \u2014 ');
@@ -721,8 +1168,9 @@ export function parseFoundation(bytes) {
       if (entry === '' || resolution === '') {
         throw new FoundationPersistError('invalid-input', `malformed Resolved entry: ${line}`);
       }
-      foundation.resolved.push({ field: match[1], entry, resolution });
+      parsedResolved.push({ field: match[1], entry, resolution });
     }
+    foundation.resolved = assertResolved(parsedResolved);
   }
 
   const historyTrimmed = sections.get('History').filter((line) => line !== '');
@@ -743,13 +1191,54 @@ export function parseFoundation(bytes) {
     }
   }
 
+  if (schema === String(SCHEMA_VERSION)) {
+    for (const [field, digest] of Object.entries(lineage)) {
+      if (!REVISION_RE.test(digest)) {
+        throw new FoundationPersistError('invalid-input', `${field} must be a SHA-256 digest`);
+      }
+      foundation[field] = digest;
+    }
+    const alignedFindingsDigest = alignedFindingsDigestOf(foundation);
+    if (foundation.alignedFindingsDigest !== alignedFindingsDigest) {
+      throw new FoundationPersistError(
+        'invalid-input',
+        `alignedFindingsDigest does not match the persisted findings (declared ${foundation.alignedFindingsDigest}, computed ${alignedFindingsDigest})`,
+      );
+    }
+    if (foundation.domainModelBasisDigest !== alignedFindingsDigest) {
+      throw new FoundationPersistError('invalid-input', 'domainModelBasisDigest does not bind the domain model to alignedFindingsDigest');
+    }
+    const domainModelDigest = domainModelDigestOf(foundation.domainModel);
+    if (foundation.domainModelDigest !== domainModelDigest) {
+      throw new FoundationPersistError(
+        'invalid-input',
+        `domainModelDigest does not match the persisted domain model (declared ${foundation.domainModelDigest}, computed ${domainModelDigest})`,
+      );
+    }
+    if (foundation.frontierBasisDigest !== domainModelDigest) {
+      throw new FoundationPersistError('invalid-input', 'frontierBasisDigest does not bind the frontier to domainModelDigest');
+    }
+    const frontierDigest = frontierDigestOf({
+      domainModelDigest,
+      frontier: foundation.frontier,
+      nextAction: foundation.nextAction,
+    });
+    if (foundation.frontierDigest !== frontierDigest) {
+      throw new FoundationPersistError(
+        'invalid-input',
+        `frontierDigest does not match the persisted frontier and next action (declared ${foundation.frontierDigest}, computed ${frontierDigest})`,
+      );
+    }
+  }
+
   return foundation;
 }
 
 function countMultiset(entries) {
   const counts = new Map();
   for (const entry of entries) {
-    counts.set(entry, (counts.get(entry) ?? 0) + 1);
+    const key = canonicalize(entry);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return counts;
 }
@@ -797,18 +1286,20 @@ function enforceRetention(prior, next) {
   const nextEntryFields = new Map();
   for (const field of RETAINED_FIELDS) {
     for (const entry of new Set(next[field])) {
-      if (!nextEntryFields.has(entry)) nextEntryFields.set(entry, new Set());
-      nextEntryFields.get(entry).add(field);
+      const key = canonicalize(entry);
+      if (!nextEntryFields.has(key)) nextEntryFields.set(key, new Set());
+      nextEntryFields.get(key).add(field);
     }
   }
 
   for (const field of RETAINED_FIELDS) {
     const available = countMultiset(next[field]);
-    for (const [entry, count] of countMultiset(prior[field])) {
+    for (const [entryKey, count] of countMultiset(prior[field])) {
+      const entry = JSON.parse(entryKey);
       for (let i = 0; i < count; i += 1) {
-        const remaining = available.get(entry) ?? 0;
+        const remaining = available.get(entryKey) ?? 0;
         if (remaining > 0) {
-          available.set(entry, remaining - 1);
+          available.set(entryKey, remaining - 1);
           continue;
         }
         const spendKey = pairKey(field, entry);
@@ -817,7 +1308,7 @@ function enforceRetention(prior, next) {
           freshDischarges.set(spendKey, discharges - 1);
           continue;
         }
-        const elsewhere = [...(nextEntryFields.get(entry) ?? [])].filter((other) => other !== field).sort();
+        const elsewhere = [...(nextEntryFields.get(entryKey) ?? [])].filter((other) => other !== field).sort();
         if (elsewhere.length) {
           throw new FoundationPersistError(
             'foundation-regression',
@@ -834,7 +1325,7 @@ function enforceRetention(prior, next) {
 }
 
 function tripleKey(item) {
-  return JSON.stringify([item.field, item.entry, item.resolution]);
+  return canonicalize([item.field, item.entry, item.resolution]);
 }
 
 function parseTripleKey(key) {
@@ -894,8 +1385,18 @@ function normalizeIntake(intake) {
     );
   }
 
-  if (typeof intake.alignedPayloadDigest !== 'string' || !REVISION_RE.test(intake.alignedPayloadDigest)) {
-    throw new FoundationPersistError('invalid-input', 'alignedPayloadDigest must be a SHA-256 digest of the aligned payload');
+  for (const field of [...DOCUMENTED_FINDINGS_FIELDS, 'domainModel']) {
+    if (!Object.prototype.hasOwnProperty.call(intake, field)) {
+      throw new FoundationPersistError('invalid-input', `${field} is required for a canonical schema-2 write`);
+    }
+  }
+  for (const field of ['alignedFindingsDigest', 'domainModelBasisDigest', 'domainModelDigest', 'frontierBasisDigest', 'frontierDigest']) {
+    if (!Object.prototype.hasOwnProperty.call(intake, field)) {
+      throw new FoundationPersistError('invalid-input', `${field} is required for a canonical schema-2 write`);
+    }
+    if (typeof intake[field] !== 'string' || !REVISION_RE.test(intake[field])) {
+      throw new FoundationPersistError('invalid-input', `${field} must be a SHA-256 digest`);
+    }
   }
 
   if (!('expectedPriorRevision' in intake)) {
@@ -918,20 +1419,70 @@ function normalizeIntake(intake) {
     resolved: assertResolved(intake.resolved),
   };
   for (const field of DURABLE_SETS) {
-    foundation[field] = assertStringList(intake[field], field);
+    foundation[field] = assertFieldEntries(intake[field], field);
   }
   foundation.frontier = assertStringList(intake.frontier, 'frontier');
   foundation.nextAction = assertFreeTextLine(intake.nextAction, 'nextAction');
 
-  const digest = alignedPayloadDigestOf(foundation);
-  if (digest !== intake.alignedPayloadDigest) {
+  const digest = alignedFindingsDigestOf(foundation);
+  if (digest !== intake.alignedFindingsDigest) {
     throw new FoundationPersistError(
       'alignment-unbound',
-      `the aligned payload digest does not match the persisted payload (declared ${intake.alignedPayloadDigest}, computed ${digest}); the alignment gate is a binding, not a token`,
+      `the aligned findings digest does not match the persisted findings (declared ${intake.alignedFindingsDigest}, computed ${digest})`,
+    );
+  }
+  const domainModelDigest = domainModelDigestOf(foundation.domainModel);
+  if (intake.domainModelBasisDigest !== digest) {
+    throw new FoundationPersistError(
+      'derivation-unbound',
+      'domainModelBasisDigest must bind the domain model to the aligned findings digest',
+    );
+  }
+  if (intake.domainModelDigest !== domainModelDigest) {
+    throw new FoundationPersistError(
+      'derivation-unbound',
+      `domainModelDigest does not match the validated domain model (declared ${intake.domainModelDigest}, computed ${domainModelDigest})`,
+    );
+  }
+  if (intake.frontierBasisDigest !== domainModelDigest) {
+    throw new FoundationPersistError(
+      'derivation-unbound',
+      'frontierBasisDigest must bind the frontier to domainModelDigest',
+    );
+  }
+  const frontierDigest = frontierDigestOf({
+    domainModelDigest,
+    frontier: foundation.frontier,
+    nextAction: foundation.nextAction,
+  });
+  if (intake.frontierDigest !== frontierDigest) {
+    throw new FoundationPersistError(
+      'derivation-unbound',
+      `frontierDigest does not match the model-bound frontier and next action (declared ${intake.frontierDigest}, computed ${frontierDigest})`,
     );
   }
 
-  return { repositoryRoot, cycle, timestamp, alignmentResult: intake.alignment, expectedPriorRevision, foundation };
+  Object.assign(foundation, {
+    alignedFindingsDigest: digest,
+    domainModelBasisDigest: intake.domainModelBasisDigest,
+    domainModelDigest,
+    frontierBasisDigest: intake.frontierBasisDigest,
+    frontierDigest,
+  });
+
+  return {
+    repositoryRoot,
+    cycle,
+    timestamp,
+    alignmentResult: intake.alignment,
+    expectedPriorRevision,
+    alignedFindingsDigest: digest,
+    domainModelBasisDigest: intake.domainModelBasisDigest,
+    domainModelDigest,
+    frontierBasisDigest: intake.frontierBasisDigest,
+    frontierDigest,
+    foundation,
+  };
 }
 
 const realIo = {
@@ -1074,17 +1625,20 @@ function foundationsEqual(a, b) {
   if (a.subject.id !== b.subject.id || a.subject.slug !== b.subject.slug) return false;
   if (a.alignment !== b.alignment) return false;
   if (a.nextAction !== b.nextAction) return false;
+  for (const field of ['alignedFindingsDigest', 'domainModelBasisDigest', 'domainModelDigest', 'frontierBasisDigest', 'frontierDigest']) {
+    if (a[field] !== b[field]) return false;
+  }
   for (const field of LIST_SECTIONS) {
     if (a[field].length !== b[field].length) return false;
     for (let i = 0; i < a[field].length; i += 1) {
-      if (a[field][i] !== b[field][i]) return false;
+      if (canonicalize(a[field][i]) !== canonicalize(b[field][i])) return false;
     }
   }
   if (a.resolved.length !== b.resolved.length) return false;
   for (let i = 0; i < a.resolved.length; i += 1) {
     if (
       a.resolved[i].field !== b.resolved[i].field
-      || a.resolved[i].entry !== b.resolved[i].entry
+      || canonicalize(a.resolved[i].entry) !== canonicalize(b.resolved[i].entry)
       || a.resolved[i].resolution !== b.resolved[i].resolution
     ) return false;
   }
@@ -1109,7 +1663,19 @@ function foundationsEqual(a, b) {
  * because the destination has already been replaced (R3).
  */
 export function persistFoundation(intake, { io = realIo } = {}) {
-  const { repositoryRoot, cycle, timestamp, alignmentResult, expectedPriorRevision, foundation } = normalizeIntake(intake);
+  const {
+    repositoryRoot,
+    cycle,
+    timestamp,
+    alignmentResult,
+    expectedPriorRevision,
+    alignedFindingsDigest,
+    domainModelBasisDigest,
+    domainModelDigest,
+    frontierBasisDigest,
+    frontierDigest,
+    foundation,
+  } = normalizeIntake(intake);
 
   const locator = `docs/agent/discovery/${foundation.subject.slug}.md`;
   const destination = path.join(repositoryRoot, 'docs', 'agent', 'discovery', `${foundation.subject.slug}.md`);
@@ -1257,6 +1823,11 @@ export function persistFoundation(intake, { io = realIo } = {}) {
     revision,
     subjectId: foundation.subject.id,
     alignment: CONFIRMED,
+    alignedFindingsDigest,
+    domainModelBasisDigest,
+    domainModelDigest,
+    frontierBasisDigest,
+    frontierDigest,
     priorRevision,
     historyLength: foundation.history.length,
     // Post-write reread proves the persisted bytes; it is NOT next-run

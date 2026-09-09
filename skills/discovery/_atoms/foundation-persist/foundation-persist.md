@@ -1,6 +1,6 @@
 ---
 name: foundation-persist
-description: Persist one human-aligned Discovery foundation for a subject beneath docs/agent/discovery/, binding the aligned payload by digest, never overwriting or laundering durable evidence, staging the write atomically, then rereading and re-parsing it to verify the write and return its new revision.
+description: Persist one Discovery foundation beneath docs/agent/discovery/, binding human-aligned findings and post-alignment domain/frontier derivations by digest, retaining durable evidence, then rereading and re-parsing the atomic write.
 level: atom
 allowed-tools: ["execute"]
 includes: ["discovery/_atoms/foundation-persist/foundation-persist.mjs"]
@@ -14,9 +14,9 @@ Persist the aligned Discovery foundation for one subject as a durable
 repository artifact, so a later run can ground itself on the exact shared
 understanding a human agreed to rather than on conversation memory.
 
-From the caller's view this is one operation: hand in the aligned foundation and
-its payload digest, and receive back the persisted locator and its new revision,
-or a named refusal that wrote nothing.
+From the caller's view this is one operation: hand in the aligned findings, the
+domain model and frontier derived from them, and their binding receipts, then
+receive the persisted locator and revision or a named refusal.
 
 ## Required Files
 
@@ -52,11 +52,55 @@ The check refuses the links it can see; it does not prove the path stays safe.
 
 ## Schema version
 
-The artifact records a schema line, `- Schema: 1`, beside `- Subject:`. On parse
-a missing or unknown schema is refused with `unsupported-schema` rather than
-being read as the current shape. A future migration bumps the schema and teaches
-the parser the older shapes; until then, reading anything other than schema `1`
-is a refusal, not a silent best-effort parse.
+The artifact records `- Schema: 2` beside `- Subject:`. Schema 2 requires every
+aligned-claims, risk, and domain-model section. The parser also reads genuine
+schema 1 foundations from before issue #156 only when **all** five later
+sections — `Source Claims`, `Relationship Claims`, `Boundary Claims`, `Risks`,
+and `Domain Model` — are absent. It synthesizes those five fields as empty
+arrays. A schema-1 artifact containing even one later section is refused as
+`invalid-input`; changing only the schema line cannot downgrade schema-2 bytes.
+A missing or unknown schema is refused with `unsupported-schema`.
+
+For both schemas, sections must occur exactly once and in the renderer's
+schema-specific order. Reordering otherwise valid sections is `invalid-input`.
+
+`relationshipClaims` and `boundaryClaims` are arrays of field-specific records
+with exactly these required keys and no others: `source`, `target`,
+`relationship`, `direction`, `evidence`, `confidence`, and `notes`. `source`,
+`target`, and `relationship` are non-empty scalar text. `direction` is
+`directed`, `bidirectional`, or `unknown`; `confidence` is `confirmed`,
+`likely`, `contested`, or `unknown`. `evidence` is an array of JSON-compatible
+object records, and `notes` is an array of non-empty scalar text.
+
+`domainModel` is an array containing exactly one aggregate record. That record
+has exactly these required keys and no others: `actors`, `concepts`, `systems`,
+`terms`, `states`, `events`, `relationships`, `boundaries`, `confidence`, and
+`unsettledSeams`. Every category except `confidence` is an array and may be
+empty; `confidence` is one of `confirmed`, `likely`, `contested`, or `unknown`.
+The aggregate itself may not be omitted or replaced by `{}`.
+
+Actor, concept, and system records contain exactly `kind`, `name`, `aliases`,
+`evidence`, `confidence`, and `notes`, with `kind` equal to `actor`, `concept`,
+or `system` for its category. Term records add boolean `contested` and use
+`kind: term`; state records add `transitionsTo` and use `kind: state`; event
+records add `emittedBy` and use `kind: event`. `aliases`, `transitionsTo`, and
+`notes` are text arrays; `evidence` is an array of JSON-compatible object
+records. Unsettled-seam records contain exactly `kind`, `question`, `evidence`,
+`confidence`, and `notes`, with `kind: unsettled-seam`. Nested `relationships`
+and `boundaries` reuse the exact relationship/boundary contract above. Unknown
+aggregate keys, unknown or category-mismatched kinds, missing categories, and
+malformed nested records are `invalid-input`.
+
+Every other durable or frontier field is an array of scalar text, and
+`nextAction` is scalar text.
+
+All structured values may contain only `null`, booleans, canonical finite
+numbers, strings, arrays, and plain objects; sparse arrays, circular values,
+non-finite numbers, negative zero, class instances, functions, `undefined`, and
+non-object top-level entries are refused as `invalid-input`. Schema 2 requires
+the canonical `JSON:` encoding for every structured field entry and every
+resolution targeting a structured field. Genuine schema-1 artifacts contain no
+structured sections or resolutions for post-schema-1 fields.
 
 ## Alignment and the payload binding
 
@@ -67,29 +111,45 @@ artifact records `alignment: confirmed` — the exact token
 `not-aligned` are refused with `unaligned`. Rereading is never approval;
 alignment stays human-owned.
 
-The alignment gate is bound, not asserted. The intake carries a required
-`alignedPayloadDigest`: the caller computes it with the exported
-`alignedPayloadDigestOf` over the payload it shows the human before alignment,
-and the helper recomputes the same canonical digest over the normalized payload
-it is about to persist. A mismatch is refused as `alignment-unbound`, so a caller
-cannot hand in `alignment: "verified"` beside bytes the human never saw.
+The alignment gate is bound, not asserted. Every new write uses the canonical
+Discovery flow: it carries every documented-findings field explicitly,
+`alignedFindingsDigest` computed with `alignedFindingsDigestOf` over exactly the
+findings shown to the human, an explicit canonical `domainModel`,
+`domainModelBasisDigest` equal to the aligned-findings digest,
+`domainModelDigest` computed with `domainModelDigestOf` over the validated
+model, `frontierBasisDigest` equal to that domain-model digest, and
+`frontierDigest` computed with `frontierDigestOf` over the domain-model digest,
+complete frontier, and next action. A legacy
+whole-payload digest is not a schema-2 write mode. Schema-1 compatibility exists
+only on parse.
 
-Be precise about what the binding proves. It proves the persisted payload is
-byte-for-byte the payload that was digested. It does **not** prove a human
-understood or approved that payload — alignment is a human act this atom cannot
-witness. The digest covers the subject, the nine durable sets, the frontier, the
-next action, and the resolved list, in a canonical serialization that does not
-depend on JSON key order. It deliberately **excludes** `cycle`, `timestamp`, and
-`history`, because the write appends those and they cannot be known at alignment
-time. So the digest proves the aligned content, and proves nothing about the
-bookkeeping the write adds.
+A findings mismatch is `alignment-unbound`. A domain-model basis receipt that
+does not bind to those findings, a declared domain-model digest that does not
+match the validated model, a frontier basis receipt that does not bind to that
+model digest, or a frontier digest that does not bind the complete frontier and
+next action is `derivation-unbound`. This preserves the exact derivation chain
+without claiming the human saw outputs produced only after alignment:
+
+```text
+aligned findings --domainModelBasisDigest--> domain model
+validated domain model --frontierBasisDigest--> frontier
+domainModelDigest + frontier + nextAction --frontierDigest--> frontier receipt
+```
+
+Be precise about what the binding proves. It proves the persisted findings are
+byte-for-byte the findings that were digested. It does **not** prove a human
+understood or approved them — alignment is a human act this atom cannot witness.
+The aligned-findings digest excludes the post-alignment `domainModel`, frontier,
+and next action, which are instead bound by their basis receipts. It deliberately
+excludes cycle, timestamp, and history.
 
 ## Retention — the no-overwrite, no-launder guarantee
 
 This is the load-bearing rule, and it is per field. Before writing, the helper
 reads and parses any existing artifact. Every previously recorded entry in the
-durable sets — confirmed facts, evidence references, decisions, constraints,
-assumptions, contradictions, open questions, scope, exclusions — **and the
+durable sets — confirmed facts, source, relationship, and boundary claims,
+evidence references, decisions, constraints, assumptions, contradictions,
+risks, open questions, scope, exclusions, and the domain model — **and the
 frontier** must reappear in the **same** field with at least its prior
 multiplicity, or be discharged by a `Resolved` record. Counts matter, so
 dropping one of two identical entries is a regression. An entry that leaves one
@@ -111,13 +171,14 @@ is dropped or rewritten. A second, conflicting resolution for the same
 `(field, entry)` is refused unless it is byte-identical to the existing one.
 Removal and re-resolution are human decisions, not side effects of a write.
 
-Be honest about what this proves. The check compares entries by exact text, so
-it guarantees an entry was not silently *dropped* or *moved*. It does not and
-cannot guarantee an entry was not *reworded*: text identity is only a proxy for
-meaning, a reworded entry whose original text no longer appears reads as a drop,
-and a caller intent on hiding a change could keep the original text verbatim in
-`Resolved` while burying an altered meaning elsewhere. Rewording is exactly the
-seam this check cannot see.
+Be honest about what this proves. The check compares scalar entries by exact
+text and structured entries by canonical JSON, so it guarantees an entry was
+not silently *dropped* or *moved*. It does not and cannot guarantee an entry was
+not semantically rewritten: identity is only a proxy for meaning, a changed
+entry whose original canonical value no longer appears reads as a drop, and a
+caller intent on hiding a change could keep the original entry in `Resolved`
+while burying an altered meaning elsewhere. Rewording is exactly the seam this
+check cannot see.
 
 ## Append-only history
 
@@ -140,18 +201,26 @@ the first section, so a legitimate list entry that merely looks like
 `Subject: …` can never be mistaken for metadata, and a metadata line moved into
 a section can never masquerade as the header. Every ATX heading that is not the
 document heading or a canonical `##` section is refused at any level. Every
-required section occurs exactly once and no unknown section appears.
+required section occurs exactly once, no unknown section appears, and the
+sections occur in the exact order for the declared schema.
+
+The parser collects the complete `Resolved` array before validating it. Thus a
+conflicting second resolution for one `(field, entry)` is refused whether the
+entries use scalar or structured encoding and whether they are adjacent or
+separated; byte-identical duplicates remain valid multiset entries.
 
 ## Control characters and unambiguous encodings
 
-Every persisted string — each durable and frontier entry, `nextAction`, every
-resolution, the subject identity, the cycle, and the timestamp — is refused as
+Every persisted string — including strings and keys nested inside structured
+records, each scalar durable and frontier entry, `nextAction`, every resolution,
+the subject identity, the cycle, and the timestamp — is refused as
 `invalid-input` if it contains any ASCII control character (U+0000–U+001F or
-U+007F), on the write path and again on parse. A `Resolved` record's entry and
-resolution are rendered with the delimiter characters and the backslash
-backslash-escaped, so **any** legal durable entry round-trips — backticks,
-colons, pipes, em dashes, a leading `- `, and the `_None recorded._` sentinel
-all survive persist → parse → resolve. Tuple keys used by the retention check are
+U+007F), on the write path and again on parse. Structured records are rendered
+as one `- JSON: <canonical-json>` line with recursively sorted object keys and
+array order preserved. Parse requires that exact canonical encoding, so records
+survive persist → parse → rehydrate without prose flattening. Scalar `Resolved`
+entries retain the escaped legacy line encoding; a resolution for a structured
+entry uses one canonical JSON record. Tuple keys used by the retention check are
 canonical JSON, not separator-joined strings, so two distinct records can never
 collide on one key.
 
@@ -271,21 +340,31 @@ node <atoms>/foundation-persist.mjs --input <absolute-json-path>
 ```
 
 The JSON file is a version `1` intake record: `repositoryRoot`, `subject`
-(`id`, `slug`), the aligned `alignment` result, the `alignedPayloadDigest`, the
-`expectedPriorRevision` (the revision the cycle rehydrated, or `null` for a
-genuine first cycle), a `cycle` identifier, a canonical UTC `timestamp`, the
-nine durable sets, the current `frontier` and `nextAction`, and a `resolved`
-list of `{field, entry, resolution}` records. Exit `0` prints one JSON object on
-standard output with the persisted `locator`, `revision`, subject identity, and
-the write-verification record. Any failure prints one
+(`id`, `slug`), the aligned `alignment` result, every canonical
+documented-findings field, `alignedFindingsDigest`, an explicit `domainModel`,
+`domainModelBasisDigest`, `domainModelDigest`, `frontierBasisDigest`,
+`frontierDigest`, the `expectedPriorRevision`
+(the revision the cycle rehydrated, or `null` for a genuine first cycle), a
+`cycle` identifier, a canonical UTC `timestamp`, the current `frontier` and
+`nextAction`, and a `resolved` list of `{field, entry, resolution}` records.
+`relationshipClaims` and `boundaryClaims` must be structured record arrays;
+`domainModel` must contain its one canonical aggregate record; and
+`resolved[].entry` must match the scalar or structured shape of the field it
+discharges.
+Exit `0` prints one JSON object on standard output with the persisted `locator`,
+`revision`, subject identity, `domainModelBasisDigest`, `domainModelDigest`,
+`alignedFindingsDigest`, `frontierBasisDigest`, `frontierDigest`, and the
+write-verification record. Schema 2 serializes those five lineage values in its
+metadata header; parsing recomputes and verifies every link before returning the
+foundation. Any failure prints one
 `{"error": {"code", "message"}}` object on standard error with exit `1` and
 leaves nothing partial.
 
 The helper exports `renderFoundation`, `parseFoundation`, `revisionOf` (the
-SHA-256 digest of the exact persisted bytes), `alignedPayloadDigestOf`, the
-field-name constants, and the error class, so `foundation-rehydrate` reuses the
-same parse and revision definition and a caller can compute the exact digest it
-shows the human.
+SHA-256 digest of the exact persisted bytes), `alignedFindingsDigestOf`,
+`domainModelDigestOf`, `frontierDigestOf`, the field-name constants, and the error class, so
+`foundation-rehydrate` reuses the same parse and revision definition and a
+caller can compute the exact findings, model, and frontier digests.
 
 ## Failure Codes
 
@@ -294,7 +373,8 @@ shows the human.
 | `usage` | The command-line arguments were not understood. |
 | `invalid-input` | The intake broke a shape, type, or bound, a rendered free-text field would open Markdown structure, a persisted string carried an ASCII control character, or a parsed artifact was not strictly and canonically recoverable. |
 | `unaligned` | The alignment result was not `verified` or `corrected`. |
-| `alignment-unbound` | The persisted payload did not match the supplied `alignedPayloadDigest`. |
+| `alignment-unbound` | The persisted payload or findings did not match the supplied alignment digest. |
+| `derivation-unbound` | The domain-model or frontier receipt did not bind to the aligned findings digest. |
 | `unsafe-destination` | The slug named a path outside `docs/agent/discovery/`, or a bounded path component was a symbolic link or a non-directory. |
 | `subject-mismatch` | An existing foundation at the destination belongs to a different subject. |
 | `foundation-regression` | A prior durable or frontier entry would be dropped, moved between sections, or a prior resolution or history line would be rewritten, or two conflicting resolutions name the same `(field, entry)`. |
