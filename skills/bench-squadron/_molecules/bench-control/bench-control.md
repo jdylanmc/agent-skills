@@ -114,7 +114,7 @@ idle or returned-result observation supports `waiting`; it is not missing
 evidence merely because the owner is not executing.
 
 Choose exactly one reported phase using the first matching row below. Missing
-acceptance or execution evidence alone uses `unconfirmed`, not `blocked`;
+acceptance or current matching runtime state evidence alone uses `unconfirmed`, not `blocked`;
 `blocked` requires a named unsatisfied prerequisite for the current operation,
 a recorded refusal, or a `stop` preparation disposition.
 

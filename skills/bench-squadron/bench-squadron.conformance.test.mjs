@@ -192,7 +192,7 @@ test('running requires accepted revision-bound ownership and fresh execution, no
     /generic task-registry `running` label without accepted assignment evidence is insufficient/i,
     /cannot replace a Fleet State reservation or proposal signature/i,
     /first matching row/i,
-    /Missing acceptance or execution evidence alone uses `unconfirmed`, not `blocked`/i,
+    /Missing acceptance or current matching runtime state evidence alone uses `unconfirmed`, not `blocked`/i,
     /`waiting` \| The accepted, matching owner is observed waiting or idle, or its assignment result has returned/i,
     /`unconfirmed` \| Dispatch was attempted but acceptance or current matching runtime state evidence is missing, stale, or mismatched/i,
     /Current matching runtime state evidence means a runtime event or status response/i,
