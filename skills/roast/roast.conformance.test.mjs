@@ -155,6 +155,7 @@ test('one entry point reaches all four artifact branches', () => {
     '_base/_atoms/artifact-classify/artifact-classify.md',
     'roast/_atoms/doctrine-select/doctrine-select.md',
     'roast/_atoms/artifact-profile/artifact-profile.md',
+    'roast/_atoms/artifact-run-budget/artifact-run-budget.md',
     'roast/_atoms/spec-pair/spec-pair.md',
     'roast/_atoms/spec-authority-screen/spec-authority-screen.md',
     '_base/_atoms/doctrine-evaluate/doctrine-evaluate.md',
@@ -201,6 +202,42 @@ test('the artifact-type material is authored exactly once', () => {
     shared.sort(),
     'the contract, failure reference, and lens reference each exist exactly once',
   );
+});
+
+test('artifact coordination surfaces failures and has finite deadlines', () => {
+  const entry = read(ENTRY).replace(/\s+/g, ' ');
+  const branch = read('roast/_molecules/roast-artifact-branch/roast-artifact-branch.md')
+    .replace(/\s+/g, ' ');
+  const budget = read('roast/_atoms/artifact-run-budget/artifact-run-budget.md')
+    .replace(/\s+/g, ' ');
+  const recovery = read('roast/_atoms/roast-failure-recovery/roast-failure-recovery.md')
+    .replace(/\s+/g, ' ');
+
+  assert.match(entry, /Each coordinate attempt and synthesis has a ten-minute deadline/i);
+  assert.match(entry, /complete artifact coordination path has a thirty-minute deadline/i);
+  assert.match(entry, /parent-owned deadline signal/i);
+  assert.match(entry, /deadline in the agent prompt alone does not count/i);
+  assert.match(entry, /Report the first failed attempt before its single replacement runs/i);
+  assert.match(entry, /reject late responses/i);
+
+  assert.match(branch, /Race each background Agent spawn against a parent-owned, non-detached deadline signal/i);
+  assert.match(branch, /deadline written only in the task prompt is not enforcement/i);
+  assert.match(branch, /never enter an open-ended synchronous wait/i);
+  assert.match(branch, /Surface the first failed attempt and its exact defect/i);
+
+  assert.match(budget, /start one parent-owned, non-detached deadline signal through `execute`/i);
+  assert.match(budget, /Launch the agent through `task` in background mode/i);
+  assert.match(budget, /completion notification from either operation/i);
+  assert.match(budget, /Do not poll/i);
+  assert.match(budget, /At the deadline, stop waiting and classify the attempt as `deadline-exceeded`/i);
+  assert.match(budget, /response delivered after its recorded deadline is stale execution evidence/i);
+  assert.match(budget, /Synthesis receives no retry/i);
+  assert.match(budget, /prompt deadline alone never satisfies this contract/i);
+  assert.match(budget, /Never detach it, leave it running after the phase, use a broad process kill/i);
+  assert.match(budget, /Never weaken the envelope contract, omit a mandatory reviewer, accept partial findings as synthesized, or substitute a cheaper model/i);
+
+  assert.match(recovery, /do not start another Roast invocation automatically/i);
+  assert.match(recovery, /report the failed attempt and exact defect as a diagnostic progress update/i);
 });
 
 test('the spec type is a profile row rather than a second review framework', () => {

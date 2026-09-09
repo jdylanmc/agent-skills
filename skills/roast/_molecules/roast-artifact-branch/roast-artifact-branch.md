@@ -1,9 +1,9 @@
 ---
 name: roast-artifact-branch
-description: Run the shared coordinate-and-synthesize roast for one agent, prompt, skill package, or specification pair, resolving every artifact-type difference from one profile so every type shares a single contract, failure reference, and lens reference.
+description: Run the bounded shared coordinate-and-synthesize roast for one agent, prompt, skill package, or specification pair, resolving every artifact-type difference from one profile so every type shares a single contract, failure reference, and lens reference.
 level: molecule
-includes: ["_base/_atoms/agent-resolve/agent-resolve.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","roast/_atoms/roast-contract/roast-contract.md","roast/_atoms/roast-failure-recovery/roast-failure-recovery.md","roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md","roast/_atoms/spec-authority-screen/spec-authority-screen.md","roast/_atoms/spec-pair/spec-pair.md","roast/_molecules/roast-intent/roast-intent.md"]
-composes: ["_base/_atoms/agent-resolve/agent-resolve.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","roast/_atoms/roast-contract/roast-contract.md","roast/_atoms/roast-failure-recovery/roast-failure-recovery.md","roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md","roast/_atoms/spec-authority-screen/spec-authority-screen.md","roast/_atoms/spec-pair/spec-pair.md","roast/_molecules/roast-intent/roast-intent.md"]
+includes: ["_base/_atoms/agent-resolve/agent-resolve.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","roast/_atoms/artifact-run-budget/artifact-run-budget.md","roast/_atoms/roast-contract/roast-contract.md","roast/_atoms/roast-failure-recovery/roast-failure-recovery.md","roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md","roast/_atoms/spec-authority-screen/spec-authority-screen.md","roast/_atoms/spec-pair/spec-pair.md","roast/_molecules/roast-intent/roast-intent.md"]
+composes: ["_base/_atoms/agent-resolve/agent-resolve.md","_base/_atoms/doctrine-evaluate/doctrine-evaluate.md","_base/_molecules/roast-coordinate-review/roast-coordinate-review.md","roast/_atoms/artifact-run-budget/artifact-run-budget.md","roast/_atoms/roast-contract/roast-contract.md","roast/_atoms/roast-failure-recovery/roast-failure-recovery.md","roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.md","roast/_atoms/spec-authority-screen/spec-authority-screen.md","roast/_atoms/spec-pair/spec-pair.md","roast/_molecules/roast-intent/roast-intent.md"]
 used-by: ["roast/SKILL.md"]
 allowed-tools: ["execute","read","search","task"]
 ---
@@ -36,9 +36,10 @@ shape.
 4. [Agent resolve](../../../_base/_atoms/agent-resolve/agent-resolve.md)
 5. [Doctrine evaluate](../../../_base/_atoms/doctrine-evaluate/doctrine-evaluate.md)
 6. [Coordinate an Artifact Roast](../../../_base/_molecules/roast-coordinate-review/roast-coordinate-review.md)
-7. [Roast against intent](../roast-intent/roast-intent.md)
-8. [Spec pair](../../_atoms/spec-pair/spec-pair.md)
-9. [Spec authority screen](../../_atoms/spec-authority-screen/spec-authority-screen.md)
+7. [Artifact run budget](../../_atoms/artifact-run-budget/artifact-run-budget.md)
+8. [Roast against intent](../roast-intent/roast-intent.md)
+9. [Spec pair](../../_atoms/spec-pair/spec-pair.md)
+10. [Spec authority screen](../../_atoms/spec-authority-screen/spec-authority-screen.md)
 
 ## Inputs
 
@@ -113,6 +114,16 @@ shape.
    requires. That molecule owns coordination, envelope validation, exactly one
    retry, synthesis, and the unchanged return.
 
+   Wrap every Agent spawn with
+   [Artifact run budget](../../_atoms/artifact-run-budget/artifact-run-budget.md).
+   Each coordinate attempt and synthesis receives a ten-minute absolute
+   deadline, and the complete artifact coordination path receives thirty
+   minutes. Race each background Agent spawn against a parent-owned,
+   non-detached deadline signal; a deadline written only in the task prompt is
+   not enforcement. Reject late results and never enter an open-ended
+   synchronous wait. Surface the first failed attempt and its exact defect
+   before the one permitted replacement runs.
+
    For a specification pair, envelope validation also runs
    [Spec authority screen](../../_atoms/spec-authority-screen/spec-authority-screen.md)
    with `--phase envelope` and the staged pair record. That is where items 12
@@ -140,6 +151,10 @@ shape.
    Every failure returns the Artifact Roast shape with a named status and a
    non-empty `## What Was Not Reviewed`. Never return a raw envelope or a bare
    status token.
+
+   A deadline or final schema failure returns immediately. Do not silently
+   restart the complete Roast branch after its one coordinate replacement is
+   exhausted.
 
 ## Output
 
