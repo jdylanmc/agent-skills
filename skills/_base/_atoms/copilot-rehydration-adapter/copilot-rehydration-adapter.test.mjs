@@ -85,6 +85,52 @@ test('preToolUse denies material work and permits only the exact full canonical 
   })).permissionDecision, 'allow');
 });
 
+test('serialized command-hook tool arguments permit the same exact canonical read', () => {
+  for (const [name, fields] of [
+    ['camel', {
+      toolName: 'view',
+      toolArgs: JSON.stringify({ path: 'skills/root/SKILL.md' }),
+    }],
+    ['snake', {
+      tool_name: 'Read',
+      tool_input: JSON.stringify({ path: 'skills/root/SKILL.md' }),
+    }],
+  ]) {
+    const root = fixture(`serialized-${name}`);
+    const relativePath = 'skills/root/SKILL.md';
+    preCompact(root, { sessionId: 'session-1', trigger: 'auto', timestamp: Date.now() });
+    assert.equal(preToolUse(root, {
+      sessionId: 'session-1',
+      cwd: root,
+      ...fields,
+    }).permissionDecision, 'allow');
+    const accepted = postToolUse(root, {
+      sessionId: 'session-1',
+      cwd: root,
+      ...fields,
+      ...successfulResult(root, relativePath, name === 'snake'),
+    });
+    assert.match(accepted.additionalContext, /compaction-rehydration-checkpoint/);
+    assert.equal(readState(root, 'session-1').status, STATES.rehydrated);
+  }
+});
+
+test('missing or changed canonical instructions fail explicitly before the read executes', () => {
+  for (const [name, mutate, reason] of [
+    ['missing', (target) => fs.rmSync(target), 'missing-instructions'],
+    ['changed', (target) => fs.appendFileSync(target, 'changed\n'), 'digest-drift'],
+  ]) {
+    const root = fixture(`pre-read-${name}`);
+    const target = path.join(root, 'skills', 'root', 'SKILL.md');
+    preCompact(root, { sessionId: 'session-1', trigger: 'auto', timestamp: Date.now() });
+    mutate(target);
+    const denied = preToolUse(root, payload(root, 'view', { path: target }));
+    assert.equal(denied.permissionDecision, 'deny');
+    assert.match(denied.permissionDecisionReason, new RegExp(reason));
+    assert.equal(readState(root, 'session-1').degradedReason, reason);
+  }
+});
+
 test('malformed pending correlation persists a fail-closed session marker', () => {
   for (const [name, corrupt] of [
     ['invalid-json', (target) => fs.writeFileSync(target, '{')],

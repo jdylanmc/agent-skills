@@ -27,6 +27,9 @@ For `postToolUse`, translate either documented result shape:
 `tool_result.result_type/text_result_for_llm`. Only a successful model-facing
 result whose exact UTF-8 bytes match the armed canonical digest may acknowledge
 a read; the state machine separately verifies the current disk identity.
+Accept tool arguments as either the parsed object described by the hook
+reference or a JSON-serialized object delivered to command hooks. Malformed
+serialized arguments cannot match the canonical read.
 
 The repository hook disposition is
 `hook-enforced-but-disableable`. Repository, user, and plugin hooks may be

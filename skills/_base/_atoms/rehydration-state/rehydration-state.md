@@ -39,10 +39,14 @@ Resume performs correlation and arming under the same state lock. Repeated
 resume notifications preserve an already armed generation and its next read.
 
 An armed generation permits one exact full-file read at a time from its
-canonical read set. A successful provider observation advances that set only
-when the path and current digest match. The final matching observation clears
-the latch once and returns a bounded checkpoint. Claims made by the model or
-copied into a compacted summary are not acknowledgements.
+canonical read set. Before the provider permits that read, the current path,
+size, and digest must still match the registered identity; missing, moved, or
+changed instructions degrade before a failed read can leave the latch without
+an explicit reason. A successful provider observation advances that set only
+when the model-facing bytes and a fresh disk read still match. The final
+matching observation clears the latch once and returns a bounded checkpoint.
+Claims made by the model or copied into a compacted summary are not
+acknowledgements.
 
 Each generation also persists a bounded lifecycle emission receipt. The hook
 holds the cross-process state lock while it verifies the Chronicle log, appends

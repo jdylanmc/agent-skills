@@ -11,6 +11,7 @@ import {
   readState,
   resumeSession,
   STATES,
+  validateExpectedRead,
 } from '../rehydration-state/rehydration-state.mjs';
 
 export const DISPOSITIONS = Object.freeze([
@@ -33,15 +34,23 @@ function withGeneration(output, repositoryRoot, payload, generation) {
   return output;
 }
 
-function absoluteToolPath(payload) {
-  const args = payload.toolArgs ?? payload.tool_input;
+function toolArguments(payload) {
+  const value = payload.toolArgs ?? payload.tool_input;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function absoluteToolPath(payload, args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return null;
   return typeof args.path === 'string' ? path.resolve(payload.cwd, args.path) : null;
 }
 
-function isFullView(payload, expected) {
+function isFullView(payload, expected, args) {
   const name = payload.toolName ?? payload.tool_name;
-  const args = payload.toolArgs ?? payload.tool_input;
   if (name !== 'view' && name !== 'Read') return false;
   if (!args || typeof args !== 'object' || Array.isArray(args) || args.view_range !== undefined) return false;
   if (expected.bytes > 20_000 && args.forceReadLargeFiles !== true) return false;
@@ -105,18 +114,21 @@ export function sessionStart(repositoryRoot, payload) {
 }
 
 export function preToolUse(repositoryRoot, payload) {
-  const expected = expectedRead(repositoryRoot, sessionId(payload));
+  const expected = validateExpectedRead(repositoryRoot, sessionId(payload));
   if (expected.status === 'inactive') return {};
   if (expected.status === STATES.degraded) {
-    return {
+    const output = {
       permissionDecision: 'deny',
       permissionDecisionReason:
         `Compaction rehydration is blocked: ${expected.reason}. Material work is not allowed.`,
     };
+    Object.defineProperty(output, '_rehydrationStatus', { value: STATES.degraded });
+    return withGeneration(output, repositoryRoot, payload, expected.generation);
   }
-  const absolute = absoluteToolPath(payload);
+  const args = toolArguments(payload);
+  const absolute = absoluteToolPath(payload, args);
   const canonical = path.join(repositoryRoot, expected.file.path);
-  if (absolute === canonical && isFullView(payload, expected.file)) {
+  if (absolute === canonical && isFullView(payload, expected.file, args)) {
     return { permissionDecision: 'allow' };
   }
   const firstEnforcement = noteEnforcement(repositoryRoot, sessionId(payload));
@@ -140,9 +152,10 @@ export function postToolUse(repositoryRoot, payload) {
       additionalContext: `Compaction rehydration degraded: ${expected.reason}. Stop material work.`,
     };
   }
-  const absolute = absoluteToolPath(payload);
+  const args = toolArguments(payload);
+  const absolute = absoluteToolPath(payload, args);
   const canonical = path.join(repositoryRoot, expected.file.path);
-  if (absolute !== canonical || !isFullView(payload, expected.file)) return {};
+  if (absolute !== canonical || !isFullView(payload, expected.file, args)) return {};
   const result = acknowledgeRead({
     repositoryRoot,
     sessionId: sessionId(payload),

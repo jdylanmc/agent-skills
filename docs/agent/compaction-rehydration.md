@@ -17,8 +17,11 @@ context compaction.
    pending correlation state does the same before `preCompact` returns, so a
    later tool gate denies instead of treating the session as inactive.
 2. `preCompact` synchronously arms a new bounded generation.
-3. While armed, local command `preToolUse` permits only the next exact,
-   full-file canonical `view` read. Other material tool operations are denied.
+3. While armed, local command `preToolUse` accepts parsed or JSON-serialized
+   tool arguments and permits only the next exact, full-file canonical `view`
+   read. It verifies that the path, byte count, and digest still match before
+   allowing the read. Missing, moved, or changed instructions degrade
+   explicitly. Other material tool operations are denied.
 4. `postToolUse` accepts both documented Copilot payload shapes and binds the
    acknowledgement to the successful model-facing tool-result bytes. Their
    byte count and SHA-256 digest must match the armed canonical identity, and a

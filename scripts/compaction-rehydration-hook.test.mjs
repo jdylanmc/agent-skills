@@ -146,6 +146,55 @@ test('hook entry point requires exact successful model-facing result bytes', () 
   assert.match(JSON.parse(io.output()).additionalContext, /compaction-rehydration-checkpoint/);
 });
 
+test('hook entry point accepts JSON-serialized command-hook tool arguments', () => {
+  fixture();
+  const relativePath = 'skills/root/SKILL.md';
+  run('preCompact', {
+    sessionId: 'session-1',
+    cwd: ROOT,
+    trigger: 'auto',
+    timestamp: Date.now(),
+  }, streams());
+  const io = streams();
+  assert.equal(run('postToolUse', {
+    sessionId: 'session-1',
+    cwd: ROOT,
+    toolName: 'view',
+    toolArgs: JSON.stringify({ path: path.join(ROOT, relativePath) }),
+    toolResult: {
+      resultType: 'success',
+      textResultForLlm: fs.readFileSync(path.join(ROOT, relativePath), 'utf8'),
+    },
+  }, io), 0);
+  assert.match(JSON.parse(io.output()).additionalContext, /compaction-rehydration-checkpoint/);
+});
+
+test('preToolUse records an explicit degraded outcome when canonical instructions disappear', () => {
+  fixture();
+  run('preCompact', {
+    sessionId: 'session-1',
+    cwd: ROOT,
+    trigger: 'auto',
+    timestamp: Date.now(),
+  }, streams());
+  fs.rmSync(path.join(ROOT, 'skills', 'root', 'SKILL.md'));
+  const io = streams();
+  assert.equal(run('preToolUse', {
+    sessionId: 'session-1',
+    cwd: ROOT,
+    toolName: 'view',
+    toolArgs: { path: path.join(ROOT, 'skills', 'root', 'SKILL.md') },
+  }, io), 0);
+  const output = JSON.parse(io.output());
+  assert.equal(output.permissionDecision, 'deny');
+  assert.match(output.permissionDecisionReason, /missing-instructions/);
+
+  const replay = replayLog(path.join(ROOT, '.skill-log', 'root.jsonl'));
+  const lifecycle = replay.events.filter((event) => event.operation === 'rehydration-1');
+  assert.deepEqual(lifecycle.map((event) => event.phase), ['before', 'after']);
+  assert.equal(lifecycle.at(-1).outcome, 'degraded');
+});
+
 test('repeated hook notifications record one lifecycle start and outcome per generation', () => {
   fixture();
   const resume = {

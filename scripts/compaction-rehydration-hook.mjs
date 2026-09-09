@@ -107,6 +107,8 @@ export function run(kind, input, streams = process) {
       record(root, sid, before, kind === 'preCompact' ? 'before' : 'after', result.status, generation);
     } else if (kind === 'postToolUse' && result._rehydrationStatus) {
       record(root, sid, 'rehydration', 'after', result._rehydrationStatus, generation);
+    } else if (kind === 'preToolUse' && result._rehydrationStatus) {
+      record(root, sid, 'rehydration', 'after', result._rehydrationStatus, generation);
     } else if (kind === 'preToolUse' && result._recordEnforcement) {
       record(root, sid, 'rehydration-gate', 'observation', 'enforced', generation);
     } else if (kind === 'agentStop' && result.degraded) {

@@ -794,6 +794,36 @@ export function expectedRead(repositoryRoot, sessionId) {
   return { status: state.status, generation: state.generation, file: state.latch.remaining[0] };
 }
 
+export function validateExpectedRead(repositoryRoot, sessionId) {
+  const root = canonicalRoot(repositoryRoot);
+  return withStateLock(root, () => {
+    const state = readStateUnlocked(root, sessionId);
+    if (state?.status === STATES.degraded) {
+      return {
+        status: STATES.degraded,
+        generation: state.generation,
+        reason: state.degradedReason,
+      };
+    }
+    if (!state?.latch || state.status !== STATES.required) return { status: 'inactive' };
+    const expected = state.latch.remaining[0];
+    let current;
+    try {
+      current = readCanonicalFile(root, expected.path);
+    } catch {
+      return degradeUnlocked(root, state, 'missing-instructions');
+    }
+    if (current.digest !== expected.digest || current.bytes !== expected.bytes) {
+      return degradeUnlocked(root, state, 'digest-drift');
+    }
+    return {
+      status: state.status,
+      generation: state.generation,
+      file: expected,
+    };
+  });
+}
+
 export function noteEnforcement(repositoryRoot, sessionId) {
   return withStateLock(repositoryRoot, () => {
   const state = readStateUnlocked(repositoryRoot, sessionId);
