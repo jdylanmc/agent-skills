@@ -32,7 +32,9 @@ the persisted Bench epoch. Bench Epoch validates the pool cap, role separation,
 inclusive quorum, current distinct signatures, and mutator-turn rule. The
 current Fleet State owner retains durable-write authority.
 
-Load complete role doctrine text before dispatch. An asynchronous Slop Sniper
+Load complete role doctrine text and run Role Doctrine's model resolver before
+dispatch. Use its returned routes and receipts, not a second selection algorithm.
+An asynchronous Slop Sniper
 result is evidence for the publication gate, never Fleet State ownership or
 signature authority. Once the validated proposal mutates the control path,
 advance the bench epoch and discard all prior signatures and downstream claims.

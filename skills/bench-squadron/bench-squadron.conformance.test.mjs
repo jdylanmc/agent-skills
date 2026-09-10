@@ -107,24 +107,25 @@ test('teaches the hard role, publication, epoch, and human authority boundaries'
   assert.match(roles, /not a full-text lens/i);
 });
 
-test('assigns current eligible full-strength models without weakening role packets', () => {
+test('uses the executable shared-routing adapter without weakening role packets', () => {
   const roles = read('bench-squadron/_atoms/role-doctrine/role-doctrine.md').replace(/\s+/g, ' ');
 
-  for (const model of ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
-    assert.match(roles, new RegExp(model.replaceAll('.', '\\.')));
-  }
+  assert.ok(frontmatter('bench-squadron/_atoms/role-doctrine/role-doctrine.md')
+    .includes.includes('bench-squadron/_atoms/role-doctrine/role-doctrine.mjs'));
+  assert.match(read(ENTRY), /Run Role Doctrine's model resolver before dispatch/);
+  assert.match(roles, /role-doctrine\.mjs --stdin/);
+  assert.match(roles, /resolveInlineModelRoute/);
+  assert.match(roles, /summarizeModelDiversity/);
   assert.match(roles, /inspect the exact model IDs the current runtime advertises/i);
   assert.match(roles, /latest two major generations that the operator has confirmed/i);
-  assert.match(roles, /record the eligible IDs, the selected ID for every role, the reasoning effort, and the context tier/i);
-  assert.match(roles, /Slop Sniper \| `gpt-6-astra` \| `xhigh` \| `default`/i);
-  assert.match(roles, /Do not infer that another provider's version numbers are comparable/i);
-  assert.match(roles, /four eligible aliases do not become five independent families/i);
+  assert.match(roles, /human confirms generation eligibility and role suitability/i);
+  assert.match(roles, /not a claim of another independent family/i);
   assert.match(roles, /Never silently use a mini, flash, older-generation, runtime-default, or otherwise unproven model/i);
   assert.match(roles, /stop before dispatch and return the observed IDs and the exact human choice required/i);
   assert.match(roles, /ordinary context tier by default/i);
   assert.match(roles, /Do not truncate, summarize, or omit a lens/i);
   assert.match(roles, /existing pool cap, quorum, and bounded task packets/i);
-  assert.match(roles, /future integration seam is the recorded runtime inventory and per-role selection/i);
+  assert.doesNotMatch(roles, /future integration seam|until the shared agent-spawn resolver/i);
 });
 
 test('the package intent is inert human prose and Fleet State reuse stays a code dependency', () => {

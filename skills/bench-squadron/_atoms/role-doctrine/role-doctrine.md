@@ -2,13 +2,17 @@
 name: role-doctrine
 description: Require complete role doctrine lenses and an explicit current-runtime model assignment for the Bench Squadron orchestrator, delivery pool, and Slop Sniper before an experiment proceeds.
 level: atom
-allowed-tools: ["read"]
-includes: []
+allowed-tools: ["read","execute"]
+includes: ["bench-squadron/_atoms/role-doctrine/role-doctrine.mjs"]
 composes: []
 used-by: ["bench-squadron/_molecules/bench-control/bench-control.md"]
 ---
 
 # Role Doctrine
+
+## Required Files
+
+1. [Bench policy adapter over shared model routing](./role-doctrine.mjs)
 
 Provide the full text of the applicable doctrine lens to each role:
 
@@ -25,50 +29,49 @@ merge, promotion, or retirement authority.
 
 ## Model Assignment
 
-Before dispatch, inspect the exact model IDs the current runtime advertises and
-select from the latest two major generations that the operator has confirmed
-for that model family and runtime. Record the eligible IDs, the selected ID for
-every role, the reasoning effort, and the context tier in the role packet. The
-operator-selected generations for this experiment are GPT-6 and GPT-5.6. For
-the current runtime, the proven eligible IDs are:
+Before dispatch, inspect the exact model IDs the current runtime advertises.
+The human confirms generation eligibility and role suitability; the resolver
+cannot establish either. This experiment's existing policy is GPT-6 and GPT-5.6.
+Its four eligible IDs and role defaults now live in `role-doctrine.mjs`, not a
+second selection table here. If those are no longer the latest two major
+generations that the operator has confirmed, stop for a policy update rather
+than infer new IDs or comparable version numbers across providers.
 
-- `gpt-6-astra`
-- `gpt-5.6-sol`
-- `gpt-5.6-terra`
-- `gpt-5.6-luna`
+Run the existing role atom's support script:
 
-Treat model IDs and generation labels as opaque runtime facts. Do not infer
-that another provider's version numbers are comparable, call these generations
-permanently "latest", or count aliases as independent model families.
+```text
+node <role-doctrine>/role-doctrine.mjs --stdin
+```
 
-Use this role assignment when those exact IDs remain available:
+Supply one JSON object:
 
-| Role | Selected model | Reasoning effort | Context tier |
-| --- | --- | --- | --- |
-| Orchestrator | `gpt-6-astra` | `high` | `default` |
-| Delivery-pool seats 1 through 5 | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-6-astra`, `gpt-5.6-sol` | `high` | `default` |
-| Slop Sniper | `gpt-6-astra` | `xhigh` | `default` |
+| Field | Meaning |
+| --- | --- |
+| `deliveryPoolSize` | The confirmed pool size, 1 through 5. These are model slots, not agent identities or reservations. |
+| `runtimeAvailableModels` | Required array of exact advertised IDs. An empty array means none are available, not a runtime default. |
+| `roleOverrides` | Optional human-confirmed route changes keyed by `orchestrator`, `delivery-1` through the configured pool size, or `slop-sniper`. Only `model`, `fallbackModels`, `reasoningEffort`, and `contextTier` are accepted. |
 
-The repeated fifth-seat model is intentional: four eligible aliases do not
-become five independent families. Prefer exact-model diversity until the
-eligible set is exhausted, but choose each role for the work it performs rather
-than maximizing alias count.
+Fallback lists are empty by default. Supply an ordered list only after the
+operator confirms those eligible models suit that role. Never silently use a
+mini, flash, older-generation, runtime-default, or otherwise unproven model.
+Use the ordinary context tier by default; increase it only when the bounded
+packet and complete lenses do not fit, recording the reason for that role.
+Do not truncate, summarize, or omit a lens, apply blanket `long_context`, or
+weaken roles to save cost. Preserve the existing pool cap, quorum, and bounded
+task packets.
 
-An unavailable selected model may fall back only to another runtime-advertised
-ID that the operator has confirmed belongs to one of these two generations and
-is suitable for that role. Never silently use a mini, flash, older-generation,
-runtime-default, or otherwise unproven model to save cost. If availability,
-generation membership, or an eligible fallback cannot be proven, stop before
-dispatch and return the observed IDs and the exact human choice required.
+The adapter calls shared `resolveInlineModelRoute` for each slot and
+`summarizeModelDiversity` for the delivery pool. It does not duplicate fallback
+selection or family classification. Keep the returned `assignments` and shared
+`receipt` fields in the role packets; pass each exact `route` to the existing
+runtime dispatch. The repeated fifth-seat model remains a separate slot, not a
+claim of another independent family.
 
-Use the runtime's ordinary context tier by default. Increase it only when the
-bounded packet, including every complete assigned doctrine lens, does not fit;
-record that reason for the affected role. Do not truncate, summarize, or omit a
-lens to reduce context, and do not apply blanket `long_context` or maximum
-reasoning effort. Conserve resources through the existing pool cap, quorum, and
-bounded task packets, never by weakening delivery or audit roles.
-
-Keep this policy package-local until the shared agent-spawn resolver is
-available. Its future integration seam is the recorded runtime inventory and
-per-role selection; do not copy or anticipate the resolver's fallback or model
-catalog implementation here.
+Exit `0` returns `status: resolved`, the eligible and observed model inventories,
+assignments, and delivery diversity. This proves route resolution only, not
+doctrine completeness, human approval, reservations, launch, or running state.
+Exit `1` with `status: unavailable` retains every receipt and names
+`unavailableRoles`; stop before dispatch and return the observed IDs and the
+exact human choice required. Invalid input exits `1` with a JSON error on
+standard error. Do not hand-write replacement receipts or bypass an unavailable
+slot by letting the runtime choose a default.
