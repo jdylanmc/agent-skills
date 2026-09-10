@@ -159,6 +159,7 @@ jobs:
           skills/bench-squadron/bench-squadron.conformance.test.mjs
           skills/tdd-squadron/_atoms/tdd-lifecycle/tdd-lifecycle.test.mjs
           skills/tdd-squadron/_atoms/atomic-proposal/atomic-proposal.test.mjs
+          skills/tdd-squadron/_atoms/doctrine-lenses/doctrine-lenses.test.mjs
           skills/tdd-squadron/tdd-squadron.conformance.test.mjs
           skills/eli5/_atoms/explanation-ladder/explanation-ladder.test.mjs
           skills/eli5/_atoms/explanation-ladder/explanation-ladder.adversarial.test.mjs
