@@ -263,9 +263,9 @@ heading, a field name, or a terminator.
 99. The final line is `END ARTIFACT ROAST ENVELOPE`, outside every fenced
     block.
 
-Execute items 1-4, 10, and 99 together with the existing checker. Supply the
-artifact type, locator, and review root from the caller's original inputs,
-never copied from the returned envelope:
+Execute items 1-4, 10, 99, and the structural portion of item 8 together with
+the existing checker. Supply the artifact type, locator, and review root from
+the caller's original inputs, never copied from the returned envelope:
 
 ```text
 node <atoms>/roast-contract/roast-contract.mjs --report "$absolute_report_path" \
@@ -274,11 +274,19 @@ node <atoms>/roast-contract/roast-contract.mjs --report "$absolute_report_path" 
 ```
 
 The result explicitly names `scope: envelope-framing-and-finding-fields`,
-`checkedItems`, and `remainingChecks`. Exit `0` means only that scope is valid;
-`2` returns named defects, and `1` is an input or path failure. Items 5-9, intent
-screening, and artifact-specific rules still require their existing checks.
-The coordinator assigns the packet identifier: this slice requires it to be
-non-empty but does not yet verify nested-report packet agreement.
+`checkedItems`, `checkedRoasterRules`, `roasterReports`, and `remainingChecks`.
+Exit `0` means only that scope is valid; `2` returns named defects, and `1` is an
+input or path failure. Each complete nested report is checked independently for
+header/heading/terminator structure, required finding fields, severity and
+confidence values, unique finding IDs, and agreement with the envelope's packet
+identifier. Duplicate Roaster IDs and reports outside `Contract-Valid Reports`
+are rejected. That section holds complete reports, `none`, or no content.
+
+The coordinator still owns packet-ID creation; agreement is not proof of
+dispatch provenance. Evidence-manifest checks, roster-to-report coverage,
+named dimension coverage, report semantics, intent screening, and
+artifact-specific rules remain separate requirements. Missing or malformed
+siblings never gain validity from a well-formed report beside them.
 Without the identity arguments the command retains its finding-only mode.
 
 A failed machine check is an ordinary schema failure and takes the existing
