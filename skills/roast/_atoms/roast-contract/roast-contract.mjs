@@ -25,6 +25,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ARTIFACT_TYPES } from '../artifact-profile/artifact-profile.mjs';
+
 export class FindingSchemaError extends Error {
   constructor(code, message) {
     super(message);
@@ -36,7 +38,28 @@ export class FindingSchemaError extends Error {
 const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
 const SECTION = /^##\s+(.+?)\s*$/;
 const FINDING = /^###\s+(.+?)\s*$/;
-const FIELD = /^\s*-\s+([A-Z][A-Za-z ]*?)\s*(?:\(([^)]*)\))?\s*:\s*(.*)$/;
+const FIELD = /^-\s+([A-Z][A-Za-z ]*?)\s*(?:\(([^)]*)\))?\s*:\s*(.*)$/;
+
+function unfencedLines(report) {
+  if (typeof report !== 'string') {
+    throw new FindingSchemaError('invalid_report', 'report must be a string');
+  }
+  let fence = null;
+  return report.replace(/\r\n/g, '\n').split('\n').map((line) => {
+    const match = FENCE.exec(line);
+    if (match) {
+      const marker = match[1];
+      if (fence === null) {
+        fence = marker;
+      } else if (marker[0] === fence[0] && marker.length >= fence.length
+          && line.slice(match[0].length).trim() === '') {
+        fence = null;
+      }
+      return '';
+    }
+    return fence === null ? line : '';
+  });
+}
 
 /** Sections that hold accepted findings and are therefore checked. */
 export const ACCEPTED_FINDING_SECTIONS = [
@@ -125,7 +148,6 @@ export function parseFindings(report, sections = ACCEPTED_FINDING_SECTIONS) {
   const entries = [];
   const sectionBodies = new Map();
 
-  let fence = null;
   let section = null;
   let entry = null;
   let field = null;
@@ -138,23 +160,9 @@ export function parseFindings(report, sections = ACCEPTED_FINDING_SECTIONS) {
     field = null;
   };
 
-  const lines = report.replace(/\r\n/g, '\n').split('\n');
+  const lines = unfencedLines(report);
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const fenceMatch = FENCE.exec(line);
-    if (fenceMatch) {
-      const marker = fenceMatch[1];
-      if (fence === null) {
-        fence = marker;
-      } else if (marker[0] === fence[0] && marker.length >= fence.length) {
-        fence = null;
-      }
-      continue;
-    }
-    if (fence !== null) {
-      // Inside a fenced block. Nothing here counts, which is the point.
-      continue;
-    }
 
     const findingMatch = FINDING.exec(line);
     if (findingMatch) {
@@ -306,7 +314,74 @@ export function validateFindingSchema(report, options = {}) {
   };
 }
 
-const VALUE_FLAGS = ['--report', '--field', '--section'];
+export function validateEnvelopeFraming(report, expected) {
+  if (!expected || !['artifactType', 'artifactLocator', 'allowedReviewRoot']
+    .every((key) => typeof expected[key] === 'string' && expected[key].trim() !== '')
+      || !ARTIFACT_TYPES.includes(expected.artifactType)) {
+    throw new FindingSchemaError('invalid_contract', 'expected a supported artifact type, locator, and review root');
+  }
+  const lines = unfencedLines(report);
+  if (report.endsWith('\n')) lines.pop();
+  const defects = [];
+  const defect = (category, item, message) => defects.push({ category, item, message });
+  if (lines[0] !== '# Artifact Roast Envelope') {
+    defect('First-line mismatch', 'envelope title', 'first line must be # Artifact Roast Envelope');
+  }
+  const headings = ['Evidence Manifest', 'Council Roster', 'Contract-Valid Reports', 'Failed or Excluded Roasters'];
+  let previous = -1;
+  for (const heading of headings) {
+    const matches = lines.flatMap((line, index) => line.trimEnd() === `## ${heading}` ? [index] : []);
+    if (matches.length === 0) defect('Missing heading', heading, `missing ## ${heading}`);
+    else if (matches.length > 1) defect('Duplicate heading', heading, `## ${heading} appears ${matches.length} times`);
+    else {
+      if (matches[0] < previous) defect('Misordered heading', heading, `## ${heading} is out of order`);
+      previous = Math.max(previous, matches[0]);
+    }
+  }
+  const firstSection = lines.findIndex((line) => /^##\s/.test(line));
+  const header = lines.slice(1, firstSection < 0 ? lines.length : firstSection);
+  const values = {
+    Status: ['Complete', 'Insufficient review'],
+    'Artifact type': [expected.artifactType],
+    'Artifact locator': [expected.artifactLocator],
+    'Allowed review root': [expected.allowedReviewRoot],
+    'Evidence-packet identifier': null,
+    'Schema version': ['1'],
+  };
+  for (const [field, allowed] of Object.entries(values)) {
+    const prefix = `- ${field}:`;
+    const matches = header.filter((line) => line.startsWith(prefix));
+    if (matches.length === 0) defect('Missing field', field, `header is missing ${field}`);
+    else if (matches.length > 1) defect('Cardinality violation', field, `header repeats ${field}`);
+    else {
+      const value = matches[0].slice(prefix.length).trim();
+      if (value === '') defect('Empty field', field, `header ${field} is empty`);
+      else if (allowed !== null && !allowed.includes(value)) {
+        defect('Value mismatch', field, `header ${field} does not match its required value`);
+      }
+    }
+  }
+  const terminator = 'END ARTIFACT ROAST ENVELOPE';
+  if (lines.at(-1) !== terminator) {
+    defect('Missing terminator', terminator, 'envelope terminator must be the final line outside fences');
+  }
+  if (lines.slice(0, -1).includes(terminator)) {
+    defect('Cardinality violation', terminator, 'envelope terminator appears before the final line');
+  }
+  const findings = validateFindingSchema(report);
+  defects.push(...findings.defects);
+  return {
+    status: defects.length ? 'Invalid' : 'Valid',
+    scope: 'envelope-framing-and-finding-fields',
+    checkedItems: [1, 2, 3, 4, 10, 99],
+    remainingChecks: ['evidence manifest', 'council roster', 'nested reports and coverage', 'intent', 'artifact-specific rules'],
+    findings: findings.findings,
+    defects,
+  };
+}
+
+const ENVELOPE_FLAGS = ['artifact-type', 'artifact-locator', 'review-root'];
+const VALUE_FLAGS = ['--report', '--field', '--section', ...ENVELOPE_FLAGS.map((flag) => `--${flag}`)];
 
 export const USAGE = `Usage: roast-contract.mjs --report <path> \\
   [--field <name>]... [--section <name>]...
@@ -316,6 +391,10 @@ export const USAGE = `Usage: roast-contract.mjs --report <path> \\
              Repeatable. Defaults to Recommendation and Validation.
   --section  A section that holds accepted findings. Repeatable. Defaults to
              Findings, Must Fix, Should Fix, and Consider.
+  --artifact-type, --artifact-locator, --review-root
+             Supply all three expected values to check envelope framing and
+             default finding fields. Other envelope checks remain separate.
+             Cannot be combined with --field or --section.
   --probe    Report availability and exit.`;
 
 function failUsage(message) {
@@ -356,6 +435,10 @@ export function parseArguments(argv) {
   if (!('report' in values)) {
     failUsage('missing required argument for --report');
   }
+  const envelope = ENVELOPE_FLAGS.some((flag) => flag in values);
+  if (envelope && (!ENVELOPE_FLAGS.every((flag) => flag in values) || fields.length || sections.length)) {
+    failUsage('envelope framing requires all three identity arguments and no --field or --section overrides');
+  }
   return { probe: false, ...values, fields, sections };
 }
 
@@ -393,10 +476,17 @@ export function run(argv, streams = process) {
 
   let result;
   try {
-    result = validateFindingSchema(readReport(parsed.report), {
-      requiredFields: parsed.fields.length ? parsed.fields : undefined,
-      sections: parsed.sections.length ? parsed.sections : undefined,
-    });
+    const report = readReport(parsed.report);
+    result = parsed['artifact-type'] !== undefined
+      ? validateEnvelopeFraming(report, {
+        artifactType: parsed['artifact-type'],
+        artifactLocator: parsed['artifact-locator'],
+        allowedReviewRoot: parsed['review-root'],
+      })
+      : validateFindingSchema(report, {
+        requiredFields: parsed.fields.length ? parsed.fields : undefined,
+        sections: parsed.sections.length ? parsed.sections : undefined,
+      });
   } catch (error) {
     const code = error instanceof FindingSchemaError ? error.code : 'invalid_report';
     streams.stderr.write(`${code}: ${error.message}\n`);

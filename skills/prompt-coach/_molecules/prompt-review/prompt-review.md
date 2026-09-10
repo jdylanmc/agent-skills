@@ -5,7 +5,7 @@ level: molecule
 includes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/review-validate-report/review-validate-report.md"]
 composes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/review-validate-report/review-validate-report.md"]
 used-by: ["prompt-coach/SKILL.md"]
-allowed-tools: ["task"]
+allowed-tools: ["execute","task"]
 ---
 
 # Prompt Review
