@@ -402,16 +402,13 @@ test('Ship can model-invoke Shepherd while keeping the handoff optional', () => 
   assert.deepEqual(shepherd.allowedTools, ['execute', 'read', 'search', 'edit', 'task']);
 });
 
-test('ship is a routable single-issue delivery skill a human invokes deliberately', () => {
+test('ship permits direct invocation and model-side continuation loading', () => {
   const parsed = frontmatter(ENTRY);
 
   assert.equal(parsed.name, 'ship');
   assert.equal(parsed.userInvocable, true);
 
-  // Stage one read an issue and returned a plan. Stage two dispatches a worker
-  // that writes code and opens a change request on a shared remote, so it
-  // begins because a person asked for it by name.
-  assert.equal(parsed.disableModelInvocation, true);
+  assert.equal(parsed.disableModelInvocation, false);
 });
 
 test('the routing description promises review-ready, not merged', () => {

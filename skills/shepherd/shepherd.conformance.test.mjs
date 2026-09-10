@@ -89,6 +89,15 @@ test('shepherd is routable with deliberate Ship delegation and run-ci dependency
   assert.ok(!parsed.allowedTools.includes('*'));
 });
 
+test('Shepherd can model-invoke its required Ship continuation dependency', () => {
+  const dependency = frontmatter(ENTRY).requiresSkills.find((edge) => edge.id === 'ship');
+  assert.deepEqual(dependency, { id: 'ship', source: 'local', required: true });
+  const ship = frontmatter(`${dependency.id}/SKILL.md`);
+  assert.equal(ship.disableModelInvocation, false, 'the continuation worker must be able to load Ship');
+  assert.equal(ship.userInvocable, true, 'direct /ship remains available');
+  assert.deepEqual(ship.allowedTools, ['execute', 'read', 'search', 'task']);
+});
+
 test('routing description includes positive and negative triggers', () => {
   const { description } = frontmatter(ENTRY);
 
