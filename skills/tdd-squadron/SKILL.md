@@ -50,13 +50,28 @@ Red/Green and Roast choreography.
    Run Doctrine Lenses' model resolver and retain its routes, receipts, and
    variety record in those packets. Use the exact resolved route for a new
    dispatch; an unavailable route never becomes a runtime-default selection.
+   For Red and Green, use the resolver's `dispatchMode: background`; synchronous
+   workers cannot supply the later readiness turn. Start both with a no-write
+   bootstrap, retain their runtime IDs as the lease agents, and verify one
+   addressed follow-up is accepted by each before reserving seats. They must
+   wait without touching the candidate until the whole reservation commits.
    Routing does not replace a persistent agent or bypass its lease.
 3. Obtain an all-or-nothing two-seat reservation for two distinct people:
    `red` and `green`. Both leases bind seat, owner, agent, generation, expiry,
    replacement fence, run, and candidate revision. A role may hold no second
-   concurrent scheduler lease. Recover an expired or unacknowledged pair only
-   as one reservation: fence every seat before whole-pair release or
-   replacement.
+   concurrent scheduler lease. Atomic Proposal refuses reservation without
+   trusted runtime observations of both background launches, accepted
+   follow-ups, and quiescence. If either bootstrap fails, start no slices and
+   allocate no seats; stop or park the other bootstrap worker.
+   Recover an expired pair through `reclaim-expired`. For an unreachable pair
+   before expiry, use coordinator-only `recover-pair` through Atomic Proposal,
+   binding both current lease IDs and failure evidence. First establish that
+   neither worker can still write: an absent registry entry or rejected message
+   alone is not proof. Unknown termination remains blocked. Recovery fences
+   both seats together, preserves the candidate and slice history, and clears
+   readiness. Reserve a fresh background pair and have it inspect that exact
+   candidate. A completed Red/Green cycle can freeze with fresh declarations;
+   a pending Green turn must still finish. Never reset the run budget.
 4. Have the pair alternate complete vertical slices, starting with Red and then
    Green. Each slice is a revision-bound proposal and evidence record. Every
    lease-consuming transition receives trusted current time and rejects an expired

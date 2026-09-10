@@ -34,6 +34,10 @@ test('all sixteen inventory subsets preserve eligible choices and honest group v
   for (let mask = 0; mask < 16; mask += 1) {
     const available = TDD_ELIGIBLE_MODELS.filter((_, index) => mask & (1 << index));
     const result = resolveTddModelAssignments(input({ runtimeAvailableModels: available }));
+    assert.deepEqual(result.assignments.filter((entry) => entry.dispatchMode)
+      .map(({ role, dispatchMode }) => [role, dispatchMode]), [
+      ['red', 'background'], ['green', 'background'],
+    ]);
     assert.equal(result.status, available.length ? 'resolved' : 'unavailable');
     for (const [group, intended] of [['red-green', 2], ['roasters', 3]]) {
       const variety = result.modelVariety[group];

@@ -10,6 +10,7 @@ import {
   mutateCandidate,
   publicationAuthorization,
   reclaimExpiredReservations,
+  recoverTddPair,
   recordRoastApproval,
   recordVerticalSlice,
   requestSlopSniperAudit,
@@ -150,6 +151,30 @@ test('freezing a ready candidate releases both pair leases before Roast reservat
     Object.keys(roast.leases).sort(),
     ['roaster-1', 'roaster-2', 'roaster-3', 'roastmaster'],
   );
+});
+
+test('early pair recovery preserves a pending Green turn and cannot manufacture a complete cycle', () => {
+  const reserved = pair(state());
+  const afterRed = recordVerticalSlice(reserved.state, {
+    lease: reserved.leases.red, sliceId: 'red-only', evidence: 'failing test', now: NOW,
+  });
+  const recovered = recoverTddPair(afterRed, {
+    reservationId: 'pair-1',
+    expectedLeaseIds: Object.values(reserved.leases).map((lease) => lease.id),
+  });
+  assert.equal(recovered.candidate.nextRole, 'green');
+  assert.equal(recovered.candidate.revision, 2);
+  assert.equal(publicationAuthorization(recovered, { actor: { id: 'publisher-agent' } }).authorized, false);
+  const replacement = pair(recovered);
+  assert.throws(() => freezeReadyCandidate(replacement.state, {
+    leases: replacement.leases,
+    readinessDeclarations: readinessDeclarations(replacement.leases, 2),
+    now: NOW,
+  }), /completed RED\/GREEN cycle/);
+  assert.throws(() => recordVerticalSlice(replacement.state, {
+    lease: reserved.leases.green, sliceId: 'old-green', evidence: 'late', now: NOW,
+  }), /stale, expired, or replaced/);
+  assertTddState(recovered);
 });
 
 test('multi-seat reservations are atomic and reject duplicate Roast roles', () => {

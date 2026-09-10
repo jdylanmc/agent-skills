@@ -36,3 +36,25 @@ matching the persisted coordinator and proposal actor. Control operations
 always use the built-in dispatcher, never a caller transition callback. Their
 control-revision fence is revalidated under the same shared CAS lock; no
 delivery lease is borrowed or fabricated to bootstrap a reservation.
+
+For `reserve-pair` and `recover-pair`, supply a trusted synchronous
+`observePairWorkers(request)` runtime adapter, separate from the proposal.
+Under the lock it receives `type`, role-keyed `agents`, run/candidate IDs,
+candidate revision, and reservation ID. It returns role-keyed observations:
+`{agent, quiescent, evidence}`; reservation additionally requires
+`{mode: "background", followUpAccepted: true}` for each worker.
+Use actual runtime IDs as assignment agents, not unbound display names.
+
+The adapter checks the parent's retained runtime receipts; it must not launch,
+message, wait for, or stop a worker inside the state lock. `quiescent: true`
+means the worker has no in-flight or queued candidate writes and remains parked
+or terminated until a newly bound assignment. A missing registry entry, idle
+label, or follow-up rejection is insufficient. Legacy display-name leases
+require a verified mapping to the original runtime handles before recovery.
+Unknown status returns no qualifying observation and blocks the transition.
+
+Only reservation requires accepted background follow-ups. Recovery may retire
+completed one-shot workers, but only after both are proven unable to keep
+writing. Proposal-supplied worker claims cannot substitute for this observer.
+The pure lifecycle helper computes successors; it does not observe workers or
+authorize persistence. Do not write its output around the atomic adapter.

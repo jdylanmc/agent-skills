@@ -13,12 +13,13 @@ const TDD_TRANSITION_TYPES = new Set([
   'reserve-pair',
   'reserve-roast',
   'reclaim-expired',
+  'recover-pair',
   'vertical-slice',
   'freeze-ready-candidate',
   'roast-approved',
   'recommendations-to-pair',
 ]);
-const CONTROL_TRANSITIONS = new Set(['reserve-pair', 'reserve-roast', 'reclaim-expired']);
+export const CONTROL_TRANSITIONS = new Set(['reserve-pair', 'reserve-roast', 'reclaim-expired', 'recover-pair']);
 const SLOP_SNIPER_EVENTS = new Set([
   'pre-dispatch',
   'repeated-failure',
@@ -899,6 +900,23 @@ export function reclaimExpiredReservations(state, { now } = {}) {
   return expired.length ? nextControlRevision(next) : next;
 }
 
+export function recoverTddPair(state, { reservationId, expectedLeaseIds } = {}) {
+  assertTddState(state);
+  const active = reservation(state, reservationId, 'pair');
+  if (state.candidate.phase !== 'tdd' || state.candidate.pairReservationId !== reservationId) {
+    throw new Error('recovery requires the current TDD pair');
+  }
+  if (!Array.isArray(expectedLeaseIds)
+      || JSON.stringify([...expectedLeaseIds].sort()) !== JSON.stringify([...active.leaseIds].sort())) {
+    throw new Error('recovery must bind both current pair lease ids');
+  }
+  const next = clone(state);
+  releaseReservation(next, reservationId, { advanceFence: true });
+  next.candidate.pairReservationId = null;
+  next.candidate.readinessDeclarations = null;
+  return nextControlRevision(next);
+}
+
 export function publicationAuthorization(state, { actor } = {}) {
   const publicationAgent = state?.publication?.agent;
   if (typeof publicationAgent !== 'string' || publicationAgent.trim() === '') {
@@ -1081,6 +1099,7 @@ export function applyTddTransitionProposal(state, proposal, now) {
     case 'reserve-pair': return reserveTddPair(state, input).state;
     case 'reserve-roast': return reserveRoastTeam(state, input).state;
     case 'reclaim-expired': return reclaimExpiredReservations(state, { now });
+    case 'recover-pair': return recoverTddPair(state, input);
     case 'vertical-slice': return recordVerticalSlice(state, {
       ...input, lease: details.leases[state.candidate.nextRole], evidence: details.evidence,
     });

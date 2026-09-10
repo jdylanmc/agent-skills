@@ -41,10 +41,19 @@ Freezing also requires a completed RED/GREEN cycle with no pending GREEN
 turn. RED-only declarations do not release ownership.
 
 State creation requires a trusted `coordinatorAgent` as well as the publication
-agent. Coordinator-only `reserve-pair`, `reserve-roast`, and `reclaim-expired`
+agent. Coordinator-only `reserve-pair`, `reserve-roast`, `recover-pair`, and `reclaim-expired`
 proposals use the current control revision as their fence; they do not require
 the delivery lease they create or reclaim. Use the atomic adapter to persist
 these operations, including initial dispatch and post-freeze Roast acquisition.
+
+`recover-pair` binds `{reservationId, expectedLeaseIds}` for both current
+leases. Atomic Proposal requires trusted runtime proof that neither worker can
+write before permitting this early release. It advances both fences without
+waiting for expiry, clears readiness, and preserves candidate revision, slice
+history, next role, and run budgets. Old proposals and leases cannot advance the
+replacement. The replacement pair independently inspects the preserved
+candidate and submits new declarations; a pending Green slice is not waived.
+No readiness, review, or publication is manufactured by recovery.
 
 `recordRoastApproval` requires `reports` (three independent reviewer receipts),
 separate `synthesis`, and `dispositions` for unresolved findings, not a synthesis

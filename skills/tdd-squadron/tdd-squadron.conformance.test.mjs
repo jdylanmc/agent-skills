@@ -108,6 +108,18 @@ test('derived unit fields and skill grant remain valid', () => {
   assert.deepEqual(derived.grantViolations, []);
 });
 
+test('persistent startup and whole-pair recovery are wired to the atomic boundary', () => {
+  const entry = flat(ENTRY);
+  const loop = flat('tdd-squadron/_molecules/tdd-candidate-loop/tdd-candidate-loop.md');
+  const adapter = flat('tdd-squadron/_atoms/atomic-proposal/atomic-proposal.md');
+  assert.match(entry, /dispatchMode: background/);
+  assert.match(loop, /accepted addressed follow-up each/);
+  assert.match(adapter, /observePairWorkers\(request\)/);
+  assert.match(entry, /coordinator-only `recover-pair` through Atomic Proposal/);
+  assert.match(entry, /Unknown termination remains blocked/);
+  assert.match(entry, /Never reset the run budget/);
+});
+
 test('intent remains inert plain-language source', () => {
   const intent = read('tdd-squadron/intent.md');
   assert.match(intent, /^# Intent: tdd-squadron$/m);
