@@ -1324,9 +1324,32 @@ export function extractSessionEvidence({
         break;
       }
       case 'permission.completed': {
-        const outcome = safeString(at(record, 'data.result.kind'));
-        if (outcome !== null && outcome !== 'allow' && outcome !== 'allowed') {
-          materialize(anchor, type, timestamp, { outcome });
+        const outcome = at(record, 'data.result.kind');
+        switch (outcome) {
+          case 'allow':
+          case 'allowed':
+          case 'approved':
+          case 'approved-for-session':
+          case 'approved-for-location':
+          case 'cancelled':
+            break;
+          case 'deny':
+          case 'denied':
+          case 'denied-by-rules':
+          case 'denied-no-approval-rule-and-could-not-request-from-user':
+          case 'denied-interactively-by-user':
+          case 'denied-by-content-exclusion-policy':
+          case 'denied-by-permission-request-hook':
+            materialize(anchor, type, timestamp, { outcome });
+            break;
+          case undefined:
+            break; // Missing fields are already reported by reportDrift.
+          default:
+            notes.add(
+              'unrecognized_permission_outcome',
+              anchor,
+              'permission.completed has an unsupported result kind; no approval or denial is inferred',
+            );
         }
         break;
       }

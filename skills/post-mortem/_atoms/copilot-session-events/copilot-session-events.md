@@ -132,9 +132,14 @@ Extracted, per supported event:
 | `tool.execution_start`, `tool.execution_complete` | Call counts by tool name, failures, and requests with no result. |
 | `subagent.started`, `subagent.completed`, `subagent.failed` | Spans by agent name with their outcome, and the events enclosed by each span. |
 | `skill.invoked` | Skill name, source, trigger, and the enclosing subagent when there is one. |
-| `permission.completed` | A non-allowing outcome. |
+| `permission.completed` | A known denial with its outcome and source anchor. Known approvals and cancellations are counted only. |
 
 Every other supported event is counted by type and contributes nothing else.
+
+Permission kinds follow the [Copilot event schema](https://github.com/github/copilot-sdk/blob/0d961da797f59ba17fbfdeb29a8bc43f674f3279/nodejs/src/generated/session-events.ts),
+with legacy `allow`/`allowed` and `deny`/`denied` spellings retained.
+Unrecognized kinds are reported as limitations, never inferred to be approvals
+or denials; their raw values are not published.
 
 Never extracted: operator prompts, assistant messages, tool arguments, tool
 results, attachments, skill file contents, error messages and stack traces,
@@ -164,6 +169,7 @@ always shows which source it came from.
 | `detail_withheld` | A published detail field held a filesystem path and was withheld. |
 | `skill_detail_withheld` | A skill invocation carried a field the ledger may not publish, such as a name that is a filesystem path. |
 | `schema_drift` | A supported event no longer carries a field the reader depends on. |
+| `unrecognized_permission_outcome` | A permission result kind is unsupported; no approval or denial is inferred. |
 | `session_identity_contradiction` | The log claims a different session than the one whose identity was proved. |
 | `session_identity_unpublishable` | The recorded session identity is a filesystem path and was withheld. |
 | `event_type_budget_exhausted` | More distinct event types appear than the budget names; the rest are counted together. |

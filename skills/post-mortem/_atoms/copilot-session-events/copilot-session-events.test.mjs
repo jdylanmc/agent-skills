@@ -81,6 +81,73 @@ test('a whole session reads as complete evidence with no limitation', () => {
   assert.deepEqual(result.limitations, []);
 });
 
+test('known approvals and cancellations are counted without becoming permission denials', () => {
+  for (const kind of ['allow', 'allowed', 'approved', 'approved-for-session', 'approved-for-location', 'cancelled']) {
+    const result = extractSessionEvidenceFromText(
+      completeSession(event('permission.completed', { result: { kind } })),
+    );
+    const ledger = toEvidenceLedger(result);
+
+    assert.equal(ledger.provider_native.event_counts['permission.completed'], 1, kind);
+    assert.deepEqual(ledger.entries.map((entry) => entry.kind), ['session_started', 'session_ended'], kind);
+    assert.equal(ledger.completeness, 'complete', kind);
+    assert.deepEqual(ledger.limitations, [], kind);
+  }
+});
+
+test('known permission denials preserve their outcome and source anchor', () => {
+  for (const kind of [
+    'deny',
+    'denied',
+    'denied-by-rules',
+    'denied-no-approval-rule-and-could-not-request-from-user',
+    'denied-interactively-by-user',
+    'denied-by-content-exclusion-policy',
+    'denied-by-permission-request-hook',
+  ]) {
+    const ledger = toEvidenceLedger(extractSessionEvidenceFromText(
+      completeSession(event('permission.completed', { result: { kind } })),
+    ));
+
+    assert.deepEqual(
+      ledger.entries.filter((entry) => entry.kind === 'permission_denied')
+        .map((entry) => [entry.anchor, entry.detail.outcome]),
+      [['E2', kind]],
+    );
+    assert.equal(ledger.completeness, 'complete', kind);
+    assert.deepEqual(ledger.limitations, [], kind);
+  }
+});
+
+test('unrecognized permission outcomes weaken evidence without guessing or publishing their value', () => {
+  for (const kind of ['future-outcome', 'denied-future-reason', 'approved-future-scope', 'approved\n', '', null, false, 42, {}, []]) {
+    const ledger = toEvidenceLedger(extractSessionEvidenceFromText(
+      completeSession(event('permission.completed', { result: { kind } })),
+    ));
+
+    assert.deepEqual(ledger.entries.map((entry) => entry.kind), ['session_started', 'session_ended']);
+    assert.equal(ledger.provider_native.event_counts['permission.completed'], 1);
+    assert.equal(ledger.completeness, 'partial');
+    assert.equal(ledger.confidence_cap, 'moderate');
+    assert.deepEqual(ledger.limitations, [{
+      code: 'unrecognized_permission_outcome',
+      anchor: 'E2',
+      detail: 'permission.completed has an unsupported result kind; no approval or denial is inferred',
+    }]);
+  }
+});
+
+test('a missing permission outcome retains the existing schema-drift limitation', () => {
+  const result = extractSessionEvidenceFromText(
+    completeSession(event('permission.completed', { result: {} })),
+  );
+
+  assert.deepEqual(codes(result), ['schema_drift']);
+  assert.equal(result.limitations[0].anchor, 'E2');
+  assert.equal(result.evidence_completeness, 'partial');
+  assert.ok(!result.events.some((entry) => entry.type === 'permission.completed'));
+});
+
 test('a skill invoked inside a subagent is reported as nested, and one outside it is not', () => {
   const result = extractSessionEvidenceFromText(
     completeSession(
