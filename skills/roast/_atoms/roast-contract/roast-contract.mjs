@@ -202,6 +202,8 @@ export function parseFindings(report, sections = ACCEPTED_FINDING_SECTIONS) {
       if (!entry.fields.has(field)) {
         entry.order.push(field);
         entry.fields.set(field, { value: fieldMatch[3].trim(), line: index + 1 });
+      } else {
+        (entry.duplicateFields ??= []).push({ field, line: index + 1 });
       }
       continue;
     }
@@ -314,20 +316,14 @@ export function validateFindingSchema(report, options = {}) {
   };
 }
 
-export function validateEnvelopeFraming(report, expected) {
-  if (!expected || !['artifactType', 'artifactLocator', 'allowedReviewRoot']
-    .every((key) => typeof expected[key] === 'string' && expected[key].trim() !== '')
-      || !ARTIFACT_TYPES.includes(expected.artifactType)) {
-    throw new FindingSchemaError('invalid_contract', 'expected a supported artifact type, locator, and review root');
-  }
+function validateFrame(report, { title, titleItem = title, headings, values, terminator }) {
   const lines = unfencedLines(report);
   if (report.endsWith('\n')) lines.pop();
   const defects = [];
   const defect = (category, item, message) => defects.push({ category, item, message });
-  if (lines[0] !== '# Artifact Roast Envelope') {
-    defect('First-line mismatch', 'envelope title', 'first line must be # Artifact Roast Envelope');
+  if (lines[0] !== title) {
+    defect('First-line mismatch', titleItem, `first line must be ${title}`);
   }
-  const headings = ['Evidence Manifest', 'Council Roster', 'Contract-Valid Reports', 'Failed or Excluded Roasters'];
   let previous = -1;
   for (const heading of headings) {
     const matches = lines.flatMap((line, index) => line.trimEnd() === `## ${heading}` ? [index] : []);
@@ -340,14 +336,7 @@ export function validateEnvelopeFraming(report, expected) {
   }
   const firstSection = lines.findIndex((line) => /^##\s/.test(line));
   const header = lines.slice(1, firstSection < 0 ? lines.length : firstSection);
-  const values = {
-    Status: ['Complete', 'Insufficient review'],
-    'Artifact type': [expected.artifactType],
-    'Artifact locator': [expected.artifactLocator],
-    'Allowed review root': [expected.allowedReviewRoot],
-    'Evidence-packet identifier': null,
-    'Schema version': ['1'],
-  };
+  const fields = {};
   for (const [field, allowed] of Object.entries(values)) {
     const prefix = `- ${field}:`;
     const matches = header.filter((line) => line.startsWith(prefix));
@@ -355,26 +344,167 @@ export function validateEnvelopeFraming(report, expected) {
     else if (matches.length > 1) defect('Cardinality violation', field, `header repeats ${field}`);
     else {
       const value = matches[0].slice(prefix.length).trim();
+      fields[field] = value;
       if (value === '') defect('Empty field', field, `header ${field} is empty`);
       else if (allowed !== null && !allowed.includes(value)) {
         defect('Value mismatch', field, `header ${field} does not match its required value`);
       }
     }
   }
-  const terminator = 'END ARTIFACT ROAST ENVELOPE';
   if (lines.at(-1) !== terminator) {
-    defect('Missing terminator', terminator, 'envelope terminator must be the final line outside fences');
+    defect('Missing terminator', terminator, `${terminator} must be the final line outside fences`);
   }
   if (lines.slice(0, -1).includes(terminator)) {
-    defect('Cardinality violation', terminator, 'envelope terminator appears before the final line');
+    defect('Cardinality violation', terminator, `${terminator} appears before the final line`);
   }
+  return { lines, fields, defects };
+}
+
+function validateRoasterStructure(report, expected) {
+  const { lines, fields, defects } = validateFrame(report, {
+    title: '# Artifact Roaster Report',
+    headings: ['Dimension Coverage', 'Findings', 'Dismissed Suspicions', 'Evidence Gaps'],
+    values: {
+      'Roaster ID': null,
+      'Artifact type': [expected.artifactType],
+      'Evidence-packet identifier': [expected.packetId],
+      Lens: null,
+      'Lens source': null,
+      'Doctrine status': null,
+      'Schema version': ['1'],
+    },
+    terminator: 'END ARTIFACT ROASTER REPORT',
+  });
+  const options = {
+    sections: ['Findings'],
+    // Recommendation and Validation are checked once over the complete envelope.
+    requiredFields: ['Proposed severity', 'Confidence', 'Location', 'Evidence', 'Consequence'],
+  };
+  defects.push(...validateFindingSchema(report, options).defects);
+  const parsed = parseFindings(report, options.sections);
+  const findingsStart = lines.findIndex((line) => line.trimEnd() === '## Findings');
+  const findingsEnd = lines.findIndex((line) => line.trimEnd() === '## Dismissed Suspicions');
+  if (findingsStart >= 0 && findingsEnd > findingsStart) {
+    const firstFinding = parsed.findings[0];
+    const prefix = lines.slice(findingsStart + 1, firstFinding ? firstFinding.line - 1 : findingsEnd).join('\n').trim();
+    if (prefix !== '' && !(parsed.findings.length === 0 && prefix === 'none')) {
+      defects.push({
+        category: 'Incomplete finding', item: 'Findings', line: findingsStart + 2,
+        message: 'Findings must contain named finding entries, none, or no content',
+      });
+    }
+  }
+  const findingIds = new Set();
+  for (const finding of parsed.findings) {
+    const prefix = `${fields['Roaster ID']}-F`;
+    const suffix = finding.id.startsWith(prefix) ? finding.id.slice(prefix.length) : '';
+    if (!fields['Roaster ID'] || !/^(?:0[1-9]|[1-9]\d)$/.test(suffix) || findingIds.has(finding.id)) {
+      defects.push({
+        category: 'Identity mismatch', finding: finding.id, line: finding.line,
+        message: 'finding IDs must be unique and match the Roaster ID with a suffix from F01 through F99',
+      });
+    }
+    findingIds.add(finding.id);
+    for (const [field, allowed] of [
+      ['Proposed severity', ['Must fix', 'Should fix', 'Consider']],
+      ['Confidence', ['High', 'Medium', 'Low']],
+    ]) {
+      const value = fieldContent(finding, field);
+      if (value !== null && !allowed.includes(value)) {
+        defects.push({
+          category: 'Value mismatch', finding: finding.id, field, line: finding.fields.get(field).line,
+          message: `${field} is outside its enum`,
+        });
+      }
+    }
+    for (const duplicate of finding.duplicateFields ?? []) {
+      defects.push({
+        category: 'Cardinality violation', finding: finding.id, ...duplicate,
+        message: `finding repeats ${duplicate.field}`,
+      });
+    }
+  }
+  return { roasterId: fields['Roaster ID'] ?? null, defects };
+}
+
+function validateNestedReports(report, lines, expected) {
+  const defects = [];
+  const start = lines.findIndex((line) => line.trimEnd() === '## Contract-Valid Reports');
+  const end = lines.findIndex((line) => line.trimEnd() === '## Failed or Excluded Roasters');
+  const starts = lines.flatMap((line, index) => line === '# Artifact Roaster Report' ? [index] : []);
+  const inside = starts.filter((index) => start >= 0 && end > start && index > start && index < end);
+  const insideSet = new Set(inside);
+  for (const index of starts.filter((index) => !insideSet.has(index))) {
+    defects.push({
+      category: 'Unexpected section entry', item: 'Artifact Roaster Report', line: index + 1,
+      message: 'roaster report is outside Contract-Valid Reports',
+    });
+  }
+  const source = report.replace(/\r\n/g, '\n').split('\n');
+  if (start >= 0 && end > start) {
+    const prefix = source.slice(start + 1, inside[0] ?? end).join('\n').trim();
+    if (prefix !== '' && !(inside.length === 0 && prefix === 'none')) {
+      defects.push({
+        category: 'Invalid nested report', item: 'Contract-Valid Reports',
+        message: 'expected complete roaster reports, none, or an empty section',
+      });
+    }
+  }
+  const ids = new Set();
+  for (const [index, reportStart] of inside.entries()) {
+    let reportEnd = inside[index + 1] ?? end;
+    while (reportEnd > reportStart && source[reportEnd - 1].trim() === '') reportEnd -= 1;
+    const nested = validateRoasterStructure(source.slice(reportStart, reportEnd).join('\n'), expected);
+    for (const defect of nested.defects) {
+      defects.push({
+        ...defect, roasterId: nested.roasterId, reportLine: reportStart + 1,
+        ...(defect.line === undefined ? {} : { line: reportStart + defect.line }),
+      });
+    }
+    if (nested.roasterId && ids.has(nested.roasterId)) {
+      defects.push({
+        category: 'Cardinality violation', item: nested.roasterId, line: reportStart + 1,
+        message: 'more than one report has this Roaster ID',
+      });
+    }
+    if (nested.roasterId) ids.add(nested.roasterId);
+  }
+  return { count: inside.length, defects };
+}
+
+export function validateEnvelopeFraming(report, expected) {
+  if (!expected || !['artifactType', 'artifactLocator', 'allowedReviewRoot']
+    .every((key) => typeof expected[key] === 'string' && expected[key].trim() !== '')
+      || !ARTIFACT_TYPES.includes(expected.artifactType)) {
+    throw new FindingSchemaError('invalid_contract', 'expected a supported artifact type, locator, and review root');
+  }
+  const { lines, fields, defects } = validateFrame(report, {
+    title: '# Artifact Roast Envelope',
+    titleItem: 'envelope title',
+    headings: ['Evidence Manifest', 'Council Roster', 'Contract-Valid Reports', 'Failed or Excluded Roasters'],
+    values: {
+      Status: ['Complete', 'Insufficient review'],
+      'Artifact type': [expected.artifactType],
+      'Artifact locator': [expected.artifactLocator],
+      'Allowed review root': [expected.allowedReviewRoot],
+      'Evidence-packet identifier': null,
+      'Schema version': ['1'],
+    },
+    terminator: 'END ARTIFACT ROAST ENVELOPE',
+  });
+  const nested = validateNestedReports(report, lines, {
+    artifactType: expected.artifactType, packetId: fields['Evidence-packet identifier'],
+  });
+  defects.push(...nested.defects);
   const findings = validateFindingSchema(report);
   defects.push(...findings.defects);
   return {
     status: defects.length ? 'Invalid' : 'Valid',
     scope: 'envelope-framing-and-finding-fields',
     checkedItems: [1, 2, 3, 4, 10, 99],
-    remainingChecks: ['evidence manifest', 'council roster', 'nested reports and coverage', 'intent', 'artifact-specific rules'],
+    roasterReports: nested.count,
+    checkedRoasterRules: ['framing', 'required finding fields', 'severity and confidence', 'finding IDs', 'packet agreement'],
+    remainingChecks: ['evidence manifest', 'council roster and report coverage', 'dimension coverage and report semantics', 'intent', 'artifact-specific rules'],
     findings: findings.findings,
     defects,
   };
