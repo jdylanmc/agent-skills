@@ -10,14 +10,6 @@ import { readFrontmatter, validateRepository } from '../../scripts/validate-skil
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SKILL = path.join(REPOSITORY_ROOT, 'skills', 'handoff', 'SKILL.md');
-const ADAPTER = path.join(
-  REPOSITORY_ROOT,
-  'skills',
-  'handoff',
-  '_atoms',
-  'handoff-context-adapter',
-  'handoff-context-adapter.md',
-);
 const PERSIST = path.join(
   REPOSITORY_ROOT,
   'skills',
@@ -60,7 +52,7 @@ function representativePayload(overrides = {}) {
       { reference: 'docs/adr/0001-use-local-units-and-promote-proven-shared-units.md', note: 'local-first unit policy' },
       { reference: 'skills/handoff/SKILL.md', note: 'routable wrapper' },
     ],
-    what_worked: 'Using a local adapter kept caller-specific context separate from persistence.',
+    what_worked: 'Using the shared core kept context selection separate from persistence.',
     what_did_not_work: 'No failed implementation attempts are confirmed in this scenario.',
     next_steps: 'Run graph validation, derivation, tests, and git diff checks before opening the pull request.',
     available_skills: ['handoff', 'post-mortem', 'spec'],
@@ -68,7 +60,7 @@ function representativePayload(overrides = {}) {
   };
 }
 
-test('handoff skill is an explicitly invoked wrapper over the adapter and shared core', () => {
+test('handoff is explicitly invoked and delegates persistence to the shared core', () => {
   const result = validateRepository(REPOSITORY_ROOT);
   assert.ok(result.routableSkills.includes('handoff'));
 
@@ -78,7 +70,6 @@ test('handoff skill is an explicitly invoked wrapper over the adapter and shared
   assert.deepEqual(frontmatter.allowedTools, ['read', 'search', 'execute']);
   assert.deepEqual(frontmatter.composes, [
     '_base/_molecules/chronicler/chronicler.md',
-    'handoff/_atoms/handoff-context-adapter/handoff-context-adapter.md',
     '_base/_molecules/persist-bounded-handoff/persist-bounded-handoff.md',
   ]);
   assert.match(frontmatter.description, /Use only when/);
@@ -99,16 +90,15 @@ test('handoff carries a plain human-readable intent', () => {
   assert.match(normalized, /must not ask where to save the file/);
 });
 
-test('handoff context adapter preserves evidence boundaries and delegates persistence', () => {
-  const raw = fs.readFileSync(ADAPTER, 'utf8');
-  const frontmatter = readFrontmatter(raw, 'handoff/_atoms/handoff-context-adapter/handoff-context-adapter.md');
+test('the entry documents evidence selection and a single persistence operation', () => {
+  const raw = fs.readFileSync(SKILL, 'utf8').replace(/\s+/g, ' ');
 
-  assert.equal(frontmatter.level, 'atom');
-  assert.deepEqual(frontmatter.composes, []);
-  assert.match(raw, /Arguments tailor the handoff without overriding confirmed evidence\./);
-  assert.match(raw, /Existing artifacts are linked rather than copied\./);
-  assert.match(raw, /No filename, destination, visibility, or placement interview is introduced\./);
-  assert.match(raw, /No workspace file is created or modified by this adapter\./);
+  assert.match(raw, /If they conflict with evidence, preserve the evidence/);
+  assert.match(raw, /Keep read and search inside the repository/);
+  assert.match(raw, /Let the core normalize the slug/);
+  assert.match(raw, /refuse with the missing evidence if that would make the handoff misleading/);
+  assert.match(raw, /Pass the payload unchanged on standard input/);
+  assert.match(raw, /Do not manually run its individual stages or retry persistence failures/);
 });
 
 test('representative human handoff payload persists to the runtime temp handoffs directory', () => {
@@ -151,29 +141,27 @@ test('an invented skill suggestion is refused rather than handed to the next age
 });
 
 test('the guard is armed by the package, not merely available in the core', () => {
-  const adapter = fs.readFileSync(ADAPTER, 'utf8');
   const skill = fs.readFileSync(SKILL, 'utf8');
 
-  assert.match(adapter, /available_skills/, 'the adapter must instruct that available_skills is populated');
-  assert.match(skill, /available_skills/, 'the wrapper must state the same requirement');
+  assert.match(skill, /populate `available_skills`/, 'the caller must populate the real skill inventory');
 });
 
 test('a recommended next move is marked as judgement rather than stated as fact', () => {
-  const adapter = fs.readFileSync(ADAPTER, 'utf8');
+  const skill = fs.readFileSync(SKILL, 'utf8');
 
   assert.match(
-    adapter,
+    skill,
     /Recommendation:/,
     'next_steps must require explicit judgement language for a recommended move',
   );
 });
 
 test('open problems have one named home so a broken session cannot read as finished', () => {
-  const adapter = fs.readFileSync(ADAPTER, 'utf8');
+  const skill = fs.readFileSync(SKILL, 'utf8').replace(/\s+/g, ' ');
 
   assert.match(
-    adapter,
-    /problems still open when the session stopped/,
+    skill,
+    /problems still open when the session stopped in `what_did_not_work`/,
     'what_did_not_work must carry currently open problems, not only past attempts',
   );
 });

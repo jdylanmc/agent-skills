@@ -15,10 +15,10 @@ handoff document that a fresh agent can act on: redacted, referenced rather
 than duplicated, written beneath the operating system's own temporary
 directory, reread, and reported by its exact path.
 
-This molecule owns the artifact. It owns nothing about where the context came
-from. Every caller keeps its own adapter, because the context a human
-conversation can confirm and the context a timed-out worker can confirm are not
-the same context.
+This molecule owns the artifact, not context selection. Callers supply the
+context they can confirm; adapting it does not require a separate prompt atom.
+A human conversation and a worker assignment retain their own evidence and
+authority boundaries.
 
 A handoff is a **bounded continuation artifact**. It is not a transcript, a
 memory system, a tracker, or a general persistence framework.
@@ -37,31 +37,11 @@ memory system, a tracker, or a general persistence framework.
 
 ## Inputs
 
-The caller supplies one bounded JSON payload of **confirmed** context.
-
-| Field | Required | Meaning |
-| --- | --- | --- |
-| `slug` | one of | The already-normalized repository or work slug the file name is built from. Validated against `^[a-z0-9]+(?:-[a-z0-9]+)*$` and never rewritten. |
-| `slug_source` | one of | The raw repository or work name, normalized here by the exported `slugify`. Supply this **or** `slug`, never both. |
-| `goal` | yes | What the work is for. |
-| `current_progress` | yes | Where the work actually stands. |
-| `decisions_and_constraints` | yes | Decisions already made and constraints the next agent must respect. |
-| `artifacts_and_references` | yes | Locators for evidence that already exists elsewhere. |
-| `what_worked` | yes | Approaches that produced results. |
-| `what_did_not_work` | yes | Approaches that failed, and why. |
-| `next_steps` | yes | What the next agent should do. |
-| `suggested_skills` | no | Exact skill identifiers and the reason for each. Omitted when no skill usefully follows. |
-| `available_skills` | required when `suggested_skills` is present | The caller's real skill identifiers. A suggestion outside the set, or a non-empty `suggested_skills` with this field absent or empty, is refused. |
-| `title` | no | The document heading. Defaults to `Handoff`. |
-| `schema_version` | no | The payload contract the caller was written against. Must be `1` when present, and is echoed in the normalized payload so a caller can assert what it got. |
-
-A required field with nothing confirmed is supplied empty and renders
-`No confirmed information yet.` Never fill a section by inventing a decision, a
-test result, a commit, a pull request, an owner, or a next step.
-
-The complete field shapes and constraints are in
-[Handoff rendering](../../_atoms/handoff-render/handoff-render.md), which this
-molecule validates with the same implementation.
+Supply one bounded JSON payload of **confirmed** context using the
+[Handoff rendering payload contract](../../_atoms/handoff-render/handoff-render.md#payload).
+That is the single field and heading schema, validated by the same implementation.
+An empty or omitted required section renders `No confirmed information yet.`;
+never invent a decision, test result, commit, owner, or next step to fill it.
 
 ### The Slug
 
@@ -86,26 +66,10 @@ file name.
 
 ### Bounds
 
-Every bound is a refusal, never a truncation, so an adapter can size its input
-before it calls rather than discovering a limit afterwards.
-
-| Input | Bound |
-| --- | --- |
-| One prose section | 8000 UTF-8 bytes |
-| One fenced block inside a section | 20 lines and 2000 UTF-8 bytes |
-| `artifacts_and_references` | 50 entries |
-| One `reference` locator, one `note` | 300 UTF-8 bytes each |
-| `suggested_skills` | 10 entries |
-| One suggestion `reason` | 200 UTF-8 bytes |
-| `title` | 80 UTF-8 bytes |
-| `slug` | 64 characters |
-| `slug_source` | 300 UTF-8 bytes before normalization |
-| Text handed to one redaction call | 65536 UTF-8 bytes |
-| The rendered document | 65536 UTF-8 bytes |
-| The payload an entry point reads | 262144 UTF-8 bytes |
-
-A handoff that no longer fits is a handoff reproducing something it should be
-referencing.
+The [rendering contract](../../_atoms/handoff-render/handoff-render.md#bounds)
+defines payload, field, and document bounds. Each redaction call additionally
+accepts at most 65536 UTF-8 bytes. Exceeding a bound refuses rather than
+truncates; reference large artifacts instead of reproducing them.
 
 ## Operation
 
@@ -283,11 +247,10 @@ records, not a run this molecule owns.
 
 ## Consumers
 
-Two consumers are approved and named in discovery cycle `c-0009`: the
-human-facing Handoff skill supplies conversation and next-session focus, and
-Ship with Squadron supplies timeout and control-state context through its own
-adapter. Both compose this molecule; neither reimplements rendering, redaction,
-path selection, or writing.
+Handoff and Discovery compose this molecule for continuation documents.
+The orchestration persistence adapter calls the same implementation after
+validating and adapting its stricter worker-assignment schema. None needs
+another renderer, path resolver, or writer.
 
 ## Regression Suite
 
