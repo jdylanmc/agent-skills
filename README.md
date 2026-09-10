@@ -35,8 +35,10 @@ skills/
         <molecule-name>.md
 ```
 
-`SKILL.md` is the canonical routable entry point for every skill. It keeps the
-router-facing summary and composes skill-local or shared units for execution.
+`SKILL.md` is the canonical routable entry point for every skill. A short,
+cohesive workflow can live directly in it. Extract units for actual reuse,
+meaningful enforcement boundaries, or substantial independently useful detail,
+not to meet an atom or molecule quota.
 
 Non-routable units live in level namespaces. Skill-local units belong under the
 owning skill; units reused by multiple skills belong under `skills/_base/`. A
