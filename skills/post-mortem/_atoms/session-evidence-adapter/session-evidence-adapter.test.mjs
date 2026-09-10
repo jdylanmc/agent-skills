@@ -189,6 +189,39 @@ test('the ledger speaks the neutral vocabulary, not the harness event names', ()
   });
 });
 
+test('permission results reach a valid neutral ledger without false denials', () => {
+  withRoot((root) => {
+    const logPath = copilotLog(
+      root,
+      event('permission.completed', { result: { kind: 'approved' } }),
+      event('permission.completed', { result: { kind: 'approved-for-location' } }),
+      event('permission.completed', { result: { kind: 'denied-interactively-by-user' } }),
+      event('permission.completed', { result: { kind: 'future-outcome' } }),
+    );
+    const collected = collectSessionEvidence({
+      harness: 'copilot',
+      explicitPath: logPath,
+      environment: {},
+    });
+
+    assert.equal(collected.status, 'collected');
+    const { ledger } = collected;
+    assert.deepEqual(assertLedgerContract(ledger), []);
+    assert.deepEqual(
+      ledger.entries.filter((entry) => entry.kind === 'permission_denied')
+        .map((entry) => [entry.anchor, entry.detail.outcome]),
+      [['E4', 'denied-interactively-by-user']],
+    );
+    assert.equal(ledger.provider_native.event_counts['permission.completed'], 4);
+    assert.equal(ledger.completeness, 'partial');
+    assert.equal(ledger.confidence_cap, 'moderate');
+    assert.deepEqual(
+      ledger.limitations.map((entry) => [entry.code, entry.anchor]),
+      [['unrecognized_permission_outcome', 'E5']],
+    );
+  });
+});
+
 test('a compaction is one beginning and one end, not one event counted twice', () => {
   withRoot((root) => {
     const logPath = copilotLog(
