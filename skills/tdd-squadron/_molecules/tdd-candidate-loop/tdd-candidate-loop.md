@@ -24,8 +24,13 @@ allowed-tools: ["execute","read","search","task"]
 1. Bind every dispatched role to full-text doctrine lenses and a canonical
    manifest revision/digest. Execute Doctrine Lenses' model resolver and use its
    routes and receipts without inventing fallbacks or model-variety claims.
-   Configure the trusted coordinator and reserve Red
-   and Green through the atomic adapter as one two-seat control transaction.
+   Configure the trusted coordinator. Bootstrap Red and Green with
+   `dispatchMode: background`, no write permission until reservation, and one
+   accepted addressed follow-up each. Retain their runtime IDs. Reserve the
+   quiescent pair through the atomic adapter as one two-seat control transaction.
+   Failed bootstrap allocates no seats. Use the wrapper's whole-pair
+   `recover-pair` procedure if a later worker becomes unreachable; never replace
+   a single lease or infer readiness from old reports.
 2. Dispatch one alternating vertical slice at a time. Each result becomes a
    typed, validated fleet-state proposal. Atomic Proposal derives current TDD
    state from the locked Fleet State envelope and delegates its durable

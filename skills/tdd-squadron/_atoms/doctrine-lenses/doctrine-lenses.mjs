@@ -62,6 +62,7 @@ export function resolveTddModelAssignments(input) {
     if (diversityGroup !== null && selected !== null) used[diversityGroup].add(selected);
     return Object.freeze({
       role, ...resolved, diversityGroup, fallbackReason,
+      ...(diversityGroup === 'red-green' ? { dispatchMode: 'background' } : {}),
       selectionBasis: distinct?.route ? 'unused-models' : 'ordered-choices',
     });
   });

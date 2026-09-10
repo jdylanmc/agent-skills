@@ -63,6 +63,9 @@ Keep the output in the run comparison record and the relevant role packets:
 - `modelVariety`: intended and actual distinct-ID counts, degradation and its
   reason for each group; shared `familyDiversity` is reported separately.
 - Eligible and observed model inventories, plus `unavailableRoles`.
+- Red/Green `dispatchMode: background`, required for persistent follow-ups.
+  Bootstrap without candidate writes and prove an addressed follow-up for each
+  runtime ID before the atomic reservation. Model routing alone is not that proof.
 
 Exit `0` with `status: resolved` proves routing only, not human confirmation,
 doctrine integrity, reservations, launch, or running state. Exit `1` with

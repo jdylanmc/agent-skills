@@ -5,6 +5,7 @@ import {
 import { assertFleetState } from '../../../ship-with-squadron/_atoms/fleet-state/fleet-state.mjs';
 import {
   TDD_STRATEGY,
+  CONTROL_TRANSITIONS,
   assertTddState,
   applyTddTransitionProposal,
   validateTddTransitionProposal,
@@ -89,6 +90,36 @@ function withTddState(fleetState, tddState) {
   };
 }
 
+function assertPairRuntime(input, state, proposal) {
+  const { type, payload } = proposal.payload.value;
+  if (!['reserve-pair', 'recover-pair'].includes(type)) return;
+  if (typeof input.observePairWorkers !== 'function') {
+    throw new Error(`${type} requires a trusted runtime pair observer`);
+  }
+  const agents = type === 'reserve-pair'
+    ? Object.fromEntries(['red', 'green'].map((role) => [role, payload[role]?.agent]))
+    : Object.fromEntries(state.seats
+      .filter((seat) => seat.lease?.reservationId === state.candidate.pairReservationId)
+      .map((seat) => [seat.lease.role, seat.lease.agent]));
+  const observed = input.observePairWorkers({
+    type, agents: structuredClone(agents),
+    runId: state.runId, candidateId: state.candidate.id,
+    candidateRevision: state.candidate.revision,
+    reservationId: type === 'reserve-pair' ? payload.reservationId : state.candidate.pairReservationId,
+  });
+  for (const role of ['red', 'green']) {
+    const worker = observed?.[role];
+    if (!agents[role] || worker?.agent !== agents[role] || worker.quiescent !== true
+        || typeof worker.evidence !== 'string' || worker.evidence.trim() === '') {
+      throw new Error(`${role} requires identity-bound runtime evidence of quiescence`);
+    }
+    if (type === 'reserve-pair'
+        && (worker.mode !== 'background' || worker.followUpAccepted !== true)) {
+      throw new Error(`${role} requires background launch and an accepted follow-up before reservation`);
+    }
+  }
+}
+
 /**
  * Adapts a current TDD proposal to the shared Atomic Transition envelope.
  * The generic ledger revision is bound here; TDD's control revision remains
@@ -170,9 +201,7 @@ export function applyTddAtomicFleetStateTransition(input) {
     ...input,
     now: trustedNow(clock),
   });
-  const isControl = ['reserve-pair', 'reserve-roast', 'reclaim-expired'].includes(
-    built.tddProposal.payload.value.type,
-  );
+  const isControl = CONTROL_TRANSITIONS.has(built.tddProposal.payload.value.type);
   if (isControl && input.coordinatorAgent !== input.fleetState.strategyState.value.coordinator.agent) {
     throw new Error('control transition requires trusted runtime coordinator authority');
   }
@@ -197,6 +226,7 @@ export function applyTddAtomicFleetStateTransition(input) {
         built.tddProposal,
         now,
       );
+      assertPairRuntime(input, locked.tddState, locked.proposal);
       const nextTddState = isControl || !input.transition
         ? applyTddTransitionProposal(locked.tddState, locked.proposal, now)
         : input.transition(

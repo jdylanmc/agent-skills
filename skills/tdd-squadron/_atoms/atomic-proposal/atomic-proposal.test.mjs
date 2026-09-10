@@ -36,6 +36,13 @@ const EXPIRY = '2026-09-04T02:00:00.000Z';
 const LOCKED_NOW = '2026-09-04T01:30:00.000Z';
 const EXPIRED_NOW = '2026-09-04T03:00:00.000Z';
 
+function observePairWorkers({ agents }) {
+  return Object.fromEntries(Object.entries(agents).map(([role, agent]) => [role, {
+    agent, mode: 'background', followUpAccepted: true, quiescent: true,
+    evidence: `${role} runtime receipt: acknowledged follow-up and waiting for work`,
+  }]));
+}
+
 function receipt() {
   return {
     invocation: { id: 'read-1', operation: 'read-issue' },
@@ -123,6 +130,7 @@ test('coordinator reserves initial pair, freezes a completed cycle, acquires Roa
     return applyTddAtomicFleetStateTransition({
       file, manifest: currentManifest, fleetState, proposal: currentProposal,
       coordinatorAgent: 'coordinator-agent', clock: () => now,
+      observePairWorkers,
     });
   };
   const pairPayload = {
@@ -177,6 +185,134 @@ test('coordinator reserves initial pair, freezes a completed cycle, acquires Roa
     evidence: 'late result', payload: { sliceId: 'late' }, now: EXPIRED_NOW,
   }), /stale, expired, or replaced/);
   result = apply('reclaim-expired', {}, '2026-09-04T05:00:00Z');
+  assert.equal(result.tddState.seats.filter((seat) => seat.lease).length, 0);
+  assert.deepEqual(loadFleetState(file, currentManifest).strategyState.value, result.tddState);
+});
+
+test('pair startup and early recovery require runtime evidence and preserve a resumable candidate', (t) => {
+  const sandbox = path.join(ROOT, '.test-sandbox', `tdd-recovery-${process.pid}-${randomUUID()}`);
+  const repository = path.join(sandbox, 'repository');
+  fs.mkdirSync(repository, { recursive: true });
+  t.after(() => fs.rmSync(sandbox, { recursive: true, force: true }));
+  const currentManifest = manifest(repository);
+  const file = fleetStatePath(repository, 'tdd-run');
+  persistFleetState(file, {
+    ...createFleetState(currentManifest, 'tdd-run'),
+    strategyState: { namespace: TDD_STRATEGY, value: createTddState({
+      runId: 'tdd-run', candidateId: 'candidate-1',
+      publicationAgent: 'publisher-agent', coordinatorAgent: 'coordinator-agent',
+    }) },
+  }, 0, currentManifest);
+  const prepare = (type, payload, actor = 'coordinator-agent', leases = {}) => {
+    const fleetState = loadFleetState(file, currentManifest);
+    return {
+      file, manifest: currentManifest, fleetState,
+      proposal: createTddTransitionProposal(fleetState.strategyState.value, {
+        type, payload, actor, leases, evidence: `${type} runtime evidence`, now: NOW,
+      }),
+      coordinatorAgent: 'coordinator-agent', clock: () => NOW, observePairWorkers,
+    };
+  };
+  const pairPayload = {
+    reservationId: 'pair-1', expiresAt: EXPIRY,
+    red: { owner: 'red-owner', agent: 'red-agent', generation: 1 },
+    green: { owner: 'green-owner', agent: 'green-agent', generation: 1 },
+  };
+  const unchangedOnFailure = (input, pattern) => {
+    const before = fs.readFileSync(file, 'utf8');
+    assert.throws(() => applyTddAtomicFleetStateTransition(input), pattern);
+    assert.equal(fs.readFileSync(file, 'utf8'), before);
+  };
+  const reserve = prepare('reserve-pair', pairPayload);
+  unchangedOnFailure({ ...reserve, observePairWorkers: undefined }, /trusted runtime pair observer/);
+  for (const defect of [
+    { mode: 'sync' }, { followUpAccepted: false }, { quiescent: false },
+    { agent: 'wrong-agent' }, { evidence: '' },
+  ]) {
+    unchangedOnFailure({
+      ...reserve,
+      observePairWorkers: (request) => {
+        const observed = observePairWorkers(request);
+        Object.assign(observed.green, defect);
+        return observed;
+      },
+    }, /background launch|runtime evidence/);
+  }
+  // A success-shaped payload cannot replace the trusted runtime observation.
+  unchangedOnFailure({
+    ...prepare('reserve-pair', { ...pairPayload, workers: observePairWorkers({
+      agents: { red: 'red-agent', green: 'green-agent' },
+    }) }),
+    observePairWorkers: undefined,
+  }, /trusted runtime pair observer/);
+
+  let result = applyTddAtomicFleetStateTransition(reserve);
+  const leases = () => Object.fromEntries(result.tddState.seats
+    .filter((seat) => seat.lease).map((seat) => [seat.lease.role, seat.lease]));
+  result = applyTddAtomicFleetStateTransition(prepare(
+    'vertical-slice', { sliceId: 'red' }, 'red-agent', { red: leases().red },
+  ));
+  result = applyTddAtomicFleetStateTransition(prepare(
+    'vertical-slice', { sliceId: 'green' }, 'green-agent', { green: leases().green },
+  ));
+  const oldLeases = leases();
+  const candidate = structuredClone(result.tddState.candidate);
+  const recoveryPayload = {
+    reservationId: 'pair-1', expectedLeaseIds: Object.values(oldLeases).map((lease) => lease.id),
+  };
+  const recovery = prepare('recover-pair', recoveryPayload);
+  unchangedOnFailure({ ...recovery, coordinatorAgent: 'red-agent' }, /trusted runtime coordinator/);
+  unchangedOnFailure({ ...recovery, observePairWorkers: undefined }, /trusted runtime pair observer/);
+  unchangedOnFailure({
+    ...recovery,
+    observePairWorkers: (request) => ({
+      ...observePairWorkers(request),
+      green: { agent: 'green-agent', quiescent: false, evidence: 'still running' },
+    }),
+  }, /quiescence/);
+  unchangedOnFailure(prepare('recover-pair', {
+    ...recoveryPayload, expectedLeaseIds: [oldLeases.red.id],
+  }), /both current pair lease ids/);
+  unchangedOnFailure(prepare('recover-pair', {
+    ...recoveryPayload, reservationId: 'other-pair',
+  }), /active pair reservation/);
+
+  // Legacy sync workers may be recovered once both are proven unable to write.
+  result = applyTddAtomicFleetStateTransition({
+    ...recovery,
+    observePairWorkers: (request) => Object.fromEntries(Object.entries(request.agents)
+      .map(([role, agent]) => [role, { agent, quiescent: true, evidence: 'sync task completed' }])),
+    transition: () => { throw new Error('control operation must not call this override'); },
+  });
+  assert.equal(result.tddState.candidate.revision, 3);
+  assert.deepEqual(result.tddState.candidate.slices, candidate.slices);
+  assert.equal(result.tddState.candidate.nextRole, 'red');
+  assert.equal(result.tddState.candidate.pairReservationId, null);
+  assert.equal(result.tddState.candidate.readinessDeclarations, null);
+  assert.equal(result.tddState.seats.filter((seat) => seat.lease).length, 0);
+  assert.ok(result.tddState.seats[0].fence > oldLeases.red.fence);
+  assert.ok(result.tddState.seats[1].fence > oldLeases.green.fence);
+  unchangedOnFailure(recovery, /revision conflict/);
+
+  result = applyTddAtomicFleetStateTransition(prepare('reserve-pair', {
+    ...pairPayload, reservationId: 'pair-2',
+    red: { owner: 'new-red-owner', agent: 'new-red', generation: 2 },
+    green: { owner: 'new-green-owner', agent: 'new-green', generation: 2 },
+  }));
+  assert.throws(() => prepare('vertical-slice', { sliceId: 'late' }, 'red-agent', {
+    red: oldLeases.red,
+  }), /stale, expired, or replaced/);
+  const declarations = (agents) => Object.fromEntries(Object.entries(agents).map(([role, agent]) => [
+    role, { agent, candidateRevision: 3, evidence: `${role} independently reinspected preserved revision 3` },
+  ]));
+  unchangedOnFailure(prepare('freeze-ready-candidate', {
+    readinessDeclarations: declarations({ red: 'red-agent', green: 'green-agent' }),
+  }, 'new-red', leases()), /current lease and revision/);
+  result = applyTddAtomicFleetStateTransition(prepare('freeze-ready-candidate', {
+    readinessDeclarations: declarations({ red: 'new-red', green: 'new-green' }),
+  }, 'new-red', leases()));
+  assert.equal(result.tddState.candidate.frozenRevision, 3);
+  assert.equal(result.tddState.candidate.phase, 'frozen');
   assert.equal(result.tddState.seats.filter((seat) => seat.lease).length, 0);
   assert.deepEqual(loadFleetState(file, currentManifest).strategyState.value, result.tddState);
 });
