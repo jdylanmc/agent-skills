@@ -30,8 +30,9 @@ to. Review that must be remembered is review that gets skipped.
 2. Invoke `/roast` on `package-path` as a **required nested skill**.
    `create-skill` declares it in `requires-skills` as
    `{"id": "roast", "source": "local", "required": true}`. `/roast` keeps
-   `disable-model-invocation: true` and every other property it declares; this
-   atom changes nothing about the roast package.
+   `disable-model-invocation: false` so the model can load that dependency,
+   and `user-invocable: true` for direct use. This atom changes nothing about
+   the roast package.
 3. Record the `package-head` the roast reviewed alongside its findings. A roast
    is evidence about one head and about no other head.
 4. Read the returned report as the roast contract defines it. Each accepted

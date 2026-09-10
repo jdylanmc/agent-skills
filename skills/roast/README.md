@@ -7,6 +7,18 @@ skill package, a product specification pair, or a code change set.
 identify the packet  ->  select the doctrine  ->  evaluate against it  ->  coordinate the review
 ```
 
+## Invocation
+
+Roast is model-invocable so Ship and other delivery or authoring workflows can
+load their declared review dependency. Direct `/roast` remains available.
+`requires-skills` records a dependency; it does not override the callee's
+`disable-model-invocation` flag. Marking Roast human-only prevents those
+model-side calls even when the package is installed.
+
+This routing choice grants no additional tools, repair authority, or approval.
+It does not make review optional or replace the Roast workflow with a generic
+reviewer.
+
 ## Terms
 
 | Term | Meaning |

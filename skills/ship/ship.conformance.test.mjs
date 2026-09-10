@@ -384,6 +384,15 @@ function flatSource(...segments) {
     .replace(/\s+/g, ' ');
 }
 
+test('Ship can model-invoke its required Roast dependency without losing direct invocation', () => {
+  const dependency = frontmatter(ENTRY).requiresSkills.find((edge) => edge.id === 'roast');
+  assert.deepEqual(dependency, { id: 'roast', source: 'local', required: true });
+  const roast = frontmatter(`${dependency.id}/SKILL.md`);
+  assert.equal(roast.disableModelInvocation, false, 'a declared dependency must be loadable by the model');
+  assert.equal(roast.userInvocable, true, 'direct /roast remains available');
+  assert.deepEqual(roast.allowedTools, ['read', 'search', 'execute', 'task']);
+});
+
 test('ship is a routable single-issue delivery skill a human invokes deliberately', () => {
   const parsed = frontmatter(ENTRY);
 

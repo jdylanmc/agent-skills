@@ -8,7 +8,7 @@
  *    the review loop must widen nothing. The deriver refuses to *narrow* a
  *    grant silently; nothing but this test stops a human widening one.
  * 2. **`/roast` is untouched.** It is reached as a required nested skill. Its
- *    `disable-model-invocation: true` flag, its own grant, and its composition
+ *    model-invocable routing, its own grant, and its composition
  *    are not this skill's to change, and a skill that reviews its own output
  *    must not be able to soften the reviewer.
  * 3. **The review is a step, not a reminder.** The old step 5 directed the
@@ -94,7 +94,7 @@ test('the roast package is reached as a required nested skill and is otherwise u
   assert.equal(coachEdge.required, false, 'a required coach would fail runs that used to work');
 
   const roast = frontmatter(ROAST_ENTRY);
-  assert.equal(roast.disableModelInvocation, true, '/roast stays human-invoked');
+  assert.equal(roast.disableModelInvocation, false, '/roast must be loadable as a required dependency');
   assert.equal(roast.userInvocable, true);
   assert.deepEqual(roast.allowedTools, PINNED_ROAST_TOOLS, '/roast keeps its own grant');
   assert.deepEqual(roast.requiresSkills, []);

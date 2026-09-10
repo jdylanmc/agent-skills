@@ -1,10 +1,10 @@
 ---
 name: roast
-description: Adversarially reviews one agent definition, prompt, skill package, product specification pair, or code change set and returns a severity-ranked list of recommendations, each citing the doctrine rule it came from. Identifies the target from evidence, selects only the doctrine that governs it, and refuses ambiguous targets. Use when the operator asks to roast, pressure-test, or adversarially review any of those, including a `<spec>.nano.md` and `<spec>.full.md` pair before a human approves it. Do not use for routine code review, for implementation or applying fixes, for approving a specification or making a product decision, for running the reviewed artifact, or for exploitable-vulnerability analysis and security auditing - route those to the dedicated security-review workflow even when the request says "roast".
+description: Adversarially reviews one agent definition, prompt, skill package, product specification pair, or code change set and returns a severity-ranked list of recommendations, each citing the doctrine rule it came from. Identifies the target from evidence, selects only the doctrine that governs it, and refuses ambiguous targets. Use when the operator asks to roast, pressure-test, or adversarially review any of those, or when a delivery or authoring workflow requires Roast, including a `<spec>.nano.md` and `<spec>.full.md` pair before a human approves it. Do not use for routine code review, for implementation or applying fixes, for approving a specification or making a product decision, for running the reviewed artifact, or for exploitable-vulnerability analysis and security auditing - route those to the dedicated security-review workflow even when the request says "roast".
 allowed-tools: ["read", "search", "execute", "task"]
 includes: ["_base/_molecules/chronicler/chronicler.md","roast/_molecules/roast-artifact-branch/roast-artifact-branch.md","roast/_molecules/roast-code-branch/roast-code-branch.md","roast/_molecules/roast-target-intake/roast-target-intake.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","roast/_molecules/roast-artifact-branch/roast-artifact-branch.md","roast/_molecules/roast-code-branch/roast-code-branch.md","roast/_molecules/roast-target-intake/roast-target-intake.md"]
-disable-model-invocation: true
+disable-model-invocation: false
 user-invocable: true
 requires-skills: []
 ---
