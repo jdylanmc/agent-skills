@@ -999,9 +999,10 @@ test('the documented inputs, bounds, and flags match what the implementation enf
   const molecule = read(MOLECULE);
   const renderer = read('_base/_atoms/handoff-render/handoff-render.md');
 
-  // Every payload field a caller may send is named in both contracts.
+  assert.ok(molecule.includes('handoff-render.md#payload'), 'persistence must reference the canonical payload');
+
+  // Payload fields and bounds have one documented owner.
   for (const field of ['slug', 'slug_source', 'title', 'available_skills', 'schema_version']) {
-    assert.ok(molecule.includes(`\`${field}\``), `the molecule does not document ${field}`);
     assert.ok(renderer.includes(`\`${field}\``), `the renderer does not document ${field}`);
   }
 
@@ -1013,7 +1014,7 @@ test('the documented inputs, bounds, and flags match what the implementation enf
     String(MAX_ARTIFACTS),
     String(MAX_SUGGESTED_SKILLS),
   ]) {
-    assert.ok(molecule.includes(bound), `the molecule does not document the bound ${bound}`);
+    assert.ok(renderer.includes(bound), `the renderer does not document the bound ${bound}`);
   }
 
   // The flags each entry point actually parses.

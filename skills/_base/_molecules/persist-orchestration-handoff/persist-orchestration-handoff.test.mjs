@@ -19,7 +19,7 @@ import {
   sandbox,
   sandboxEnvironment,
 } from '../persist-bounded-handoff/persist-bounded-handoff.fixtures.mjs';
-import { normalizePayload } from '../persist-bounded-handoff/persist-bounded-handoff.mjs';
+import { normalizePayload, persistBoundedHandoff } from '../persist-bounded-handoff/persist-bounded-handoff.mjs';
 import { loadIdentifierConfig } from '../../_atoms/redact-sensitive/redact-sensitive.config.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -194,6 +194,19 @@ test('entry point supports stdin and probe using the same failure envelope as th
     }),
     (error) => error.status === 1 && JSON.parse(error.stderr).error.code === 'malformed_payload',
   );
+});
+
+test('orchestration and direct persistence produce identical documents for the same adapted payload', (t) => {
+  sandbox(t, 'handoff-shared-rendering');
+  const payload = orchestrationPayload();
+  const options = { now: new Date('2026-08-24T23:04:39Z') };
+  const orchestration = persistOrchestrationHandoff(payload, options);
+  const direct = persistBoundedHandoff(adaptOrchestrationPayload(payload), options);
+
+  assert.notEqual(orchestration.path, direct.path, 'separate writes must not overwrite each other');
+  assert.deepEqual(fs.readFileSync(orchestration.path), fs.readFileSync(direct.path));
+  assert.deepEqual(orchestration.headings, direct.headings);
+  assert.equal(orchestration.bytes, direct.bytes);
 });
 
 test('sibling molecule reuses the same five atoms without making the bounded core routable', () => {
