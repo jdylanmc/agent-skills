@@ -389,20 +389,31 @@ function sleep(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function removeLock(lock, expectedToken, expectedIno) {
-  try {
-    if (expectedIno !== undefined && fs.statSync(lock).ino !== expectedIno) return false;
-    if (expectedToken !== undefined) {
-      const owner = JSON.parse(fs.readFileSync(path.join(lock, 'owner.json'), 'utf8'));
-      if (owner.token !== expectedToken) return false;
+function removeLock(lock, expectedToken, expectedIno, deadline) {
+  while (true) {
+    try {
+      if (expectedIno !== undefined && fs.statSync(lock).ino !== expectedIno) return false;
+      if (expectedToken !== undefined) {
+        const owner = JSON.parse(fs.readFileSync(path.join(lock, 'owner.json'), 'utf8'));
+        if (owner.token !== expectedToken) return false;
+      }
+      const removed = `${lock}.removed-${process.pid}-${crypto.randomUUID()}`;
+      try {
+        fs.renameSync(lock, removed);
+      } catch (error) {
+        // Windows may report transient sharing failures under contention.
+        if (['EPERM', 'EBUSY'].includes(error.code) && Date.now() < deadline) {
+          sleep(10);
+          continue;
+        }
+        throw error;
+      }
+      fs.rmSync(removed, { recursive: true, force: true });
+      return true;
+    } catch (error) {
+      if (error.code === 'ENOENT') return false;
+      throw error;
     }
-    const removed = `${lock}.removed-${process.pid}-${crypto.randomUUID()}`;
-    fs.renameSync(lock, removed);
-    fs.rmSync(removed, { recursive: true, force: true });
-    return true;
-  } catch (error) {
-    if (error.code === 'ENOENT') return false;
-    throw error;
   }
 }
 
@@ -440,7 +451,7 @@ function withStateLock(repositoryRoot, operation) {
           if (ownerError.code === 'EPERM') ownerAlive = true;
         }
         if (!ownerAlive && (ownerKnown || Date.now() - observed.mtimeMs > LOCK_STALE_MS)) {
-          removeLock(lock, ownerToken, observed.ino);
+          removeLock(lock, ownerToken, observed.ino, deadline);
           continue;
         }
       } catch (inspectError) {
@@ -454,7 +465,7 @@ function withStateLock(repositoryRoot, operation) {
   try {
     return operation();
   } finally {
-    removeLock(lock, token);
+    removeLock(lock, token, undefined, deadline);
   }
 }
 

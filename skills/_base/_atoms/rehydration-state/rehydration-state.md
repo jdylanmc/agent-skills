@@ -80,7 +80,10 @@ latch.
 State is stored below the repository's ignored `.skill-log/rehydration/`
 directory with owner-only permissions, atomic replacement, and a bounded
 cross-process lock. Dead lock owners are reclaimed and live contention times
-out below the hook command's three-second budget. The final checkpoint is
+out below the hook command's three-second budget. Lock-directory renames retry
+transient `EPERM` and `EBUSY` failures within the original acquisition deadline,
+rechecking ownership before each retry. Persistent or other rename failures
+remain errors; release never starts a fresh wait budget. The final checkpoint is
 rendered and size-validated before the latch is cleared; an oversized packet
 degrades explicitly. Missing state is inactive, not permission to invent an
 active run.

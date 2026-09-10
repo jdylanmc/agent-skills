@@ -73,6 +73,114 @@ function resultEvidence(root, relativePath) {
 
 test.after(() => fs.rmSync(ROOT, { recursive: true, force: true }));
 
+for (const code of ['EPERM', 'EBUSY']) {
+  test(`lock release retries transient ${code} rename failures`, (t) => {
+    const root = repo(`release-${code}`);
+    const lock = path.join(root, '.skill-log', 'rehydration', '.lock');
+    const rename = fs.renameSync;
+    let attempts = 0;
+    t.mock.method(fs, 'renameSync', (source, target) => {
+      if (source === lock && ++attempts <= 2) {
+        throw Object.assign(new Error('lock directory temporarily busy'), { code });
+      }
+      return rename(source, target);
+    });
+
+    register(root);
+
+    assert.equal(attempts, 3);
+    assert.equal(fs.existsSync(lock), false);
+    assert.equal(readState(root, 'session-1').stack.length, 1);
+    assert.deepEqual(
+      fs.readdirSync(path.dirname(lock)).filter((name) => name.startsWith('.lock')),
+      [],
+    );
+  });
+}
+
+test('lock release preserves non-transient rename errors', (t) => {
+  const root = repo('release-denied');
+  const lock = path.join(root, '.skill-log', 'rehydration', '.lock');
+  const rename = fs.renameSync;
+  const failure = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+  let attempts = 0;
+  t.mock.method(fs, 'renameSync', (source, target) => {
+    if (source === lock) {
+      attempts += 1;
+      throw failure;
+    }
+    return rename(source, target);
+  });
+
+  assert.throws(() => register(root), (error) => error === failure);
+  assert.equal(attempts, 1);
+  assert.equal(fs.existsSync(lock), true);
+});
+
+test('lock release surfaces persistent contention at the deadline', (t) => {
+  const root = repo('release-deadline');
+  const lock = path.join(root, '.skill-log', 'rehydration', '.lock');
+  const rename = fs.renameSync;
+  const failure = Object.assign(new Error('still busy'), { code: 'EPERM' });
+  let now = Date.now();
+  let attempts = 0;
+  t.mock.method(Date, 'now', () => now);
+  t.mock.method(fs, 'renameSync', (source, target) => {
+    if (source === lock) {
+      attempts += 1;
+      if (attempts === 2) now += 3000;
+      throw failure;
+    }
+    return rename(source, target);
+  });
+
+  assert.throws(() => register(root), (error) => error === failure);
+  assert.equal(attempts, 2);
+  assert.equal(fs.existsSync(lock), true);
+});
+
+test('lock release does not restart the acquisition budget after writing state', (t) => {
+  const root = repo('release-spent-budget');
+  const lock = path.join(root, '.skill-log', 'rehydration', '.lock');
+  const rename = fs.renameSync;
+  const failure = Object.assign(new Error('still busy'), { code: 'EPERM' });
+  let now = Date.now();
+  let attempts = 0;
+  t.mock.method(Date, 'now', () => now);
+  t.mock.method(fs, 'renameSync', (source, target) => {
+    if (source === lock) {
+      attempts += 1;
+      throw failure;
+    }
+    now += 3000;
+    return rename(source, target);
+  });
+
+  assert.throws(() => register(root), (error) => error === failure);
+  assert.equal(attempts, 1);
+});
+
+test('lock release rechecks ownership before retrying rename', (t) => {
+  const root = repo('release-replaced-owner');
+  const lock = path.join(root, '.skill-log', 'rehydration', '.lock');
+  const ownerPath = path.join(lock, 'owner.json');
+  const replacement = { pid: process.pid, token: 'replacement-owner' };
+  const rename = fs.renameSync;
+  let attempts = 0;
+  t.mock.method(fs, 'renameSync', (source, target) => {
+    if (source === lock) {
+      attempts += 1;
+      fs.writeFileSync(ownerPath, JSON.stringify(replacement));
+      throw Object.assign(new Error('lock changed while busy'), { code: 'EPERM' });
+    }
+    return rename(source, target);
+  });
+
+  register(root);
+  assert.equal(attempts, 1);
+  assert.deepEqual(JSON.parse(fs.readFileSync(ownerPath, 'utf8')), replacement);
+});
+
 test('root and nested runs arm one ordered canonical read set', () => {
   const root = repo('nested');
   register(root);
