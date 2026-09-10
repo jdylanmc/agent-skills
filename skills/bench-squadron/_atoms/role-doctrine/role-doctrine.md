@@ -60,9 +60,10 @@ Do not truncate, summarize, or omit a lens, apply blanket `long_context`, or
 weaken roles to save cost. Preserve the existing pool cap, quorum, and bounded
 task packets.
 
-The adapter calls shared `resolveInlineModelRoute` for each slot and
-`summarizeModelDiversity` for the delivery pool. It does not duplicate fallback
-selection or family classification. Keep the returned `assignments` and shared
+The adapter calls shared `resolveEligibleModelRoute` over `resolveInlineModelRoute`
+for each slot and `summarizeModelDiversity` for the delivery pool. It does not
+duplicate eligibility checks, fallback selection, or family classification.
+Keep the returned `assignments` and shared
 `receipt` fields in the role packets; pass each exact `route` to the existing
 runtime dispatch. The repeated fifth-seat model remains a separate slot, not a
 claim of another independent family.

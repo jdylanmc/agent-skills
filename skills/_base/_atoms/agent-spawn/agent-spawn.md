@@ -76,6 +76,23 @@ decision-trail workflow is invented by this atom, and an override for one of
 those roles has no effect until such a caller explicitly dispatches through the
 shared seam.
 
+## Caller-Owned Eligibility Policies
+
+Bench and Test-Driven Development Squadron use `resolveEligibleModelRoute` over
+the same inline resolver. It requires an observed runtime inventory, a nonempty
+caller-approved eligible-ID list, and explicit effort/context settings. It
+rejects requested and fallback models outside that list. Optional overrides use
+only `model`, `fallbackModels`, `reasoningEffort`, and `contextTier`.
+
+The callers own their role defaults, fallback order, group-selection policy,
+and confirmation. This helper neither decides generation eligibility nor adds
+their role names to the seven-role override vocabulary above. Other routing
+entry points retain their existing runtime-default and unobserved modes.
+
+Their executable adapters also share `runModelRouteCli`: one JSON input on
+`--stdin`, JSON receipts on standard output, and exit `1` for unavailable routes
+or invalid input. Imports do not read stdin or dispatch agents.
+
 ## Precedence
 
 The prompt is authoritative. The persona governs voice and nothing else.

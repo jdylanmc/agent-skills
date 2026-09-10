@@ -22,7 +22,9 @@ allowed-tools: ["execute","read","search","task"]
 ## Operation
 
 1. Bind every dispatched role to full-text doctrine lenses and a canonical
-   manifest revision/digest. Configure the trusted coordinator and reserve Red
+   manifest revision/digest. Execute Doctrine Lenses' model resolver and use its
+   routes and receipts without inventing fallbacks or model-variety claims.
+   Configure the trusted coordinator and reserve Red
    and Green through the atomic adapter as one two-seat control transaction.
 2. Dispatch one alternating vertical slice at a time. Each result becomes a
    typed, validated fleet-state proposal. Atomic Proposal derives current TDD

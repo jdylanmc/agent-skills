@@ -47,6 +47,10 @@ Red/Green and Roast choreography.
    doctrine as **full text**, plus the canonical doctrine-manifest revision and
    digest that bind those exact bytes. Doctrine is a reasoning lens, not a
    rule-by-rule compliance gate or a grant of strategic authority.
+   Run Doctrine Lenses' model resolver and retain its routes, receipts, and
+   variety record in those packets. Use the exact resolved route for a new
+   dispatch; an unavailable route never becomes a runtime-default selection.
+   Routing does not replace a persistent agent or bypass its lease.
 3. Obtain an all-or-nothing two-seat reservation for two distinct people:
    `red` and `green`. Both leases bind seat, owner, agent, generation, expiry,
    replacement fence, run, and candidate revision. A role may hold no second
@@ -105,7 +109,7 @@ Red/Green and Roast choreography.
 ## Permissions
 
 `read` and `search` resolve the closed manifest, fleet observations, and
-full-text doctrine lenses. `execute` runs deterministic reservation, lifecycle,
+full-text doctrine lenses. `execute` runs deterministic model routing, reservation, lifecycle,
 proposal, and snapshot helpers plus best-effort Chronicler recording. `task`
 dispatches the pair, the four-role Roast, and isolated Slop Sniper audit. There
 is no `edit`, provider-write, merge, approval, or risk-acceptance authority.

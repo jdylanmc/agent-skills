@@ -8,6 +8,7 @@ import {
   ModelRouteResolutionError,
   modelFamily,
   resolveDirectSpawnRoute,
+  resolveEligibleModelRoute,
   resolveInlineModelRoute,
   resolveModelRolePanel,
   resolveModelRoleRoute,
@@ -31,6 +32,33 @@ test('direct routing preserves runtime default behavior when no explicit model i
   assert.equal(resolved.receipt.modelStatus, 'Runtime default');
   assert.equal(resolved.receipt.availabilityStatus, 'runtime-default');
   assert.equal(resolved.receipt.selectedModel, null);
+});
+
+test('eligible routing preserves inline receipts while enforcing caller constraints', () => {
+  const request = {
+    role: 'fixture-role',
+    resolutionSource: 'fixture-policy',
+    inlineRoute: {
+      model: 'gpt-6-astra', fallbackModels: ['gpt-5.6-sol'],
+      reasoningEffort: 'high', contextTier: 'default',
+    },
+    runtimeAvailableModels: ['gpt-5.6-sol'],
+    eligibleModels: ['gpt-6-astra', 'gpt-5.6-sol'],
+  };
+  assert.deepEqual(resolveEligibleModelRoute(request), resolveInlineModelRoute(request));
+  for (const overrides of [
+    { runtimeAvailableModels: null }, { eligibleModels: [] }, { override: { alias: 'auto' } },
+    { override: { 'fallback-models': [] } }, { override: { reasoningEffort: null } },
+  ]) {
+    assert.throws(() => resolveEligibleModelRoute({ ...request, ...overrides }), { code: 'invalid_input' });
+  }
+  assert.throws(() => resolveEligibleModelRoute({ ...request, eligibleModels: ['gpt-5.6-sol'] }),
+    { code: 'ineligible_model' });
+  assert.throws(() => resolveEligibleModelRoute(), { code: 'invalid_input' });
+  const changed = resolveEligibleModelRoute({ ...request, override: { contextTier: 'long_context' } });
+  assert.equal(changed.route.contextTier, 'long_context');
+  assert.equal(request.inlineRoute.contextTier, 'default');
+  assert.ok(Object.isFrozen(changed.receipt));
 });
 
 test('direct routing records a fallback only from the declared list', () => {

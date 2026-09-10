@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 export class ModelRouteResolutionError extends Error {
   constructor(code, message) {
     super(message);
@@ -394,6 +398,63 @@ export function resolveInlineModelRoute({
       availability,
     }),
   });
+}
+
+export function resolveEligibleModelRoute({
+  inlineRoute,
+  override = {},
+  eligibleModels,
+  runtimeAvailableModels,
+  role,
+  resolutionSource,
+} = {}) {
+  if (!Array.isArray(runtimeAvailableModels)) {
+    throw new ModelRouteResolutionError('invalid_input', 'runtimeAvailableModels must be an observed array of model IDs');
+  }
+  const eligible = normalizeStringArray(eligibleModels, 'eligibleModels');
+  if (eligible.length === 0) {
+    throw new ModelRouteResolutionError('invalid_input', 'eligibleModels must name the caller-approved models');
+  }
+  if (!override || typeof override !== 'object' || Array.isArray(override)
+      || Object.keys(override).some((key) =>
+        !['model', 'fallbackModels', 'reasoningEffort', 'contextTier'].includes(key))) {
+    throw new ModelRouteResolutionError('invalid_input', 'override must use model, fallbackModels, reasoningEffort, or contextTier');
+  }
+  const defaults = normalizeRouteSpec(inlineRoute, 'inlineRoute');
+  const resolved = resolveInlineModelRoute({
+    inlineRoute: { ...defaults, ...override },
+    runtimeAvailableModels, role, resolutionSource,
+  });
+  if ([resolved.receipt.requestedModel, ...resolved.receipt.fallbackModels]
+    .some((model) => !eligible.includes(model))) {
+    throw new ModelRouteResolutionError('ineligible_model', `${role} requests a model outside the caller's eligible policy`);
+  }
+  if (resolved.receipt.reasoningEffort === null || resolved.receipt.contextTier === null) {
+    throw new ModelRouteResolutionError('invalid_input', `${role} must name its reasoning effort and context tier`);
+  }
+  return resolved;
+}
+
+export function runModelRouteCli(moduleUrl, resolveInput) {
+  const entry = fileURLToPath(moduleUrl);
+  if (!process.argv[1] || path.resolve(process.argv[1]) !== entry) return;
+  try {
+    if (process.argv.length !== 3 || process.argv[2] !== '--stdin') {
+      throw new ModelRouteResolutionError('invalid_input', `Usage: ${path.basename(entry)} --stdin`);
+    }
+    const result = resolveInput(JSON.parse(fs.readFileSync(0, 'utf8')));
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (result.status === 'unavailable') process.exitCode = 1;
+  } catch (error) {
+    if (!(error instanceof ModelRouteResolutionError) && !(error instanceof SyntaxError)) throw error;
+    process.stderr.write(`${JSON.stringify({
+      error: {
+        code: error instanceof SyntaxError ? 'invalid_json' : error.code,
+        message: error instanceof SyntaxError ? 'Expected a JSON object on standard input' : error.message,
+      },
+    })}\n`);
+    process.exitCode = 1;
+  }
 }
 
 export function resolveModelRoleRoute({
