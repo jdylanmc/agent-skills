@@ -2,7 +2,7 @@
 name: research-thread
 description: Answer one external-knowledge question by dispatching the runtime research route, validating the returned report against a declared contract, and folding cited claims back into discovery.
 level: molecule
-allowed-tools: ["task"]
+allowed-tools: ["execute","task"]
 includes: ["discovery/_atoms/research-dispatch/research-dispatch.md","_base/_atoms/review-validate-report/review-validate-report.md"]
 composes: ["discovery/_atoms/research-dispatch/research-dispatch.md","_base/_atoms/review-validate-report/review-validate-report.md"]
 used-by: ["discovery/_molecules/cycle-controller/cycle-controller.md"]

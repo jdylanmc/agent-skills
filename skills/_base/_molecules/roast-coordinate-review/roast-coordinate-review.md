@@ -5,7 +5,7 @@ level: molecule
 includes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/review-validate-report/review-validate-report.md"]
 composes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/review-validate-report/review-validate-report.md"]
 used-by: ["roast/_molecules/roast-artifact-branch/roast-artifact-branch.md"]
-allowed-tools: ["task"]
+allowed-tools: ["execute","task"]
 ---
 
 # Coordinate an Artifact Roast
@@ -63,6 +63,9 @@ prompt but may not infer, broaden, normalize, repair, or replace them.
    timeout, unreadable evidence report, empty response, unevaluable rule, or
    other failed coordinate run is invalid and its exact failure is a named
    defect.
+   Execute the contract's framing/finding checker with the caller's original
+   artifact identity, then evaluate its named remaining checks. Do not infer
+   full envelope validity from that scoped result.
 
 4. **Retry exactly once.** On the first invalid envelope or failed coordinate
    run, repeat step 1 once with a new Agent spawn carrying no failed-run

@@ -20,7 +20,7 @@ Never supply this document to a roaster with placeholders unresolved.
 
 ## Required References
 
-1. [Accepted-finding schema checker](./roast-contract.mjs)
+1. [Envelope framing and accepted-finding checker](./roast-contract.mjs)
 
 ## Scope
 
@@ -263,17 +263,27 @@ heading, a field name, or a terminator.
 99. The final line is `END ARTIFACT ROAST ENVELOPE`, outside every fenced
     block.
 
-Check item 10 with the accepted-finding schema checker:
+Execute items 1-4, 10, and 99 together with the existing checker. Supply the
+artifact type, locator, and review root from the caller's original inputs,
+never copied from the returned envelope:
 
 ```text
-node <atoms>/roast-contract/roast-contract.mjs --report "$absolute_report_path"
+node <atoms>/roast-contract/roast-contract.mjs --report "$absolute_report_path" \
+  --artifact-type {{type}} --artifact-locator "$artifact_locator" \
+  --review-root "$allowed_review_root"
 ```
 
-Exit `0` is a valid report, `2` names each finding and the field it is missing,
-and `1` is a usage or path failure. A failure of item 10 is an ordinary schema
-failure and takes the ordinary route: the coordinate step is retried once with
-the exact defects, and a second failure returns `Status: Unsynthesized`. It is
-not a new failure mode and it is not a gate.
+The result explicitly names `scope: envelope-framing-and-finding-fields`,
+`checkedItems`, and `remainingChecks`. Exit `0` means only that scope is valid;
+`2` returns named defects, and `1` is an input or path failure. Items 5-9, intent
+screening, and artifact-specific rules still require their existing checks.
+The coordinator assigns the packet identifier: this slice requires it to be
+non-empty but does not yet verify nested-report packet agreement.
+Without the identity arguments the command retains its finding-only mode.
+
+A failed machine check is an ordinary schema failure and takes the existing
+retry-once-then-`Unsynthesized` route. A scoped pass never establishes a complete
+envelope or human approval.
 
 Check item 11 with the intent screen:
 
