@@ -1,10 +1,10 @@
 ---
 name: ship
-description: "Take one tracker issue to review-ready, or continue that same issue on exactly one existing change request when new in-scope review or continuous integration evidence requires functional code or test remediation. Ground new delivery into a confirmed plan; for continuation preserve the confirmed ledger, issue, change-request, branch, and captured head identities. Dispatch a fresh bounded worker, reconcile every hunk, validate through run-ci, review through roast, and report criterion by criterion. Do not use for a backlog, merge, approval, risk acceptance, wider product or architecture decisions, review-thread mutation, or Shepherd's pure rebase, configured mechanical conflict resolution, and derived regeneration work."
+description: "Take one tracker issue to review-ready, or continue that same issue on exactly one existing change request when new in-scope review or continuous integration evidence requires functional code or test remediation. Use for operator-requested delivery or a bound Shepherd continuation handoff, not unsolicited implementation. Ground new delivery into a confirmed plan; for continuation preserve the confirmed ledger, issue, change-request, branch, and captured head identities. Dispatch a fresh bounded worker, reconcile every hunk, validate through run-ci, review through roast, and report criterion by criterion. Do not use for a backlog, merge, approval, risk acceptance, wider product or architecture decisions, review-thread mutation, or Shepherd's pure rebase, configured mechanical conflict resolution, and derived regeneration work."
 allowed-tools: ["execute","read","search","task"]
 includes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/continuation-remediation/continuation-remediation.md","ship/_atoms/provider-review/provider-review.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md","_base/_atoms/provider-detect/provider-detect.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","ship/_molecules/delivery-grounding/delivery-grounding.md","ship/_molecules/delivery-cycle/delivery-cycle.md","ship/_atoms/continuation-remediation/continuation-remediation.md","ship/_atoms/provider-review/provider-review.md","ship/_atoms/merge-gate/merge-gate.md","ship/_atoms/change-request/change-request.md","ship/_atoms/shepherd-handoff/shepherd-handoff.md","_base/_atoms/landability/landability.md","_base/_atoms/provider-detect/provider-detect.md"]
-disable-model-invocation: true
+disable-model-invocation: false
 user-invocable: true
 requires-skills: [{"id":"run-ci","source":"local","required":true},{"id":"roast","source":"local","required":true},{"id":"shepherd","source":"local","required":false}]
 ---
@@ -515,11 +515,13 @@ write. The conformance suite therefore pins the set of units in this skill's
 closure that carry `execute` and `task`, so a new one appearing is a reviewable
 change rather than a detail.
 
-**`disable-model-invocation` flips to `true` in this stage.** Stage one read an
-issue and returned a plan, which is safe for a model to reach for. Stage two
-dispatches a worker that writes code and opens a change request on a shared
-remote, and a workflow with that reach should begin because a person asked for
-it by name, not because a description matched. `user-invocable` stays `true`.
+**Ship is model-invocable so Shepherd's continuation worker can load it.**
+`user-invocable` stays `true` for direct `/ship`. Loading is not authorization:
+new delivery still requires an operator request and explicit alignment before
+dispatch, while continuation requires the bound issue, confirmed ledger,
+existing change request, captured head, and prior evidence at its intake gate.
+A missing or refused continuation packet never falls back to new delivery.
+Neither route acquires merge or approval authority.
 
 ---
 
