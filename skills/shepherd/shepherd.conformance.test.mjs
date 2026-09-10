@@ -78,7 +78,7 @@ test('shepherd is routable with deliberate Ship delegation and run-ci dependency
   const parsed = frontmatter(ENTRY);
 
   assert.equal(parsed.name, 'shepherd');
-  assert.equal(parsed.disableModelInvocation, true);
+  assert.equal(parsed.disableModelInvocation, false);
   assert.equal(parsed.userInvocable, true);
   assert.deepEqual(parsed.allowedTools, PINNED_TOOLS);
   assert.deepEqual(parsed.requiresSkills, [
