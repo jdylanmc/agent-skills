@@ -1,10 +1,10 @@
 ---
 name: shepherd
-description: Own one observable existing git-hosted change request for a long-running watch, keeping its durable observation current and acting only when base, head, review, check, merge, or ownership evidence meaningfully changes. Use when asked to shepherd, watch, rebase, green, or keep one existing change request moving; without validated Ship continuation, direct invocations observe only. Do not use for an unhosted branch pair, an unobservable provider, creation, approval, merge, risk acceptance, review-thread mutation, silent semantic conflict resolution, or test weakening.
+description: Own one observable existing git-hosted change request for a long-running watch, keeping its durable observation current and acting only when base, head, review, check, merge, or ownership evidence meaningfully changes. Use when asked to shepherd, watch, rebase, green, or keep one existing change request moving, or when a delivery workflow hands off an operator-requested watch; without validated Ship continuation, invocations observe only. Do not use for an unsolicited watch, an unhosted branch pair, an unobservable provider, creation, approval, merge, risk acceptance, review-thread mutation, silent semantic conflict resolution, or test weakening.
 allowed-tools: ["execute","read","search","edit","task"]
 includes: ["_base/_molecules/chronicler/chronicler.md","shepherd/_molecules/pr-shepherding/pr-shepherding.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","shepherd/_molecules/pr-shepherding/pr-shepherding.md"]
-disable-model-invocation: true
+disable-model-invocation: false
 user-invocable: true
 requires-skills: [{"id":"run-ci","source":"local","required":true},{"id":"ship","source":"local","required":true}]
 ---
@@ -25,6 +25,15 @@ record -> resolve target -> resume durable watch -> observe cheaply -> act on ch
 
 1. [Chronicler recording molecule](../_base/_molecules/chronicler/chronicler.md)
 2. [PR shepherding](./_molecules/pr-shepherding/pr-shepherding.md)
+
+## Invocation
+
+Shepherd is model-invocable so a delivery workflow can perform the handoff the
+operator requested. Direct `/shepherd` remains available. Loading the skill
+does not authorize an unsolicited watch: the caller must carry the operator's
+watch request and target. Ship still asks for that intent before delivery.
+Without validated continuation authority, the observation-only rules below
+apply; model invocation grants no branch mutation or merge authority.
 
 ## Architecture
 

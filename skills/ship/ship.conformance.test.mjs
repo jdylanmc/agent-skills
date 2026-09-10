@@ -393,6 +393,15 @@ test('Ship can model-invoke its required Roast dependency without losing direct 
   assert.deepEqual(roast.allowedTools, ['read', 'search', 'execute', 'task']);
 });
 
+test('Ship can model-invoke Shepherd while keeping the handoff optional', () => {
+  const dependency = frontmatter(ENTRY).requiresSkills.find((edge) => edge.id === 'shepherd');
+  assert.deepEqual(dependency, { id: 'shepherd', source: 'local', required: false });
+  const shepherd = frontmatter(`${dependency.id}/SKILL.md`);
+  assert.equal(shepherd.disableModelInvocation, false, 'a requested handoff must be loadable by the model');
+  assert.equal(shepherd.userInvocable, true, 'direct /shepherd remains available');
+  assert.deepEqual(shepherd.allowedTools, ['execute', 'read', 'search', 'edit', 'task']);
+});
+
 test('ship is a routable single-issue delivery skill a human invokes deliberately', () => {
   const parsed = frontmatter(ENTRY);
 
