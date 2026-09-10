@@ -13,9 +13,9 @@ requires-skills: [{"id": "roast", "source": "local", "required": true}, {"id": "
 
 Create one new routable skill package that conforms to this repository's local
 unit composition model, validator, derived graph, and continuous-integration
-registration rules. The workflow is local-first: new atoms and molecules are
-created under the new skill unless a reviewed design names at least two current
-or explicitly approved consumers.
+registration rules. When needed, new atoms and molecules start under the new
+skill unless a reviewed design names at least two current or explicitly approved
+consumers.
 
 ```text
 coach -> elicit intent -> build -> validate -> roast -> resolve -> present
@@ -73,7 +73,7 @@ legitimately have none, which is not this skill's concern.
    fed the draft.
 4. Use [Skill package design](./_molecules/skill-package-design/skill-package-design.md)
    to establish the one reusable job, routing triggers, refusals, boundaries,
-   invocation flags, and the local atom/molecule decomposition. Derive all of it
+   invocation flags, and any justified unit decomposition. Derive all of it
    from the stored intent rather than inventing it separately.
 5. Create only the new package under `skills/<new-skill>/`. If that package
    already exists, stop rather than overwriting or converting it. Do not edit an

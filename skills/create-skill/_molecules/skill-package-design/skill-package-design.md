@@ -27,9 +27,9 @@ allowed-tools: ["edit","read","search"]
 
 1. Establish the single-job routing contract with
    [Scope contract](../../_atoms/scope-contract/scope-contract.md).
-2. Decompose that job with
+2. Choose the smallest cohesive structure with
    [Unit decomposition](../../_atoms/unit-decomposition/unit-decomposition.md),
-   keeping first-consumer units local and leaving the wrapper thin.
+   keeping any justified first-consumer units local.
 3. Reconcile the two outputs against the stored intent. If a proposed unit
    implies a second job or a broader trigger than the scope contract allows,
    narrow or split it before writing files. If either output asserts something

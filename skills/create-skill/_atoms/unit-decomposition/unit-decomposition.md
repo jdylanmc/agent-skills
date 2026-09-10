@@ -1,6 +1,6 @@
 ---
 name: unit-decomposition
-description: Convert the scoped skill job into a local-first atom and molecule package structure that follows ADR 0001.
+description: Choose the smallest cohesive skill structure, extracting justified units locally and following ADR 0001 for shared promotion.
 level: atom
 allowed-tools: ["read","search","edit"]
 includes: []
@@ -20,13 +20,14 @@ used-by: ["create-skill/_molecules/skill-package-design/skill-package-design.md"
 
 ## Operation
 
-1. Keep the wrapper thin. `SKILL.md` holds routing metadata, the required
-   references list, the high-level workflow, the output contract, and top-level
-   boundaries.
-2. Identify atoms as single caller-visible operations that do not compose other
-   units. Create each atom at `skills/<skill>/_atoms/<name>/<name>.md`.
-3. Identify molecules as ordered compositions of two or more atoms or molecules.
-   Create each molecule at `skills/<skill>/_molecules/<name>/<name>.md`.
+1. Keep a short, cohesive workflow in `SKILL.md` with its routing metadata,
+   required references, output contract, and boundaries. Extract only for actual
+   reuse, a meaningful enforcement boundary, or substantial independently useful
+   detail. Do not create forwarding layers to satisfy a unit quota.
+2. For each justified atom, keep one caller-visible operation that does not
+   compose other units, at `skills/<skill>/_atoms/<name>/<name>.md`.
+3. For each justified molecule, compose two or more atoms or molecules at
+   `skills/<skill>/_molecules/<name>/<name>.md`.
 4. Apply ADR 0001 local-first. A new unit starts local to this first consumer.
    Promote to `skills/_base/` only when at least two current skills or
    explicitly approved skill designs compose it and the promotion is reviewed.
@@ -44,13 +45,14 @@ used-by: ["create-skill/_molecules/skill-package-design/skill-package-design.md"
 | Field | Meaning |
 | --- | --- |
 | `package_tree` | The proposed `skills/<skill>/` file tree. |
-| `atoms` | Each atom, its single operation, and why it is not a molecule. |
-| `molecules` | Each molecule and the two or more direct units it composes. |
+| `atoms` | Each justified atom and its operation, or an empty list. |
+| `molecules` | Each justified molecule and its direct units, or an empty list. |
 | `wrapper_responsibilities` | What remains in `SKILL.md`. |
 | `promotion_decisions` | Why every new unit remains local or why a reviewed `_base` promotion is justified. |
 
 ## Guarantees
 
+- No local atoms or molecules are required for a short, cohesive workflow.
 - First-consumer units stay local to the new skill.
 - Every molecule composes at least two units.
 - Unit roots, file names, and support-file names match the validator's shape.
