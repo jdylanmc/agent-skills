@@ -58,11 +58,15 @@ inventing content. Single-quote free-text scalar values; use a block scalar when
 a value contains a newline. Every material finding includes evidence and
 confidence.
 
-Every `evidence`, `traces_to`, `affects`, `supporting_evidence`,
+Every `evidence`, `traces_to`, `supporting_evidence`,
 `counter_evidence`, `outcome_evidence`, `alternative_feasibility_evidence`, and
 `observed_outcome_evidence` list contains evidence-anchor IDs only, optionally
 followed by a short redacted descriptor. Never paste verbatim operator text,
 file contents, or tool output into these lists.
+
+`root_cause_hypotheses.affects` references the `F` and `G` finding IDs the
+hypothesis explains, not source anchors. For `identified_gaps.category`, use
+the fixed `GAP_CATEGORIES` exported by the record contract check above.
 
 An anchor may come from any admitted source: the visible session (`U`, `A`,
 `T`, `S`, `R`, `M`), an identified runtime session log (`E`), or a selected

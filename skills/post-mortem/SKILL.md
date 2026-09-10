@@ -2,8 +2,8 @@
 name: post-mortem
 description: Produce a read-only, evidence-anchored post-mortem of an agent session - what the operator wanted, what was produced, where the session met friction, which execution gaps explain it, and which bounded, testable improvements are worth proposing. Evidence is the current session, the runtime's own session log when the harness is supported and its identity can be proved, and a Skill Run Log the operator explicitly selects. Use when the operator asks to post-mortem, retrospect on, or extract lessons from an interaction or a named recorded run. Do not use for incident, outage, or production-failure reviews, team or sprint retrospectives, unsolicited cross-session analytics, code review, or to apply skill, memory, or instruction changes.
 allowed-tools: ["execute","read","search"]
-includes: ["_base/_molecules/chronicler/chronicler.md","post-mortem/_molecules/evidence-assemble/evidence-assemble.md","post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md","post-mortem/_atoms/session-classify-outcome/session-classify-outcome.md","post-mortem/_molecules/postmortem-diagnose-session/postmortem-diagnose-session.md","post-mortem/_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md","post-mortem/_atoms/postmortem-render-record/postmortem-render-record.md","post-mortem/_atoms/postmortem-regression-check/postmortem-regression-check.md"]
-composes: ["_base/_molecules/chronicler/chronicler.md","post-mortem/_molecules/evidence-assemble/evidence-assemble.md","post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md","post-mortem/_atoms/session-classify-outcome/session-classify-outcome.md","post-mortem/_molecules/postmortem-diagnose-session/postmortem-diagnose-session.md","post-mortem/_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md","post-mortem/_atoms/postmortem-render-record/postmortem-render-record.md","post-mortem/_atoms/postmortem-regression-check/postmortem-regression-check.md"]
+includes: ["_base/_molecules/chronicler/chronicler.md","post-mortem/_molecules/evidence-assemble/evidence-assemble.md","post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md","post-mortem/_atoms/session-classify-outcome/session-classify-outcome.md","post-mortem/_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md","post-mortem/_atoms/postmortem-render-record/postmortem-render-record.md","post-mortem/_atoms/postmortem-regression-check/postmortem-regression-check.md"]
+composes: ["_base/_molecules/chronicler/chronicler.md","post-mortem/_molecules/evidence-assemble/evidence-assemble.md","post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md","post-mortem/_atoms/session-classify-outcome/session-classify-outcome.md","post-mortem/_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md","post-mortem/_atoms/postmortem-render-record/postmortem-render-record.md","post-mortem/_atoms/postmortem-regression-check/postmortem-regression-check.md"]
 disable-model-invocation: false
 user-invocable: true
 requires-skills: []
@@ -28,10 +28,9 @@ deliverable is one fixed-schema record a person reads and decides on.
 2. [Assemble session evidence](./_molecules/evidence-assemble/evidence-assemble.md)
 3. [Skill Run Log evidence](./_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md)
 4. [Session outcome classification](./_atoms/session-classify-outcome/session-classify-outcome.md)
-5. [Diagnose the session](./_molecules/postmortem-diagnose-session/postmortem-diagnose-session.md)
-6. [Propose reinforcement](./_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md)
-7. [Post-mortem record](./_atoms/postmortem-render-record/postmortem-render-record.md)
-8. [Post-mortem regression check](./_atoms/postmortem-regression-check/postmortem-regression-check.md)
+5. [Propose reinforcement](./_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md)
+6. [Post-mortem record](./_atoms/postmortem-render-record/postmortem-render-record.md)
+7. [Post-mortem regression check](./_atoms/postmortem-regression-check/postmortem-regression-check.md)
 
 ## Core Workflow
 
@@ -72,9 +71,9 @@ deliverable is one fixed-schema record a person reads and decides on.
    the operator's ultimate goal, the desired work product, the produced result,
    and the evidence of alignment or mismatch.
 
-6. Run [Diagnose the session](./_molecules/postmortem-diagnose-session/postmortem-diagnose-session.md)
-   for friction events, execution gaps, and deduplicated mechanism-focused
-   root-cause hypotheses, each anchored and calibrated.
+6. Use [Diagnosis](#diagnosis) below on the assembled ledger and classified
+   outcome. Populate the existing [Post-mortem record](./_atoms/postmortem-render-record/postmortem-render-record.md)
+   schema directly; do not create separate intermediate diagnosis packets.
 
 7. Run [Propose reinforcement](./_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md)
    for gated reusable candidates grounded in the package repository, testable
@@ -89,6 +88,44 @@ deliverable is one fixed-schema record a person reads and decides on.
 When revising this package, check the change against
 [Post-mortem regression check](./_atoms/postmortem-regression-check/postmortem-regression-check.md)
 before accepting it.
+
+## Diagnosis
+
+Use only the assembled, redacted evidence and its most restrictive confidence
+cap. Keep observations, derived findings, hypotheses, and proposals distinct.
+Every material claim needs evidence anchors and calibrated confidence. Name
+agent error plainly when direct evidence supports it; do not explain it away,
+praise or defend the agent, assign blame, or psychoanalyze anyone.
+
+1. **Identify friction (`F` IDs).** Look for explicit correction or rejection;
+   restated or narrowed requirements; redirects to a different approach or
+   artifact; repeated requests after an inadequate result; abandoned directions;
+   late-discovered conflicting
+   requirements; retry or rework caused by a failed approach; blocked or denied
+   tool operations; omitted validation or unmet acceptance criteria; and
+   escalating specificity after a miss. Each event needs an observable
+   consequence, severity, and confidence. Normal clarification, necessary
+   verification, useful iteration, and task complexity are not friction by
+   themselves. Proportionate, successfully resolved iteration is not a finding.
+2. **Classify gaps (`G` IDs).** Use the record contract's fixed `GAP_CATEGORIES`,
+   not a new taxonomy. Name the moment, impact, and explanation, with a specific
+   available alternative and evidence that it was feasible. If no alternative
+   is supported, use a testable mechanism hypothesis; if no test can be named,
+   record the limitation instead.
+3. **Form hypotheses (`H` IDs).** Describe an observable mechanism in context,
+   workflow, capability, instructions, routing, tools, environment, or
+   irreducible ambiguity. Include supporting evidence, counter-evidence, every
+   affected `F` or `G` ID, confidence, and a falsifying or confirming test.
+   Deduplicate by mechanism: one hypothesis can explain several symptoms.
+   When evidence conflicts, preserve both sides, lower confidence, and define a
+   future validation test rather than choosing a side.
+
+Return `friction_signals`, `identified_gaps`, and `root_cause_hypotheses` in the
+existing record schema. A clean or insufficiently observed session may return
+empty lists and `no_material_finding`; retain its limitations and verified
+positive patterns. Do not manufacture findings to fill the record.
+Capability proposals and lifecycle assignment belong to the following step.
+Diagnosis itself acquires no new evidence and applies no learning or changes.
 
 ## Two Evidence Sources, One Ledger
 

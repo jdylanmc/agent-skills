@@ -15,7 +15,6 @@ const PINNED_TOOLS = ['execute', 'read', 'search'];
 const MOLECULES = [
   'post-mortem/_molecules/evidence-assemble/evidence-assemble.md',
   'post-mortem/_molecules/runlog-obtain-evidence/runlog-obtain-evidence.md',
-  'post-mortem/_molecules/postmortem-diagnose-session/postmortem-diagnose-session.md',
   'post-mortem/_molecules/postmortem-propose-reinforcement/postmortem-propose-reinforcement.md',
 ];
 
@@ -25,9 +24,6 @@ const ATOMS = [
   'post-mortem/_atoms/evidence-redact-untrusted/evidence-redact-untrusted.md',
   'post-mortem/_atoms/evidence-anchor-ledger/evidence-anchor-ledger.md',
   'post-mortem/_atoms/session-classify-outcome/session-classify-outcome.md',
-  'post-mortem/_atoms/friction-detect-signals/friction-detect-signals.md',
-  'post-mortem/_atoms/gap-classify-taxonomy/gap-classify-taxonomy.md',
-  'post-mortem/_atoms/hypothesis-form-root-cause/hypothesis-form-root-cause.md',
   'post-mortem/_atoms/candidate-gate-retention/candidate-gate-retention.md',
   'post-mortem/_atoms/lesson-propose-testable/lesson-propose-testable.md',
   'post-mortem/_atoms/reinforcement-assign-state/reinforcement-assign-state.md',
@@ -171,6 +167,25 @@ test('the fixed record schema keeps every key, in order', () => {
     .map((line) => line.split(':')[0]);
 
   assert.deepEqual(keys, SCHEMA_KEYS);
+});
+
+test('the entry keeps diagnosis guidance together without replacing the record contract', () => {
+  const diagnosis = sectionOf(ENTRY, 'Diagnosis').replace(/\s+/g, ' ');
+  const record = flat('post-mortem/_atoms/postmortem-render-record/postmortem-render-record.md');
+
+  // Static preservation checks; they do not prove a model's diagnosis is correct.
+  assert.match(diagnosis, /most restrictive confidence cap/);
+  assert.match(diagnosis, /observations, derived findings, hypotheses, and proposals distinct/);
+  assert.match(diagnosis, /Normal clarification, necessary verification, useful iteration, and task complexity are not friction/);
+  assert.match(diagnosis, /specific available alternative and evidence that it was feasible/);
+  assert.match(diagnosis, /supporting evidence, counter-evidence, every affected `F` or `G` ID/);
+  assert.match(diagnosis, /falsifying or confirming test/);
+  assert.match(diagnosis, /Deduplicate by mechanism/);
+  assert.match(diagnosis, /preserve both sides, lower confidence/);
+  assert.match(diagnosis, /empty lists and `no_material_finding`/);
+  assert.match(diagnosis, /acquires no new evidence and applies no learning or changes/);
+  assert.match(record, /`root_cause_hypotheses.affects` references the `F` and `G` finding IDs/);
+  assert.match(record, /fixed `GAP_CATEGORIES` exported by the record contract check/);
 });
 
 test('the record can never carry a promotion, an applied change, or recorded learning', () => {
