@@ -155,6 +155,7 @@ jobs:
           skills/_base/_atoms/atomic-transition/atomic-transition.test.mjs
           skills/bench-squadron/_atoms/bench-epoch/bench-epoch.test.mjs
           skills/bench-squadron/_atoms/atomic-proposal/atomic-proposal.test.mjs
+          skills/bench-squadron/_atoms/role-doctrine/role-doctrine.test.mjs
           skills/bench-squadron/bench-squadron.conformance.test.mjs
           skills/tdd-squadron/_atoms/tdd-lifecycle/tdd-lifecycle.test.mjs
           skills/tdd-squadron/_atoms/atomic-proposal/atomic-proposal.test.mjs

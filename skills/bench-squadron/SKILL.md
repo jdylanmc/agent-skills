@@ -64,8 +64,11 @@ only the authority it already holds.
    Neither the orchestrator nor Slop Sniper belongs to the delivery pool.
 
 4. Give every role its complete doctrine lens text, not a summary, excerpt,
-   identifier, or link. Dispatch delivery-pool agents only inside the confirmed
-   scope. Dispatch Slop Sniper separately and asynchronously over one sealed
+   identifier, or link. Run Role Doctrine's model resolver before dispatch;
+   retain its receipts in the role packets and use its exact routes. An
+   unavailable slot stops dispatch, not a fallback to runtime defaults.
+   Dispatch delivery-pool agents only inside the confirmed scope.
+   Dispatch Slop Sniper separately and asynchronously over one sealed
    checkpoint snapshot; it audits and returns evidence, but never owns the
    fleet, signs a proposal, changes state, or publishes.
    Report `running` only after accepted delivery ownership and a current runtime
@@ -119,7 +122,7 @@ only the authority it already holds.
 ## Permissions
 
 `read` loads the current Fleet State and complete role doctrine lenses.
-`execute` runs deterministic state and epoch validation plus bounded
+`execute` runs deterministic model-route, state, and epoch validation plus bounded
 Chronicler recording. `task` dispatches only the capped delivery pool and one
 separate asynchronous Slop Sniper invocation. There is no edit, provider-write,
 merge, approval, promotion, or retirement authority.
