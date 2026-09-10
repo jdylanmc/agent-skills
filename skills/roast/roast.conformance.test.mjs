@@ -138,9 +138,9 @@ test('nothing the skill composes needs a tool outside the pinned grant', () => {
   assert.deepEqual(derived.grantViolations, []);
 });
 
-test('the skill declares its invocation flags and composes the chronicler', () => {
+test('the skill permits nested model invocation and direct human invocation', () => {
   const parsed = frontmatter(ENTRY);
-  assert.equal(parsed.disableModelInvocation, true);
+  assert.equal(parsed.disableModelInvocation, false);
   assert.equal(parsed.userInvocable, true);
   assert.ok(parsed.composes.includes('_base/_molecules/chronicler/chronicler.md'));
 });

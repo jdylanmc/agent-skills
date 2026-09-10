@@ -420,7 +420,7 @@ test('roast is reached by invocation, not composition, and is left untouched', (
     assert.ok(!unit.startsWith('roast/'), `${ENTRY} must reach /roast by invocation, not by composing ${unit}`);
   }
   const roast = frontmatter(ROAST_ENTRY);
-  assert.equal(roast.disableModelInvocation, true, '/roast stays human-invoked');
+  assert.equal(roast.disableModelInvocation, false, '/roast must be loadable as a required dependency');
   assert.equal(roast.userInvocable, true);
   assert.deepEqual(roast.allowedTools, PINNED_ROAST_TOOLS, '/roast keeps its own grant');
   assert.deepEqual(roast.requiresSkills, []);
