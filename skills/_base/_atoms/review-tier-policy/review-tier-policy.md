@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["execute"]
 includes: ["_base/_atoms/review-tier-policy/review-tier-policy.mjs"]
 composes: []
-used-by: ["roast/_molecules/roast-code-branch/roast-code-branch.md","ship-with-squadron/_molecules/candidate-delivery/candidate-delivery.md","ship/_molecules/delivery-cycle/delivery-cycle.md"]
+used-by: ["ship-with-squadron/_molecules/candidate-delivery/candidate-delivery.md","ship/_molecules/delivery-cycle/delivery-cycle.md"]
 ---
 
 # Review Tier Policy

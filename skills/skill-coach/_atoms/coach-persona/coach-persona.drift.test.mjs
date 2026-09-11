@@ -10,8 +10,8 @@
  *
  * The second half guards the split this package exists to make. Coaching
  * happens before a package is built and reviewing happens after, and the two
- * documents must not grow back into each other. The roast lens is the sharpest
- * case: if it resolved the coach instead of the reviewer, every skill roast in
+ * documents must not grow back into each other. Roast is the sharpest
+ * case: if it used the coach instead of the reviewer, every skill roast in
  * this repository would be judged through a pre-creation coaching persona that
  * carries no review dimensions at all.
  */
@@ -26,14 +26,7 @@ const UNIT_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(UNIT_ROOT, '..', '..', '..', '..');
 const COACH_AGENT = path.join(REPOSITORY_ROOT, 'agents', 'skill-coach.agent.md');
 const REVIEWER_AGENT = path.join(REPOSITORY_ROOT, 'agents', 'skill-reviewer.agent.md');
-const LENS_UNIT = path.join(
-  REPOSITORY_ROOT,
-  'skills',
-  'roast',
-  '_atoms',
-  'roast-trusted-lenses',
-  'roast-trusted-lenses.md',
-);
+const ROAST_ENTRY = path.join(REPOSITORY_ROOT, 'skills', 'roast', 'SKILL.md');
 
 function read(file) {
   return fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
@@ -145,12 +138,16 @@ test('each document hands the other job to the other document', () => {
   );
 });
 
-test('the roast lens resolves the reviewer and never the coach', () => {
-  const lens = read(LENS_UNIT);
-  const named = [...lens.matchAll(/\| `([a-z0-9-]+\.agent\.md)` \|/g)].map((match) => match[1]);
-  assert.ok(named.includes('skill-reviewer.agent.md'), 'the skill lens must be the reviewer');
-  assert.ok(
-    !named.includes('skill-coach.agent.md'),
-    'a roast that loaded the coaching persona would review every package against no review dimensions at all',
+test('Roast uses reviewer criteria for existing packages and leaves pre-creation ideas to the coach', () => {
+  const guidance = outsideFences(read(ROAST_ENTRY)).replace(/\s+/g, ' ');
+  assert.match(
+    guidance,
+    /For an existing skill package, use Skill Reviewer criteria, not Skill Coach/,
+    'existing packages must be reviewed rather than coached as unbuilt ideas',
+  );
+  assert.match(
+    guidance,
+    /Skill Coach, which shapes ideas before a package exists/,
+    'Roast must preserve the coach’s pre-creation role',
   );
 });

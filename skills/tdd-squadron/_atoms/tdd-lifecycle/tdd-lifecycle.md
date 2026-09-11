@@ -57,7 +57,12 @@ No readiness, review, or publication is manufactured by recovery.
 
 `recordRoastApproval` requires `reports` (three independent reviewer receipts),
 separate `synthesis`, and `dispositions` for unresolved findings, not a synthesis
-string. Each receipt uses the existing Roast evidence envelope: invocation
+string. These are this caller's confirmed four-seat runtime receipts, not the
+generic Roast prose report or a universal review quorum. Keep this policy,
+ownership fencing, and publication checks unchanged when consuming `# Roast`
+findings and coverage. `Partial` or `Needs clarification` cannot supply complete
+review evidence, even when supported findings are retained.
+Each receipt uses the existing Roast evidence envelope: invocation
 `id`, `skill: roast`, `runId`, `issue` (candidate ID), and `agent`; current
 `candidateId` and `candidateRevision`; `leaseId` and `fence`; completed status,
 terminal/complete/evidenceComplete flags, completion time, non-empty report

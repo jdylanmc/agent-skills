@@ -54,10 +54,18 @@ this atom and a drift fails the build for a human to read.
 
 ## Operation
 
-1. Invoke `/roast` as a **required** nested skill on the current head, and record
-   the findings against that head. If `/roast` refuses or returns an
-   unsynthesized result, stop and report it: a review that did not happen is
-   reported as one that did not happen, and the run is not complete.
+1. Invoke `/roast` as a **required** nested skill on the current head. Supply
+   the changed package, its intent when present, and actual repository
+   authority; request inspection-only review with one fresh independent
+   reviewer of the author's work, not artifact execution, installation, or
+   repair. Consume the `# Roast` report and require its `Revision` to match
+   `package-head`. Record findings against that head only when `Status` is
+   `Complete` and `Coverage` accounts for the agreed scope and independent
+   review. Preserve each finding's priority, confidence, standard, and evidence.
+   If invocation fails, coverage is incomplete, the revision is stale, or
+   status is `Partial` or `Needs clarification`, retain supported findings and
+   missing coverage but stop without recording a completed roast: the run is
+   not complete. `Complete` is coverage, never approval or absence of findings.
 2. Resolve every `Must fix` finding. There is no route that discusses one away;
    it closes only on a correction that moves the head.
 3. For every `Should fix` and `Consider` finding, dispatch a neutral brief to a

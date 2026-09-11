@@ -34,6 +34,9 @@ test('missing decisions, sibling conflicts, and unapproved draft need a human de
 });
 
 test('an unavailable or incomplete Roast is blocked, never clean', () => {
+  for (const roastStatus of ['Partial', 'Needs clarification', 'stale', 'missing-coverage']) {
+    assert.equal(resolveSpecOutcome(evidence({ roastStatus })).status, 'blocked');
+  }
   assert.equal(resolveSpecOutcome(evidence({ roastStatus: 'unavailable' })).status, 'blocked');
   assert.equal(resolveSpecOutcome(evidence({ roastStatus: 'incomplete' })).status, 'blocked');
   assert.equal(

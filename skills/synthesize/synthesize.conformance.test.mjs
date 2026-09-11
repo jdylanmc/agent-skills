@@ -208,6 +208,9 @@ test('the workflow relationship places roast downstream and defers the /spec rei
   assert.match(skill, /synthesize\(spec-nano\) generates the bounded candidate/i);
   assert.match(skill, /roast performs one independent read-only specification review pass/i);
   assert.match(skill, /a human approves nano authority/i);
+  assert.match(skill, /caller supplies the sibling nano\/full pair and Spec's authority rules to Roast/i);
+  assert.match(skill, /independent inspection-only review of both/i);
+  assert.doesNotMatch(skill, /Roast's `spec` artifact profile|nano\/full authority screen/i);
   assert.match(skill, /this change does not modify `?\/spec`?/i);
 });
 

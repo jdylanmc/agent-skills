@@ -257,10 +257,12 @@ Each run ends in exactly one status:
 | `needs-confirmation` | The intent changed but the operator has not confirmed the revised wording, or the three-round roast pause awaits his answer. Nothing is stored or merged. |
 | `no-applicable-recommendations` | An approved report proposed nothing for this skill. Its exclusions are reported, nothing is changed, and the run ends before the intent decision. It is neither a refusal nor a reinforcement, so it is its own status rather than a note attached to another one. |
 | `blocked` | The target is not a routable existing skill, a supplied report is refused by intake or admitted without a recorded receipt, the admission release check is blocked at publication, a dependency prevents the change, validation cannot pass, or the diff audit refuses an out-of-target path. |
-| `halted` | `/roast` refused or returned an unsynthesized result, or the loop reached its round limit without convergence. |
+| `halted` | `/roast` could not run, returned `Partial` or `Needs clarification`, lacked sufficient current-head coverage, or the loop reached its round limit without convergence. |
 
 Never report a reinforcement `reinforced` unless `/roast` actually ran on the
 final head, the intent decision was recorded, and every finding was addressed.
+Require `Status: Complete` and sufficient agreed coverage at that final head;
+retain supported findings from incomplete reviews without treating them as clean.
 
 ### Pull Request Evidence, for a Human Reviewer
 

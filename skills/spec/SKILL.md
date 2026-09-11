@@ -78,12 +78,19 @@ record -> resolve approval state -> resolve confirmed Discovery source
    intent, writes the sibling Product Requirements Documents beneath
    `docs/agent/specs/`, rereads and validates them, and resolves every
    pre-review status.
-6. Submit the exact candidate pair to `roast` and require its evidence-based
-   classification to return artifact type `spec`. Roast is read-only and
-   returns recommendations; it does not repair the pair or approve it. The
-   `spec` artifact profile stages both siblings and applies the nano/full
-   authority screen. If classification does not return `spec`, the review is
-   incomplete, or any `Must fix` finding remains unresolved, return `blocked`.
+6. Submit the exact candidate pair to `roast`, supplying both siblings and
+   Spec's nano/full authority: the nano is settled product intent; the full
+   document is supporting context and never overrides it. Request one
+   independent inspection-only pass. Roast is read-only in this invocation and
+   returns recommendations; it does not repair the pair or approve it, execute
+   the reviewed material, or install anything. Consume its `# Roast` report,
+   including `Status`, `Scope`, `Standards`, `Findings`, and `Coverage`. Bind
+   `Revision` to the exact candidate revision when an immutable head is supplied.
+   If status is not `Complete`, the pair or its authority was not covered, the
+   revision is stale, or any `Must fix` finding remains unresolved, return
+   `blocked`. Retain supported findings from `Partial` or `Needs clarification`
+   reports; neither is a clean review. `Complete` means sufficient review
+   coverage, not approval or absence of findings.
    The outer delivery workflow may apply repairs and invoke this skill and
    Roast again; this run does not own that loop.
 7. Present the nano Product Requirements Document first. Present the full
@@ -174,7 +181,7 @@ Resolve worst to best:
 
 | Status | Meaning |
 | --- | --- |
-| `blocked` | The source is inaccessible or stale, persistence or reread failed, pair validation failed, Roast classification did not return `spec`, the Roast review is incomplete, or unresolved `Must fix` findings remain. |
+| `blocked` | The source is inaccessible or stale, persistence or reread failed, pair validation failed, the Roast review is incomplete or stale, the pair or its supplied authority was not covered, or unresolved `Must fix` findings remain. |
 | `needs-discovery` | The source lacks evidence or scope required to state product intent without guessing. |
 | `needs-decision` | Product decisions, contradictions, sibling conflicts, or approval remain unresolved. |
 | `held` | The approved specification stands; the source moved and nothing contradicts it; nothing was re-derived and nothing was written. |

@@ -195,10 +195,16 @@ test('a package cannot be reported complete unless a current roast ran and feedb
   assert.match(entry, /`completion_status`: `complete`, `blocked`, `halted`, or\s+`awaiting-operator`/);
   assert.match(entry, /Treats roasting and remediation as required, not best effort/);
   assert.match(remediation, /caller\s+must not report the package complete/);
-  assert.match(remediation, /A missing, refused, unsynthesized, or stale roast never produces a\s+`complete` result/);
+  assert.match(remediation, /A missing, partial, clarification-needed, or stale roast never produces a\s+`complete` result/);
   assert.match(remediation, /A roast with unaddressed feedback never produces a\s+`complete` result/);
   assert.match(invocation, /blocked from being called complete/);
   assert.match(invocation, /until each finding has an address recorded/);
+  assert.match(invocation, /inspection-only review and one fresh independent reviewer/);
+  assert.match(invocation, /grants no artifact execution, installation, or repair/);
+  assert.match(invocation, /report's `Revision` to equal `package-head`/);
+  assert.match(invocation, /returns `Partial` or `Needs clarification`/);
+  assert.match(invocation, /do not record a completed roast in the ledger/);
+  assert.match(invocation, /`Complete` is not approval or zero findings/);
 });
 
 test('the wrapper refuses to store an intent the operator has not confirmed', () => {

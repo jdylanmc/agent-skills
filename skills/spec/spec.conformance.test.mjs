@@ -88,10 +88,16 @@ test('one-pass Roast stays separate from Ship remediation and human approval', (
   const skill = flat('skills/spec/SKILL.md');
   const intent = flat('skills/spec/intent.md');
   assert.match(skill, /Submit the exact candidate pair to `roast`/);
-  assert.match(skill, /artifact type `spec`/);
+  assert.match(skill, /supplying both siblings and Spec's nano\/full authority/);
   assert.match(skill, /Roast is read-only/);
   assert.match(skill, /does not repair the pair or approve it/);
-  assert.match(skill, /`spec` artifact profile stages both siblings/);
+  assert.match(skill, /independent inspection-only pass/);
+  assert.match(skill, /Consume its `# Roast` report/);
+  assert.match(skill, /If status is not `Complete`/);
+  assert.match(skill, /pair or its authority was not covered/);
+  assert.match(skill, /revision is stale/);
+  assert.match(skill, /Retain supported findings from `Partial` or `Needs clarification`/);
+  assert.doesNotMatch(skill, /artifact profile|classification to return artifact type/);
   assert.match(skill, /outer delivery workflow may apply repairs/);
   assert.match(intent, /A roast is one read-only review pass/);
   assert.match(intent, /delivery workflow owns any repeated roast, repair, and re-roast loop/);

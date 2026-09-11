@@ -99,9 +99,11 @@ const STATE_FIELDS = [
 const FINDING_FIELDS = [
   'id',
   'priority',
+  'confidence',
   'location',
   'evidence',
   'consequence',
+  'standard',
   'recommendation',
   'validation',
   'doctrineReferences',

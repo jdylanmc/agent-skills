@@ -15,6 +15,27 @@ const REPOSITORY_ROOT = path.resolve(
   '..', '..', '..', '..',
 );
 
+test('an explicitly configured panel starts independent reviews before awaiting their reports', async () => {
+  const resolvedRoster = resolveBundledRoastRoster({ root: REPOSITORY_ROOT });
+  const started = [];
+  const releases = [];
+  const pending = dispatchBundledRoastRoster({
+    resolvedRoster,
+    promptForReviewer: () => 'Review the supplied material.',
+    transport: (seat) => {
+      started.push(seat.reviewerId);
+      return new Promise((resolve) => releases.push(() => resolve(`Report ${seat.reviewerId}`)));
+    },
+  });
+  try {
+    assert.deepEqual(started, resolvedRoster.roster.map((seat) => seat.reviewerId));
+  } finally {
+    for (const release of releases) release();
+  }
+  const result = await pending;
+  assert.equal(result.launched.length, resolvedRoster.roster.length);
+});
+
 test('default bundled roast roster preserves the current three-seat panel and reviewer ids', () => {
   const resolved = resolveBundledRoastRoster({ root: REPOSITORY_ROOT });
   assert.deepEqual(
@@ -26,6 +47,28 @@ test('default bundled roast roster preserves the current three-seat panel and re
   assert.equal(resolved.roster[2].role, 'qa-reviewer');
   assert.equal(resolved.roster[0].route.model, 'claude-opus-5');
   assert.equal(resolved.roster[2].route.model, 'gpt-5.6-sol');
+});
+
+test('one failed reviewer preserves completed reports and marks the panel partial', async () => {
+  const resolvedRoster = resolveBundledRoastRoster({ root: REPOSITORY_ROOT });
+  const result = await dispatchBundledRoastRoster({
+    resolvedRoster,
+    promptForReviewer: () => 'Review the supplied material.',
+    transport: async (seat) => {
+      if (seat.reviewerId === 'SECURITY-ROASTER') throw new Error('reviewer transport unavailable');
+      return `Report ${seat.reviewerId}`;
+    },
+  });
+  assert.equal(result.status, 'Partial');
+  assert.deepEqual(result.launched.map((entry) => entry.response), [
+    'Report SOLID-ROASTER', 'Report TESTING-ROASTER',
+  ]);
+  assert.deepEqual(result.launched.map((entry) => entry.reviewerId), [
+    'SOLID-ROASTER', 'TESTING-ROASTER',
+  ]);
+  assert.deepEqual(result.failed, [{
+    reviewerId: 'SECURITY-ROASTER', error: 'reviewer transport unavailable',
+  }]);
 });
 
 test('role-aware roster routing fans out bundled architecture reviewers under the shared cap', () => {

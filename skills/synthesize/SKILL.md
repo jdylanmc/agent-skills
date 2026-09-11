@@ -154,8 +154,9 @@ weaker an account than a named one, and produces **candidate text only**.
   -> a human approves nano authority
 ```
 
-Roast's `spec` artifact profile reviews the sibling nano/full pair and applies
-the nano/full authority screen. This skill produces the candidate nano and never
+The downstream caller supplies the sibling nano/full pair and Spec's authority
+rules to Roast, requesting an independent inspection-only review of both.
+Roast honors that supplied authority; it does not define it. This skill produces the candidate nano and never
 reviews it. `/spec` will be reinforced to invoke this skill in a later change;
 this change does not modify `/spec`.
 

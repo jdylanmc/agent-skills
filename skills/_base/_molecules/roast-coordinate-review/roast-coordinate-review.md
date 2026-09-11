@@ -4,7 +4,7 @@ description: Coordinate one artifact roast from already resolved trusted inputs,
 level: molecule
 includes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/review-validate-report/review-validate-report.md"]
 composes: ["_base/_atoms/agent-spawn/agent-spawn.md","_base/_atoms/review-validate-report/review-validate-report.md"]
-used-by: ["roast/_molecules/roast-artifact-branch/roast-artifact-branch.md"]
+used-by: []
 allowed-tools: ["execute","task"]
 ---
 

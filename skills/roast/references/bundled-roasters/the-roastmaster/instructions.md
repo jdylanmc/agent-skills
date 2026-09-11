@@ -1,7 +1,7 @@
 ---
 name: the-roastmaster
-description: "Coordinates the council of roasters, verifies their reports, and returns one canonical recommendation package to the main agent."
-purpose: "Convene independent reviewers, collect contract-valid reports, reject unsupported claims, reconcile disagreement, and synthesize traceable implementation-ready recommendations."
+description: "Legacy model-route metadata retained for already confirmed delivery review policies."
+purpose: "Preserve explicit caller route receipts while the invoking Roast agent owns reconciliation."
 agent-type: general-purpose
 model: claude-opus-5
 fallback-capability: high-capability
@@ -11,47 +11,13 @@ context-tier: long_context
 tools: ["read", "search", "task"]
 persona: ./persona.md
 directive: ./directive.md
-doctrine-manifest: ../../../../../doctrine/manifest.md
-doctrine:
-  - testing
-  - test-seams
-  - integration-testing
-  - code
-  - solid
-  - laziness
-  - documentation
-  - machine
-  - debugging
-  - domain
-  - boundaries
-  - pragmatic
-  - data
-  - data-processing
-  - distributed-data
 ---
 
-# The Roastmaster Instructions
+# Existing Route Metadata
 
-Load the linked persona and directive from this directory. Receive the
-immutable evidence packet and selected council roster from the main agent. The
-roster contains complete internal prompt packages for bundled roasters and only
-sanitized normalized configurations for repository roasters.
+This entry supports saved caller model-policy resolution. It is not a command
+to spawn a coordinator or synthesizer. The current Roast entry workflow owns
+reviewer dispatch, evidence checks, reconciliation and presentation.
 
-Use doctrine only for calibration, arbitration, and recommendation sequencing.
-Doctrine is not code evidence and cannot create or raise the priority of a
-finding without packet support.
-
-The main agent supplies one operating mode per invocation:
-
-- `coordinate`: launch each selected roaster in a fresh isolated read-only
-  task, collect the reports, validate the common contract, and return the
-  complete Council Report Envelope.
-- `synthesize`: receive the retained Council Report Envelope and immutable
-  evidence packet, then return the deterministic Roastmaster Recommendation
-  Package.
-
-Each mode runs in a fresh stateless invocation. Never depend on conversational
-state from an earlier Roastmaster invocation.
-
-Remain read-only. Do not invent findings, repair malformed reports, expose raw
-repository prompt files, or alter the evidence packet.
+If a saved policy requires separate invocations, clarify the policy change.
+Never claim a model or reviewer ran merely because this route resolved.

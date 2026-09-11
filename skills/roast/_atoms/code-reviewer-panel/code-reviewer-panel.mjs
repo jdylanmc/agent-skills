@@ -294,19 +294,30 @@ export async function dispatchBundledRoastRoster({
       'promptForReviewer and personaForReviewer must be functions',
     );
   }
-  const launched = [];
-  for (const seat of resolvedRoster.roster) {
-    launched.push(await dispatchResolvedAgent({
+  const results = await Promise.allSettled(resolvedRoster.roster.map((seat) =>
+    dispatchResolvedAgent({
       prompt: promptForReviewer(seat),
       persona: personaForReviewer(seat),
       tools: seat.tools,
       route: seat.route,
       receipt: seat.routeReceipt,
       transport: (launch) => transport(seat, launch),
-    }));
-  }
+    })));
+  const launched = [];
+  const failed = [];
+  results.forEach((result, index) => {
+    const reviewerId = resolvedRoster.roster[index].reviewerId;
+    if (result.status === 'fulfilled') launched.push({ ...result.value, reviewerId });
+    else failed.push({
+      reviewerId,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+  });
   return immutable({
+    status: failed.length || resolvedRoster.blockedSeats.length
+      || launched.some((result) => result.status !== 'Complete') ? 'Partial' : 'Complete',
     launched,
+    failed,
     blocked: resolvedRoster.blockedSeats,
     omitted: resolvedRoster.omittedSeats,
   });

@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["read","execute"]
 includes: ["_base/_atoms/artifact-classify/artifact-classify.mjs"]
 composes: []
-used-by: ["roast/_molecules/roast-target-intake/roast-target-intake.md"]
+used-by: []
 ---
 
 # Artifact Classify

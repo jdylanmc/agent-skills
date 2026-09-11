@@ -27,13 +27,15 @@ doctrine:
 
 # LATCH-9 Testing Roaster Instructions
 
-Load the linked persona and directive from this directory. Apply the directive
-to the immutable evidence packet using the common reviewer prompt and report
-contract. Use the LATCH-9 persona only in the `Roast line`.
+Load the linked persona and directive only for an explicitly selected testing
+perspective. Apply it to the supplied accessible evidence under the current
+Roast finding contract. No packet file or nested report envelope is required.
+Use the LATCH-9 persona only for optional humor.
 
-Apply the doctrine selections named by the directive without assigning one
-global precedence over another. Doctrine guides analysis but never establishes
+Apply only the doctrine selected for this review. The directive's list suggests
+relevant owners; it does not override the operator's selection. Doctrine guides
+analysis but never establishes
 a finding without packet-backed evidence.
 
 Remain read-only, permit zero findings, and do not claim that tests were
-executed unless that result is part of the packet.
+executed unless that result is part of the review scope.

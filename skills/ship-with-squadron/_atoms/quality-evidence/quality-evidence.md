@@ -58,6 +58,14 @@ deterministic policy and Roast correction dispatcher as Ship. A successful
 correction receipt still becomes ordinary current-head Roast-stage evidence;
 the existing publication gate is not replaced or weakened.
 
+Supply the assignment's actual scope, requirements and authority, immutable
+head, and confirmed review policy to Roast. Its `# Roast` report binds
+`Revision` and records findings and coverage. `Status: Complete` describes
+sufficient coverage, not approval; `Partial` and `Needs clarification` retain
+supported findings but cannot yield complete Roast-stage evidence. The report
+does not replace the runtime invocation receipt, exact base/head bindings,
+tier-policy receipts, or unresolved-finding checks below.
+
 The helper reuses `ship`'s validated deterministic hunk reconciler through a
 code dependency. This does not compose or route to another skill-local unit;
 the composition graph remains squadron-local.
