@@ -37,7 +37,9 @@ test('actual Git index diffs retain quoted paths, mixed renames and unclaimed co
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
   const fixture = path.join(root, '.test-sandbox', `ship-diff-${randomUUID()}`);
   fs.mkdirSync(fixture, { recursive: true });
-  const git = (args, input) => execFileSync('git', ['-c', 'core.quotePath=true', ...args],
+  // Index-only fixture: exercise portable Git paths without checking them out
+  // onto NTFS, which cannot represent the tab/backslash cases.
+  const git = (args, input) => execFileSync('git', ['-c', 'core.quotePath=true', '-c', 'core.protectNTFS=false', ...args],
     { cwd: fixture, input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trimEnd();
   try {
     git(['init', '--quiet']);
