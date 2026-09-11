@@ -51,6 +51,42 @@ test('field content may continue on unquoted following lines', () => {
   assert.equal(validateFindingSchema(report(finding('\n  Remove the grant\n  and inspect callers.'))).status, 'Valid');
 });
 
+test('blank findings sections are missing results, not explicit none', () => {
+  for (const body of ['', ' ', ' \n\t\n   ']) {
+    const source = `## Findings\n${body}`;
+    assert.equal(validateFindingSchema(source).status, 'Invalid', JSON.stringify(body));
+    assert.deepEqual(parseFindings(source).emptySections, []);
+  }
+});
+
+test('unheaded apparent findings are rejected rather than absorbed into a field', () => {
+  const source = report(`${finding()}\nR2: Another grant is unused`);
+  const result = validateFindingSchema(source);
+  assert.equal(result.status, 'Invalid');
+  assert.equal(result.findings, 1);
+  assert.equal(fieldContent(parseFindings(source).findings[0], 'Validation'), 'Inspect the grant.');
+});
+
+test('a trailing none declaration contradicts an accepted finding', () => {
+  for (const none of ['none', 'None.']) {
+    const source = report(`${finding()}\n${none}`);
+    assert.equal(validateFindingSchema(source).status, 'Invalid');
+    assert.equal(fieldContent(parseFindings(source).findings[0], 'Validation'), 'Inspect the grant.');
+  }
+});
+
+test('explicit none and indented multiline field content remain valid', () => {
+  for (const none of ['none', 'None.', '  none  ']) {
+    const source = `## Findings\n${none}\n`;
+    assert.equal(validateFindingSchema(source).status, 'Valid');
+    assert.deepEqual(parseFindings(source).emptySections, ['Findings']);
+  }
+  const source = report(finding('\n  Remove the grant\n  and inspect callers.', 'Inspect the grant.\n  Confirm the unused tool is absent.'));
+  assert.equal(validateFindingSchema(source).status, 'Valid');
+  assert.equal(fieldContent(parseFindings(source).findings[0], 'Validation'),
+    'Inspect the grant. Confirm the unused tool is absent.');
+});
+
 test('quoted, commented, fenced, and indented templates cannot supply a required field', () => {
   for (const quote of [
     '> advice', '> advice\nlazy continuation of the quote', '    advice', '\tadvice', '<!-- advice -->',

@@ -71,6 +71,29 @@ test('one failed reviewer preserves completed reports and marks the panel partia
   }]);
 });
 
+test('synchronous reviewer preparation failures preserve the other seats', async () => {
+  const resolvedRoster = resolveBundledRoastRoster({ root: REPOSITORY_ROOT });
+  for (const failedPreparation of ['prompt', 'persona']) {
+    const prepare = (seat) => {
+      if (seat.reviewerId === 'SECURITY-ROASTER') throw new Error(`${failedPreparation} unavailable`);
+      return 'Review the supplied material.';
+    };
+    const result = await dispatchBundledRoastRoster({
+      resolvedRoster,
+      promptForReviewer: failedPreparation === 'prompt' ? prepare : () => 'Review the supplied material.',
+      personaForReviewer: failedPreparation === 'persona' ? prepare : () => null,
+      transport: async (seat) => `Report ${seat.reviewerId}`,
+    });
+    assert.equal(result.status, 'Partial');
+    assert.deepEqual(result.launched.map((entry) => entry.reviewerId), [
+      'SOLID-ROASTER', 'TESTING-ROASTER',
+    ]);
+    assert.deepEqual(result.failed, [{
+      reviewerId: 'SECURITY-ROASTER', error: `${failedPreparation} unavailable`,
+    }]);
+  }
+});
+
 test('role-aware roster routing fans out bundled architecture reviewers under the shared cap', () => {
   const resolved = resolveBundledRoastRoster({
     root: REPOSITORY_ROOT,

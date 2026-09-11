@@ -103,5 +103,10 @@ Existing shared callers may still use `parseFindings`, `fieldContent`, and
 `validateFindingSchema(reportString, { requiredFields, sections })`, or generic
 `--report`, repeatable `--field`, and repeatable `--section`. Generic mode checks
 finding fields only (defaults: Recommendation and Validation); its accepted and
-disposition headings remain compatible. It does not validate a final Roast
-report. Final mode cannot weaken its fields or sections with those overrides.
+disposition headings remain compatible. An accepted findings section must contain
+named findings or an explicit `none` declaration; blank content is not a result.
+Indent multiline field content by one to three spaces. Unindented text after a
+finding is not a continuation and fails validation, including an unheaded finding
+or a contradictory trailing `None.`. Four-space indentation remains quoted code.
+Generic mode does not validate a final Roast report. Final mode cannot weaken its
+fields or sections with those overrides.

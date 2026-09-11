@@ -147,6 +147,11 @@ export function parseFindings(report, sections = ACCEPTED_FINDING_SECTIONS) {
         entry.order.push(field);
         entry.fields.set(field, { value: match[3].trim(), line: index + 1 });
       }
+    } else if (line.trim() && checked.has(section) && (!field || !/^ {1,3}\S/.test(line))) {
+      defects.push({
+        category: 'Unexpected finding content', finding: entry.id, section, line: index + 1,
+        message: 'expected a field or named finding; multiline field content must be indented',
+      });
     } else if (field && line.trim()) {
       const stored = entry.fields.get(field);
       stored.value = [stored.value, line.trim()].filter(Boolean).join(' ');
@@ -162,13 +167,13 @@ export function parseFindings(report, sections = ACCEPTED_FINDING_SECTIONS) {
     }
   }
   const emptySections = [...sectionBodies]
-    .filter(([, body]) => /^(?:none\.?)?$/i.test(body.join('\n').trim()))
+    .filter(([, body]) => /^none\.?$/i.test(body.join('\n').trim()))
     .map(([name]) => name);
   for (const [name, body] of sectionBodies) {
     if (checked.has(name) && !emptySections.includes(name)
         && !classified.findings.some((finding) => finding.section === name)) defects.push({
       category: 'Unrecognised findings body', section: name,
-      message: `section "${name}" contains content but no recognised finding entries`,
+      message: `section "${name}" requires named finding entries or an explicit none declaration`,
     });
   }
   return { ...classified, entries, emptySections, defects };

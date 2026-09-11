@@ -294,7 +294,7 @@ export async function dispatchBundledRoastRoster({
       'promptForReviewer and personaForReviewer must be functions',
     );
   }
-  const results = await Promise.allSettled(resolvedRoster.roster.map((seat) =>
+  const results = await Promise.allSettled(resolvedRoster.roster.map(async (seat) =>
     dispatchResolvedAgent({
       prompt: promptForReviewer(seat),
       persona: personaForReviewer(seat),
