@@ -54,7 +54,8 @@ path.
      sibling resolves beside it as a non-symbolic-link file inside the
      repository root.
    - `code`: pull-request, branch-diff, working-tree, or unified-diff
-     references; source-code extensions; or code syntax in supplied text.
+     references; source-code extensions (including JavaScript `.js`, `.mjs`,
+     and `.cjs` modules); or code syntax in supplied text.
 4. Return `Classified` only when exactly one artifact type has medium or high
    evidence.
 5. Return `Refused` when multiple artifact types have material evidence or when

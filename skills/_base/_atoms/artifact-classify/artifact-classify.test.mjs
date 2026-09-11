@@ -76,6 +76,22 @@ test('classifies pasted unified diffs as code-review scope', () => {
   assert.match(reflowed(result.evidence), /diff syntax/);
 });
 
+test('classifies JavaScript module files through path and target intake', (t) => {
+  const root = workspace(t);
+  for (const extension of ['.js', '.mjs', '.cjs', '.MJS', '.CJS']) {
+    const file = `module${extension}`;
+    fs.writeFileSync(path.join(root, file), '// A module need not contain syntax heuristics.\n');
+    for (const field of ['path', 'target']) {
+      const result = classifyArtifact({ [field]: file, repositoryRoot: root });
+      assert.equal(result.status, 'Classified', `${field}: ${file}`);
+      assert.equal(result.type, 'code');
+      assert.equal(result.routeToBranch, 'code');
+      assert.equal(result.confidence, 'high');
+      assert.deepEqual(result.evidence, [{ rule: 'source extension', detail: extension.toLowerCase() }]);
+    }
+  }
+});
+
 test('refuses conflicting Markdown evidence instead of guessing', () => {
   const result = classifyArtifact({
     text: [

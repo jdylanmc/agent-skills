@@ -36,8 +36,8 @@ const ALL_TYPES = ['agent', 'skill', 'prompt', 'spec', 'code'];
 const SPEC_SUFFIXES = { '.nano.md': 'nano', '.full.md': 'full' };
 
 const CODE_EXTENSIONS = new Set([
-  '.c', '.cc', '.cpp', '.cxx', '.cs', '.css', '.go', '.h', '.hpp', '.html', '.java', '.js',
-  '.jsx', '.json', '.kt', '.m', '.mm', '.php', '.ps1', '.py', '.rb', '.rs', '.sh', '.sql',
+  '.c', '.cc', '.cjs', '.cpp', '.cxx', '.cs', '.css', '.go', '.h', '.hpp', '.html', '.java', '.js',
+  '.jsx', '.json', '.kt', '.m', '.mjs', '.mm', '.php', '.ps1', '.py', '.rb', '.rs', '.sh', '.sql',
   '.swift', '.ts', '.tsx', '.vue', '.xml', '.yaml', '.yml',
 ]);
 
