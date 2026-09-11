@@ -341,6 +341,15 @@ below is unreleased and no comparison links are available.
 
 ### Changed
 
+- **Simpler single-issue delivery.** Ship keeps grounding, scope confirmation,
+  implementation, validation, and review in one workflow instead of six separate
+  prose units. Top-level Ship always hands off to Shepherd without asking;
+  nested callers may explicitly transfer that responsibility to an accepting,
+  identified agent. Shepherd-owned continuation returns to its existing watcher.
+  Delivery no longer asks for a merge grant that Ship cannot exercise.
+  Human merge authority, isolated worktrees, and independent review remain
+  unchanged.
+
 - **Bench Squadron preparation and execution reporting.** Preparation has a
   separately confirmed bound and explicit exit. Running claims require accepted,
   revision-bound delivery ownership and a current runtime observation. Probes
@@ -474,6 +483,15 @@ below is unreleased and no comparison links are available.
   point.
 
 ### Fixed
+
+- **Ship cancellation, scope checks, and handoff.** Cancellation or withdrawn
+  authority stops subsequent publication and handoff effects. Scope reconciliation
+  recognizes Git-quoted paths and refuses unreadable boundaries. Shepherd receives
+  the confirmed continuation context and must return accepted ownership evidence,
+  preserving the actual next human action for non-green bootstrap results.
+  Incomplete review coverage cannot satisfy the compatibility merge gate;
+  malformed or conflicting provider pages remain incomplete, and repository names
+  retain their GraphQL string type.
 
 - **Current Shepherd readiness.** Shepherd reads the live base branch rather
   than historical pull-request metadata and requires complete successful

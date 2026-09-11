@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["task","read"]
 includes: []
 composes: []
-used-by: ["ship/_molecules/delivery-cycle/delivery-cycle.md"]
+used-by: ["ship/SKILL.md"]
 ---
 
 # Worker Dispatch

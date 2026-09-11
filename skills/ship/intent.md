@@ -58,8 +58,7 @@ easy to justify and expensive to remove later.
 
 Ship produces something handed onward rather than landed. Driving a change
 request to mergeable belongs to shepherd, and merging belongs to a person.
-Whether the handover happens at all is asked at the start rather than assumed at
-the end, because it changes what the run is for.
+Top-level Ship always hands the change request to Shepherd before completing. It does not ask whether to shepherd. When Ship runs inside another orchestration, the caller may have Ship invoke Shepherd or explicitly transfer that responsibility to another agent. A delegated handoff must have an identified owner; it is not permission to leave the change request unattended. Merging remains a human action.
 
 ## Boundaries
 

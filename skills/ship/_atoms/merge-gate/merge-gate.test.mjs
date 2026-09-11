@@ -22,7 +22,8 @@ function metPreconditions(overrides = {}) {
     ],
     reconciliation: { verdict: 'reconciled' },
     validation: { status: 'passed' },
-    review: { blockers: [] },
+    head: 'a'.repeat(40),
+    review: { status: 'Complete', revision: 'a'.repeat(40), coverageComplete: true, blockers: [] },
     isolation: { state: 'worktree', branch: 'issue-1' },
     ...overrides,
   };
@@ -52,6 +53,19 @@ test('the grant moves eligible to granted', () => {
 
   assert.equal(result.disposition, 'granted');
   assert.ok(mayMerge(result));
+});
+
+test('empty findings never substitute for complete current-head Roast coverage', () => {
+  for (const review of [
+    { blockers: [] },
+    ...['Partial', 'Needs clarification', 'unknown'].map((status) => ({ status, revision: 'a'.repeat(40), coverageComplete: true, blockers: [] })),
+    { status: 'Complete', revision: 'b'.repeat(40), coverageComplete: true, blockers: [] },
+    { status: 'Complete', revision: 'a'.repeat(40), blockers: [] },
+  ]) {
+    for (const grant of [undefined, MERGE_GRANT_TOKEN]) {
+      assert.equal(evaluateMergeGate(metPreconditions({ review, grant })).disposition, 'withheld');
+    }
+  }
 });
 
 test('a truthy value is not a grant', () => {
@@ -204,7 +218,7 @@ test('every unmet precondition is reported, not just the first one found', () =>
   });
 
   assert.equal(result.disposition, 'withheld');
-  assert.equal(result.unmet.length, 5);
+  assert.equal(result.unmet.length, 6);
   for (const prefix of ['criteria:', 'reconciliation:', 'validation:', 'review:', 'isolation:']) {
     assert.ok(
       result.unmet.some((reason) => reason.startsWith(prefix)),

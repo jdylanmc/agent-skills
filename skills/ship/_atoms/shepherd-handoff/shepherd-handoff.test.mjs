@@ -11,8 +11,17 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import { TERMINAL_DISPOSITIONS } from '../../../_base/_atoms/landability/landability.mjs';
+import {
+  createWatchState, bootstrapAcceptance, recordObservation, watchAction,
+  beginShipDispatch, recordShipResult, persistWatchState, loadWatchState, resumeWatch,
+} from '../../../shepherd/_atoms/watch-state/watch-state.mjs';
+import { digestConfirmedLedger } from '../continuation-remediation/continuation-remediation.mjs';
+import { publishChangeRequest } from '../change-request/change-request.mjs';
 import {
   NESTED_INVOCATION,
   SET_OWNER,
@@ -20,6 +29,9 @@ import {
   evaluateHandoff,
   handoffSatisfied,
   publicationSucceeded,
+  buildShepherdBootstrap,
+  dispatchHandoff,
+  buildShepherdContinuationResult,
 } from './shepherd-handoff.mjs';
 
 /** What publication recorded: fixed forever, and never the freshness subject. */
@@ -29,6 +41,14 @@ const PUBLISHED_HEAD = '57d9d26';
 /** What shepherd observed after it rebased: a later, different pair. */
 const REBASED_BASE = 'fdd15de';
 const REBASED_HEAD = '3f78428';
+const EXPECTED_WATCH = {
+  identity: { changeRequest: '#111', branch: 'issue-26-ship-review-fixes' },
+  stateDigest: '1'.repeat(64),
+};
+const ACCEPTED_WATCH = {
+  ...EXPECTED_WATCH, status: 'watch-accepted',
+  authority: { mode: 'ship-continuation', provenance: 'validated-ship-context' },
+};
 
 function publicationTarget(overrides = {}) {
   return {
@@ -50,7 +70,9 @@ function completeHandoff(overrides = {}) {
     publication: { outcome: 'published', identifier: '#111' },
     target: publicationTarget(),
     invocation: { mode: NESTED_INVOCATION, status: 'returned' },
+    expectedWatch: EXPECTED_WATCH,
     result: {
+      watch: ACCEPTED_WATCH,
       disposition: 'mergeable-and-green',
       receipt: {
         observedAt: '2026-08-25T22:05:00Z',
@@ -65,6 +87,335 @@ function completeHandoff(overrides = {}) {
     ...overrides,
   };
 }
+
+function deliveryToBootstrap() {
+  const head = 'a'.repeat(40);
+  const base = 'b'.repeat(40);
+  const observedAt = '2026-09-11T12:00:00.000Z';
+  const identity = {
+    provider: 'github', repository: 'example/repo', changeRequest: '17',
+    issue: '102', branch: 'issue-102', headRepository: 'example/repo', baseBranch: 'main',
+  };
+  const ledger = { id: 'ledger-102', alignment: 'confirmed', entries: [{ id: 'L1', classification: 'in-scope' }] };
+  ledger.digest = digestConfirmedLedger(ledger);
+  const checks = [{ name: 'validate', status: 'success', required: true, headSha: head }];
+  return {
+    outcome: 'verified',
+    authority: { status: 'active', publish: true, handoff: true },
+    intent: 'yes',
+    target: { changeRequest: '17', headBranch: identity.branch, headSha: head, baseBranch: 'main', baseSha: base,
+      upToDatePolicy: 'not-required', receipt: { observedAt, headSha: head, baseSha: base } },
+    publication: { outcome: 'published', identifier: '17' },
+    continuation: {
+      originalIssue: identity.issue,
+      ledger,
+      changeRequest: { id: identity.changeRequest, issue: identity.issue, branch: identity.branch,
+        provider: identity.provider, repository: identity.repository, headRepository: identity.headRepository, baseBranch: 'main' },
+      priorDeliveryEvidence: {
+        complete: true, issue: identity.issue, changeRequest: identity.changeRequest, branch: identity.branch,
+        provider: identity.provider, repository: identity.repository, head, ledgerDigest: ledger.digest,
+        reviewObservationDigest: '1'.repeat(64), reviewEvidenceIds: [], ciFailureIds: [],
+      },
+    },
+    observedAt,
+    observation: {
+      identity,
+      pullRequest: { state: 'open', baseBranch: 'main', headSha: head, mergeState: 'mergeable',
+        mergeStateStatus: 'clean', blocked: false, behind: false, isDraft: false,
+        upToDatePolicy: 'not-required', reviewDecision: 'APPROVED' },
+      liveBase: { observed: true, identityBound: true, repository: identity.repository,
+        ref: 'refs/heads/main', sha: base, observedAt },
+      review: { observed: true, complete: true, identityBound: true, observationDigest: '1'.repeat(64) },
+      checks, checkEvidence: { observed: true, complete: true, headSha: head,
+        requiredChecks: [{ name: 'validate', appId: null }], checks },
+      ownership: { branchOwned: true, providerAvailable: true, evidenceComplete: true },
+    },
+  };
+}
+
+test('Ship publication reaches current Shepherd bootstrap and accepted ownership without a merge question', async () => {
+  const input = deliveryToBootstrap();
+  const effects = [];
+  input.publication = await publishChangeRequest({
+    readState: () => input,
+    push: async () => { effects.push('push'); return { status: 'pushed' }; },
+    create: async () => { effects.push('create'); return input.publication; },
+  });
+  const handoff = await dispatchHandoff(input, {
+    readState: () => input,
+    invoke: async (bootstrap) => {
+      effects.push('shepherd');
+      assert.equal(bootstrap.mode, 'handoff-bootstrap');
+      const state = createWatchState(bootstrap);
+      return bootstrapAcceptance(state, {
+        workerStatus: 'running', acceptedIdentity: state.targetIdentity, acceptedStateDigest: state.integrityDigest,
+        disposition: 'mergeable-and-green',
+        receipt: { ...input.target.receipt, upToDatePolicy: 'not-required', provider: 'supported-provider', complete: true },
+      });
+    },
+  });
+  assert.deepEqual(effects, ['push', 'create', 'shepherd']);
+  assert.equal(handoff.invocation.status, 'returned');
+  const result = evaluateHandoff({ ...input, ...handoff,
+    observedBase: { ...input.target.receipt, observedAt: '2026-09-11T12:00:01.000Z' } });
+  assert.equal(result.handoff, 'completed');
+  assert.equal(result.freshness, 'fresh');
+  assert.ok(result.setObligation);
+  for (const watch of [undefined, { ...handoff.result.watch, authority: { mode: 'observation-only' } },
+    { ...handoff.result.watch, stateDigest: '2'.repeat(64) },
+    { ...handoff.result.watch, identity: { ...handoff.result.watch.identity, issue: 'other' } }]) {
+    assert.equal(evaluateHandoff({ ...input, ...handoff, result: { ...handoff.result, watch } }).state, 'watch-acceptance-unproven');
+  }
+});
+
+test('missing or mismatched confirmed delivery context never dispatches Shepherd', async () => {
+  const mutations = [
+    (input) => { delete input.continuation; },
+    (input) => { input.continuation.ledger.alignment = 'proposed'; },
+    (input) => { input.continuation.originalIssue = 'other'; },
+    (input) => { input.continuation.priorDeliveryEvidence.head = 'c'.repeat(40); },
+    (input) => { input.continuation.priorDeliveryEvidence.complete = false; },
+    (input) => { input.continuation.changeRequest.id = '18'; },
+    (input) => { input.observation.identity.repository = 'other/repo'; },
+    (input) => { input.observation.ownership.branchOwned = false; },
+    (input) => { input.observation.review.complete = false; },
+    (input) => { input.observation.pullRequest.headSha = 'c'.repeat(40); },
+    (input) => { input.target.baseSha = 'main'; },
+    (input) => { input.target.receipt.headSha = 'c'.repeat(40); },
+    (input) => { input.target.receipt.baseSha = 'c'.repeat(40); },
+    (input) => { input.target.receipt.observedAt = 'unknown'; },
+    (input) => { input.observedAt = '2026-09-11T11:59:00.000Z'; },
+  ];
+  for (const mutate of mutations) {
+    const input = deliveryToBootstrap();
+    mutate(input);
+    assert.equal(buildShepherdBootstrap(input).accepted, false);
+    const result = await dispatchHandoff(input, { readState: () => input, invoke: async () => assert.fail('must not dispatch') });
+    assert.equal(result.accepted, false);
+  }
+});
+
+test('non-green bootstrap preserves the producer action through dispatch and evaluation', async () => {
+  for (const disposition of ['blocked', 'failing', 'needs-human']) {
+    const input = deliveryToBootstrap();
+    const nextHumanAction = `Inspect the actual ${disposition} action-cycle evidence.`;
+    const handoff = await dispatchHandoff(input, {
+      readState: () => input,
+      invoke: async (bootstrap) => {
+        const state = createWatchState(bootstrap);
+        return bootstrapAcceptance(state, {
+          workerStatus: 'running', acceptedIdentity: state.targetIdentity, acceptedStateDigest: state.integrityDigest,
+          disposition, nextHumanAction,
+          receipt: { ...input.target.receipt, upToDatePolicy: 'not-required', provider: 'supported-provider', complete: true },
+        });
+      },
+    });
+    const result = evaluateHandoff({ ...input, ...handoff,
+      observedBase: { ...input.target.receipt, observedAt: '2026-09-11T12:00:01.000Z' } });
+    assert.equal(result.handoff, 'completed', disposition);
+    assert.equal(result.humanAction, nextHumanAction);
+    assert.equal(result.disposition, disposition);
+  }
+});
+
+test('top-level delivery and continuation always invoke Shepherd despite legacy no or absent intent', async () => {
+  for (const intent of ['no', undefined]) {
+    for (const mode of ['new-delivery', 'existing-change-request']) {
+      const input = { ...deliveryToBootstrap(), intent, mode, handoffOwner: 'not-a-caller' };
+      let calls = 0;
+      const handoff = await dispatchHandoff(input, {
+        readState: () => input,
+        invoke: async () => { calls += 1; return { status: 'failed' }; },
+        transfer: async () => assert.fail('top-level cannot transfer'),
+      });
+      assert.equal(calls, 1);
+      assert.equal(handoff.invocation.mode, NESTED_INVOCATION);
+      assert.equal(evaluateHandoff({ ...input, ...handoff }).handoff, 'not-performed');
+    }
+  }
+});
+
+test('nested transfer requires a real matching owner acceptance', async () => {
+  for (const caller of [{ agentId: 'orchestrator-1', skill: 'other' }]) {
+    const input = { ...deliveryToBootstrap(), caller, mode: 'existing-change-request',
+      ...(caller.skill === 'shepherd' ? {} : { handoffOwner: 'maintainer-1' }) };
+    const owner = input.handoffOwner ?? caller.agentId;
+    let calls = 0;
+    const handoff = await dispatchHandoff(input, {
+      readState: () => input,
+      invoke: async () => assert.fail('must not spawn a new watcher'),
+      transfer: async (request) => {
+        calls += 1;
+        assert.equal(request.owner, owner);
+        assert.deepEqual(request.target, input.target);
+        return { status: 'returned', result: { transfer: {
+          ...input.target.receipt, status: 'accepted', owner, responsibility: 'shepherd', changeRequest: '17',
+        } } };
+      },
+    });
+    assert.equal(calls, 1);
+    const evaluation = { ...input, ...handoff,
+      observedBase: { ...input.target.receipt, observedAt: '2026-09-11T12:00:01.000Z' } };
+    assert.equal(evaluateHandoff(evaluation).handoff, 'completed');
+    assert.equal(evaluateHandoff(evaluation).owner, owner);
+    assert.equal(evaluateHandoff(evaluation).disposition, null, 'ownership is not a readiness claim');
+    for (const mutation of [
+      { status: 'planned' }, { owner: 'someone-else' }, { responsibility: 'observe-only' },
+      { changeRequest: '18' }, { headSha: 'c'.repeat(40) }, { baseSha: 'd'.repeat(40) },
+      { observedAt: '2026-09-11T11:59:59.000Z' }, { observedAt: 'invalid' },
+    ]) {
+      assert.equal(evaluateHandoff({ ...evaluation,
+        result: { transfer: { ...handoff.result.transfer, ...mutation } } }).handoff, 'not-performed');
+    }
+    assert.equal(evaluateHandoff({ ...evaluation, observedBase: undefined }).handoff, 'not-performed');
+    assert.equal(evaluateHandoff({ ...evaluation, invocation: { mode: 'planned', status: 'returned' } }).handoff, 'not-performed');
+    const missing = await dispatchHandoff(input, { readState: () => input,
+      invoke: async () => assert.fail('no fallback recursion') });
+    assert.equal(evaluateHandoff({ ...input, ...missing }).handoff, 'not-performed');
+    input.authority.status = 'withdrawn';
+    assert.equal((await dispatchHandoff(input, { readState: () => input,
+      transfer: async () => assert.fail('withdrawn transfer'), invoke: async () => assert.fail('withdrawn invocation') })).accepted, false);
+  }
+});
+
+test('Shepherd consumes and persists Ship continuation without a pre-return acknowledgment', () => {
+  const input = deliveryToBootstrap();
+  const started = createWatchState(buildShepherdBootstrap(input).bootstrap);
+  const changedObservation = structuredClone(input.observation);
+  changedObservation.review.observationDigest = '2'.repeat(64);
+  const changed = recordObservation(started, {
+    observation: changedObservation, observedAt: '2026-09-11T12:02:00.000Z',
+  });
+  const { evidence } = watchAction(changed);
+  const inFlight = beginShipDispatch(changed, {
+    evidence, startedAt: '2026-09-11T12:02:30.000Z',
+  });
+  assert.ok(inFlight.inFlightShip);
+
+  const completed = structuredClone(input);
+  completed.mode = 'existing-change-request';
+  completed.caller = { agentId: 'watcher-1', skill: 'shepherd' };
+  const head = 'c'.repeat(40);
+  const observedAt = '2026-09-11T12:03:00.000Z';
+  completed.target.headSha = head;
+  completed.target.receipt = { ...completed.target.receipt, headSha: head, observedAt };
+  completed.continuation.priorDeliveryEvidence.head = head;
+  completed.continuation.priorDeliveryEvidence.reviewObservationDigest = '2'.repeat(64);
+  completed.observation = structuredClone(changedObservation);
+  completed.observation.pullRequest.headSha = head;
+  completed.observation.checks[0].headSha = head;
+  completed.observation.checkEvidence.headSha = head;
+  completed.observation.checkEvidence.checks[0].headSha = head;
+  completed.observedAt = observedAt;
+
+  const shipResult = buildShepherdContinuationResult(completed);
+  assert.equal(shipResult.status, 'shipped-to-review');
+  assert.equal(shipResult.resultingHead, head);
+  const accepted = recordShipResult(inFlight, { evidence, shipResult, recordedAt: observedAt });
+  assert.equal(accepted.status, 'running');
+  assert.equal(accepted.inFlightShip, null);
+  assert.equal(accepted.expectedHead, head);
+
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ship-owner-return-'));
+  try {
+    const statePath = path.join(directory, 'watch.json');
+    persistWatchState(statePath, accepted);
+    const resumed = resumeWatch(loadWatchState(statePath), { resumedAt: '2026-09-11T12:04:00.000Z' });
+    const observed = recordObservation(resumed, {
+      observation: completed.observation, observedAt: '2026-09-11T12:05:00.000Z',
+    });
+    assert.equal(observed.status, 'running');
+    assert.notEqual(watchAction(observed).action, 'invoke-ship');
+    assert.equal(observed.expectedHead, head);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+
+  for (const mutation of [
+    { outcome: 'cancelled' },
+    { authority: { status: 'withdrawn', handoff: true } },
+    { outcome: 'incomplete' },
+    { caller: { skill: 'shepherd' } },
+    { continuation: undefined },
+  ]) {
+    const refused = buildShepherdContinuationResult({ ...completed, ...mutation });
+    assert.notEqual(refused.status, 'shipped-to-review');
+    assert.equal(recordShipResult(inFlight, { evidence, shipResult: refused, recordedAt: observedAt }).status, 'stopped');
+  }
+  const mismatched = { ...shipResult, identity: { ...shipResult.identity, issue: 'other' } };
+  assert.equal(recordShipResult(inFlight, { evidence, shipResult: mismatched, recordedAt: observedAt }).status, 'stopped');
+});
+
+test('nested orchestration can invoke Shepherd rather than transfer', async () => {
+  const input = { ...deliveryToBootstrap(), caller: { agentId: 'caller', skill: 'other' } };
+  let called = false;
+  await dispatchHandoff(input, { readState: () => input,
+    invoke: async () => { called = true; return { status: 'failed' }; } });
+  assert.equal(called, true);
+});
+
+test('a Shepherd continuation missing its watcher identity never recurses', async () => {
+  const input = { ...deliveryToBootstrap(), mode: 'existing-change-request', caller: { skill: 'shepherd' } };
+  const handoff = await dispatchHandoff(input, { readState: () => input,
+    invoke: async () => assert.fail('missing owner is not top-level delivery'),
+    transfer: async () => assert.fail('no identified owner') });
+  assert.equal(handoff.accepted, false);
+  assert.equal(evaluateHandoff({ ...input, ...handoff }).handoff, 'not-performed');
+});
+
+test('nested transfer rechecks live authority immediately before contacting the owner', async () => {
+  for (const stop of [{ outcome: 'cancelled' }, { authority: { status: 'withdrawn', handoff: true } }]) {
+    const input = { ...deliveryToBootstrap(), caller: { agentId: 'caller', skill: 'other' }, handoffOwner: 'owner' };
+    let reads = 0;
+    let calls = 0;
+    const handoff = await dispatchHandoff(input, {
+      readState: () => (++reads === 1 ? input : { ...input, ...stop }),
+      transfer: async () => { calls += 1; return { status: 'returned' }; },
+      invoke: async () => { calls += 1; return { status: 'returned' }; },
+    });
+    assert.equal(calls, 0);
+    assert.equal(handoff.accepted, false);
+    assert.equal(handoff.reason, 'authority-withheld');
+  }
+});
+
+test('cancellation and withdrawal suppress push, creation and handoff, but exhausted authorized work publishes', async () => {
+  for (const outcome of ['cancelled', 'undisclosed-change', 'ambiguous-mapping', 'isolation-refused', 'unknown']) {
+    const state = { ...deliveryToBootstrap(), outcome };
+    const forbidden = async () => assert.fail('external effect after stop');
+    assert.equal((await publishChangeRequest({ readState: () => state, push: forbidden, create: forbidden })).outcome, 'withheld-by-outcome');
+    assert.equal((await dispatchHandoff(state, { readState: () => state, invoke: forbidden })).accepted, false);
+  }
+  const state = deliveryToBootstrap();
+  state.authority.status = 'withdrawn';
+  const forbidden = async () => assert.fail('effect after withdrawal');
+  assert.equal((await publishChangeRequest({ readState: () => state, push: forbidden, create: forbidden })).pushed, false);
+  assert.equal((await dispatchHandoff(state, { readState: () => state, invoke: forbidden })).accepted, false);
+  state.authority.status = 'active';
+  assert.deepEqual(await publishChangeRequest({ readState: () => state,
+    push: async () => { state.outcome = 'cancelled'; return { status: 'pushed' }; },
+    create: forbidden }), { outcome: 'withheld-by-outcome', pushed: true });
+  state.outcome = 'verified';
+  let reads = 0;
+  const stoppedHandoff = await dispatchHandoff(state, {
+    readState: () => (++reads === 1 ? state : { ...state, outcome: 'cancelled' }),
+    invoke: forbidden,
+  });
+  assert.equal(stoppedHandoff.accepted, false);
+  assert.equal(stoppedHandoff.reason, 'authority-withheld');
+  const alreadyPublished = await publishChangeRequest({
+    readState: () => state, push: async () => ({ status: 'pushed' }),
+    create: async () => { state.outcome = 'cancelled'; return state.publication; },
+  });
+  assert.equal(alreadyPublished.outcome, 'published');
+  assert.equal((await dispatchHandoff(state, { readState: () => state, invoke: forbidden })).accepted, false);
+  for (const outcome of ['incomplete', 'handed-back']) {
+    state.outcome = outcome;
+    const published = await publishChangeRequest({ readState: () => state,
+      push: async () => ({ status: 'pushed' }), create: async () => state.publication });
+    assert.equal(published.outcome, 'published');
+  }
+});
 
 test('a rebase shepherd performed is fresh, because freshness follows the shepherd receipt', () => {
   // THE regression this ordering exists for. A successful rebase moves both
@@ -169,7 +520,7 @@ test('a terminal disposition with no usable receipt is an unverifiable claim', (
     { observedAt: '2026-08-25T22:05:00Z', baseSha: REBASED_BASE, headSha: REBASED_HEAD, complete: false },
   ]) {
     const result = evaluateHandoff(completeHandoff({
-      result: { disposition: 'mergeable-and-green', receipt },
+      result: { disposition: 'mergeable-and-green', watch: ACCEPTED_WATCH, receipt },
     }));
 
     assert.equal(result.state, 'result-receipt-incomplete', `${JSON.stringify(receipt)} must not be believed`);
@@ -199,18 +550,13 @@ test('shepherd being unavailable or failing returns blocked with the target and 
   }
 });
 
-test('a declined handoff stays declined, and an unasked question is not a decline', () => {
-  const declined = evaluateHandoff(completeHandoff({ intent: 'no', invocation: undefined, result: undefined }));
-  assert.equal(declined.handoff, 'not-required');
-  assert.equal(declined.state, 'declined-by-operator');
-  assert.equal(declined.shipStatus, null);
-  assert.ok(handoffSatisfied(declined));
-
-  for (const intent of [undefined, null, '', 'maybe', true, 'Yes']) {
-    const unrecorded = evaluateHandoff(completeHandoff({ intent }));
-    assert.equal(unrecorded.handoff, 'not-performed', `intent ${String(intent)} must not proceed`);
-    assert.equal(unrecorded.state, 'intent-unrecorded');
-    assert.equal(unrecorded.shipStatus, 'blocked');
+test('legacy intent cannot exempt a top-level published request from accepted ownership', () => {
+  for (const intent of ['no', undefined, null, '', 'maybe', true, 'Yes']) {
+    const absent = evaluateHandoff(completeHandoff({ intent, invocation: undefined, result: undefined }));
+    assert.equal(absent.handoff, 'not-performed');
+    assert.equal(absent.state, 'not-invoked');
+    assert.equal(absent.shipStatus, 'blocked');
+    assert.equal(evaluateHandoff(completeHandoff({ intent })).handoff, 'completed');
   }
 });
 
@@ -471,16 +817,13 @@ test('the obligation is addressed to the caller, and never to this run', () => {
   }
 });
 
-test('declining shepherd declines an owner, not the expiry', () => {
-  // The operator saying no settles who drives this change request. It settles
-  // nothing about the base, which moves whether or not anyone was asked.
-  const declined = evaluateHandoff(completeHandoff({ intent: 'no' }));
-
-  assert.equal(declined.handoff, 'not-required');
-  assert.equal(declined.state, 'declined-by-operator');
-  assert.ok(handoffSatisfied(declined));
-  assert.equal(declined.setObligation.changeRequest, '#111');
-  assert.equal(declined.setObligation.baseSha, PUBLISHED_BASE, 'no shepherd receipt, so the captured base');
+test('legacy no without an owner still leaves the expiry obligation', () => {
+  const result = evaluateHandoff(completeHandoff({ intent: 'no', invocation: undefined }));
+  assert.equal(result.handoff, 'not-performed');
+  assert.equal(result.state, 'not-invoked');
+  assert.equal(handoffSatisfied(result), false);
+  assert.equal(result.setObligation.changeRequest, '#111');
+  assert.equal(result.setObligation.baseSha, PUBLISHED_BASE);
 });
 
 test('every published change request leaves the run with an obligation', () => {
@@ -489,7 +832,7 @@ test('every published change request leaves the run with an obligation', () => {
   // that appeared only on the happy path would be missing from every case that
   // needs it.
   const blocked = [
-    ['intent-unrecorded', { intent: undefined }],
+    ['not-invoked', { intent: undefined, invocation: undefined }],
     ['not-invoked', { invocation: { mode: 'narrated', status: 'returned' } }],
     ['shepherd-unavailable', { invocation: { mode: NESTED_INVOCATION, status: 'unavailable' } }],
     ['invocation-not-returned', { invocation: { mode: NESTED_INVOCATION, status: 'dispatched' } }],
@@ -520,7 +863,7 @@ test('a handoff nobody performed cannot supply the base the obligation binds to'
     ['not-invoked', { invocation: { mode: 'narrated', status: 'returned' } }],
     ['shepherd-unavailable', { invocation: { mode: NESTED_INVOCATION, status: 'unavailable' } }],
     ['invocation-failed', { invocation: { mode: NESTED_INVOCATION, status: 'failed' } }],
-    ['intent-unrecorded', { intent: undefined }],
+    ['not-invoked', { intent: undefined, invocation: undefined }],
   ];
 
   for (const [state, overrides] of narrated) {
@@ -548,7 +891,7 @@ test('a handoff nobody performed cannot supply the base the obligation binds to'
   // A disposition whose receipt never validated is not an observation either,
   // however terminal the disposition reads.
   const unusable = evaluateHandoff(completeHandoff({
-    result: { disposition: 'mergeable-and-green', receipt: { baseSha: REBASED_BASE } },
+    result: { disposition: 'mergeable-and-green', watch: ACCEPTED_WATCH, receipt: { baseSha: REBASED_BASE } },
   }));
 
   assert.equal(unusable.state, 'result-receipt-incomplete');

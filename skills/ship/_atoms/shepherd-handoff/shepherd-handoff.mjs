@@ -12,10 +12,11 @@
  *
  * Three properties are pinned here, and none survives in prose:
  *
- * 1. **A handoff is an invocation, not a sentence.** Describing what shepherd
+ * 1. **A handoff is accepted ownership, not a sentence.** Describing what shepherd
  *    should do next is indistinguishable, in the report, from having invoked
- *    it. So the only invocation this accepts is a nested one in a separate
- *    worker context that returned a terminal disposition. Anything else is
+ *    it. A new watch requires a separate worker and terminal disposition;
+ *    an explicit nested transfer requires the identified owner's acceptance.
+ *    Anything else is
  *    `not-performed`, and the run may not report its own completion.
  * 2. **Two snapshots, and they are not interchangeable.** The publication
  *    receipt records what was handed over and when — ownership evidence, fixed
@@ -45,9 +46,128 @@ import {
   normalizeUpToDatePolicy,
   validateFreshnessReceipt,
 } from '../../../_base/_atoms/landability/landability.mjs';
+import { createWatchState } from '../../../shepherd/_atoms/watch-state/watch-state.mjs';
+import { deliveryEffectAllowed } from '../change-request/change-request.mjs';
 
 /**
- * The only invocation shape that hands anything over. Shepherd needs `edit`
+ * Adapt confirmed Ship delivery evidence to Shepherd's existing bootstrap.
+ * The observation is provider evidence, including proven branch ownership.
+ * Missing continuation is refused, never repaired with invented confirmation.
+ */
+export function buildShepherdBootstrap(input = {}) {
+  const { publication, continuation, observation, observedAt } = input;
+  const built = buildHandoffTarget(input.target);
+  const refuse = (reason) => ({ accepted: false, reason, target: built.target });
+  if (!deliveryEffectAllowed(input, 'handoff')) return refuse('authority-withheld');
+  if (!publicationSucceeded(publication)) return refuse('no-published-target');
+  if (built.missing.length) return refuse('target-incomplete');
+  const target = built.target;
+  if (![target.headSha, target.baseSha].every((sha) => /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(sha))
+    || target.receipt.headSha !== target.headSha
+    || target.receipt.baseSha !== target.baseSha
+    || !Number.isFinite(Date.parse(target.receipt.observedAt))
+    || Date.parse(observedAt) < Date.parse(target.receipt.observedAt)) {
+    return refuse('publication-snapshot-mismatched');
+  }
+  if (!continuation) return refuse('missing-ship-continuation-context');
+  const identity = observation?.identity;
+  if (built.target.changeRequest !== publication.identifier
+    || identity?.changeRequest !== publication.identifier
+    || identity?.branch !== built.target.headBranch
+    || observation?.pullRequest?.baseBranch !== built.target.baseBranch
+    || observation?.pullRequest?.headSha !== built.target.headSha) {
+    return refuse('target-publication-mismatch');
+  }
+  const bootstrap = { mode: 'handoff-bootstrap', continuation, observation, observedAt };
+  try {
+    const state = createWatchState(bootstrap);
+    return {
+      accepted: true,
+      target: built.target,
+      bootstrap,
+      expectedWatch: { identity: state.targetIdentity, stateDigest: state.integrityDigest },
+    };
+  } catch {
+    return refuse('continuation-or-observation-mismatched');
+  }
+}
+
+/**
+ * Return to the watcher that dispatched this continuation. Its existing
+ * recordShipResult/persistence path validates the result after this task ends;
+ * there is no new owner and no pre-return acknowledgment to wait for.
+ */
+export function buildShepherdContinuationResult(input = {}) {
+  const mode = 'existing-change-request';
+  const refuse = (reason, status = 'blocked') => ({
+    status, mode, reason, identity: input.observation?.identity ?? null,
+  });
+  if (input.mode !== mode || input.caller?.skill !== 'shepherd'
+    || !nonEmptyString(input.caller.agentId)) return refuse('owner-unidentified');
+  if (input.outcome === 'cancelled' || input.authority?.status === 'withdrawn') {
+    return refuse('authority-withheld', 'cancelled');
+  }
+  if (input.outcome !== 'verified') return refuse('continuation-not-verified');
+  const built = buildShepherdBootstrap(input);
+  if (!built.accepted) return refuse(built.reason);
+  return {
+    status: 'shipped-to-review',
+    mode,
+    resultingHead: built.target.headSha,
+    identity: built.expectedWatch.identity,
+    continuation: structuredClone(built.bootstrap.continuation),
+  };
+}
+
+/** One bounded dispatch for new ownership, never a return to an existing owner. */
+export async function dispatchHandoff(input, { readState, invoke, transfer }) {
+  const current = { ...input, ...readState() };
+  if (current.mode === 'existing-change-request' && current.caller?.skill === 'shepherd') {
+    return { accepted: false, reason: 'return-to-existing-owner',
+      invocation: { mode: 'caller-return', status: 'not-invoked' } };
+  }
+  const route = handoffRoute(current);
+  const { owner } = route;
+  if (route.mode === 'owner-transfer') {
+    const built = buildHandoffTarget(current.target);
+    const refuse = (reason) => ({ ...built, accepted: false, reason,
+      invocation: { mode: 'owner-transfer', status: 'not-invoked' } });
+    if (!deliveryEffectAllowed(current, 'handoff')) return refuse('authority-withheld');
+    if (!owner) return refuse('owner-unidentified');
+    if (!publicationSucceeded(current.publication)) return refuse('no-published-target');
+    if (built.missing.length) return refuse('target-incomplete');
+    if (built.target.changeRequest !== current.publication.identifier) return refuse('target-publication-mismatch');
+    if (!deliveryEffectAllowed(readState(), 'handoff')) return refuse('authority-withheld');
+    try {
+      const returned = await transfer({ owner, target: built.target });
+      return { target: built.target, accepted: true,
+        invocation: { mode: 'owner-transfer', status: returned?.status }, result: returned?.result };
+    } catch {
+      return { target: built.target, accepted: false,
+        invocation: { mode: 'owner-transfer', status: 'failed' } };
+    }
+  }
+  const built = buildShepherdBootstrap(current);
+  if (!built.accepted) return { ...built, invocation: { mode: NESTED_INVOCATION, status: 'not-invoked' } };
+  if (!deliveryEffectAllowed(readState(), 'handoff')) {
+    return { ...built, accepted: false, reason: 'authority-withheld', invocation: { mode: NESTED_INVOCATION, status: 'not-invoked' } };
+  }
+
+  try {
+    const returned = await invoke(built.bootstrap);
+    return { ...built, invocation: { mode: NESTED_INVOCATION, status: returned?.status }, result: returned?.result };
+  } catch {
+    return { ...built, invocation: { mode: NESTED_INVOCATION, status: 'failed' } };
+  }
+}
+
+function handoffRoute(input) {
+  const owner = nonEmptyString(input.caller?.agentId) && nonEmptyString(input.handoffOwner);
+  return owner ? { mode: 'owner-transfer', owner } : { mode: NESTED_INVOCATION };
+}
+
+/**
+ * The invocation shape for a new watch. Shepherd needs `edit`
  * inside a worktree it owns, which the delivery orchestration does not hold,
  * so the work cannot happen in its context even in principle.
  */
@@ -121,7 +241,8 @@ export function publicationSucceeded(publication) {
  *
  * @param {object} [input]
  * @param {{outcome?: string, identifier?: string}} [input.publication]
- * @param {'yes'|'no'|unknown} [input.intent] The recorded shepherd intent.
+ * @param {object} [input.caller] Actual invoking agent identity, absent at top level.
+ * @param {string} [input.handoffOwner] Explicit nested responsibility transfer.
  * @param {object} [input.target] Input for {@link buildHandoffTarget}.
  * @param {{mode?: string, status?: string, reason?: string}} [input.invocation]
  * @param {{disposition?: string, receipt?: object, nextHumanAction?: string}} [input.result]
@@ -143,12 +264,17 @@ export function evaluateHandoff(input = {}) {
 
 /** Decide the handoff itself. The set obligation is attached by the caller. */
 function decideHandoff(input) {
-  const { intent, publication, invocation, result } = input;
+  const { publication, invocation, result } = input;
   const built = buildHandoffTarget(input.target ?? {});
   const target = built.target;
 
-  // Publication is decided once, before intent, so both intent paths agree
-  // about a run that published nothing.
+  if (input.outcome === 'cancelled' || input.authority?.status === 'withdrawn') {
+    return notPerformed('authority-withheld', {
+      target, humanAction: 'Do not hand off or mutate further without a new explicit operator request.',
+      unmet: ['delivery authority was cancelled or withdrawn'],
+    });
+  }
+  // No publication means no request to hand over.
   if (!publicationSucceeded(publication)) {
     return satisfied('not-required', 'no-published-target', {
       target: null,
@@ -173,21 +299,6 @@ function decideHandoff(input) {
     });
   }
 
-  if (intent === 'no') {
-    // The operator declined it. Conditional means conditional, and a decline
-    // is a decision rather than an omission.
-    return satisfied('not-required', 'declined-by-operator', { target });
-  }
-
-  if (intent !== 'yes') {
-    return notPerformed('intent-unrecorded', {
-      target,
-      unmet: ['intent: no shepherd intent was recorded before the run started'],
-      humanAction:
-        'Ask whether this change request should be shepherded, record the answer, and re-run the handoff.',
-    });
-  }
-
   if (built.missing.length > 0) {
     return notPerformed('target-incomplete', {
       target,
@@ -195,6 +306,39 @@ function decideHandoff(input) {
       humanAction:
         'Capture the change request, branch, head SHA, base branch, base SHA, and observation time, then hand over.',
     });
+  }
+
+  const route = handoffRoute(input);
+  const { owner } = route;
+  if (route.mode === 'owner-transfer') {
+    if (!owner) {
+      return notPerformed('owner-unidentified', {
+        target, humanAction: 'Recover the invoking Shepherd watcher identity before returning responsibility; do not start another watcher.',
+      });
+    }
+    const receipt = result?.transfer;
+    if (invocation?.mode !== 'owner-transfer' || invocation.status !== 'returned'
+      || receipt?.status !== 'accepted' || receipt.owner !== owner
+      || receipt.responsibility !== 'shepherd'
+      || receipt.changeRequest !== target.changeRequest
+      || receipt.headSha !== target.headSha || receipt.baseSha !== target.baseSha
+      || ![target.headSha, target.baseSha].every((sha) => /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(sha))
+      || target.receipt.headSha !== target.headSha || target.receipt.baseSha !== target.baseSha
+      || !Number.isFinite(Date.parse(target.receipt.observedAt))
+      || !Number.isFinite(Date.parse(receipt.observedAt))
+      || Date.parse(receipt.observedAt) < Date.parse(target.receipt.observedAt)) {
+      return notPerformed('owner-acceptance-unproven', {
+        target, owner, humanAction: `Obtain ${owner}'s actual acceptance of Shepherd responsibility for ${target.changeRequest}; do not leave it unattended.`,
+      });
+    }
+    const { freshness } = compareObservation(receipt, input.observedBase);
+    if (freshness !== 'fresh') {
+      return notPerformed('owner-acceptance-not-current', {
+        target, owner, freshness,
+        humanAction: `Re-read the base and head and obtain ${owner}'s acceptance for the current change request.`,
+      });
+    }
+    return satisfied('completed', 'transferred-to-owner', { target, owner, freshness });
   }
 
   if (invocation?.mode !== NESTED_INVOCATION) {
@@ -236,6 +380,24 @@ function decideHandoff(input) {
       target,
       unmet: [`result: disposition is ${describe(result?.disposition)}`],
       humanAction: humanActionFor(target, 'shepherd returned no terminal disposition'),
+    });
+  }
+
+  const expected = input.expectedWatch;
+  const watch = result?.watch;
+  const sameIdentity = expected?.identity && watch?.identity
+    && Object.keys(expected.identity).length === Object.keys(watch.identity).length
+    && Object.entries(expected.identity).every(([key, value]) => watch.identity[key] === value);
+  if (watch?.status !== 'watch-accepted'
+    || watch?.authority?.mode !== 'ship-continuation'
+    || watch?.authority?.provenance !== 'validated-ship-context'
+    || !sameIdentity
+    || !/^[a-f0-9]{64}$/.test(expected?.stateDigest ?? '')
+    || watch.stateDigest !== expected.stateDigest) {
+    return notPerformed('watch-acceptance-unproven', {
+      target,
+      unmet: ['Shepherd did not accept the confirmed continuation identity and bootstrap state'],
+      humanAction: humanActionFor(target, 'maintenance ownership was not accepted'),
     });
   }
 
@@ -334,7 +496,7 @@ export function handoffSatisfied(evaluation) {
  * forgot to check the invocation would stamp the obligation with a base no
  * shepherd ever saw, on exactly the states this unit exists to disbelieve. A
  * recorded disposition is that verdict, and only that one: it proves the
- * decision got past intent, target, invocation mode, invocation status, and
+ * decision got past target, invocation mode, invocation status, and
  * terminality.
  *
  * It does not prove the receipt can bind anything, because

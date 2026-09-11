@@ -9,6 +9,11 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 import { METADATA_UNIT, mayContinue, parseUnifiedDiff, reconcile } from './diff-reconciliation.mjs';
 
@@ -27,6 +32,73 @@ index 1111111..2222222 100644
 `;
 
 const IN_SCOPE = [{ id: 'L1', classification: 'in-scope' }];
+
+test('actual Git index diffs retain quoted paths, mixed renames and unclaimed content', () => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+  const fixture = path.join(root, '.test-sandbox', `ship-diff-${randomUUID()}`);
+  fs.mkdirSync(fixture, { recursive: true });
+  // Index-only fixture: exercise portable Git paths without checking them out
+  // onto NTFS, which cannot represent the tab/backslash cases.
+  const git = (args, input) => execFileSync('git', ['-c', 'core.quotePath=true', '-c', 'core.protectNTFS=false', ...args],
+    { cwd: fixture, input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trimEnd();
+  try {
+    git(['init', '--quiet']);
+    const before = git(['hash-object', '-w', '--stdin'], 'before\n');
+    const after = git(['hash-object', '-w', '--stdin'], 'after\n');
+    const names = ['café.txt', 'tab\tname', 'back\\slash', 'space name', 'plain'];
+    for (const name of names) git(['update-index', '--add', '--cacheinfo', `100644,${before},${name}`]);
+    const tree = git(['write-tree']);
+    for (const name of names) git(['update-index', '--cacheinfo', `100644,${after},${name}`]);
+    const diff = git(['diff', '--cached', '--no-ext-diff', '--no-textconv', tree]);
+    const parsed = parseUnifiedDiff(diff);
+    assert.deepEqual(parsed.map((file) => file.file).sort(), names.sort());
+    assert.equal(reconcile({ ledger: IN_SCOPE, diff, mapping: [] }).undisclosed.length, names.length);
+    const mapping = parsed.flatMap((file) => file.hunks.map((unit) =>
+      ({ file: file.file, hunkIndex: unit.index, entryId: 'L1' })));
+    assert.equal(reconcile({ ledger: IN_SCOPE, diff, mapping }).verdict, 'reconciled');
+    assert.equal(reconcile({ ledger: IN_SCOPE, diff, mapping: mapping.slice(1) }).verdict, 'undisclosed-change');
+    git(['read-tree', tree]);
+    git(['update-index', '--force-remove', 'café.txt']);
+    git(['update-index', '--add', '--cacheinfo', `100644,${before},renamed`]);
+    const renamed = parseUnifiedDiff(git(['diff', '--cached', '--find-renames', tree]));
+    assert.equal(renamed[0].file, 'renamed');
+    assert.equal(renamed[0].hunks[0].previousFile, 'café.txt');
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('Git C-quoted and mixed headers preserve every changed path and rename identity', () => {
+  const cases = [
+    ['"a/caf\\303\\251.txt" "b/caf\\303\\251.txt"', 'café.txt'],
+    ['"a/tab\\tname" "b/tab\\tname"', 'tab\tname'],
+    ['"a/back\\\\slash" "b/back\\\\slash"', 'back\\slash'],
+    ['a/plain "b/caf\\303\\251.txt"', 'café.txt'],
+    ['"a/caf\\303\\251.txt" b/plain', 'plain'],
+    ['a/with spaces b/with spaces', 'with spaces'],
+  ];
+  for (const [header, file] of cases) {
+    const diff = `diff --git ${header}\n@@ -1 +1 @@\n-old\n+new\n`;
+    assert.equal(parseUnifiedDiff(diff)[0].file, file);
+    assert.equal(reconcile({ ledger: IN_SCOPE, diff, mapping: [] }).verdict, 'undisclosed-change');
+    assert.equal(reconcile({ ledger: IN_SCOPE, diff, mapping: [{ file, hunkIndex: 0, entryId: 'L1' }] }).verdict, 'reconciled');
+  }
+  const diff = 'diff --git "a/caf\\303\\251.txt" b/plain\nsimilarity index 100%\nrename from "caf\\303\\251.txt"\nrename to plain\n';
+  assert.equal(parseUnifiedDiff(diff)[0].hunks[0].previousFile, 'café.txt');
+});
+
+test('unknown boundaries and metadata cannot disappear or borrow another file claim', () => {
+  for (const unknown of ['diff --git broken', 'diff --cc path', 'diff --git "a/\\q" b/path']) {
+    for (const prefix of ['', DIFF_TWO_HUNKS]) {
+      assert.throws(() => reconcile({ ledger: IN_SCOPE, diff: prefix + unknown, mapping: [] }), /diff|path/i);
+    }
+  }
+  assert.equal(reconcile({
+    ledger: IN_SCOPE, diff: 'diff --git a/path b/path\nunrecognized metadata\n',
+    mapping: [{ file: 'path', hunkIndex: METADATA_UNIT, entryId: 'L1' }],
+  }).verdict, 'undisclosed-change');
+  assert.throws(() => parseUnifiedDiff(DIFF_TWO_HUNKS + DIFF_TWO_HUNKS), /repeated diff path/);
+});
 
 test('a fully claimed diff reconciles', () => {
   const result = reconcile({

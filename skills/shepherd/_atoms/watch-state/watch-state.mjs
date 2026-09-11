@@ -711,6 +711,7 @@ export function bootstrapAcceptance(state, {
   acceptedStateDigest,
   disposition,
   receipt,
+  nextHumanAction,
 } = {}) {
   const workerAccepted = workerStatus === 'running'
     && digest(acceptedIdentity) === digest(state.targetIdentity)
@@ -767,6 +768,7 @@ export function bootstrapAcceptance(state, {
       result: {
         disposition,
         receipt,
+        ...(nextHumanAction === undefined ? {} : { nextHumanAction }),
         watch: {
           status: 'watch-accepted',
           authority: state.authority,

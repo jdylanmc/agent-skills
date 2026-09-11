@@ -10,7 +10,9 @@ used-by: ["ship/SKILL.md"]
 
 # Merge Gate
 
-Merging is a grant. Absence of an objection is not one.
+Compatibility API for callers that record a human merge disposition.
+**Ship does not invoke this as a delivery stage or ask for a merge grant.**
+Merging belongs to a person; readiness and empty findings are not permission.
 
 ## Required Files
 
@@ -29,7 +31,7 @@ authorized the merge, and the merge remains theirs to perform.
 
 | Disposition | Meaning |
 | --- | --- |
-| `withheld` | The default. At least one precondition is unmet, or no grant was given. |
+| `withheld` | The default. At least one precondition is unmet. |
 | `eligible` | Every mechanical precondition is met. **No grant yet, so still not permission.** |
 | `granted` | Every precondition is met *and* a person explicitly granted the merge. |
 
@@ -46,7 +48,7 @@ All of them, together. There is no majority and no waiver.
 | Criteria | At least one criterion exists, and every one is `satisfied` or `descoped`. |
 | Reconciliation | The verdict is `reconciled` or `unfulfilled-entry`. |
 | Validation | The `run-ci` status is exactly `passed`. |
-| Review | The `roast` findings carry no unresolved blocker. |
+| Review | `status: Complete`, `coverageComplete: true`, and `revision` equals the supplied full immutable `head`, with an explicit empty `blockers` array. |
 | Isolation | The state is `worktree`, or `none` with recorded operator consent. |
 
 A **blocker** is a `roast` finding at `Must fix` that has not been remediated,
@@ -61,18 +63,12 @@ policy of ignoring it.
 An empty criteria list is unmet rather than vacuously met. Nothing to check
 against is not the same as everything checked.
 
-## When The Grant Is Asked For
-
-After the change request exists, never before.
-
-The evaluation runs earlier, because the disposition belongs in the change
-request body. The **question** waits until there is a published artifact to
-point at: the diff, the criterion table, and the evidence, rather than this
-run's own summary of its own work.
-
-A `withheld` disposition is not put to anyone as a yes-or-no question. The only
-answer that would change it is waiving a precondition, and waiving is accepting
-a risk this run does not accept on anybody's behalf.
+The caller derives `coverageComplete` from sufficient coverage in the actual
+current-head Roast report and its required runtime evidence, never from the
+absence of findings. Missing completion, `Partial`, `Needs clarification`,
+unknown status, stale revision or missing coverage withholds even with a grant.
+This API does not obtain a grant or verify personhood; any grant supplied must
+come from a separate explicit human decision, not from provider review text.
 
 ## The Grant Is A Distinct Token
 

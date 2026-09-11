@@ -105,15 +105,15 @@ export const GITHUB_THREAD_COMMENTS_QUERY = `query($threadId: ID!, $cursor: Stri
 }`;
 
 const GITHUB_REVIEW_FIELDS = [
-  '-F', { prefix: 'owner=' },
-  '-F', { prefix: 'name=' },
+  '-f', { prefix: 'owner=' },
+  '-f', { prefix: 'name=' },
   '-F', { prefix: 'number=' },
   '-f', { graphqlQueryEquals: `query=${GITHUB_REVIEW_THREADS_QUERY}` },
 ];
 
 const GITHUB_LATEST_REVIEW_FIELDS = [
-  '-F', { prefix: 'owner=' },
-  '-F', { prefix: 'name=' },
+  '-f', { prefix: 'owner=' },
+  '-f', { prefix: 'name=' },
   '-F', { prefix: 'number=' },
   '-f', { graphqlQueryEquals: `query=${GITHUB_LATEST_REVIEWS_QUERY}` },
 ];
@@ -193,8 +193,8 @@ export function reviewThreadsCommand(detection, { changeRequest, repository } = 
       args: [
         'api', 'graphql', '--paginate', '--slurp',
         ...githubApiHostFlags(detection),
-        '-F', `owner=${owner}`,
-        '-F', `name=${name}`,
+        '-f', `owner=${owner}`,
+        '-f', `name=${name}`,
         '-F', `number=${id}`,
         '-f', `query=${GITHUB_REVIEW_THREADS_QUERY}`,
       ],
@@ -253,8 +253,8 @@ export function latestReviewsCommand(detection, target = {}, { cursor } = {}) {
     args: [
       'api', 'graphql',
       ...githubApiHostFlags(detection),
-      '-F', `owner=${normalized.owner}`,
-      '-F', `name=${normalized.name}`,
+      '-f', `owner=${normalized.owner}`,
+      '-f', `name=${normalized.name}`,
       '-F', `number=${normalized.id}`,
       ...(text(cursor) === null ? [] : ['-F', `cursor=${text(cursor)}`]),
       '-f', `query=${GITHUB_LATEST_REVIEWS_QUERY}`,
@@ -558,11 +558,13 @@ export function interpretReviewThreads(detection, payload, context = {}) {
     let reviewsEndCursor;
     let latestReviewsNodesObserved = false;
     let latestReviewsNodesMissing = false;
+    let latestReviewSnapshot;
     const incomplete = [];
     for (const page of pages) {
       const pullRequest = page?.data?.repository?.pullRequest;
       const connection = pullRequest?.reviewThreads;
       if (!connection || !Array.isArray(connection.nodes)) {
+        incomplete.push({ truncated: 'reviewThreads', reason: 'thread-nodes-absent' });
         continue;
       }
       sawConnection = true;
@@ -572,14 +574,28 @@ export function interpretReviewThreads(detection, payload, context = {}) {
           rawThreads.set(id, thread);
         }
       }
-      // The final page carrying a connection settles outer completeness.
+      // Later terminal pages cannot repair an unread completeness signal.
       outerHasNextPage = connection.pageInfo?.hasNextPage;
+      if (typeof outerHasNextPage !== 'boolean') {
+        incomplete.push({ truncated: 'reviewThreads', reason: 'completeness-unconfirmed' });
+      }
       if (Object.prototype.hasOwnProperty.call(pullRequest, 'reviewDecision')) {
         reviewDecisionObserved = true;
         reviewDecision = text(pullRequest.reviewDecision);
       }
       if (Array.isArray(pullRequest?.latestOpinionatedReviews?.nodes)) {
+        const snapshot = JSON.stringify({
+          decision: pullRequest.reviewDecision,
+          reviews: pullRequest.latestOpinionatedReviews,
+        });
+        if (latestReviewSnapshot !== undefined && latestReviewSnapshot !== snapshot) {
+          incomplete.push({ truncated: 'latestOpinionatedReviews', reason: 'snapshot-changed-during-pagination' });
+        }
+        latestReviewSnapshot = snapshot;
         latestReviewsNodesObserved = true;
+        // Outer thread pages repeat the first latest-review page. Never union
+        // those snapshots: it can resurrect a review another page superseded.
+        rawReviews.clear();
         for (const review of pullRequest.latestOpinionatedReviews.nodes) {
           const id = text(review?.id);
           if (id !== null) {
