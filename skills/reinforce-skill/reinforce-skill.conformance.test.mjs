@@ -32,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
 import { deriveGraph, applyUpdates, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import { scanRepository } from '../../scripts/scan-sensitive.mjs';
 import {
   FAILURES,
   SKILL_NAME_PATTERN,
@@ -1374,6 +1375,101 @@ test('exit 1 is a stop, and the skill says so where publication depends on it', 
   });
 });
 
+function scanDocumentedCandidate({ root, git, write }, base, head) {
+  const validation = read(ENTRY).split('**Validate.**')[1].split('**Roast exact candidate.**')[0];
+  const template = validation.match(/```json\n([\s\S]*?)\n\s*```/)?.[1];
+  assert.ok(template, 'the root supplies the supported cumulative scan event, not hidden fixture instructions');
+  const event = JSON.parse(template.replaceAll('<original-base>', base).replaceAll('<candidate-head>', head));
+  const binding = validation.match(/([A-Z_]+)="<absolute-candidate-event.json>" node skills\/run-ci\/_atoms\/ci-runner\/ci-runner.mjs --run --json/);
+  assert.ok(binding, 'the root wires the event into the existing declared CI invocation');
+  const eventPath = path.join(root, '.skill-log', 'candidate-event.json');
+  write('.skill-log/candidate-event.json', JSON.stringify(event));
+  const before = { head: git('rev-parse', 'HEAD'), tree: git('rev-parse', 'HEAD^{tree}') };
+  const command = [fileURLToPath(new URL('../../scripts/scan-sensitive.mjs', import.meta.url)), '--repository', root];
+  const execution = spawnSync(process.execPath, command, {
+    encoding: 'utf8',
+    env: { ...process.env, [binding[1]]: eventPath,
+      REDACT_SENSITIVE_CONFIG_JSON: JSON.stringify({ version: 1, identifiers: [] }),
+      REDACT_SENSITIVE_CONFIG_REQUIRED: 'false' },
+  });
+  assert.equal(execution.error, undefined);
+  assert.equal(execution.signal, null);
+  const result = JSON.parse(execution.stdout);
+  assert.ok(Array.isArray(result.findings) && Array.isArray(result.unscanned),
+    'missing output is not complete coverage');
+  assert.deepEqual({ head: git('rev-parse', 'HEAD'), tree: git('rev-parse', 'HEAD^{tree}') }, before);
+  return { base, head, tree: before.tree, event, command, exitCode: execution.status, result };
+}
+
+test('actual scanner misses precommit and last-commit-only content but catches the documented cumulative candidate', async () => {
+  await withWorkflowFixture(async (fixture) => {
+    const { root, git, write } = fixture;
+    git('commit', '--allow-empty', '-qm', 'safe baseline predecessor');
+    const base = git('rev-parse', 'HEAD');
+    const first = 'skills/changelog/first.txt';
+    const retained = 'skills/changelog/retained.txt';
+    const content = `${['author', 'example.test'].join('@')}\n`;
+    write(first, content);
+    write(retained, content);
+    git('add', '.');
+    const precommit = scanRepository({ repository: root });
+    assert.deepEqual(precommit.findings, [], 'the old committed range misses even a staged candidate');
+    assert.deepEqual(precommit.unscanned, []);
+    git('commit', '-qm', 'candidate with data-bearing fixture');
+    const candidate = git('rev-parse', 'HEAD');
+    const firstScan = scanDocumentedCandidate(fixture, base, candidate);
+    assert.equal(firstScan.exitCode, 1);
+    assert.deepEqual(firstScan.result.unscanned, []);
+    const emailPaths = (result) => result.findings
+      .filter((finding) => finding.evidenceType === 'email' && finding.anchor.source === 'added-content')
+      .map((finding) => finding.anchor.path).sort();
+    assert.deepEqual(emailPaths(firstScan.result), [first, retained]);
+
+    write(first, 'corrected\n');
+    git('add', '.');
+    git('commit', '-qm', 'partial correction');
+    const correction = git('rev-parse', 'HEAD');
+    const lastCommitOnly = scanRepository({ repository: root });
+    assert.deepEqual(lastCommitOnly.findings, [], 'the latest commit alone misses retained earlier additions');
+    assert.deepEqual(lastCommitOnly.unscanned, []);
+    const cumulative = scanDocumentedCandidate(fixture, base, correction);
+    assert.equal(cumulative.exitCode, 1);
+    assert.deepEqual(emailPaths(cumulative.result), [retained]);
+    assert.deepEqual(cumulative.result.unscanned, []);
+    assert.equal(cumulative.event.pull_request.base.sha, base);
+    assert.equal(cumulative.event.pull_request.head.sha, correction);
+
+    write(retained, 'corrected too\n');
+    git('add', '.');
+    git('commit', '-qm', 'complete correction');
+    const corrected = scanDocumentedCandidate(fixture, base, git('rev-parse', 'HEAD'));
+    assert.equal(corrected.exitCode, 0);
+    assert.deepEqual(corrected.result.findings, []);
+    assert.deepEqual(corrected.result.unscanned, []);
+    assert.equal(git('status', '--porcelain'), '');
+  });
+});
+
+test('root blocks a committed scanner finding before review or publication', async () => {
+  await withWorkflowFixture(async (fixture) => {
+    const result = await driveRoot(fixture, {
+      afterImplement: ({ write }) => {
+        write('skills/changelog/data.txt', `${['author', 'example.test'].join('@')}\n`);
+      },
+      review: () => assert.fail('a failed candidate must not reach independent review'),
+      publish: () => assert.fail('a failed candidate cannot publish'),
+    });
+    assert.equal(result.status, 'blocked');
+    assert.equal(result.trace.at(-1), 'validate');
+    assert.ok(result.trace.indexOf('commit candidate') < result.trace.indexOf('validate'));
+    assert.equal(result.validations[0].head, result.head);
+    assert.equal(result.validations[0].exitCode, 1);
+    assert.ok(result.validations[0].result.findings.some((finding) => finding.evidenceType === 'email'));
+    assert.deepEqual(result.validations[0].result.unscanned, []);
+    assert.equal(result.gitStatus, '');
+  });
+});
+
 const OUTCOME_PROGRAM = `const unavailable = process.argv.includes('--unavailable');
 console.log(JSON.stringify(unavailable
   ? { status: 'degraded', reason: 'tool unavailable' }
@@ -1443,13 +1539,14 @@ used-by: ["changelog/SKILL.md"]
 // and publication callbacks; no provider or agent is invoked by these fixtures.
 async function driveRoot(fixture, {
   source = 'human-guidance', probe = false, verify, review, publish, beforeAudit, beforeSnapshot,
-  report = reportText(), approval, beforeVerify, afterVerify,
+  report = reportText(), approval, beforeVerify, afterVerify, afterImplement,
 } = {}) {
   const { root, git, write } = fixture;
   const stages = read(ENTRY).match(/```text\n([^\n]+)\n```/)[1].split(' -> ');
   const trace = [];
   let base, target, intake, state, prior, head, snapshot, audit, ledger;
   let status, verification, admissions = 0, validationHead;
+  const validations = [];
   const reportPath = path.join(root, '.skill-log', 'report.json');
   const receiptPath = path.join(root, '.skill-log', 'receipt.json');
   const program = 'skills/changelog/_atoms/outcome/outcome.mjs';
@@ -1511,19 +1608,26 @@ async function driveRoot(fixture, {
       write(program, OUTCOME_PROGRAM);
       if (ledger) fs.appendFileSync(path.join(root, 'skills/changelog/SKILL.md'), '\nReport both outcomes explicitly.\n');
       applyUpdates(deriveGraph(root));
+      afterImplement?.({ root, git, write });
     },
     'include changelog': () => {
       fs.appendFileSync(path.join(root, 'CHANGELOG.md'), ledger
         ? '\nClarify the changelog outcome explanation.\n' : '\nReport ambiguous paths and unavailable tooling.\n');
     },
     'validate': () => {
+      assert.equal(head, git('rev-parse', 'HEAD'), 'validation requires the complete committed candidate');
+      assert.equal(git('status', '--porcelain'), '', 'working-copy checks must read exactly that candidate');
       assert.deepEqual(JSON.parse(check()), { status: 'ambiguous', paths: ['CHANGELOG.md', 'nested/CHANGELOG.md'] });
       assert.deepEqual(JSON.parse(check(true)), { status: 'degraded', reason: 'tool unavailable' });
-      validationHead = git('rev-parse', 'HEAD');
-      assert.ok(fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8').includes('ambiguous'));
+      assert.ok(git('show', `${head}:CHANGELOG.md`).includes('ambiguous'));
+      const scan = scanDocumentedCandidate(fixture, base, head);
+      validations.push(scan);
+      if (scan.exitCode !== 0 || scan.result.findings.length || scan.result.unscanned.length
+        || scan.result.configuration.blocking) { status = 'blocked'; return; }
+      validationHead = head;
     },
     'commit candidate': () => {
-      assert.equal(validationHead, git('rev-parse', 'HEAD'));
+      validationHead = null;
       git('add', '.');
       git('commit', '-qm', ledger ? 'fixture correction' : 'fixture candidate');
       head = git('rev-parse', 'HEAD');
@@ -1536,6 +1640,9 @@ async function driveRoot(fixture, {
       assert.equal(git('status', '--porcelain'), '');
     },
     'roast exact candidate': async () => {
+      assert.equal(validationHead, head, 'only the validated committed revision reaches review');
+      assert.equal(git('rev-parse', 'HEAD'), validationHead);
+      assert.equal(git('status', '--porcelain'), '');
       const reviewed = await (review ?? (async ({ head: revision }) => ({
         revision, status: 'Complete', coverage: true, findings: [],
       })))({ head, base, git, check, round: ledger.round });
@@ -1581,10 +1688,10 @@ async function driveRoot(fixture, {
       index = stages.indexOf('implement and derive') - 1;
     }
   }
-  return { status, trace, admissions, verification, base, head, audit, ledger, gitStatus: git('status', '--porcelain') };
+  return { status, trace, admissions, verification, validations, base, head, audit, ledger, gitStatus: git('status', '--porcelain') };
 }
 
-test('root sequence commits changelog before review, validates corrections, and audits only the final reviewed candidate', async () => {
+test('root commits the complete candidate before cumulative validation and repeats that binding for corrections', async () => {
   await withWorkflowFixture(async (fixture) => {
     const reviews = [];
     let publications = 0;
@@ -1606,6 +1713,13 @@ test('root sequence commits changelog before review, validates corrections, and 
     assert.equal(reviews.length, 2);
     assert.notEqual(reviews[0], reviews[1]);
     assert.equal(result.trace.filter((stage) => stage === 'validate').length, 2);
+    assert.deepEqual(result.validations.map((entry) => entry.head), reviews);
+    assert.ok(result.validations.every((entry) => entry.base === result.base
+      && entry.event.pull_request.base.sha === result.base
+      && entry.event.pull_request.head.sha === entry.head
+      && entry.exitCode === 0));
+    assert.equal(fixture.git('rev-list', '--count', `${result.base}..${result.head}`), '2',
+      'one complete commit per candidate, not provisional plus final commits');
     assert.equal(result.trace.filter((stage) => stage === 'final audit and release checks').length, 1);
     assert.equal(result.audit.head, reviews[1]);
     assert.deepEqual(reinforceRoast.ledgerReport(result.ledger).acrossRun.resolved.map((entry) => entry.id), ['explanation']);

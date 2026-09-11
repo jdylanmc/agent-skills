@@ -1,6 +1,6 @@
 ---
 name: reinforce-skill
-description: Change one existing skill from the operator's own words or one human-approved post-mortem recommendation report. Ground the request, decide explicitly whether the intent changes, implement and validate the smallest complete change, record the change in the changelog, independently roast the committed candidate, then open a pull request and stop. If sufficient verification proves the requested outcome already holds, report already-satisfied without manufacturing a change. Use when the operator asks to change, revise, fix, update, or reinforce an existing skill. This is the counterpart to create-skill; do not use to create a new skill, run a skill, refactor the library, edit doctrine, approve a report, or widen another skill's permissions.
+description: Change one existing skill from the operator's own words or one human-approved post-mortem recommendation report. Ground the request, decide explicitly whether the intent changes, implement the smallest complete change, record the change in the changelog, commit the complete candidate, validate and independently roast that exact revision, then open a pull request and stop. If sufficient verification proves the requested outcome already holds, report already-satisfied without manufacturing a change. Use when the operator asks to change, revise, fix, update, or reinforce an existing skill. This is the counterpart to create-skill; do not use to create a new skill, run a skill, refactor the library, edit doctrine, approve a report, or widen another skill's permissions.
 allowed-tools: ["read","search","edit","execute","task"]
 includes: ["_base/_molecules/chronicler/chronicler.md","reinforce-skill/_atoms/reinforcement-target/reinforcement-target.md","reinforce-skill/_atoms/report-intake/report-intake.md","reinforce-skill/_atoms/intent-decision/intent-decision.md","reinforce-skill/_atoms/reinforce-roast/reinforce-roast.md"]
 composes: ["_base/_molecules/chronicler/chronicler.md","reinforce-skill/_atoms/reinforcement-target/reinforcement-target.md","reinforce-skill/_atoms/report-intake/report-intake.md","reinforce-skill/_atoms/intent-decision/intent-decision.md","reinforce-skill/_atoms/reinforce-roast/reinforce-roast.md"]
@@ -14,7 +14,7 @@ requires-skills: [{"id": "roast", "source": "local", "required": true}, {"id": "
 One existing skill, one admitted request, one root sequence:
 
 ```text
-isolate branch and record base -> resolve the target -> admit the evidence -> ground on its intent -> decide the intent -> verify requested outcome -> implement and derive -> include changelog -> validate -> commit candidate -> roast exact candidate -> final audit and release checks -> publish
+isolate branch and record base -> resolve the target -> admit the evidence -> ground on its intent -> decide the intent -> verify requested outcome -> implement and derive -> include changelog -> commit candidate -> validate -> roast exact candidate -> final audit and release checks -> publish
 ```
 
 An explicit slash invocation with this context already loaded is invocation.
@@ -103,19 +103,58 @@ The grant did not widen to read a report.
    as a side effect: the deriver never widens a grant automatically.
 8. **Include changelog.** Record the change in the changelog. Invoke `changelog`
    and place the returned patch in the same reviewable change **before**
-   validation, commit and Roast. `changelog` holds no write authority; it
+   commit, validation and Roast. `changelog` holds no write authority; it
    returns a patch. If no changelog exists, its target is ambiguous, or the
    component cannot run, report `Changelog: degraded` with the reason and
    continue; do not create a changelog as a side effect. Review writing as
    described below.
-9. **Validate.** Discover and run every locally executable command declared by
-   existing CI through `run-ci`, including validator, deriver check, sensitive
-   content scan and the full registered suite. Preserve its result envelope,
-   commands, output and configured-policy degradation. Failure stops; never
-   edit shared safety to appease a test.
-10. **Commit candidate.** Commit the target, generated companions and changelog
+9. **Commit candidate.** Commit the target, generated companions and changelog
     together. Record the exact candidate commit and tree; require no staged,
-    unstaged or untracked residue. This is the candidate the reviewer sees.
+    unstaged or untracked residue. A local commit is not publication: this
+    complete candidate must pass validation before independent review or release.
+    Do not create separate provisional and final commits for the same candidate.
+10. **Validate.** Discover every locally executable command declared by existing
+    CI through `run-ci`, including validator, deriver check, sensitive content
+    scan and the full registered suite. Bind validation to the recorded candidate
+    head/tree and verify that Git identity and a clean worktree before and after
+    execution. Working-copy checks then read that exact candidate. A precommit
+    run is useful feedback, never proof that a commit-range check saw the change.
+
+    Inspect the declared commands' supported source/range inputs. In this
+    repository, `scripts/scan-sensitive.mjs` defaults to `HEAD^..HEAD`, which
+    misses uncommitted changes and earlier retained changes after a correction.
+    Write this range event to an absolute, unpublished run-state path, replacing
+    the placeholders with the original full base and candidate commit hashes:
+
+    ```json
+    {"pull_request":{"base":{"sha":"<original-base>"},"head":{"sha":"<candidate-head>"}}}
+    ```
+
+    Include the actual pull request title/body when available so metadata is
+    scanned too; record unavailable metadata rather than inventing it. Compare
+    the event's base/head with the recorded original base and candidate, and
+    retain the exact event with the validation evidence. This range input
+    supplies no approval or publication authority. Pass it through the scanner's
+    existing supported environment input for the declared CI run:
+
+    ```text
+    GITHUB_EVENT_PATH="<absolute-candidate-event.json>" node skills/run-ci/_atoms/ci-runner/ci-runner.mjs --run --json
+    ```
+
+    Scope that environment to this child invocation (use the platform's process
+    environment equivalent when needed). The scanner also supports explicit
+    `--event <path>` for a direct check. After every correction, keep the original
+    base and update the candidate head; the range is the cumulative proposed
+    change, not just the latest commit. Do not guess equivalent bindings for
+    other providers: unavailable or unproven source identity means incomplete
+    evidence and blocks review/publication.
+
+    Preserve the result envelope, exact commands, range event, observed Git
+    identity, output and configured-policy degradation. Require successful
+    execution and explicit scanner findings/unscanned arrays with no entries;
+    missing output is not complete coverage. Failure blocks review/publication;
+    correct the change, commit the new complete candidate and validate again.
+    Never edit shared safety to appease a test.
 11. **Roast exact candidate.** Use the local reinforce-roast adapter and its
     documented event/report CLI, not the shared ledger CLI. Invoke `/roast`
     inspection-only with a fresh independent reviewer of this exact committed
@@ -123,7 +162,7 @@ The grant did not widen to read a report.
     matching `Revision`, sufficient agreed coverage and all finding dispositions.
     Must-fix corrections are mandatory; arguable findings need a neutral,
     fresh-context rubber duck. Every correction returns to **implement and
-    derive -> include changelog -> validate -> commit candidate -> roast exact
+    derive -> include changelog -> commit candidate -> validate -> roast exact
     candidate**. Never add a changelog or amend content after its last review.
     Retain the shared three-round real-human pause, even when the third round
     has zero unresolved findings. The adapter persists the real checkpoint;
@@ -161,8 +200,8 @@ The grant did not widen to read a report.
     digest, approval, selection and grounding. Exit `2` blocks.
     **Exit `1` is also a stop, never a pass:** it checked nothing.
     Only exit `0` permits publication. A human-guidance run has no receipt to
-    check. Any drift after the audit invalidates release: revalidate, commit,
-    review and audit the new candidate, not the old snapshot.
+    check. Any drift after the audit invalidates release: commit the correction,
+    validate, review and audit the new candidate, not the old snapshot.
 13. **Publish.** Open the pull request with the evidence below, return its
     identifier and reviewed head, and stop. Never merge.
 

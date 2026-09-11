@@ -91,7 +91,7 @@ this atom and a drift fails the build for a human to read.
    verdict with its reasoning. Never auto-apply and never dismiss one without a
    verdict.
 4. After **every** correction, return to the root's implement/derive/changelog,
-   validate and commit steps, then re-roast that new committed head. A roast of
+   commit and validate steps, then re-roast that new committed head. A roast of
    a superseded head is stale evidence and is not counted.
 5. Stop every three rounds and reconfirm with the operator, presenting the
    unresolved findings with a recommendation on how to move forward — further

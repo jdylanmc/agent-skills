@@ -342,9 +342,9 @@ below is unreleased and no comparison links are available.
 ### Changed
 
 - **Simpler, reliable single-skill reinforcement.** Reinforce Skill keeps its
-  workflow in one place instead of three forwarding units. It validates and
-  commits the complete candidate, including the changelog, before independently
-  reviewing that exact revision and auditing publication. Sufficiently verified
+  workflow in one place instead of three forwarding units. It commits the
+  complete candidate, including the changelog, then validates and independently
+  reviews that exact revision before auditing publication. Sufficiently verified
   already-satisfied requests stop without unnecessary edits or pull requests.
   Clean third review rounds retain the real human checkpoint instead of failing
   while reporting it. Confirmed intent amendments can retain unchanged,
