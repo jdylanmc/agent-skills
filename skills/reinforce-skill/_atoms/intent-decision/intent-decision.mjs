@@ -23,12 +23,10 @@
  *    read. A prior that moved underneath the run is a stale-prior refusal, not
  *    a clobber.
  *
- * Two validated implementations are reused rather than restated:
- * `intent-storage-gate.mjs` owns the digest that binds a confirmation to the
- * bytes it confirmed, and `intent-synthesis.mjs` owns whether a draft reads as
- * plain requirements. Unit composition runs strictly downward; a code
- * dependency between unit scripts is a separate graph, and duplicating either
- * rule here would let the two copies drift.
+ * The shared intent-synthesis screen still owns draft shape and diagnostics.
+ * The shared storage digest remains for existing normalized receipts. New
+ * confirmations also bind raw bytes, so line-ending changes cannot ride an
+ * earlier confirmation. Legacy structural lines require the actual bound prior.
  *
  * This gate revises an intent that already exists, which is why it does not
  * simply reuse `intent-storage-gate`'s `store`: that one writes with `wx` and
@@ -43,9 +41,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 import { digestOf } from '../../../create-skill/_atoms/intent-storage-gate/intent-storage-gate.mjs';
 import { reviewIntentDraft } from '../../../create-skill/_atoms/intent-synthesis/intent-synthesis.mjs';
+import { changeRequestDigest, releaseCheckCommand, run as runIntake } from '../report-intake/report-intake.mjs';
 
 export class DecisionError extends Error {
   constructor(code, message) {
@@ -72,11 +73,16 @@ export const STATE_VERSION = 1;
 /** The canonical file an intent lives in, relative to the skill package. */
 export const INTENT_FILE_NAME = 'intent.md';
 
+const bytesDigest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
+const presentation = (state) => state.history.findLast((entry) => entry.type === 'draft-presented');
+const storedBytesDigest = (state) => state.history.findLast((entry) => entry.type === 'store')?.bytesDigest;
+
 const STATE_FIELDS = [
   'version',
   'skill',
   'hadIntent',
   'priorDigest',
+  'priorBytesDigest',
   'decision',
   'reasoning',
   'status',
@@ -208,6 +214,7 @@ export function createDecision({ skill, priorIntent = null } = {}) {
     skill: name,
     hadIntent: priorIntent !== null,
     priorDigest: priorIntent === null ? null : digestOf(priorIntent),
+    priorBytesDigest: priorIntent === null ? null : bytesDigest(priorIntent),
     decision: null,
     reasoning: null,
     status: 'undecided',
@@ -234,6 +241,53 @@ function safeIntentPath(repositoryRoot, skill, supplied) {
     );
   }
   return expected;
+}
+
+function reviewRevision(draft, current, repositoryRoot) {
+  const review = reviewIntentDraft(draft, current.skill);
+  const refuse = () => {
+    throw new DecisionError('not_plain_intent',
+      `the revised draft is not plain requirements: ${[
+        ...review.problems,
+        ...review.findings.map((f) => `line ${f.line} ${f.kind}: ${f.detail}`),
+      ].join(' | ')}`);
+  };
+  if (review.shape !== 'well-formed') refuse();
+  if (review.status === 'plain') return [];
+  if (!current.hadIntent) refuse();
+  if (!repositoryRoot || !/^[a-f0-9]{64}$/.test(current.priorDigest ?? '')) {
+    throw new DecisionError('not_plain_intent',
+      'carrying legacy findings requires the repository and a digest-bound actual prior');
+  }
+  const target = safeIntentPath(repositoryRoot, current.skill);
+  if (!fs.existsSync(target)) {
+    throw new DecisionError('stale_prior', 'the intent that was read no longer exists on disk');
+  }
+  const prior = fs.readFileSync(target, 'utf8');
+  if (digestOf(prior) !== current.priorDigest
+    || (current.priorBytesDigest && bytesDigest(prior) !== current.priorBytesDigest)) {
+    throw new DecisionError('stale_prior', 'the intent on disk differs from the bound prior');
+  }
+  const baseline = reviewIntentDraft(prior, current.skill);
+  if (baseline.shape !== 'well-formed') refuse();
+  // Match complete raw diagnostic lines with multiplicity, not just vocabulary.
+  // A changed line or another occurrence cannot borrow an old finding's allowance.
+  const priorLines = prior.split('\n');
+  const draftLines = draft.split('\n');
+  const key = (finding, lines) => JSON.stringify([
+    finding.kind, finding.detail, lines[finding.line - 1],
+  ]);
+  const available = new Map();
+  for (const finding of baseline.findings) {
+    const id = key(finding, priorLines);
+    available.set(id, (available.get(id) ?? 0) + 1);
+  }
+  for (const finding of review.findings) {
+    const id = key(finding, draftLines);
+    if (!available.get(id)) refuse();
+    available.set(id, available.get(id) - 1);
+  }
+  return review.findings;
 }
 
 export function applyEvent(state, event, { repositoryRoot } = {}) {
@@ -287,20 +341,12 @@ export function applyEvent(state, event, { repositoryRoot } = {}) {
       requireDecided(current, 'presenting a revised intent');
       requireChangesIntent(current, 'presenting a revised intent');
       const draft = requireDraft(event.draft, 'presenting requires the draft text');
-      const review = reviewIntentDraft(draft, current.skill);
-      if (review.status !== 'plain' || review.shape !== 'well-formed') {
-        throw new DecisionError(
-          'not_plain_intent',
-          `the revised draft is not plain requirements: ${[
-            ...review.problems,
-            ...review.findings.map((f) => `line ${f.line} ${f.kind}: ${f.detail}`),
-          ].join(' | ')}`,
-        );
-      }
-      next.presentedDigest = digestOf(draft);
+      const grandfatheredFindings = reviewRevision(draft, current, repositoryRoot);
+      next.presentedDigest = bytesDigest(draft);
       next.confirmedDigest = null;
       next.status = 'presented';
-      next.history.push({ type, digest: next.presentedDigest });
+      next.history.push({ type, digest: next.presentedDigest, exactBytes: true,
+        ...(grandfatheredFindings.length ? { priorDigest: current.priorDigest, grandfatheredFindings } : {}) });
       return next;
     }
     case 'operator-confirmed': {
@@ -332,7 +378,8 @@ export function applyEvent(state, event, { repositoryRoot } = {}) {
         );
       }
       const draft = requireDraft(event.draft, 'storing requires the draft text');
-      if (digestOf(draft) !== current.confirmedDigest) {
+      const confirmedBytes = presentation(current)?.exactBytes ? bytesDigest(draft) : digestOf(draft);
+      if (confirmedBytes !== current.confirmedDigest) {
         throw new DecisionError(
           'unconfirmed',
           'the text being stored is not the text that was confirmed; present the changed draft and ask again',
@@ -357,13 +404,18 @@ export function applyEvent(state, event, { repositoryRoot } = {}) {
           'the intent on disk is not the intent this decision was made against; re-read it and decide again',
         );
       }
+      if (existsNow && current.priorBytesDigest
+        && bytesDigest(fs.readFileSync(target, 'utf8')) !== current.priorBytesDigest) {
+        throw new DecisionError('stale_prior', 'the exact prior bytes changed after the decision');
+      }
 
-      const written = draft.endsWith('\n') ? draft : `${draft}\n`;
+      reviewRevision(draft, current, repositoryRoot);
+      const written = draft;
       fs.writeFileSync(target, written, 'utf8');
       next.status = 'stored';
       next.storedPath = target;
       next.storedDigest = digestOf(written);
-      next.history.push({ type, digest: current.confirmedDigest, path: target });
+      next.history.push({ type, digest: current.confirmedDigest, bytesDigest: bytesDigest(written), path: target });
       return next;
     }
     default:
@@ -448,7 +500,9 @@ export function requireIntentDecision(state) {
     if (current.status === 'stored') {
       if (!fs.existsSync(current.storedPath)) {
         problems.push(`the stored intent is missing from disk: ${current.storedPath}`);
-      } else if (digestOf(fs.readFileSync(current.storedPath, 'utf8')) !== current.storedDigest) {
+      } else if (digestOf(fs.readFileSync(current.storedPath, 'utf8')) !== current.storedDigest
+        || (storedBytesDigest(current)
+          && bytesDigest(fs.readFileSync(current.storedPath, 'utf8')) !== storedBytesDigest(current))) {
         problems.push(
           `the intent on disk is not the intent that was confirmed: ${current.storedPath}`,
         );
@@ -567,7 +621,8 @@ export function assertDiffMatchesDecision(state, changedPaths, { skill, reposito
         `the intent stored through the gate is missing from disk: ${onDisk}`,
       );
     }
-    if (digestOf(fs.readFileSync(onDisk, 'utf8')) !== current.storedDigest) {
+    if (digestOf(fs.readFileSync(onDisk, 'utf8')) !== current.storedDigest
+      || (storedBytesDigest(current) && bytesDigest(fs.readFileSync(onDisk, 'utf8')) !== storedBytesDigest(current))) {
       throw new DecisionError(
         'undisclosed_intent_edit',
         `the intent on disk is not the intent that was stored through the gate: ${onDisk}`,
@@ -588,7 +643,73 @@ export function decisionReport(state) {
     confirmed: current.confirmedDigest !== null,
     storedPath: current.storedPath,
     events: current.history.map((entry) => entry.type),
+    grandfatheredFindings: current.history.findLast((entry) => entry.type === 'draft-presented')
+      ?.grandfatheredFindings ?? [],
   };
+}
+
+/**
+ * Grounding's read-only terminal seam. The caller supplies a real verifier,
+ * not a precomputed "already satisfied" flag. Its observations remain evidence
+ * for human review, not machine proof of semantic equivalence.
+ */
+export async function verifyRequestedOutcome({
+  state, intake, repositoryRoot, base, verify, reportPath, receiptPath,
+} = {}) {
+  const blocked = (reason) => ({ status: 'blocked', reason });
+  if (requireIntentDecision(state).requirement !== 'satisfied') return blocked('intent decision is incomplete');
+  const request = structuredClone(intake?.change_request);
+  if (intake?.status !== 'admitted' || !request || request.target !== state.skill
+    || intake.source !== request.source || intake.target !== request.target
+    || !['human-guidance', 'post-mortem-report'].includes(request.source)
+    || !Array.isArray(request.changes) || !request.changes.length
+    || typeof verify !== 'function') return blocked('a grounded, admitted request and verifier are required');
+  if (request.source === 'human-guidance'
+    && (request.report_sha256 !== null || request.recommendation_ids?.length || intake.lineage !== null)) {
+    return blocked('report evidence cannot be relabeled as human guidance');
+  }
+  const git = (...args) => execFileSync('git', ['-C', repositoryRoot, ...args], { encoding: 'utf8' }).trim();
+  const head = git('rev-parse', 'HEAD');
+  if (!/^[a-f0-9]{40}$/.test(base ?? '') || head !== base
+    || git('status', '--porcelain', '--untracked-files=all')) {
+    return blocked('already-satisfied verification requires the unchanged clean baseline');
+  }
+  const release = () => {
+    if (request.source === 'human-guidance') return { requirement: 'not-applicable' };
+    if (!reportPath || !receiptPath) return { requirement: 'blocked' };
+    let output = '';
+    const exit = runIntake(releaseCheckCommand({
+      root: repositoryRoot, state: receiptPath, report: reportPath, target: state.skill,
+    }), { stdout: { write: (text) => { output += text; } }, stderr: { write: (text) => { output += text; } } });
+    return exit === 0 ? JSON.parse(output) : { requirement: 'blocked', exit, output };
+  };
+  const admission = release();
+  if (admission.requirement === 'blocked') return blocked('report release binding failed');
+  // The release check re-derives disk evidence; also bind what the verifier sees.
+  if (request.source === 'post-mortem-report'
+    && changeRequestDigest(request) !== admission.receipt.change_request_sha256) {
+    return blocked('verification request differs from the released report grounding');
+  }
+  const evidence = [];
+  for (const change of request.changes) {
+    const observation = await verify({ change: structuredClone(change),
+      validation: structuredClone(request.validation), repositoryRoot, head });
+    if (!observation || !['satisfied', 'change-needed', 'incomplete'].includes(observation.status)
+      || typeof observation.reasoning !== 'string' || !observation.reasoning.trim()
+      || typeof observation.evidence !== 'string' || !observation.evidence.trim()) {
+      return blocked('verification did not supply a bounded conclusion, reasoning and actual evidence');
+    }
+    evidence.push({ change, ...observation });
+  }
+  if (git('rev-parse', 'HEAD') !== head || git('status', '--porcelain', '--untracked-files=all')) {
+    return blocked('verification mutated the baseline; do not label it already satisfied');
+  }
+  const finalAdmission = release();
+  if (finalAdmission.requirement === 'blocked'
+    || JSON.stringify(admission) !== JSON.stringify(finalAdmission)) return blocked('report changed during verification');
+  if (evidence.some((entry) => entry.status === 'incomplete')) return { status: 'blocked', reason: 'incomplete evidence', evidence };
+  return { status: evidence.every((entry) => entry.status === 'satisfied') ? 'already-satisfied' : 'change-needed',
+    head, evidence, intent: decisionReport(state), source: request.source, admission: finalAdmission };
 }
 
 export const USAGE = `Usage: intent-decision.mjs --state <path> [--event <path>] [--root <path>] [--report]
@@ -596,7 +717,7 @@ export const USAGE = `Usage: intent-decision.mjs --state <path> [--event <path>]
 
   --state             Absolute path to the decision state file.
   --event             Absolute path to a JSON event to apply.
-  --root              Repository root, required to store a revised intent.
+  --root              Repository root, required for legacy carry-forward and storage.
   --report            Print the decision report and exit.
   --require-decision  Answer whether this reinforcement may proceed to a pull request.
   --probe             Report availability and exit.`;

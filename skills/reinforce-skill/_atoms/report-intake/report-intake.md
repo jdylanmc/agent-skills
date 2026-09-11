@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["read","execute"]
 includes: ["reinforce-skill/_atoms/report-intake/report-intake.mjs"]
 composes: []
-used-by: ["reinforce-skill/_molecules/skill-reinforcement/skill-reinforcement.md"]
+used-by: ["reinforce-skill/SKILL.md"]
 ---
 
 # Report Intake

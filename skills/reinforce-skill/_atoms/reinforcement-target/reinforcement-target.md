@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["read","execute"]
 includes: ["reinforce-skill/_atoms/reinforcement-target/reinforcement-target.mjs"]
 composes: []
-used-by: ["reinforce-skill/_molecules/skill-reinforcement/skill-reinforcement.md"]
+used-by: ["reinforce-skill/SKILL.md"]
 ---
 
 # Reinforcement Target
@@ -41,7 +41,7 @@ detail nobody sees.
    directory containing `SKILL.md`. A missing target is refused. **Creating a
    skill is `create-skill`'s job, never this one.**
 3. Reject a symbolic link anywhere in the resolved path, not just at the leaf.
-4. Report whether the target carries an `intent.md`, so the change-grounding
+4. Report whether the target carries an `intent.md`, so the root grounding
    step knows whether a standard exists to judge against.
 5. Classify every path the run intends to write with `classifyWritePath`. The
    classification is exhaustive — every candidate resolves to exactly one class
