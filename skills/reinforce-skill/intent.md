@@ -81,7 +81,7 @@ gets corrected here rather than introduced here.
   often than it changes anything else. That review belongs to the component that
   does it, not to a wording guess made in passing here. When no such component is
   available, say so and let the roast cover the prose.
-- **Open a pull request with the evidence and stop.** When the change came from
+- **Open a pull request with the evidence when a change was needed, and stop.** When sufficient verification shows the requested improvement is already satisfied, report that evidence and stop without manufacturing a change, changelog entry, commit, or pull request. Incomplete evidence is not an already-satisfied result. When the change came from
   a report, the evidence carried into that pull request includes where the
   advice came from: which report, unchanged since it was approved, which of its
   recommendations were applied, what the post-mortem saw that led to them, and

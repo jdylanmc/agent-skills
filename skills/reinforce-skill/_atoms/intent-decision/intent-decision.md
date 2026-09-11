@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["read","edit","execute"]
 includes: ["reinforce-skill/_atoms/intent-decision/intent-decision.mjs"]
 composes: []
-used-by: ["reinforce-skill/_molecules/skill-reinforcement/skill-reinforcement.md"]
+used-by: ["reinforce-skill/SKILL.md"]
 ---
 
 # Intent Decision
@@ -31,13 +31,23 @@ branch owns no write, a confirmation is bound to the exact bytes presented, and
 storage is bound to the exact bytes confirmed over the exact prior that was
 read.
 
-The gate reuses two validated implementations rather than restating them.
-`intent-storage-gate.mjs` owns the digest that binds a confirmation to the bytes
-it confirmed, and `intent-synthesis.mjs` owns whether a draft reads as plain
-requirements. It does not reuse that gate's `store`, which writes only where no
-file exists: creating an intent and replacing a human-authored one are different
-acts with different risks, and the second one carries a stale-prior refusal the
-first does not need.
+The gate reuses `intent-synthesis.mjs` for draft shape and diagnostics and
+`intent-storage-gate.mjs` for existing normalized receipts. New confirmations
+bind raw SHA-256 bytes, including line endings, and new storage records retain
+that exact-byte binding at release. Existing accepted receipts remain usable.
+Creating an intent and replacing a human-authored one are different acts:
+revision also refuses a stale prior, rather than using the creation-only store.
+
+For revisions, unchanged legacy diagnostic lines may carry forward only from
+the actual on-disk prior bound by the decision's digest. Supply `--root` at
+presentation as well as storage. The complete draft still passes the shared
+title and section checks; every structural finding must match a complete raw
+prior line with no additional occurrences. Added or replaced structural detail,
+an unavailable or stale prior, and missing binding are refused. The presentation
+history and decision report disclose `grandfatheredFindings`; this is not a
+claim that the old text passed the plain-prose screen. Storage rechecks the
+prior and draft and writes the confirmed bytes exactly, without adding a newline.
+Existing plain-draft receipts remain usable.
 
 ## Inputs
 
@@ -45,7 +55,7 @@ first does not need.
 | --- | --- | --- |
 | `target` | yes | The resolved skill package being reinforced. |
 | `intent` | yes | The target's current intent, or the fact that it has none. |
-| `change-request` | yes | The desired change, restated by change-grounding. |
+| `change-request` | yes | The admitted change request, grounded by the root workflow. |
 
 ## The Decision
 
@@ -126,6 +136,17 @@ is normalized through the repository root first, so an absolute path to the
 intent file cannot slip past a lexical compare as "does not touch the intent".
 
 ## The Release Check
+
+The root may finish grounding through `verifyRequestedOutcome` when evidence
+suggests the applicable request already holds. Its read-only verifier must
+examine each requested change and its validation requirements, returning actual
+observations and reasoned coverage, not a report-supplied completion flag.
+The seam requires a completed intent decision, clean original Git baseline,
+and re-derived report/receipt/request binding when applicable, before and after
+verification. Missing or incomplete evidence blocks. `already-satisfied`
+returns without mutation or publication; `change-needed` returns to the root's
+implementation step. Semantic sufficiency is still a reviewable judgment.
+The helper cannot make an untrusted verifier honest or authorize its effects.
 
 Deciding first is a precondition of there being a reinforcement to publish, not
 a step near the top of a list that later steps could carry on without. So the

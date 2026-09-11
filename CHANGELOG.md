@@ -341,6 +341,16 @@ below is unreleased and no comparison links are available.
 
 ### Changed
 
+- **Simpler, reliable single-skill reinforcement.** Reinforce Skill keeps its
+  workflow in one place instead of three forwarding units. It validates and
+  commits the complete candidate, including the changelog, before independently
+  reviewing that exact revision and auditing publication. Sufficiently verified
+  already-satisfied requests stop without unnecessary edits or pull requests.
+  Clean third review rounds retain the real human checkpoint instead of failing
+  while reporting it. Confirmed intent amendments can retain unchanged,
+  digest-bound legacy wording without admitting new structural detail or
+  weakening exact-text confirmation and stale-content checks.
+
 - **Simpler single-issue delivery.** Ship keeps grounding, scope confirmation,
   implementation, validation, and review in one workflow instead of six separate
   prose units. Top-level Ship always hands off to Shepherd without asking;

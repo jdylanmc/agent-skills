@@ -33,12 +33,17 @@
  */
 
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
   LedgerError,
   ROUNDS_BEFORE_RECONFIRMATION,
   assertGateIntegrity,
+  applyEvent as sharedApplyEvent,
+  createLedger,
+  ledgerReport as sharedLedgerReport,
+  stopReport as sharedStopReport,
   roastStatus,
   unresolvedFindings,
 } from '../../../create-skill/_atoms/roast-round-ledger/roast-round-ledger.mjs';
@@ -57,18 +62,74 @@ export {
   PROTECTED_GATE_PATHS,
   ROUNDS_BEFORE_RECONFIRMATION,
   VERDICTS,
-  applyEvent,
   assertGateIntegrity,
   createLedger,
   isDucked,
   isMandatory,
   isProtectedGatePath,
-  ledgerReport,
   roastStatus,
-  stopReport,
   unresolvedFindings,
   waysForward,
 } from '../../../create-skill/_atoms/roast-round-ledger/roast-round-ledger.mjs';
+
+function cleanPause(state, error) {
+  return error instanceof LedgerError && error.code === 'no_ways_forward'
+    && error.message === 'ways forward were requested for a converged ledger; report the clean result instead'
+    && state.roundsSinceReconfirmation === ROUNDS_BEFORE_RECONFIRMATION
+    && roastStatus(state) === 'fresh' && unresolvedFindings(state).length === 0;
+}
+
+function pauseReport(state) {
+  return {
+    status: state.gate === 'halted' ? 'halted' : 'needs-confirmation',
+    head: state.head, round: state.round, gate: state.gate,
+    roast: roastStatus(state), unresolved: [],
+    waysForward: state.gate === 'halted' ? [] : [{
+      option: 'operator-reconfirmation',
+      action: 'Zero unresolved findings. Ask the operator whether to continue; no automatic confirmation.',
+    }],
+    checkpoint: structuredClone(state),
+    presentationRecovery: 'no_ways_forward',
+  };
+}
+
+export function applyEvent(state, event) {
+  const before = { gate: state?.gate, round: state?.round,
+    rounds: state?.roundsSinceReconfirmation, history: state?.history?.length };
+  try {
+    return sharedApplyEvent(state, event);
+  } catch (error) {
+    if (event?.type !== 'round-closed' || before.gate !== 'open'
+      || before.rounds !== ROUNDS_BEFORE_RECONFIRMATION - 1
+      || state.gate !== 'awaiting-operator' || state.round !== before.round + 1
+      || state.history.length !== before.history + 1
+      || state.history.at(-1)?.type !== 'round-closed'
+      || !cleanPause(state, error)) throw error;
+    return pauseReport(state);
+  }
+}
+
+export function stopReport(state) {
+  try {
+    return sharedStopReport(state);
+  } catch (error) {
+    if (state?.gate !== 'awaiting-operator' || !cleanPause(state, error)) throw error;
+    return pauseReport(state);
+  }
+}
+
+export function ledgerReport(state) {
+  try {
+    return sharedLedgerReport(state);
+  } catch (error) {
+    const last = state?.history?.at(-1);
+    const paused = state?.gate === 'awaiting-operator' && last?.type === 'round-closed';
+    const refused = state?.gate === 'halted' && last?.type === 'operator-reconfirmation'
+      && last.confirmed === false;
+    if ((!paused && !refused) || !cleanPause(state, error)) throw error;
+    return pauseReport(state);
+  }
+}
 
 /**
  * Refuse a remediation change set that weakens a repository gate **or** leaves
@@ -168,10 +229,14 @@ export function assertRoastComplete(state) {
 }
 
 export const USAGE = `Usage: reinforce-roast.mjs --root <path> --skill <name> --changed <a,b,c>
+       reinforce-roast.mjs --state <absolute-json> [--event <absolute-json>] [--report]
        reinforce-roast.mjs --root <path> --skill <name> --base <commit>
          --snapshot <json> --snapshot-digest <sha256> [--companions <json>]
 
   --root                Repository root the reinforcement runs against.
+  --state               Persisted shared remediation ledger, outside published files.
+  --event               One shared ledger event (or create); persisted before reporting.
+  --report              Report the actual checkpoint, including a clean operator pause.
   --skill               The one skill being reinforced.
   --changed             Comma-separated change set to audit.
   --base                Enumerate the whole candidate against this baseline commit.
@@ -185,7 +250,7 @@ export const USAGE = `Usage: reinforce-roast.mjs --root <path> --skill <name> --
 export function parseArguments(argv) {
   const args = {};
   const valueFlags = ['--root', '--skill', '--changed', '--base', '--companions',
-    '--snapshot', '--snapshot-digest', '--workflow-previous', '--workflow-next'];
+    '--snapshot', '--snapshot-digest', '--workflow-previous', '--workflow-next', '--state', '--event'];
   const claim = (key, token) => {
     if (Object.prototype.hasOwnProperty.call(args, key)) {
       throw new LedgerError('usage', `${token} was given more than once\n${USAGE}`);
@@ -193,9 +258,9 @@ export function parseArguments(argv) {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    if (token === '--probe') {
-      claim('probe', token);
-      args.probe = true;
+    if (token === '--probe' || token === '--report') {
+      claim(token.slice(2), token);
+      args[token.slice(2)] = true;
       continue;
     }
     if (!valueFlags.includes(token)) {
@@ -216,6 +281,36 @@ export function run(argv, streams = process) {
   const args = parseArguments(argv);
   if (args.probe) {
     streams.stdout.write('reinforce-roast: available\n');
+    return 0;
+  }
+  if (args.state || args.event || args.report) {
+    if (!args.state || (!args.event && !args.report)
+      || Object.keys(args).some((key) => !['state', 'event', 'report'].includes(key))) {
+      throw new LedgerError('usage', 'ledger mode requires --state and --event or --report; audit flags cannot be mixed');
+    }
+    const read = (file) => {
+      if (!path.isAbsolute(file) || fs.lstatSync(file).isSymbolicLink() || !fs.statSync(file).isFile()) {
+        throw new LedgerError('unsafe_path', 'ledger and event paths must be absolute regular files');
+      }
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    };
+    const event = args.event ? read(args.event) : null;
+    let state;
+    let outcome;
+    if (event?.type === 'create') {
+      if (!path.isAbsolute(args.state) || fs.existsSync(args.state)) {
+        throw new LedgerError('unsafe_path', 'a new ledger requires a new absolute state path');
+      }
+      state = createLedger(event);
+      outcome = { status: 'created', head: state.head };
+    } else {
+      state = read(args.state);
+      outcome = event ? applyEvent(state, event) : null;
+    }
+    if (event) fs.writeFileSync(args.state, `${JSON.stringify(state, null, 2)}\n`,
+      { flag: event.type === 'create' ? 'wx' : 'w' });
+    const payload = args.report ? { ...outcome, report: ledgerReport(state) } : outcome;
+    streams.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
     return 0;
   }
   if ((args.companions || args.snapshot || args['snapshot-digest']) && !args.base) {

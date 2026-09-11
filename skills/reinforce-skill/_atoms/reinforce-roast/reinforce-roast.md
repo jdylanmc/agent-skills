@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["read","search","execute","task"]
 includes: ["reinforce-skill/_atoms/reinforce-roast/reinforce-roast.mjs"]
 composes: []
-used-by: ["reinforce-skill/_molecules/skill-reinforcement/skill-reinforcement.md"]
+used-by: ["reinforce-skill/SKILL.md"]
 ---
 
 # Reinforce Roast
@@ -21,6 +21,23 @@ roast the head -> route by priority -> resolve or duck -> re-roast the new head
 ## Required Files
 
 1. [Deterministic remediation gate](./reinforce-roast.mjs)
+
+Drive events and reports through this local adapter, not the shared CLI:
+
+```text
+node skills/reinforce-skill/_atoms/reinforce-roast/reinforce-roast.mjs \
+  --state <absolute-run-ledger.json> --event <absolute-event.json> --report
+```
+
+It delegates every transition to the shared ledger and persists that actual
+state before reporting. One presentation defect is handled locally: after a
+third-round clean closure, the shared ledger enters `awaiting-operator` and
+then throws `LedgerError: no_ways_forward` while formatting its stop. The adapter
+checks the exact error and completed transition, preserves the checkpoint,
+and reports zero unresolved findings under `needs-confirmation`, never `clean`.
+The real human answer remains mandatory, including after convergence. A refusal
+reports `halted`; unrelated errors propagate. No transition or review rule is
+reimplemented, and the protected shared ledger is unchanged.
 
 The rules below are mechanical, not aspirational. The gate **reuses**
 `create-skill`'s validated remediation ledger rather than restating it, so
@@ -50,7 +67,7 @@ this atom and a drift fails the build for a human to read.
 | Input | Required | Meaning |
 | --- | --- | --- |
 | `target` | yes | The reinforced skill package, already passing the validator and the deriver. |
-| `package-head` | yes | An identifier for the exact package content, such as a tree or commit hash. |
+| `package-head` | yes | The committed candidate hash, including derivation and changelog, after validation. |
 
 ## Operation
 
@@ -73,8 +90,9 @@ this atom and a drift fails the build for a human to read.
    which answer is wanted. Record its `apply`, `decline`, or `needs-human`
    verdict with its reasoning. Never auto-apply and never dismiss one without a
    verdict.
-4. Re-roast after **every** head-changing correction. A roast of a superseded
-   head is stale evidence and is not counted.
+4. After **every** correction, return to the root's implement/derive/changelog,
+   validate and commit steps, then re-roast that new committed head. A roast of
+   a superseded head is stale evidence and is not counted.
 5. Stop every three rounds and reconfirm with the operator, presenting the
    unresolved findings with a recommendation on how to move forward — further
    rounds, or simplifying the change so the finding no longer applies — and

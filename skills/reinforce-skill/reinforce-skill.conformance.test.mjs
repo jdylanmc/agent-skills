@@ -24,14 +24,14 @@
  */
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
-import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
+import { deriveGraph, applyUpdates, unitClosure } from '../../scripts/derive-skill-graph.mjs';
 import {
   FAILURES,
   SKILL_NAME_PATTERN,
@@ -39,6 +39,9 @@ import {
   WRITE_CLASS,
   assertWorkflowAdditive,
   auditDiff,
+  auditRepositoryDiff,
+  captureAuditSnapshot,
+  auditSnapshotDigest,
   classifyWritePath,
   isWritableClass,
   resolveSkillTarget,
@@ -75,6 +78,7 @@ import {
   assertDiffMatchesDecision,
   createDecision,
   requireIntentDecision,
+  verifyRequestedOutcome,
 } from './_atoms/intent-decision/intent-decision.mjs';
 import { digestOf } from '../create-skill/_atoms/intent-storage-gate/intent-storage-gate.mjs';
 import * as reinforceRoast from './_atoms/reinforce-roast/reinforce-roast.mjs';
@@ -92,11 +96,8 @@ const SKILLS_ROOT = path.join(REPOSITORY_ROOT, 'skills');
 const ENTRY = 'reinforce-skill/SKILL.md';
 const CREATE_ENTRY = 'create-skill/SKILL.md';
 const ROAST_ENTRY = 'roast/SKILL.md';
-const MOLECULE = 'reinforce-skill/_molecules/skill-reinforcement/skill-reinforcement.md';
 const TARGET = 'reinforce-skill/_atoms/reinforcement-target/reinforcement-target.md';
-const GROUNDING = 'reinforce-skill/_atoms/change-grounding/change-grounding.md';
 const DECISION = 'reinforce-skill/_atoms/intent-decision/intent-decision.md';
-const NARROW = 'reinforce-skill/_atoms/narrow-change/narrow-change.md';
 const ROAST_ATOM = 'reinforce-skill/_atoms/reinforce-roast/reinforce-roast.md';
 const INTAKE = 'reinforce-skill/_atoms/report-intake/report-intake.md';
 
@@ -267,8 +268,6 @@ test('the edit grant is bounded to this package: no foreign unit carries write a
   assert.deepEqual(editBearing, [
     'reinforce-skill/SKILL.md',
     DECISION,
-    NARROW,
-    MOLECULE,
   ].sort());
   assert.deepEqual(executeBearing, [
     '_base/_atoms/chronicle-append/chronicle-append.md',
@@ -277,10 +276,8 @@ test('the edit grant is bounded to this package: no foreign unit carries write a
     'reinforce-skill/SKILL.md',
     DECISION,
     INTAKE,
-    NARROW,
     ROAST_ATOM,
     TARGET,
-    MOLECULE,
   ].sort());
 });
 
@@ -393,25 +390,18 @@ test('the pull request evidence is written for a human reviewer, decision first'
   assert.match(read(ENTRY), /### Pull Request Evidence, for a Human Reviewer/);
 });
 
-test('the skill composes chronicler and the local reinforcement molecule', () => {
+test('the root directly reaches the four substantive boundaries without forwarding units', () => {
   const parsed = frontmatter(ENTRY);
   assert.deepEqual(parsed.composes, [
     '_base/_molecules/chronicler/chronicler.md',
-    MOLECULE,
+    TARGET, INTAKE, DECISION, ROAST_ATOM,
   ]);
 
   const closure = closureFor(validateRepository(REPOSITORY_ROOT), ENTRY);
-  for (const unit of [MOLECULE, TARGET, INTAKE, GROUNDING, DECISION, NARROW, ROAST_ATOM]) {
+  for (const unit of [TARGET, INTAKE, DECISION, ROAST_ATOM]) {
     assert.ok(closure.includes(unit), `${ENTRY} must reach ${unit}`);
   }
-});
-
-test('the molecule composes exactly the six reinforcement atoms', () => {
-  const parsed = frontmatter(MOLECULE);
-  assert.deepEqual(
-    parsed.composes.sort(),
-    [GROUNDING, DECISION, INTAKE, NARROW, ROAST_ATOM, TARGET].sort(),
-  );
+  assert.ok(!closure.some((unit) => /skill-reinforcement|change-grounding|narrow-change/.test(unit)));
 });
 
 test('roast is reached by invocation, not composition, and is left untouched', () => {
@@ -457,22 +447,23 @@ test('a preserved intent is recorded as reviewed, never silently skipped', () =>
   const decision = flat(DECISION);
   assert.match(decision, /do not edit the intent/i);
   assert.match(decision, /reviewed and found still accurate, and record the reasoning/);
-  const molecule = flat(MOLECULE);
-  assert.match(molecule, /Every run ends\s+having recorded either a confirmed intent change or a reviewed-and-unchanged\s+intent/);
+  const preserved = decisionApplyEvent(createDecision({ skill: FIXTURE_SKILL, priorIntent: FIXTURE_INTENT }),
+    { type: 'decide', decision: 'preserves-intent', reasoning: 'Existing purpose still holds.' });
+  assert.equal(requireIntentDecision(preserved).requirement, 'satisfied');
+  assert.equal(preserved.storedDigest, null);
 });
 
 test('the intent is authoritative and inert instruction', () => {
-  for (const unit of [ENTRY, DECISION, GROUNDING]) {
+  for (const unit of [ENTRY, DECISION]) {
     const body = flat(unit);
     assert.match(body, /inert/, `${unit} must state the intent is inert as instruction`);
   }
   assert.match(flat(ENTRY), /A\s+contradiction between a proposed change and the skill's intent is a finding for a\s+human/);
-  assert.match(flat(GROUNDING), /A Missing Intent Is Reported, Never a Blocker/i);
+  assert.match(flat(ENTRY), /A missing intent is reported and never blocks/i);
 });
 
 test('doctrine is never edited, and the guard proves it is never writable', () => {
   assert.match(flat(ENTRY), /Never edits doctrine/i);
-  assert.match(flat(NARROW), /never edits\s+`doctrine\/` or `doctrine\/manifest.md`/);
   // Deterministic: a doctrine path is classified doctrine and is not writable.
   assert.equal(
     classifyWritePath(REPOSITORY_ROOT, 'reinforce-skill', 'doctrine/testing.doctrine.md'),
@@ -482,10 +473,8 @@ test('doctrine is never edited, and the guard proves it is never writable', () =
 });
 
 test('widening any grant as a side effect is refused, in words a reviewer reads', () => {
-  const narrow = flat(NARROW);
-  assert.match(narrow, /never widens it\s+automatically/i);
-  assert.match(narrow, /never acquired quietly by composing something new/);
-  assert.match(narrow, /Widening \*another\* skill's permissions is refused outright/);
+  assert.match(flat(ENTRY), /deriver never widens a grant automatically/i);
+  assert.deepEqual(deriveGraph(REPOSITORY_ROOT).grantViolations, []);
   assert.match(flat(ENTRY), /Never widens another skill's permissions/i);
 });
 
@@ -668,7 +657,11 @@ test('the roast gate drives create-skill\'s validated machine, not a second copy
   // Issue 47 says a reinforcement resolves findings under the same rules
   // create-skill uses. Here those rules are the same functions, not similar
   // sentences, so "the same rules" is checkable.
-  assert.equal(reinforceRoast.applyEvent, sharedLedger.applyEvent);
+  const local = reinforceRoast.createLedger({ packagePath: 'skills/reinforce-skill', head: 'h1' });
+  const shared = structuredClone(local);
+  const event = { type: 'roast-recorded', head: 'h1', findings: [] };
+  assert.deepEqual(reinforceRoast.applyEvent(local, event), sharedLedger.applyEvent(shared, event));
+  assert.deepEqual(local, shared);
   assert.equal(reinforceRoast.createLedger, sharedLedger.createLedger);
   assert.deepEqual(reinforceRoast.MANDATORY_PRIORITIES, ['Must fix']);
   assert.equal(reinforceRoast.ROUNDS_BEFORE_RECONFIRMATION, 3);
@@ -859,15 +852,13 @@ test('one run reinforces one skill, however many the report names', () => {
 
 test('the report path threads into the one existing workflow, not a second one', () => {
   const entry = flat(ENTRY);
-  const molecule = flat(MOLECULE);
 
   assert.match(entry, /## Two Ways In, One Job/);
   assert.match(entry, /## A Report Is Evidence; Only the Operator Is Authority/);
-  assert.match(molecule, /## One Workflow, However the Change Arrived/);
 
   // The molecule reaches intake through composition, and intake is an atom of
   // this package rather than a second routable entry point.
-  assert.ok(frontmatter(MOLECULE).composes.includes(INTAKE));
+  assert.ok(frontmatter(ENTRY).composes.includes(INTAKE));
   assert.equal(frontmatter(INTAKE).level, 'atom');
   assert.deepEqual(frontmatter(INTAKE).composes, []);
   assert.ok(
@@ -974,67 +965,14 @@ test('a report grounds a run only when its admission was recorded', () => {
   // continue on one by accident.
   assert.match(flat(INTAKE), /\*\*`--report` requires `--state` and `--root`\.\*\*/);
   assert.match(flat(INTAKE), /an admission nobody wrote down cannot be re-derived/i);
-  assert.match(flat(ENTRY), /an admission is recorded, because step 4 re-derives it/);
+  assert.match(flat(ENTRY), /A report must have its admission recorded outside published files/);
 });
 
-test('report intake has exactly one owner and one invocation', () => {
-  // The molecule owns the ordering, and the wrapper does not re-run it. Two
-  // invocations would mean two admissions and two receipts, and publication
-  // would check whichever the run happened to keep.
-  const entry = read(ENTRY);
-  const flatEntry = flat(ENTRY);
-  const flatMolecule = flat(MOLECULE);
-
-  assert.ok(
-    !entry.includes('--approval'),
-    'the wrapper never invokes report intake itself; an approval is intake\'s argument, not its own',
-  );
-  for (const line of entry.split('\n').filter((candidate) => candidate.includes('--report'))) {
-    assert.ok(
-      line.includes('--require-admitted-state') || entry.includes('--require-admitted-state <receipt> --report'),
-      `the only --report the wrapper names belongs to the release check: ${line.trim()}`,
-    );
-  }
-  assert.match(entry, /Report intake is invoked there and nowhere else/);
-  assert.match(flatMolecule, /runs here and \*\*only\*\* here, \*\*exactly once\*\*/);
-  assert.match(flatMolecule, /the target is resolved first, because the approval is checked against it/);
-
-  // The publication release check is the wrapper's own, and is a different
-  // command from the admission it verifies.
-  assert.match(entry, /--require-admitted-state/);
-
-  // Header pipeline and molecule pipeline agree on the order. Read from the
-  // fenced pipeline line itself, because the routing description restates the
-  // same phases in prose and would otherwise supply the earlier match.
-  const pipelineOf = (body) => body
-    .split('\n')
-    .find((line) => line.includes('->') && line.includes('ground on its intent'));
-  const order = ['resolve the target', 'admit the evidence', 'ground on its intent', 'decide the intent'];
-  for (const [label, pipeline] of [['the wrapper', pipelineOf(entry)], ['the molecule', pipelineOf(read(MOLECULE))]]) {
-    assert.ok(pipeline, `${label} declares a pipeline`);
-    let previous = -1;
-    for (const phase of order) {
-      const at = pipeline.indexOf(phase);
-      assert.ok(at > previous, `${label} runs ${phase} after everything before it`);
-      previous = at;
-    }
-  }
-
-});
-
-test('no numbered cross-reference points at a step that moved', () => {
-  // A numbered cross-reference is invalidated silently by any later insertion,
-  // which is exactly how the molecule once came to point at the wrong step.
-  const molecule = read(MOLECULE);
-  assert.doesNotMatch(molecule, /\bstep \d/, 'the molecule refers to steps by name, not by number');
-
-  // The wrapper keeps one, and it must resolve: step 4 is the pull request.
-  const workflow = read(ENTRY).split('## Core Workflow')[1].split('\n## ')[0];
-  const steps = [...workflow.matchAll(/^(\d)\. /gm)].map((match) => Number(match[1]));
-  assert.deepEqual(steps, [1, 2, 3, 4], 'the wrapper has exactly four numbered steps');
-  for (const referenced of [...read(ENTRY).matchAll(/step (\d)/g)].map((match) => Number(match[1]))) {
-    assert.ok(steps.includes(referenced), `step ${referenced} does not exist`);
-  }
+test('the root owns admission once and uses named steps rather than stale numeric references', () => {
+  assert.match(flat(ENTRY), /Invoke report intake here, \*\*exactly once\*\*, for either source/);
+  assert.match(flat(ENTRY), /On resume use the existing normalized intake/);
+  assert.match(read(ENTRY), /--require-admitted-state/);
+  assert.doesNotMatch(read(ENTRY), /\bstep \d/);
 });
 
 test('every reported status has exactly one row that defines it', () => {
@@ -1044,7 +982,7 @@ test('every reported status has exactly one row that defines it', () => {
 
   assert.deepEqual(
     statuses,
-    ['reinforced', 'needs-confirmation', 'no-applicable-recommendations', 'blocked', 'halted'],
+    ['reinforced', 'already-satisfied', 'needs-confirmation', 'no-applicable-recommendations', 'blocked', 'halted'],
   );
   assert.equal(new Set(statuses).size, statuses.length, 'a status is defined once');
 
@@ -1167,15 +1105,14 @@ test('one owner normalizes both sources, invoked exactly once per run', () => {
   // The ambiguity worth removing: guidance does not bypass intake, it goes
   // through the same step. Only the report subflow - admission, approval,
   // receipt - is skipped, and every document has to say the same thing.
-  for (const [name, body] of [['the skill', flat(ENTRY)], ['the molecule', flat(MOLECULE)], ['the unit', flat(INTAKE)]]) {
+  for (const [name, body] of [['the skill', flat(ENTRY)], ['the unit', flat(INTAKE)]]) {
     assert.match(body, /exactly once/i, `${name} must say intake runs exactly once`);
     assert.match(body, /either source|for both|both sources/i, `${name} must say it serves both sources`);
     assert.match(body, /subflow/i, `${name} must call the report path a subflow, not a second path`);
   }
-  assert.match(flat(GROUNDING), /Two Admissible Sources, One Grounding/);
   assert.match(
-    flat(MOLECULE),
-    /consumes\s+the normalized change request intake returned/,
+    flat(ENTRY),
+    /Consume\s+the normalized change request intake returned/,
     'change grounding consumes the normalized shape rather than re-reading a source',
   );
 
@@ -1216,7 +1153,6 @@ test('the human-guidance path is unchanged and needs no report at all', () => {
   const entry = flat(ENTRY);
   assert.match(entry, /Human guidance stands alone/);
   assert.match(entry, /no synthetic report is ever manufactured/);
-  assert.match(flat(GROUNDING), /Two Admissible Sources, One Grounding/);
 });
 
 test('the report is never approved, validated, or edited here', () => {
@@ -1426,20 +1362,340 @@ test('exit 1 is a stop, and the skill says so where publication depends on it', 
       const at = argv.indexOf(omitted);
       const short = [...argv.slice(0, at), ...argv.slice(at + 2)];
       const run = spawnSync(process.execPath, [INTAKE_CLI, ...short], { encoding: 'utf8' });
-
       assert.notEqual(run.status, 0, `omitting ${omitted} must never exit 0`);
-      assert.ok(
-        !run.stdout.includes('"requirement": "satisfied"'),
-        `omitting ${omitted} must never look like a release check that passed`,
-      );
+      assert.ok(!run.stdout.includes('"requirement": "satisfied"'),
+        `omitting ${omitted} must never look like a release check that passed`);
       if (omitted === '--require-admitted-state') {
-        // Without it the command is not a release check at all; it is an
-        // admission with no --state, which is refused rather than silently
-        // treated as a check that ran.
         assert.match(run.stdout, /"admitted-unrecorded"|"refused"/);
       } else {
         assert.equal(run.stdout, '', 'a usage failure reports no result at all');
       }
     }
   });
+});
+
+const OUTCOME_PROGRAM = `const unavailable = process.argv.includes('--unavailable');
+console.log(JSON.stringify(unavailable
+  ? { status: 'degraded', reason: 'tool unavailable' }
+  : { status: 'ambiguous', paths: ['CHANGELOG.md', 'nested/CHANGELOG.md'] }));
+`;
+
+async function withWorkflowFixture(action, { satisfied = false } = {}) {
+  const root = fs.mkdtempSync(path.join(REPOSITORY_ROOT, '.reinforce-workflow-'));
+  const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
+  const write = (relative, text) => {
+    const file = path.join(root, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  };
+  try {
+    write('.gitignore', '.skill-log/\n');
+    write('CHANGELOG.md', '# Changelog\n');
+    write('skills/changelog/intent.md', FIXTURE_INTENT.replaceAll(FIXTURE_SKILL, 'changelog'));
+    write('skills/changelog/SKILL.md', `---
+name: changelog
+description: Name ambiguous changelog targets and explain unavailable tooling.
+allowed-tools: ["read","execute"]
+includes: ["changelog/_atoms/outcome/outcome.md"]
+composes: ["changelog/_atoms/outcome/outcome.md"]
+disable-model-invocation: true
+user-invocable: true
+---
+
+# Changelog
+
+## Required References
+
+1. [Outcome](./_atoms/outcome/outcome.md)
+`);
+    write('skills/changelog/_atoms/outcome/outcome.md', `---
+name: outcome
+description: Report the target or degradation.
+level: atom
+allowed-tools: ["execute"]
+includes: ["changelog/_atoms/outcome/outcome.mjs"]
+composes: []
+used-by: ["changelog/SKILL.md"]
+---
+
+# Outcome
+
+## Required Files
+
+1. [Implementation](./outcome.mjs)
+`);
+    write('skills/changelog/_atoms/outcome/outcome.mjs',
+      satisfied ? OUTCOME_PROGRAM : "console.log(JSON.stringify({ status: 'silent' }));\n");
+    git('init', '-q');
+    git('config', 'user.name', 'Workflow Fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    git('config', 'commit.gpgsign', 'false');
+    git('add', '.');
+    git('commit', '-qm', 'fixture baseline');
+    await action({ root, git, write });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// Execute the sequence extracted from the real root, not a second production
+// orchestrator. Effects are local Git/files/checks or explicitly injected review
+// and publication callbacks; no provider or agent is invoked by these fixtures.
+async function driveRoot(fixture, {
+  source = 'human-guidance', probe = false, verify, review, publish, beforeAudit, beforeSnapshot,
+  report = reportText(), approval, beforeVerify, afterVerify,
+} = {}) {
+  const { root, git, write } = fixture;
+  const stages = read(ENTRY).match(/```text\n([^\n]+)\n```/)[1].split(' -> ');
+  const trace = [];
+  let base, target, intake, state, prior, head, snapshot, audit, ledger;
+  let status, verification, admissions = 0, validationHead;
+  const reportPath = path.join(root, '.skill-log', 'report.json');
+  const receiptPath = path.join(root, '.skill-log', 'receipt.json');
+  const program = 'skills/changelog/_atoms/outcome/outcome.mjs';
+  const check = (unavailable = false) => execFileSync(process.execPath,
+    [path.join(root, program), ...(unavailable ? ['--unavailable'] : [])], { encoding: 'utf8' });
+  const handlers = {
+    'isolate branch and record base': () => {
+      assert.equal(git('status', '--porcelain'), '');
+      base = git('rev-parse', 'HEAD');
+      git('switch', '-qc', 'reinforce/fixture');
+    },
+    'resolve the target': () => { target = resolveSkillTarget(root, 'changelog'); },
+    'admit the evidence': () => {
+      admissions += 1;
+      intake = source === 'human-guidance'
+        ? admitGuidance({ target: target.skillName, guidance: 'Name both ambiguous paths and explain unavailable tooling.' })
+        : admitReport({ report, approval: approval ?? approvalFor(report), target: target.skillName });
+      if (intake.status !== 'admitted') { status = intake.status; return; }
+      if (source !== 'human-guidance') {
+        write('.skill-log/report.json', report);
+        write('.skill-log/receipt.json', JSON.stringify(buildAdmissionReceipt(intake)));
+      }
+    },
+    'ground on its intent': () => {
+      prior = fs.readFileSync(path.join(root, 'skills/changelog/intent.md'), 'utf8');
+      assert.ok(fs.readFileSync(path.join(root, 'skills/changelog/SKILL.md'), 'utf8'));
+      assert.ok(check());
+    },
+    'decide the intent': () => {
+      state = decisionApplyEvent(createDecision({ skill: target.skillName, priorIntent: prior }),
+        { type: 'decide', decision: 'preserves-intent', reasoning: 'The existing purpose includes explicit outcomes.' });
+    },
+    'verify requested outcome': async () => {
+      if (!probe) { assert.equal(JSON.parse(check()).status, 'silent'); return; }
+      beforeVerify?.({ intake, write, state });
+      verification = await verifyRequestedOutcome({
+        state, intake, repositoryRoot: root, base, reportPath, receiptPath,
+        verify: async (context) => {
+          const observed = verify ? await verify({ ...context, check, write, git }) : (() => {
+            const normal = check();
+            const unavailable = check(true);
+            const satisfied = JSON.parse(normal).status === 'ambiguous'
+              && JSON.parse(normal).paths.length === 2
+              && JSON.parse(unavailable).status === 'degraded'
+              && JSON.parse(unavailable).reason === 'tool unavailable';
+            return { status: satisfied ? 'satisfied' : 'change-needed',
+              reasoning: 'Both target ambiguity and unavailable-tool behavior were exercised; no silent selection or silent degradation.',
+              evidence: `node ${program}\n${normal}node ${program} --unavailable\n${unavailable}` };
+          })();
+          afterVerify?.({ write });
+          return observed;
+        },
+      });
+      if (verification.status !== 'change-needed') status = verification.status;
+    },
+    'implement and derive': () => {
+      assert.equal(requireIntentDecision(state).requirement, 'satisfied');
+      assert.equal(classifyWritePath(root, target.skillName, program), WRITE_CLASS.inTarget);
+      write(program, OUTCOME_PROGRAM);
+      if (ledger) fs.appendFileSync(path.join(root, 'skills/changelog/SKILL.md'), '\nReport both outcomes explicitly.\n');
+      applyUpdates(deriveGraph(root));
+    },
+    'include changelog': () => {
+      fs.appendFileSync(path.join(root, 'CHANGELOG.md'), ledger
+        ? '\nClarify the changelog outcome explanation.\n' : '\nReport ambiguous paths and unavailable tooling.\n');
+    },
+    'validate': () => {
+      assert.deepEqual(JSON.parse(check()), { status: 'ambiguous', paths: ['CHANGELOG.md', 'nested/CHANGELOG.md'] });
+      assert.deepEqual(JSON.parse(check(true)), { status: 'degraded', reason: 'tool unavailable' });
+      validationHead = git('rev-parse', 'HEAD');
+      assert.ok(fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8').includes('ambiguous'));
+    },
+    'commit candidate': () => {
+      assert.equal(validationHead, git('rev-parse', 'HEAD'));
+      git('add', '.');
+      git('commit', '-qm', ledger ? 'fixture correction' : 'fixture candidate');
+      head = git('rev-parse', 'HEAD');
+      if (ledger) {
+        const mandatory = reinforceRoast.unresolvedFindings(ledger).find((entry) => entry.priority === 'Must fix');
+        reinforceRoast.applyEvent(ledger, mandatory
+          ? { type: 'finding-resolved', findingId: mandatory.id, head, changedPaths: ['skills/changelog/SKILL.md'] }
+          : { type: 'correction', head, changedPaths: [program] });
+      } else ledger = reinforceRoast.createLedger({ packagePath: target.relativePath, head });
+      assert.equal(git('status', '--porcelain'), '');
+    },
+    'roast exact candidate': async () => {
+      const reviewed = await (review ?? (async ({ head: revision }) => ({
+        revision, status: 'Complete', coverage: true, findings: [],
+      })))({ head, base, git, check, round: ledger.round });
+      assert.equal(reviewed.revision, head, 'review must bind the immutable candidate');
+      assert.equal(reviewed.status, 'Complete');
+      assert.equal(reviewed.coverage, true);
+      assert.ok(git('show', `${head}:CHANGELOG.md`).includes('ambiguous'));
+      reinforceRoast.applyEvent(ledger, { type: 'roast-recorded', head, findings: reviewed.findings });
+      reinforceRoast.applyEvent(ledger, { type: 'round-closed' });
+    },
+    'final audit and release checks': () => {
+      assert.equal(reinforceRoast.assertRoastComplete(ledger).remediation, 'clean');
+      beforeSnapshot?.({ git, write });
+      snapshot = captureAuditSnapshot(root, target.skillName, base);
+      assert.equal(snapshot.head, head, 'snapshot must bind the reviewed head, not a later HEAD');
+      assert.equal(snapshot.tree, git('rev-parse', `${head}^{tree}`));
+      const snapshotDigest = auditSnapshotDigest(snapshot);
+      const companions = [{
+        path: 'CHANGELOG.md', kind: 'changelog', reason: 'Record this target change.',
+        relationship: 'The same reinforcement requires an entry.',
+        previous_sha256: digestOf(`${git('show', `${base}:CHANGELOG.md`)}\n`),
+        next_sha256: digestOf(fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8')),
+      }];
+      beforeAudit?.({ git, write, snapshot, head });
+      audit = auditRepositoryDiff(root, target.skillName, base, { snapshot, snapshotDigest, companions });
+      if (!audit.clean) { status = 'blocked'; return; }
+      assertDiffMatchesDecision(state, audit.classified.map((entry) => entry.path), { repositoryRoot: root });
+      assert.equal(requireIntentDecision(state).requirement, 'satisfied');
+      if (source !== 'human-guidance') assert.equal(requireAdmittedState({
+        state: JSON.parse(fs.readFileSync(receiptPath)), report: fs.readFileSync(reportPath, 'utf8'), target: target.skillName,
+      }).requirement, 'satisfied');
+    },
+    publish: async () => { await publish?.({ head, audit }); status = 'reinforced'; },
+  };
+  for (let index = 0; index < stages.length; index += 1) {
+    const stage = stages[index];
+    trace.push(stage);
+    assert.equal(typeof handlers[stage], 'function', `unrecognized root stage: ${stage}`);
+    await handlers[stage]();
+    if (status) break;
+    if (stage === 'roast exact candidate' && reinforceRoast.unresolvedFindings(ledger).length) {
+      assert.ok(ledger.round < 3, 'fixture never auto-confirms a human pause');
+      index = stages.indexOf('implement and derive') - 1;
+    }
+  }
+  return { status, trace, admissions, verification, base, head, audit, ledger, gitStatus: git('status', '--porcelain') };
+}
+
+test('root sequence commits changelog before review, validates corrections, and audits only the final reviewed candidate', async () => {
+  await withWorkflowFixture(async (fixture) => {
+    const reviews = [];
+    let publications = 0;
+    const result = await driveRoot(fixture, {
+      review: async ({ head, git }) => {
+        reviews.push(head);
+        assert.ok(git('show', `${head}:CHANGELOG.md`).includes('ambiguous'));
+        return { revision: head, status: 'Complete', coverage: true,
+          findings: reviews.length === 1 ? [{
+            id: 'explanation', priority: 'Must fix', location: 'skills/changelog/SKILL.md',
+            evidence: 'The explanation omits outcomes.', consequence: 'Readers miss the result.',
+            recommendation: 'Describe both outcomes.',
+          }] : [] };
+      },
+      publish: async ({ head, audit }) => { assert.equal(head, reviews.at(-1)); assert.ok(audit.clean); publications += 1; },
+    });
+    assert.equal(result.status, 'reinforced');
+    assert.equal(result.admissions, 1);
+    assert.equal(reviews.length, 2);
+    assert.notEqual(reviews[0], reviews[1]);
+    assert.equal(result.trace.filter((stage) => stage === 'validate').length, 2);
+    assert.equal(result.trace.filter((stage) => stage === 'final audit and release checks').length, 1);
+    assert.equal(result.audit.head, reviews[1]);
+    assert.deepEqual(reinforceRoast.ledgerReport(result.ledger).acrossRun.resolved.map((entry) => entry.id), ['explanation']);
+    assert.equal(result.gitStatus, '');
+    assert.equal(publications, 1);
+  });
+});
+
+test('root publication refuses candidate drift after review, even when changed paths are in target', async () => {
+  for (const committed of [false, true]) {
+    await withWorkflowFixture(async (fixture) => {
+      const attempt = driveRoot(fixture, {
+        beforeAudit: ({ write, git }) => {
+          write('skills/changelog/drift.txt', 'unreviewed\n');
+          if (committed) { git('add', '.'); git('commit', '-qm', 'unreviewed drift'); }
+        },
+        publish: () => assert.fail('drift must prevent publication'),
+      });
+      if (committed) {
+        await assert.rejects(attempt, { code: 'invalid_snapshot' });
+      } else {
+        const result = await attempt;
+        assert.equal(result.status, 'blocked');
+        assert.equal(result.audit.clean, false);
+      }
+    });
+  }
+});
+
+test('already-satisfied traverses the real root through grounding and verification, with no mutation or publication', async () => {
+  for (const source of ['human-guidance', 'post-mortem-report']) {
+    await withWorkflowFixture(async (fixture) => {
+      const before = fixture.git('rev-parse', 'HEAD');
+      const result = await driveRoot(fixture, { source, probe: true,
+        review: () => assert.fail('no synthetic review'), publish: () => assert.fail('no synthetic publication') });
+      assert.equal(result.status, 'already-satisfied', JSON.stringify(result.verification));
+      assert.equal(result.admissions, 1);
+      assert.equal(fixture.git('rev-parse', 'HEAD'), before);
+      assert.equal(result.gitStatus, '');
+      assert.equal(result.trace.at(-1), 'verify requested outcome');
+      assert.ok(!result.trace.includes('implement and derive'));
+      assert.equal(fs.readFileSync(path.join(fixture.root, 'CHANGELOG.md'), 'utf8'), '# Changelog\n');
+      assert.ok(result.verification.evidence.every((entry) => entry.evidence.includes('tool unavailable')));
+      assert.equal(result.verification.admission.requirement,
+        source === 'human-guidance' ? 'not-applicable' : 'satisfied');
+    }, { satisfied: true });
+  }
+});
+
+test('no-change cannot be inferred from incomplete evidence, altered grounding, stale approval or no applicable recommendations', async () => {
+  const cases = [
+    { verify: async () => ({ status: 'satisfied' }) },
+    { verify: async () => ({ status: 'incomplete', reasoning: 'Required independent trial missing.', evidence: 'Only one example exists.' }) },
+    { source: 'post-mortem-report', beforeVerify: ({ intake }) => { intake.change_request.changes[0].statement = 'An unrelated requirement.'; } },
+    { source: 'post-mortem-report', beforeVerify: ({ intake }) => { intake.change_request.source = 'human-guidance'; } },
+    { source: 'post-mortem-report', beforeVerify: ({ write }) => { write('.skill-log/report.json', `${reportText()} `); } },
+    { source: 'post-mortem-report', afterVerify: ({ write }) => { write('.skill-log/report.json', `${reportText()} `); } },
+    { beforeVerify: ({ state }) => { state.decision = null; state.status = 'undecided'; } },
+    { verify: async ({ write }) => { write('skills/changelog/unasked.txt', 'mutation'); return { status: 'satisfied', reasoning: 'Claim', evidence: 'Output' }; } },
+  ];
+  for (const options of cases) {
+    await withWorkflowFixture(async (fixture) => {
+      const result = await driveRoot(fixture, { ...options, probe: true,
+        publish: () => assert.fail('insufficient evidence cannot publish') });
+      assert.equal(result.status, 'blocked');
+      assert.ok(!result.trace.includes('include changelog'));
+    }, { satisfied: true });
+  }
+  await withWorkflowFixture(async (fixture) => {
+    const result = await driveRoot(fixture, { source: 'post-mortem-report', probe: true,
+      report: reportText({ recommendations: [] }) });
+    assert.equal(result.status, 'no-applicable-recommendations');
+    assert.ok(!result.trace.includes('decide the intent'));
+  }, { satisfied: true });
+});
+
+test('root rejects drift before snapshot capture and incomplete or wrong-revision review callbacks', async () => {
+  for (const options of [
+    { beforeSnapshot: ({ git, write }) => {
+      write('skills/changelog/later.txt', 'not reviewed\n');
+      git('add', '.'); git('commit', '-qm', 'later candidate');
+    } },
+    { review: async ({ base }) => ({ revision: base, status: 'Complete', coverage: true, findings: [] }) },
+    { review: async ({ head }) => ({ revision: head, status: 'Partial', coverage: true, findings: [] }) },
+    { review: async ({ head }) => ({ revision: head, status: 'Complete', coverage: false, findings: [] }) },
+  ]) {
+    await withWorkflowFixture(async (fixture) => {
+      await assert.rejects(driveRoot(fixture, {
+        ...options, publish: () => assert.fail('unreviewed content cannot publish'),
+      }), { code: 'ERR_ASSERTION' });
+    });
+  }
 });

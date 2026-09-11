@@ -26,6 +26,7 @@ import {
   run,
 } from './intent-decision.mjs';
 import { digestOf } from '../../../create-skill/_atoms/intent-storage-gate/intent-storage-gate.mjs';
+import { createHash } from 'node:crypto';
 
 const REPOSITORY_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -52,6 +53,30 @@ Do one job well, and say plainly what that job is.
 Anything that belongs to a different job.
 `;
 
+test('new confirmations bind exact line endings and storage adds no unconfirmed newline', () => {
+  withFixture((root, intentPath) => {
+    const draft = REVISED.trimEnd().replaceAll('\n', '\r\n');
+    const hash = (text) => createHash('sha256').update(text).digest('hex');
+    const decided = applyEvent(createDecision({ skill: SKILL, priorIntent: PRIOR }), {
+      type: 'decide', decision: 'changes-intent', reasoning: 'Confirmed exact byte revision.',
+    });
+    const presented = applyEvent(decided, { type: 'draft-presented', draft });
+    assert.equal(code(() => applyEvent(presented, {
+      type: 'operator-confirmed', digest: hash(draft.replaceAll('\r\n', '\n')),
+    })), 'stale_confirmation');
+    const ready = applyEvent(presented, { type: 'operator-confirmed', digest: hash(draft) });
+    assert.equal(code(() => applyEvent(ready, { type: 'store', draft: draft.replaceAll('\r\n', '\n') },
+      { repositoryRoot: root })), 'unconfirmed');
+    fs.writeFileSync(intentPath, PRIOR.replaceAll('\n', '\r\n'));
+    assert.equal(code(() => applyEvent(ready, { type: 'store', draft }, { repositoryRoot: root })), 'stale_prior');
+    fs.writeFileSync(intentPath, PRIOR);
+    const stored = applyEvent(ready, { type: 'store', draft }, { repositoryRoot: root });
+    assert.equal(fs.readFileSync(intentPath, 'utf8'), draft);
+    fs.writeFileSync(intentPath, draft.replaceAll('\r\n', '\n'));
+    assert.equal(requireIntentDecision(stored).requirement, 'blocked');
+  });
+});
+
 /** A throwaway repository skeleton, never in a temporary directory. */
 function withFixture(run, { withIntent = true } = {}) {
   const root = fs.mkdtempSync(path.join(REPOSITORY_ROOT, '.intent-decision-fixture-'));
@@ -77,6 +102,62 @@ function code(fn) {
   return null;
 }
 
+test('a digest-bound legacy diagnostic line survives an unrelated exact confirmed amendment', () => {
+  withFixture((root, intentPath) => {
+    const legacy = `${PRIOR}\nvalidator, the deriver, a conformance test, or the rules in \`AGENTS.md\`, the\n\n**Open a pull request with the evidence and stop.**\n`;
+    const draft = legacy.replace('**Open a pull request with the evidence and stop.**',
+      '**Open a pull request with the evidence when a change was needed, and stop.** When sufficient verification shows the requested improvement is already satisfied, report that evidence and stop without manufacturing a change, changelog entry, commit, or pull request. Incomplete evidence is not an already-satisfied result.');
+    fs.writeFileSync(intentPath, legacy);
+    const decided = applyEvent(createDecision({ skill: SKILL, priorIntent: legacy }), {
+      type: 'decide', decision: 'changes-intent', reasoning: 'The operator authorized an evidence-backed no-change result.',
+    });
+    const options = { repositoryRoot: root };
+    const presented = applyEvent(decided, { type: 'draft-presented', draft }, options);
+    assert.equal(decisionReport(presented).grandfatheredFindings.length, 3);
+    assert.equal(code(() => applyEvent(presented, { type: 'store', draft }, options)), 'unconfirmed');
+    assert.equal(code(() => applyEvent(presented, {
+      type: 'operator-confirmed', digest: digestOf(legacy),
+    })), 'stale_confirmation');
+    const ready = applyEvent(presented, { type: 'operator-confirmed', digest: digestOf(draft) });
+    fs.writeFileSync(intentPath, `${legacy}\nHuman edit.\n`);
+    assert.equal(code(() => applyEvent(ready, { type: 'store', draft }, options)), 'stale_prior');
+    fs.writeFileSync(intentPath, legacy);
+    const stored = applyEvent(ready, { type: 'store', draft }, options);
+    assert.equal(fs.readFileSync(intentPath, 'utf8'), draft);
+    assert.equal(requireIntentDecision(stored).requirement, 'satisfied');
+  });
+});
+
+test('legacy carry-forward fails closed on new details, malformed shape or absent current-prior binding', () => {
+  withFixture((root, intentPath) => {
+    const line = 'validator, the deriver, a conformance test, or the rules in `AGENTS.md`, the';
+    const legacy = `${PRIOR}\n${line}\n`;
+    fs.writeFileSync(intentPath, legacy);
+    const decided = applyEvent(createDecision({ skill: SKILL, priorIntent: legacy }), {
+      type: 'decide', decision: 'changes-intent', reasoning: 'An unrelated amendment.',
+    });
+    for (const draft of [
+      `${legacy}\nUse JSON.\n`,
+      `${legacy}\n${line}\n`,
+      legacy.replace(line, `${line} validator`),
+      legacy.replace(line, 'The validator is required.'),
+      legacy.replace(`# Intent: ${SKILL}`, '# Intent: another-skill'),
+      legacy.replace('## What this is for', 'What this is for'),
+    ]) {
+      assert.equal(code(() => applyEvent(decided, { type: 'draft-presented', draft },
+        { repositoryRoot: root })), 'not_plain_intent');
+    }
+    assert.equal(code(() => applyEvent(decided, { type: 'draft-presented', draft: legacy })), 'not_plain_intent');
+    assert.equal(code(() => applyEvent({ ...decided, priorDigest: null },
+      { type: 'draft-presented', draft: legacy }, { repositoryRoot: root })), 'not_plain_intent');
+    fs.writeFileSync(intentPath, `${legacy}\nChanged.\n`);
+    assert.equal(code(() => applyEvent(decided, { type: 'draft-presented', draft: legacy },
+      { repositoryRoot: root })), 'stale_prior');
+    fs.unlinkSync(intentPath);
+    assert.equal(code(() => applyEvent(decided, { type: 'draft-presented', draft: legacy },
+      { repositoryRoot: root })), 'stale_prior');
+  });
+});
 /** Drive a decision to the point where the revised intent is confirmed. */
 function confirmed(state) {
   const decided = applyEvent(state, {

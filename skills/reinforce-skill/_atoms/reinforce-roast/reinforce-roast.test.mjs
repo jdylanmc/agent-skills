@@ -30,6 +30,9 @@ import {
   assertReinforcementChangeSet,
   assertRoastComplete,
   createLedger,
+  ledgerReport,
+  run,
+  stopReport,
   roastStatus,
 } from './reinforce-roast.mjs';
 import * as sharedLedger from '../../../create-skill/_atoms/roast-round-ledger/roast-round-ledger.mjs';
@@ -315,7 +318,11 @@ test('a correction that wandered out of the target is refused by the ledger itse
 test('the reinforcement gate drives the same machine a creation does', () => {
   // Re-exported, not re-implemented. If these diverge, two copies exist and one
   // of them is weaker.
-  assert.equal(applyEvent, sharedLedger.applyEvent);
+  const local = roasted([finding('f1', 'Consider')]);
+  const shared = structuredClone(local);
+  const event = { type: 'duck-verdict', findingId: 'f1', verdict: 'decline', reasoning: 'Evidence supports existing behavior.' };
+  assert.deepEqual(applyEvent(local, event), sharedLedger.applyEvent(shared, event));
+  assert.deepEqual(local, shared);
   assert.equal(createLedger, sharedLedger.createLedger);
   assert.equal(roastStatus, sharedLedger.roastStatus);
 
@@ -324,6 +331,50 @@ test('the reinforcement gate drives the same machine a creation does', () => {
   assert.deepEqual(DUCKED_PRIORITIES, sharedLedger.DUCKED_PRIORITIES);
   assert.deepEqual(VERDICTS, sharedLedger.VERDICTS);
   assert.equal(ROUNDS_BEFORE_RECONFIRMATION, sharedLedger.ROUNDS_BEFORE_RECONFIRMATION);
+});
+
+test('third-round clean closure persists the genuine checkpoint and still needs a human answer', () => {
+  withFixture((root) => {
+    const statePath = path.join(root, 'ledger.json');
+    const eventPath = path.join(root, 'event.json');
+    const state = roasted([]);
+    applyEvent(state, { type: 'round-closed' });
+    applyEvent(state, { type: 'round-closed' });
+    const original = structuredClone(state);
+    fs.writeFileSync(statePath, JSON.stringify(state));
+    fs.writeFileSync(eventPath, JSON.stringify({ type: 'round-closed' }));
+    let output = '';
+    assert.equal(run(['--state', statePath, '--event', eventPath, '--report'], {
+      stdout: { write: (text) => { output += text; } },
+    }), 0);
+    const persisted = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    assert.throws(() => sharedLedger.applyEvent(original, { type: 'round-closed' }),
+      { code: 'no_ways_forward' });
+    assert.deepEqual(persisted, original, 'the adapter preserves the actual shared transition, not a fabricated checkpoint');
+    assert.equal(persisted.gate, 'awaiting-operator');
+    assert.equal(persisted.round, 3);
+    assert.deepEqual(JSON.parse(output).report.unresolved, []);
+    assert.deepEqual(ledgerReport(persisted).checkpoint, persisted);
+    assert.equal(stopReport(persisted).gate, 'awaiting-operator');
+    assert.equal(assertRoastComplete(persisted).remediation, 'blocked');
+    assert.equal(code(() => applyEvent(persisted, { type: 'round-closed' })), 'awaiting_operator_reconfirmation');
+    for (const confirmed of [true, false]) {
+      const copy = structuredClone(persisted);
+      applyEvent(copy, { type: 'operator-reconfirmation', confirmed });
+      assert.equal(copy.gate, confirmed ? 'open' : 'halted');
+      assert.equal(assertRoastComplete(copy).remediation, confirmed ? 'clean' : 'blocked');
+      assert.deepEqual(ledgerReport(copy).unresolved, []);
+    }
+  });
+});
+
+test('the adapter does not swallow unrelated exceptions or ordinary converged-report misuse', () => {
+  const state = roasted([]);
+  assert.throws(() => stopReport(state), { code: 'no_ways_forward' });
+  assert.throws(() => applyEvent(state, { type: 'unknown' }), { code: 'unknown_event' });
+  const unexpected = new Error('unexpected storage-independent failure');
+  Object.defineProperty(state, 'round', { get() { throw unexpected; } });
+  assert.throws(() => applyEvent(state, { type: 'round-closed' }), (error) => error === unexpected);
 });
 
 test('the shared guarantees this skill depends on are pinned against drift', () => {
