@@ -359,7 +359,8 @@ export function parseArguments(argv) {
 }
 
 function readReport(candidate) {
-  if (!path.isAbsolute(candidate) || candidate.split(path.sep).includes('..')) {
+  // Windows accepts both separators; inspect before normalization can erase traversal.
+  if (!path.isAbsolute(candidate) || candidate.split(/[\\/]/).includes('..')) {
     throw new FindingSchemaError('unsafe_path', 'report path must be absolute and must not traverse upward');
   }
   try {

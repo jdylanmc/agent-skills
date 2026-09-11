@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -199,7 +200,11 @@ test('CLI retains probe, explicit usage errors, and stable exit codes', () => {
 });
 
 test('CLI file access failures are explicit and unsafe paths are rejected', () => {
-  for (const candidate of ['relative.md', `${cli}/../roast-contract.md`, fileURLToPath(new URL('.', import.meta.url))]) {
+  for (const candidate of [
+    'relative.md', `${cli}/../roast-contract.md`, `${cli}\\..\\roast-contract.md`,
+    `${cli}/..\\roast-contract.md`, `${cli}\\../roast-contract.md`,
+    fileURLToPath(new URL('.', import.meta.url)),
+  ]) {
     const output = streams();
     assert.equal(run(['--report', candidate], output), 1);
     assert.match(output.errors(), /unsafe_path:/);
@@ -209,6 +214,24 @@ test('CLI file access failures are explicit and unsafe paths are rejected', () =
   assert.match(missing.errors(), /file_access:.*ENOENT/);
   const readable = streams();
   assert.equal(run(['--report', cli], readable), 0);
+});
+
+test('Windows traversal using either separator is rejected before filesystem access', (t) => {
+  t.mock.method(path, 'isAbsolute', path.win32.isAbsolute);
+  const stat = t.mock.method(fs, 'lstatSync', () => ({ isSymbolicLink: () => false, isFile: () => true }));
+  const read = t.mock.method(fs, 'readFileSync', () => '## Findings\nnone');
+  assert.equal(run(['--report', 'C:\\review\\report.md'], streams()), 0);
+  stat.mock.resetCalls();
+  read.mock.resetCalls();
+  for (const traversal of ['/../', '\\..\\', '/..\\', '\\../']) {
+    const candidate = `C:\\review\\roast-contract.mjs${traversal}report.md`;
+    assert.equal(path.win32.normalize(candidate), 'C:\\review\\report.md');
+    const output = streams();
+    assert.equal(run(['--report', candidate], output), 1, candidate);
+    assert.match(output.errors(), /unsafe_path:/);
+    assert.equal(stat.mock.callCount(), 0);
+    assert.equal(read.mock.callCount(), 0);
+  }
 });
 
 test('CLI rejects symlinks and reports unreadable files distinctly', (t) => {

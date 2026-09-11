@@ -92,6 +92,8 @@ option for an unbound review. The checker returns structural `Valid`/`Invalid`
 separately from the unchanged `reviewStatus`; it never promotes coverage.
 Exit `0` means that structural scope is valid, `2` names defects, and `1`
 reports input or file-access errors.
+File paths must be absolute regular files, not symlinks; `..` components
+separated by either slash form are rejected before filesystem access.
 
 Checks cover headings, non-empty required fields, unique IDs and fields, stray
 findings, priority/confidence enums, closed fences, non-empty Coverage, and an
