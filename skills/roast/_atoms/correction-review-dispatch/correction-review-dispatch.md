@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["task"]
 includes: ["roast/_atoms/correction-review-dispatch/correction-review-dispatch.mjs"]
 composes: []
-used-by: ["roast/_molecules/roast-code-branch/roast-code-branch.md"]
+used-by: ["roast/SKILL.md"]
 ---
 
 # Correction Review Dispatch
@@ -40,7 +40,13 @@ base-to-deep and deep-to-current line churn with the shared bounded Git helper
 before invoking the policy. Manual `deep now`, first review, and explicit
 `repeated-full` bypass churn measurement and reach the full deep dispatch
 directly.
-Ordinary new Ship/Roast intake calls `runNewCodeReviewFromGit`; omitted choice
+New Ship intake under its declared policy calls `runNewCodeReviewFromGit`; omitted choice
 is normalized to the version 2 `deep-then-verify` default, while
 `reviewMode: repeated-full` persists the explicit alternative. Saved-run
 continuation keeps using its recorded policy through `runTieredCodeReviewFromGit`.
+
+This is an existing delivery caller's policy, not universal Roast intake.
+Ordinary text, document, repository and other reviews do not need Git churn,
+an earlier review receipt, or a tier choice. The parent runs the full-review
+callback through the current Roast workflow; a routing receipt alone is not a
+claim that a fixed council, coordinator or synthesizer executed.

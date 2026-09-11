@@ -40,7 +40,7 @@ roast the head -> route by priority -> resolve or duck -> re-roast the new head
 2. Run
    [Self-roast invocation](../../_atoms/self-roast-invocation/self-roast-invocation.md)
    on the current head and record the findings against that head. Stop and
-   report when `/roast` refuses or returns an unsynthesized result; a review
+   report when `/roast` cannot run or returns incomplete coverage; a review
    that did not happen is reported as one that did not happen, and the caller
    must not report the package complete.
 
@@ -91,7 +91,7 @@ roast the head -> route by priority -> resolve or duck -> re-roast the new head
 ## Guarantees
 
 - The package is roasted before it is presented.
-- A missing, refused, unsynthesized, or stale roast never produces a
+- A missing, partial, clarification-needed, or stale roast never produces a
   `complete` result.
 - A roast with unaddressed feedback never produces a `complete` result.
 - A `Must fix` finding is resolved and is never rubber-ducked away.

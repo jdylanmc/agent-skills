@@ -25,7 +25,7 @@ the caller to remember them.
 | --- | --- | --- |
 | `package-path` | yes | The package under remediation. |
 | `package-head` | yes | An identifier for the exact current package content, such as a commit or tree hash. |
-| `findings` | yes | The accepted findings from the roast of that head. |
+| `findings` | yes | The accepted findings from a `Complete` Roast report covering that head. |
 | `verdicts` | no | Rubber-duck verdicts and reasoning for `Should fix` and `Consider` findings. |
 | `changed-paths` | no | The paths a correction touched, checked against the repository gates. |
 
@@ -59,7 +59,13 @@ the caller to remember them.
    unknown state field, an unknown finding field, and an unrecognised priority
    are each a refusal, never a silent fallback.
 
-2. Apply events in the order the workflow produces them.
+2. Apply events in the order the workflow produces them. The invocation caller
+   checks report status, coverage, and matching `Revision` before submitting
+   `roast-recorded`; this disposition ledger does not infer those from findings.
+   Preserve `Confidence` and `Standard` as `confidence` and `standard`, alongside
+   the existing lower-case finding fields and any `doctrineReferences`.
+   Keep a `Partial` or `Needs clarification` report and its supported findings
+   as incomplete review evidence, never as an empty completed ledger event.
 
    | Event | Meaning |
    | --- | --- |

@@ -93,6 +93,17 @@ function refusal(t, run) {
   return null;
 }
 
+test('Roast confidence and non-doctrine standards survive disposition intake', () => {
+  const state = createLedger({ packagePath: 'skills/demo', head: 'h0' });
+  const reported = finding('R1', 'Should fix', {
+    confidence: 'High',
+    standard: 'The caller-confirmed package requirements',
+  });
+  applyEvent(state, { type: 'roast-recorded', head: 'h0', findings: [reported] });
+  assert.deepEqual(state.roast.findings, [reported]);
+  assert.equal(ledgerReport(state).status, 'unresolved');
+});
+
 test('a Must fix finding is resolved and can never be rubber-ducked away', () => {
   for (const closing of ['duck-verdict', 'finding-declined', 'finding-deferred']) {
     const state = seeded();

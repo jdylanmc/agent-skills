@@ -74,21 +74,11 @@ jobs:
           skills/_base/_atoms/agent-spawn/agent-spawn.test.mjs
           skills/_base/_atoms/review-tier-policy/review-tier-policy.test.mjs
           skills/roast/roast.conformance.test.mjs
-          skills/roast/_atoms/artifact-profile/artifact-profile.test.mjs
           skills/roast/_atoms/code-reviewer-panel/code-reviewer-panel.test.mjs
           skills/roast/_atoms/correction-review-dispatch/correction-review-dispatch.test.mjs
-          skills/roast/_atoms/intent-screen/intent-screen.test.mjs
-          skills/roast/_atoms/intent-screen/intent-screen.adversarial.test.mjs
-          skills/roast/_atoms/intent-source/intent-source.test.mjs
-          skills/roast/_atoms/intent-source/intent-source.drift.test.mjs
-          skills/roast/_atoms/doctrine-select/doctrine-select.test.mjs
-          skills/roast/_atoms/doctrine-select/doctrine-select.adversarial.test.mjs
           skills/roast/_atoms/roast-contract/roast-contract.test.mjs
           skills/roast/_atoms/roast-contract/roast-contract.envelope.test.mjs
           skills/roast/_atoms/roast-contract/roast-contract.drift.test.mjs
-          skills/roast/_atoms/roast-trusted-lenses/roast-trusted-lenses.test.mjs
-          skills/roast/_atoms/spec-pair/spec-pair.test.mjs
-          skills/roast/_atoms/spec-authority-screen/spec-authority-screen.test.mjs
           skills/create-skill/create-skill.conformance.test.mjs
           skills/create-skill/_atoms/intent-elicitation/intent-elicitation.test.mjs
           skills/create-skill/_atoms/intent-elicitation/intent-elicitation.drift.test.mjs
@@ -129,7 +119,6 @@ jobs:
           skills/shepherd/shepherd.conformance.test.mjs
           skills/shepherd/_atoms/shepherd-disposition/shepherd-disposition.test.mjs
           skills/shepherd/_atoms/watch-state/watch-state.test.mjs
-          skills/roast/_molecules/roast-intent/roast-intent.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-detect/cmux-detect.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-dispatch/cmux-dispatch.test.mjs
           skills/cmux-orchestrate/_atoms/cmux-helper-pane/cmux-helper-pane.test.mjs

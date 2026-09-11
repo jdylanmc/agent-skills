@@ -1,207 +1,180 @@
+// Filename retained for existing targeted workflow registrations.
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { ROAST_FINDING_FIELDS, validateRoastReport } from './roast-contract.mjs';
 
-import { parseArguments, run, validateEnvelopeFraming, validateFindingSchema } from './roast-contract.mjs';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
-const expected = { artifactType: 'skill', artifactLocator: '/review/example', allowedReviewRoot: '/review' };
-const producer = fs.readFileSync(path.join(ROOT, 'agents/artifact-roastmaster.agent.md'), 'utf8');
-const template = producer.match(/```text\n(# Artifact Roast Envelope\n[\s\S]*?)\n```/)[1];
-const roasterTemplate = producer.match(/```text\n(# Artifact Roaster Report\n[\s\S]*?)\n```/)[1];
-
-function envelope(reports = 'none') {
-  return template
-    .replace('- Status: Complete | Insufficient review', '- Status: Insufficient review')
-    .replace('- Artifact type:', '- Artifact type: skill')
-    .replace('- Artifact locator:', '- Artifact locator: /review/example')
-    .replace('- Allowed review root:', '- Allowed review root: /review')
-    .replace('- Evidence-packet identifier:', '- Evidence-packet identifier: fixture-1')
-    .replace('<complete reports in Roaster ID order>', reports);
-}
-
-function roaster(id = 'reviewer', findings = 'none') {
-  return roasterTemplate
-    .replace('- Roaster ID:', `- Roaster ID: ${id}`)
-    .replace('- Artifact type:', '- Artifact type: skill')
-    .replace('- Evidence-packet identifier:', '- Evidence-packet identifier: fixture-1')
-    .replace('- Lens:', '- Lens: fixture lens')
-    .replace('- Lens source:', '- Lens source: fixture source')
-    .replace('- Doctrine status:', '- Doctrine status: unavailable')
-    .replace(/(## Findings\n\n)[\s\S]*?(?=\n## Dismissed Suspicions)/, `$1${findings}\n`);
-}
-
-function finding(overrides = {}) {
+function finding(id = 'R1', overrides = {}) {
   const fields = {
-    'Proposed severity': 'Should fix', Confidence: 'High', Location: '/review/example:1',
-    Evidence: 'Observed fixture issue.', Consequence: 'Fixture consequence.',
-    Recommendation: 'Correct the fixture.', Validation: 'Inspect the corrected fixture.', ...overrides,
+    Priority: 'Must fix', Confidence: 'High', Location: 'Supplied diagram, lower-right box.',
+    Evidence: 'The recovery path terminates without an owner.', Consequence: 'Recovery can stall.',
+    Standard: 'Supplied operating procedure, recovery ownership.',
+    Recommendation: 'Identify a recovery owner.', Validation: 'Trace a failed rollout with that owner.',
+    ...overrides,
   };
-  return ['### reviewer-F01', ...Object.entries(fields)
-    .filter(([, value]) => value !== null).map(([field, value]) => `- ${field}: ${value}`)].join('\n');
+  return [`### ${id}: Recovery has no owner`, ...Object.entries(fields)
+    .filter(([, value]) => value !== null).map(([name, value]) => `- ${name}: ${value}`)].join('\n');
+}
+function report(body = finding(), status = 'Complete') {
+  return `# Roast\n- Status: ${status}\n- Scope: Supplied diagram.\n- Standards: Operating procedure.\n\n## Findings\n${body}\n\n## Coverage\nReviewed the supplied diagram by inspection, without execution or independent perspectives. No requested parts were missing.`;
 }
 
-test('the producer template passes only the explicitly checked framing scope', () => {
-  for (const report of [envelope(), `${envelope()}\n`, `${envelope().replace(/\n/g, '\r\n')}\r\n`]) {
-    const result = validateEnvelopeFraming(report, expected);
-    assert.equal(result.status, 'Valid');
-    assert.equal(result.scope, 'envelope-framing-and-finding-fields');
-    assert.deepEqual(result.checkedItems, [1, 2, 3, 4, 10, 99]);
-    assert.ok(result.remainingChecks.includes('council roster and report coverage'));
-    assert.equal(result.roasterReports, 0);
-    assert.equal(result.findings, 0);
-    assert.deepEqual(result.defects, []);
+test('one final report preserves coverage status independently from structural validity', () => {
+  for (const status of ['Complete', 'Partial', 'Needs clarification']) {
+    for (const body of [finding(), 'None.']) {
+      const result = validateRoastReport(report(body, status));
+      assert.equal(result.status, 'Valid', JSON.stringify(result.defects));
+      assert.equal(result.reviewStatus, status);
+      assert.equal(result.scope, 'final-report-structure');
+      assert.equal(result.findings, body === 'None.' ? 0 : 1);
+      assert.ok(result.remainingChecks.includes('coverage sufficiency'));
+    }
+  }
+  for (const suffix of ['', '\n', '\r\n']) {
+    assert.equal(validateRoastReport(report().replace(/\n/g, '\r\n') + suffix).status, 'Valid');
   }
 });
 
-test('malformed envelope framing returns specific named defects', () => {
-  const base = envelope();
-  const cases = [
-    [base.replace('# Artifact Roast Envelope', '# Other'), 'First-line mismatch', 'envelope title'],
-    [base.replace('## Council Roster', '## Other'), 'Missing heading', 'Council Roster'],
-    [base.replace('## Council Roster', '## Council Roster\n## Council Roster'), 'Duplicate heading', 'Council Roster'],
-    [base.replace('## Evidence Manifest', '## PLACEHOLDER').replace('## Council Roster', '## Evidence Manifest')
-      .replace('## PLACEHOLDER', '## Council Roster'), 'Misordered heading', 'Council Roster'],
-    [base.replace('- Status: Insufficient review', '- Status:'), 'Empty field', 'Status'],
-    [base.replace('- Status: Insufficient review', '- Status: Unknown'), 'Value mismatch', 'Status'],
-    [base.replace('- Schema version: 1', '- Schema version: 2'), 'Value mismatch', 'Schema version'],
-    [base.replace('- Artifact locator: /review/example', ''), 'Missing field', 'Artifact locator'],
-    [base.replace('- Artifact type: skill', '- Artifact type: skill\n- Artifact type: skill'), 'Cardinality violation', 'Artifact type'],
-    [`${base}\nextra`, 'Missing terminator', 'END ARTIFACT ROAST ENVELOPE'],
-    [base.replace('## Council Roster', 'END ARTIFACT ROAST ENVELOPE\n## Council Roster'), 'Cardinality violation', 'END ARTIFACT ROAST ENVELOPE'],
-  ];
-  for (const [report, category, item] of cases) {
-    const result = validateEnvelopeFraming(report, expected);
-    assert.equal(result.status, 'Invalid', `${category}: ${item}`);
-    assert.ok(result.defects.some((defect) => defect.category === category && defect.item === item),
-      JSON.stringify(result.defects));
+test('every final finding field is required and non-empty outside quoted material', () => {
+  for (const field of ROAST_FINDING_FIELDS) {
+    for (const value of [null, '', '   ', '\n> quoted only', '\n```text\nquoted only\n```', '\n<!-- quoted only -->']) {
+      const result = validateRoastReport(report(finding('R1', { [field]: value })));
+      assert.equal(result.status, 'Invalid', `${field}: ${value}`);
+      assert.ok(result.defects.some((defect) => defect.field === field), JSON.stringify(result.defects));
+    }
   }
 });
 
-test('artifact identity comes from caller inputs rather than trusting the envelope', () => {
-  for (const key of ['artifactType', 'artifactLocator', 'allowedReviewRoot']) {
-    const changed = { ...expected, [key]: key === 'artifactType' ? 'agent' : 'different' };
-    assert.equal(validateEnvelopeFraming(envelope(), changed).status, 'Invalid');
+test('priority and confidence use exact enums, not substring matching', () => {
+  for (const Priority of ['Must fix', 'Should fix', 'Consider']) {
+    for (const Confidence of ['High', 'Medium', 'Low']) {
+      assert.equal(validateRoastReport(report(finding('R1', { Priority, Confidence }))).status, 'Valid');
+    }
   }
-  assert.throws(() => validateEnvelopeFraming(envelope(), {}), { code: 'invalid_contract' });
-});
-
-test('quoted contract material and nested fields cannot satisfy the outer header', () => {
-  const field = '- Artifact locator: /review/example';
-  for (const replacement of [
-    `> ${field}`,
-    `\`\`\`text\n${field}\n\`\`\``,
-    `~~~text\n${field}\n~~~`,
-    `\`\`\`text\n\`\`\`not-a-closing-fence\n${field}\n\`\`\``,
-  ]) {
-    const result = validateEnvelopeFraming(envelope().replace(field, replacement), expected);
-    assert.ok(result.defects.some((defect) => defect.category === 'Missing field' && defect.item === 'Artifact locator'));
+  for (const [name, values] of Object.entries({
+    Priority: ['Critical', 'Must Fix', 'Must fix | Should fix', 'Must fix because urgent'],
+    Confidence: ['Certain', 'high', 'High | Low'],
+  })) {
+    for (const value of values) assert.equal(validateRoastReport(report(finding('R1', { [name]: value }))).status, 'Invalid');
   }
-  const nested = envelope().replace(field, '').replace('## Contract-Valid Reports', `## Contract-Valid Reports\n${field}`);
-  assert.ok(validateEnvelopeFraming(nested, expected).defects.some((defect) => defect.item === 'Artifact locator'));
-  assert.equal(validateEnvelopeFraming(`\`\`\`\n${envelope()}\n\`\`\``, expected).status, 'Invalid');
 });
 
-test('existing accepted-finding checks run once alongside nested structure checks', () => {
-  const report = envelope(roaster('reviewer', finding({ Validation: null })));
-  const result = validateEnvelopeFraming(report, expected);
-  assert.equal(result.status, 'Invalid');
-  assert.equal(result.defects.filter((defect) => defect.category === 'Incomplete finding' && defect.field === 'Validation').length, 1);
-  assert.equal(validateEnvelopeFraming(envelope(roaster('reviewer', finding())), expected).status, 'Valid');
+test('final header fields cannot be qualified, even with a matching expected revision', () => {
+  const source = report().replace('- Scope:', '- Revision: abc123\n- Scope:');
+  for (const field of ['Status', 'Scope', 'Standards', 'Revision']) {
+    for (const qualifier of ['proposed', 'self-attested', '', ' ']) {
+      const qualified = source.replace(`- ${field}:`, `- ${field} (${qualifier}):`);
+      const result = validateRoastReport(qualified, { expectedRevision: 'abc123' });
+      assert.equal(result.status, 'Invalid', `${field} (${qualifier})`);
+      assert.ok(result.defects.some((defect) => defect.category === 'Qualified field' && defect.item === field));
+    }
+  }
+  assert.equal(validateRoastReport(source, { expectedRevision: 'abc123' }).status, 'Valid');
 });
 
-test('complete nested templates allow zero findings while retaining unchecked semantic requirements', () => {
-  const result = validateEnvelopeFraming(envelope(`${roaster('a')}\n\n${roaster('b')}`), expected);
+test('final finding fields reject qualifiers rather than silently dropping them', () => {
+  for (const field of ROAST_FINDING_FIELDS) {
+    for (const qualifier of ['proposed', '', ' ']) {
+      const source = report().replace(`- ${field}:`, `- ${field} (${qualifier}):`);
+      const result = validateRoastReport(source);
+      assert.equal(result.status, 'Invalid', `${field} (${qualifier})`);
+      assert.ok(result.defects.some((defect) => defect.category === 'Qualified field' && defect.item === field));
+    }
+  }
+});
+
+test('IDs are unique regardless of title; stable IDs need not be sequential', () => {
+  const duplicate = `${finding()}\n${finding().replace('no owner', 'a different title')}`;
+  assert.equal(validateRoastReport(report(duplicate)).status, 'Invalid');
+  assert.equal(validateRoastReport(report(`${finding('R5')}\n${finding('R2')}`)).status, 'Valid');
+  for (const heading of ['### R0: title', '### R01: title', '### R1', '### R1: ', '### F1: title', '#### R1: title']) {
+    assert.equal(validateRoastReport(report(finding().replace(/^###.*$/m, heading))).status, 'Invalid', heading);
+  }
+});
+
+test('report header and section defects cannot be repaired by quoting a valid template', () => {
+  const base = report();
+  for (const broken of [
+    base.replace('# Roast', '# Artifact Roast'),
+    base.replace('- Status: Complete', '- Status: Approved'),
+    base.replace('- Scope: Supplied diagram.', '- Scope:'),
+    base.replace('- Standards: Operating procedure.', '- Standards:'),
+    base.replace('- Scope: Supplied diagram.', '> - Scope: Supplied diagram.'),
+    base.replace('- Standards: Operating procedure.', '```\n- Standards: Operating procedure.\n```'),
+    base.replace('- Status: Complete', '- Status: Complete\n- Status: Partial'),
+    base.replace('## Findings', '## Findings\n## Findings'),
+    base.replace('## Coverage', '## Other'),
+    base.replace('## Coverage', '## Coverage\n## Coverage'),
+    base.replace(/## Coverage[\s\S]*/, '## Coverage\n> Coverage only in a quote'),
+    base.replace(/## Coverage[\s\S]*/, '## Coverage\n```\nQuoted coverage\n```'),
+    base.replace('## Findings', '## Coverage').replace('## Coverage\nReviewed', '## Findings\nReviewed'),
+    `\`\`\`markdown\n${base}\n\`\`\``,
+  ]) assert.equal(validateRoastReport(broken).status, 'Invalid', broken);
+});
+
+test('missing or malformed findings never turn into clean zero findings', () => {
+  for (const body of [
+    '', 'none', 'None', 'No issues found.', 'None.\n- Evidence: hidden concern',
+    'None.\n### R1: hidden concern', '- Priority: Must fix\n- Recommendation: fix',
+    '#### R1: hidden concern\n- Priority: Must fix',
+    '### R1: hidden concern\n```text\n- Recommendation: fix\n- Validation: inspect\n```',
+  ]) assert.equal(validateRoastReport(report(body)).status, 'Invalid', body);
+  assert.equal(validateRoastReport(`${report('None.')}\n${finding()}`).status, 'Invalid');
+  assert.equal(validateRoastReport(`${report('None.')}\n## Open Risks and Evidence Gaps\n${finding()}`).status, 'Invalid');
+  assert.equal(validateRoastReport(report().replace('## Findings', '## Hidden Findings')).status, 'Invalid');
+  assert.equal(validateRoastReport(report().replace('## Findings', `- Evidence: stray\n## Findings`)).status, 'Invalid');
+});
+
+test('duplicate fields and findings hidden by heading transitions are invalid', () => {
+  for (const body of [
+    `${finding()}\n- Evidence: a different claim`,
+    `${finding()}\n#### hidden\n- Recommendation: hidden advice`,
+    `${finding()}\n# Unexpected\n- Evidence: hidden evidence`,
+    `${finding()}\n- Roast line: joke cannot substitute for the report fields`,
+  ]) assert.equal(validateRoastReport(report(body)).status, 'Invalid', body);
+});
+
+test('quoted headings are evidence, but unclosed or mismatched fences are not success', () => {
+  const quoted = report(finding('R1', { Evidence: 'Observed below.\n````text\n### R9: quoted only\n- Evidence: not report structure\n```\n````' }));
+  assert.equal(validateRoastReport(quoted).status, 'Valid');
+  for (const suffix of ['\n```text\nhidden', '\n```text\nhidden\n~~~', '\n~~~~text\nhidden\n~~~']) {
+    assert.equal(validateRoastReport(report() + suffix).status, 'Invalid');
+  }
+});
+
+test('bound revision is compared exactly with caller input, never self-attested', () => {
+  const revision = 'abcd1234';
+  const source = report().replace('- Status: Complete', `- Status: Complete\n- Revision: ${revision}`);
+  assert.equal(validateRoastReport(source, { expectedRevision: revision }).status, 'Valid');
+  for (const expectedRevision of ['different', 'abcd', 'ABCD1234']) {
+    assert.equal(validateRoastReport(source, { expectedRevision }).status, 'Invalid');
+  }
+  assert.equal(validateRoastReport(report(), { expectedRevision: revision }).status, 'Invalid');
+  assert.equal(validateRoastReport(source.replace(`- Revision: ${revision}`, `> - Revision: ${revision}`), { expectedRevision: revision }).status, 'Invalid');
+  assert.equal(validateRoastReport(source.replace(`- Revision: ${revision}`, `- Revision: ${revision}\n- Revision: ${revision}`)).status, 'Invalid');
+  assert.equal(validateRoastReport(source.replace(`- Revision: ${revision}`, '- Revision:')).status, 'Invalid');
+  for (const expectedRevision of ['', ' ', 42, null]) {
+    assert.throws(() => validateRoastReport(source, { expectedRevision }), { code: 'invalid_contract' });
+  }
+});
+
+test('locators are opaque and structural success does not claim semantic correctness', () => {
+  const source = report(finding('R1', { Location: 'email:message-17, quoted paragraph 3', Evidence: 'Claim requiring human verification.' }));
+  const result = validateRoastReport(source);
   assert.equal(result.status, 'Valid');
-  assert.equal(result.roasterReports, 2);
-  assert.ok(result.checkedRoasterRules.includes('packet agreement'));
-  assert.ok(result.remainingChecks.includes('dimension coverage and report semantics'));
-  assert.deepEqual(result.defects, []);
+  assert.ok(result.remainingChecks.includes('evidence truth and freshness'));
+  assert.equal(result.revision, null);
 });
 
-test('a malformed sibling cannot be compensated for by a valid report', () => {
-  const base = roaster('reviewer', finding());
-  const cases = [
-    [base.replace('- Evidence-packet identifier: fixture-1', '- Evidence-packet identifier: wrong'), 'Value mismatch'],
-    [base.replace('- Artifact type: skill', '- Artifact type: agent'), 'Value mismatch'],
-    [base.replace('- Lens: fixture lens', '- Lens:'), 'Empty field'],
-    [base.replace('## Dimension Coverage', '## Other'), 'Missing heading'],
-    [base.replace('## Evidence Gaps', '## Evidence Gaps\n## Evidence Gaps'), 'Duplicate heading'],
-    [base.replace('END ARTIFACT ROASTER REPORT', ''), 'Missing terminator'],
-    [base.replace('END ARTIFACT ROASTER REPORT', 'END ARTIFACT ROASTER REPORT\nextra'), 'Missing terminator'],
-    [base.replace('- Confidence: High', '- Confidence: Certain'), 'Value mismatch'],
-    [base.replace('- Proposed severity: Should fix', '- Proposed severity: Urgent'), 'Value mismatch'],
-    [base.replace('- Evidence: Observed fixture issue.', '- Evidence:'), 'Incomplete finding'],
-    [base.replace('- Confidence: High', '- Confidence: High\n- Confidence: Low'), 'Cardinality violation'],
-    [base.replace('### reviewer-F01', ''), 'Incomplete finding'],
-    [base.replace('### reviewer-F01', '> ### reviewer-F01'), 'Incomplete finding'],
-  ];
-  for (const [bad, category] of cases) {
-    const report = envelope(`${roaster('a')}\n\n${bad}`);
-    const result = validateEnvelopeFraming(report, expected);
-    assert.equal(result.status, 'Invalid', category);
-    assert.ok(result.defects.some((defect) =>
-      defect.category === category && defect.roasterId === 'reviewer' && defect.reportLine > 1), JSON.stringify(result.defects));
+test('full CLI mode handles stdin and exact revision with structural exit codes', () => {
+  const cli = fileURLToPath(new URL('./roast-contract.mjs', import.meta.url));
+  const source = report('None.', 'Needs clarification').replace('- Scope:', '- Revision: abc\n- Scope:');
+  for (const [revision, expectedStatus] of [['abc', 0], ['wrong', 2]]) {
+    const result = spawnSync(process.execPath, [cli, '--roast', '--report', '-', '--expected-revision', revision], {
+      input: source, encoding: 'utf8',
+    });
+    assert.equal(result.status, expectedStatus, result.stderr);
+    assert.equal(JSON.parse(result.stdout).reviewStatus, 'Needs clarification');
   }
-});
-
-test('finding IDs belong to their roaster and are unique without inventing display-order rules', () => {
-  for (const id of ['other-F01', 'reviewer-F00', 'reviewer-F001']) {
-    const result = validateEnvelopeFraming(envelope(roaster('reviewer', finding().replace('reviewer-F01', id))), expected);
-    assert.ok(result.defects.some((defect) => defect.category === 'Identity mismatch'));
-  }
-  const duplicate = validateEnvelopeFraming(envelope(roaster('reviewer', `${finding()}\n${finding()}`)), expected);
-  assert.ok(duplicate.defects.some((defect) => defect.category === 'Identity mismatch'));
-  const reordered = `${finding().replace('reviewer-F01', 'reviewer-F02')}\n${finding()}`;
-  assert.equal(validateEnvelopeFraming(envelope(roaster('reviewer', reordered)), expected).status, 'Valid');
-  const repeatedReport = validateEnvelopeFraming(envelope(`${roaster()}\n${roaster()}`), expected);
-  assert.ok(repeatedReport.defects.some((defect) => defect.category === 'Cardinality violation' && defect.item === 'reviewer'));
-});
-
-test('quoted, misplaced, and disguised reports cannot evade nested checks', () => {
-  const quoted = envelope(`\`\`\`\n${roaster()}\n\`\`\``);
-  assert.equal(validateEnvelopeFraming(quoted, expected).status, 'Invalid');
-  const misplaced = envelope().replace('## Evidence Manifest', `## Evidence Manifest\n${roaster()}`);
-  assert.ok(validateEnvelopeFraming(misplaced, expected).defects.some((defect) => defect.category === 'Unexpected section entry'));
-  const hiddenField = roaster().replace('- Lens: fixture lens', '```\n- Lens: fixture lens\n```');
-  assert.equal(validateEnvelopeFraming(envelope(hiddenField), expected).status, 'Invalid');
-  const badPacket = envelope(roaster().replace('fixture-1', 'wrong'))
-    .replace('## Contract-Valid Reports', '## Contract-Valid Reports  ');
-  assert.equal(validateEnvelopeFraming(badPacket, expected).status, 'Invalid');
-  assert.equal(validateEnvelopeFraming(envelope(`${roaster()}\n\`\`\`\nquoted suffix\n\`\`\``), expected).status, 'Invalid');
-});
-
-test('a fence with trailing text cannot expose quoted finding fields', () => {
-  const report = [
-    '## Findings', '### reviewer-F01', '```text', '```not-a-closing-fence',
-    '- Recommendation: Quoted advice.', '- Validation: Quoted check.', '```',
-  ].join('\n');
-  assert.deepEqual(validateFindingSchema(report).defects.map((defect) => defect.field), ['Recommendation', 'Validation']);
-  const indented = [
-    '## Findings', '### reviewer-F01', '    - Recommendation: Quoted advice.', '    - Validation: Quoted check.',
-  ].join('\n');
-  assert.deepEqual(validateFindingSchema(indented).defects.map((defect) => defect.field), ['Recommendation', 'Validation']);
-});
-
-test('the existing CLI runs framing mode and refuses incomplete or weakened contracts', (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'roast-envelope-'));
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  const reportPath = path.join(directory, 'report.md');
-  fs.writeFileSync(reportPath, envelope());
-  const args = ['--report', reportPath, '--artifact-type', 'skill', '--artifact-locator', '/review/example', '--review-root', '/review'];
-  const output = [];
-  const streams = { stdout: { write: (text) => output.push(text) }, stderr: { write: (text) => assert.fail(text) } };
-  assert.equal(run(args, streams), 0);
-  assert.equal(JSON.parse(output.join('')).scope, 'envelope-framing-and-finding-fields');
-  output.length = 0;
-  fs.writeFileSync(reportPath, envelope(roaster().replace('fixture-1', 'wrong')));
-  assert.equal(run(args, streams), 2);
-  assert.equal(JSON.parse(output.join('')).roasterReports, 1);
-  fs.writeFileSync(reportPath, envelope().replace('## Council Roster', '## Other'));
-  assert.equal(run(args, streams), 2);
-  assert.throws(() => parseArguments(args.slice(0, -2)), { code: 'usage' });
-  assert.throws(() => parseArguments([...args, '--field', 'Evidence']), { code: 'usage' });
 });

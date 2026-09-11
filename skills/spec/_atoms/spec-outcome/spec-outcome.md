@@ -48,8 +48,8 @@ For a `held` source:
 For non-held sources:
 
 1. `blocked` when source access, alignment, or freshness failed; persistence,
-   reread, or pair validation failed; Roast classification did not return
-   `spec`, the Roast review is incomplete, or an unresolved `Must fix` finding
+   reread, or pair validation failed; the Roast review is incomplete or stale,
+   the pair or its supplied authority was not covered, or an unresolved `Must fix` finding
    remains.
 2. `needs-discovery` when the confirmed source is materially incomplete or a
    product requirement needs evidence or scope Discovery did not settle.
@@ -59,6 +59,11 @@ For non-held sources:
    regardless of source state.
 4. `complete` only when none of those conditions exists.
 
+Map the report's `Status: Complete` to resolver input `roastStatus: 'complete'`
+only after verifying the pair, supplied authority, and any bound revision in
+its scope and coverage. `Partial`, `Needs clarification`, missing coverage,
+and stale evidence remain non-complete inputs, with supported findings retained.
+
 An unavailable review never becomes an empty clean review. A clean Roast never
 becomes human approval. Both are required and remain different evidence.
 
@@ -66,7 +71,7 @@ becomes human approval. Both are required and remain different evidence.
 
 | Status | Meaning |
 | --- | --- |
-| `blocked` | The source is inaccessible or stale, persistence or reread failed, pair validation failed, Roast classification did not return `spec`, the Roast review is incomplete, or unresolved `Must fix` findings remain. |
+| `blocked` | The source is inaccessible or stale, persistence or reread failed, pair validation failed, the Roast review is incomplete or stale, the pair or its supplied authority was not covered, or unresolved `Must fix` findings remain. |
 | `needs-discovery` | The source lacks evidence or scope required to state product intent without guessing. |
 | `needs-decision` | Product decisions, contradictions, sibling conflicts, or approval remain unresolved. |
 | `held` | The approved specification stands; the source moved and nothing contradicts it; nothing was re-derived and nothing was written. |

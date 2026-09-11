@@ -1,31 +1,9 @@
 #!/usr/bin/env node
 
-/**
- * Accepted-finding schema checks for the artifact branch.
- *
- * The roast contract requires every accepted finding to carry a bounded,
- * actionable Recommendation and a Validation. Stated as prose that requirement
- * is unenforceable: a report with ten findings and zero recommendations
- * satisfied every earlier envelope check, because those checks inspected
- * headings, roster shape, ordering, and terminators, and never looked inside a
- * finding.
- *
- * This module makes the requirement mechanical. It is a schema check and
- * nothing more: it decides whether a finding is *well formed*, never whether it
- * is right, and it never repairs, rewrites, or ranks anything.
- *
- * The counting rule matches the rest of the contract. A heading, a field label,
- * or field content counts only outside every fenced block. A report that quotes
- * a contract template as evidence must not thereby satisfy the contract, and a
- * recommendation that exists only inside a quoted block is evidence of what
- * someone else wrote, not advice this roast is giving.
- */
-
+// Structural checks only: no evidence resolution, repair, or approval.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { ARTIFACT_TYPES } from '../artifact-profile/artifact-profile.mjs';
 
 export class FindingSchemaError extends Error {
   constructor(code, message) {
@@ -35,496 +13,314 @@ export class FindingSchemaError extends Error {
   }
 }
 
-const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const HEADING = /^ {0,3}#{1,6}(?:\s|$)/;
 const SECTION = /^##\s+(.+?)\s*$/;
 const FINDING = /^###\s+(.+?)\s*$/;
 const FIELD = /^-\s+([A-Z][A-Za-z ]*?)\s*(?:\(([^)]*)\))?\s*:\s*(.*)$/;
 
-function unfencedLines(report) {
+export const ACCEPTED_FINDING_SECTIONS = [
+  'Accepted Findings', 'Findings', 'Must Fix', 'Should Fix', 'Consider',
+];
+export const EXEMPT_FINDING_SECTIONS = [
+  'Rejected, Merged, or Downgraded Findings', 'Rejected, Merged, or Downgraded',
+  'Dismissed Suspicions', 'Open Risks and Evidence Gaps', 'Open Risks and Prerequisites',
+  'Evidence Gaps', 'Doctrine Uncertainties', 'Residual Uncertainties',
+];
+export const DEFAULT_FINDING_SECTIONS = ACCEPTED_FINDING_SECTIONS;
+export const FINDING_FIELD_LABELS = [
+  'Priority', 'Proposed priority', 'Proposed severity', 'Confidence', 'Location',
+  'Evidence', 'Consequence', 'Root cause', 'Standard', 'Recommendation', 'Validation',
+];
+export const REQUIRED_FINDING_FIELDS = ['Recommendation', 'Validation'];
+export const ROAST_FINDING_FIELDS = [
+  'Priority', 'Confidence', 'Location', 'Evidence', 'Consequence',
+  'Standard', 'Recommendation', 'Validation',
+];
+
+function visibleLines(report) {
   if (typeof report !== 'string') {
     throw new FindingSchemaError('invalid_report', 'report must be a string');
   }
   let fence = null;
-  return report.replace(/\r\n/g, '\n').split('\n').map((line) => {
-    const match = FENCE.exec(line);
-    if (match) {
-      const marker = match[1];
-      if (fence === null) {
-        fence = marker;
-      } else if (marker[0] === fence[0] && marker.length >= fence.length
-          && line.slice(match[0].length).trim() === '') {
-        fence = null;
-      }
+  let comment = false;
+  let quote = false;
+  const defects = [];
+  const lines = report.replace(/\r\n/g, '\n').split('\n').map((source, index) => {
+    // Quotes and indented code cannot provide report structure or field content.
+    if (/^ {0,3}>/.test(source)) { quote = true; return ''; }
+    if (!source.trim() || HEADING.test(source) || FIELD.test(source) || FENCE.test(source)) quote = false;
+    if (quote || /^(?: {4}|\t)/.test(source)) return '';
+    if (fence) {
+      const close = FENCE.exec(source);
+      if (close && close[1][0] === fence.marker[0]
+          && close[1].length >= fence.marker.length && close[2].trim() === '') fence = null;
       return '';
     }
-    return fence === null ? line : '';
-  });
-}
-
-/** Sections that hold accepted findings and are therefore checked. */
-export const ACCEPTED_FINDING_SECTIONS = [
-  'Accepted Findings',
-  'Findings',
-  'Must Fix',
-  'Should Fix',
-  'Consider',
-];
-
-/**
- * Sections that legitimately hold entries carrying no recommendation.
- *
- * The decision on rejected and downgraded findings, stated rather than left
- * implicit: they are **exempt**. A rejected, merged, or downgraded finding is
- * by definition not an accepted finding. Its content is a disposition — why the
- * council declined it — and demanding a fix for a problem the council decided
- * is not a problem would manufacture advice, which is the opposite of what the
- * requirement is for. The same reasoning covers dismissed suspicions and open
- * risks: an open risk with no bounded fix is precisely where the contract sends
- * a concern that cannot be resolved yet.
- *
- * This is a structural distinction, not a naming one. Neither emitting document
- * gives a disposition entry a `Recommendation` field, which is what the drift
- * test keys on.
- */
-export const EXEMPT_FINDING_SECTIONS = [
-  'Rejected, Merged, or Downgraded Findings',
-  'Rejected, Merged, or Downgraded',
-  'Dismissed Suspicions',
-  'Open Risks and Evidence Gaps',
-  'Open Risks and Prerequisites',
-  'Evidence Gaps',
-  'Doctrine Uncertainties',
-  'Residual Uncertainties',
-];
-
-/** Retained name for the checked set. */
-export const DEFAULT_FINDING_SECTIONS = ACCEPTED_FINDING_SECTIONS;
-
-/**
- * Field labels that identify an entry as a finding wherever it sits. An entry
- * carrying any of these under an unrecognised heading is a finding in the wrong
- * place, not an unrelated subheading, and the checker fails closed on it.
- */
-export const FINDING_FIELD_LABELS = [
-  'Priority',
-  'Proposed priority',
-  'Proposed severity',
-  'Confidence',
-  'Location',
-  'Evidence',
-  'Consequence',
-  'Root cause',
-  'Recommendation',
-  'Validation',
-];
-
-/** Fields every accepted finding must carry with content, outside fences. */
-export const REQUIRED_FINDING_FIELDS = ['Recommendation', 'Validation'];
-
-/**
- * A section whose whole body is the single word `none` declares no findings.
- * An empty findings section is a real result and never a defect.
- */
-function isNone(body) {
-  return body.filter((line) => line.trim() !== '').every((line) => line.trim() === 'none');
-}
-
-/**
- * Splits a report into entries, tracking fenced blocks so quoted material is
- * inert.
- *
- * Every `###` heading is collected, not only those under a recognised section.
- * The earlier version tracked only recognised sections, so a report written
- * under a heading the list did not name produced `findings: 0` and a `Valid`
- * status — a checker that saw nothing and called it success. Collecting
- * everything is what makes failing closed possible.
- */
-export function parseFindings(report, sections = ACCEPTED_FINDING_SECTIONS) {
-  if (typeof report !== 'string') {
-    throw new FindingSchemaError('invalid_report', 'report must be a string');
-  }
-  const checked = new Set(sections);
-  const exempt = new Set(EXEMPT_FINDING_SECTIONS);
-  const entries = [];
-  const sectionBodies = new Map();
-
-  let section = null;
-  let entry = null;
-  let field = null;
-
-  const closeEntry = () => {
-    if (entry) {
-      entries.push(entry);
-    }
-    entry = null;
-    field = null;
-  };
-
-  const lines = unfencedLines(report);
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-
-    const findingMatch = FINDING.exec(line);
-    if (findingMatch) {
-      closeEntry();
-      entry = {
-        id: findingMatch[1],
-        section,
-        line: index + 1,
-        fields: new Map(),
-        order: [],
-      };
-      if (section !== null) {
-        sectionBodies.get(section).push(line);
-      }
-      continue;
-    }
-
-    const sectionMatch = SECTION.exec(line);
-    if (sectionMatch) {
-      closeEntry();
-      section = sectionMatch[1];
-      if (!sectionBodies.has(section)) {
-        sectionBodies.set(section, []);
-      }
-      continue;
-    }
-    if (section !== null) {
-      sectionBodies.get(section).push(line);
-    }
-    if (!entry) {
-      continue;
-    }
-
-    const fieldMatch = FIELD.exec(line);
-    if (fieldMatch) {
-      field = fieldMatch[1].trim();
-      if (!entry.fields.has(field)) {
-        entry.order.push(field);
-        entry.fields.set(field, { value: fieldMatch[3].trim(), line: index + 1 });
+    let line = '';
+    let rest = source;
+    while (rest) {
+      if (comment) {
+        const end = rest.indexOf('-->');
+        if (end < 0) return line;
+        rest = rest.slice(end + 3);
+        comment = false;
       } else {
-        (entry.duplicateFields ??= []).push({ field, line: index + 1 });
+        const start = rest.indexOf('<!--');
+        if (start < 0) { line += rest; break; }
+        line += rest.slice(0, start);
+        rest = rest.slice(start + 4);
+        comment = true;
       }
-      continue;
     }
-    if (field && line.trim() !== '') {
-      const stored = entry.fields.get(field);
-      stored.value = stored.value ? `${stored.value} ${line.trim()}` : line.trim();
+    const open = FENCE.exec(line);
+    if (open) {
+      fence = { marker: open[1], line: index + 1 };
+      return '';
     }
-  }
-  closeEntry();
-
-  const classified = { findings: [], exempt: [], unrecognised: [] };
-  for (const candidate of entries) {
-    if (candidate.section !== null && checked.has(candidate.section)) {
-      classified.findings.push(candidate);
-    } else if (candidate.section !== null && exempt.has(candidate.section)) {
-      classified.exempt.push(candidate);
-    } else if (looksLikeFinding(candidate)) {
-      classified.unrecognised.push(candidate);
-    }
-  }
-
-  const emptySections = [...sectionBodies.entries()]
-    .filter(([, body]) => isNone(body))
-    .map(([name]) => name);
-
-  return { ...classified, entries, emptySections };
+    return line;
+  });
+  if (fence) defects.push({
+    category: 'Unclosed fence', line: fence.line,
+    message: 'fenced material has no matching closing fence',
+  });
+  if (comment) defects.push({ category: 'Unclosed comment', message: 'HTML comment is not closed' });
+  return { lines, defects };
 }
 
-/**
- * An entry is a finding wherever it sits when it carries any schema field. This
- * is how a finding under a heading nobody recognised is told apart from an
- * ordinary subheading in a document that happens to be passed in.
- */
 export function looksLikeFinding(entry) {
   return FINDING_FIELD_LABELS.some((label) => entry.fields.has(label));
 }
 
-/**
- * A field is satisfied when it exists and carries content outside every fenced
- * block. A bare label with nothing after it is a defect, and so is a label
- * whose only content sits inside a fence.
- */
 export function fieldContent(finding, name) {
-  const entry = finding.fields.get(name);
-  if (!entry) {
-    return null;
-  }
-  const value = entry.value.trim();
-  return value === '' ? null : value;
+  return finding.fields.get(name)?.value.trim() || null;
 }
 
-/**
- * Validates every accepted finding in a report.
- *
- * Returns `Valid` with an empty defect list, or `Invalid` naming each finding
- * and the specific field it is missing. A report with no findings at all is
- * valid: the requirement is per finding, not a demand that findings exist.
- *
- * It fails **closed**. A `###` entry that carries schema fields but sits under
- * a heading this checker does not recognise, or under no heading at all, is an
- * `Unrecognised findings section` defect rather than a silent skip. Returning
- * `findings: 0` for a report that visibly contains findings is the one outcome
- * this unit must never produce, because item 10 of the envelope checklist
- * points at it and a reviewer will trust the answer.
- */
+/** Generic finding parser retained for scoped callers; quoted material is inert. */
+export function parseFindings(report, sections = ACCEPTED_FINDING_SECTIONS) {
+  const checked = new Set(sections);
+  const exempt = new Set(EXEMPT_FINDING_SECTIONS);
+  const { lines, defects } = visibleLines(report);
+  const entries = [];
+  const sectionBodies = new Map();
+  let section = null;
+  let entry = null;
+  let field = null;
+  const closeEntry = () => {
+    if (entry) entries.push(entry);
+    entry = null;
+    field = null;
+  };
+  for (const [index, line] of lines.entries()) {
+    const finding = FINDING.exec(line);
+    if (finding) {
+      closeEntry();
+      entry = { id: finding[1], section, line: index + 1, fields: new Map(), order: [] };
+      sectionBodies.get(section)?.push(line);
+      continue;
+    }
+    if (HEADING.test(line)) {
+      if (checked.has(section) && /^ {0,3}#{3,}/.test(line)) defects.push({
+        category: 'Malformed finding heading', line: index + 1,
+        message: 'a finding heading must start with ### and carry an identifier',
+      });
+      closeEntry();
+      const heading = SECTION.exec(line);
+      section = heading?.[1] ?? null;
+      if (section !== null && !sectionBodies.has(section)) sectionBodies.set(section, []);
+      continue;
+    }
+    sectionBodies.get(section)?.push(line);
+    const match = FIELD.exec(line);
+    if (!entry) {
+      if (match && FINDING_FIELD_LABELS.includes(match[1])) defects.push({
+        category: 'Stray finding field', field: match[1], line: index + 1,
+        message: `${match[1]} is outside a named finding`,
+      });
+      continue;
+    }
+    if (match) {
+      field = match[1].trim();
+      if (entry.fields.has(field)) {
+        (entry.duplicateFields ??= []).push({ field, line: index + 1 });
+      } else {
+        entry.order.push(field);
+        entry.fields.set(field, { value: match[3].trim(), line: index + 1 });
+      }
+    } else if (line.trim() && checked.has(section) && (!field || !/^ {1,3}\S/.test(line))) {
+      defects.push({
+        category: 'Unexpected finding content', finding: entry.id, section, line: index + 1,
+        message: 'expected a field or named finding; multiline field content must be indented',
+      });
+    } else if (field && line.trim()) {
+      const stored = entry.fields.get(field);
+      stored.value = [stored.value, line.trim()].filter(Boolean).join(' ');
+    }
+  }
+  closeEntry();
+  const classified = { findings: [], exempt: [], unrecognised: [] };
+  for (const candidate of entries) {
+    if (checked.has(candidate.section)) classified.findings.push(candidate);
+    else if (exempt.has(candidate.section)) classified.exempt.push(candidate);
+    else if (looksLikeFinding(candidate) || /^R\d+(?::|$)/.test(candidate.id)) {
+      classified.unrecognised.push(candidate);
+    }
+  }
+  const emptySections = [...sectionBodies]
+    .filter(([, body]) => /^none\.?$/i.test(body.join('\n').trim()))
+    .map(([name]) => name);
+  for (const [name, body] of sectionBodies) {
+    if (checked.has(name) && !emptySections.includes(name)
+        && !classified.findings.some((finding) => finding.section === name)) defects.push({
+      category: 'Unrecognised findings body', section: name,
+      message: `section "${name}" requires named finding entries or an explicit none declaration`,
+    });
+  }
+  return { ...classified, entries, emptySections, defects };
+}
+
 export function validateFindingSchema(report, options = {}) {
   const required = options.requiredFields ?? REQUIRED_FINDING_FIELDS;
   const parsed = parseFindings(report, options.sections);
-  const defects = [];
-
+  const defects = [...parsed.defects];
+  const ids = new Set();
   for (const finding of parsed.findings) {
+    if (ids.has(finding.id)) defects.push({
+      category: 'Duplicate finding ID', finding: finding.id, line: finding.line,
+      message: `finding ID ${finding.id} repeats`,
+    });
+    ids.add(finding.id);
+    for (const duplicate of finding.duplicateFields ?? []) defects.push({
+      category: 'Duplicate field', finding: finding.id, ...duplicate,
+      message: `finding ${finding.id} repeats ${duplicate.field}`,
+    });
     for (const name of required) {
-      const content = fieldContent(finding, name);
-      if (content === null) {
-        defects.push({
-          category: 'Incomplete finding',
-          finding: finding.id,
-          section: finding.section,
-          field: name,
-          line: finding.fields.get(name)?.line ?? finding.line,
-          message: finding.fields.has(name)
-            ? `finding ${finding.id} declares ${name} with no content outside a fenced block`
-            : `finding ${finding.id} is missing the required field ${name}`,
-        });
-      }
+      if (fieldContent(finding, name) === null) defects.push({
+        category: 'Incomplete finding', finding: finding.id, section: finding.section,
+        field: name, line: finding.fields.get(name)?.line ?? finding.line,
+        message: finding.fields.has(name)
+          ? `finding ${finding.id} declares ${name} with no content outside a fenced block or quote`
+          : `finding ${finding.id} is missing the required field ${name}`,
+      });
     }
   }
-
-  for (const stray of parsed.unrecognised) {
-    defects.push({
-      category: 'Unrecognised findings section',
-      finding: stray.id,
-      section: stray.section,
-      field: null,
-      line: stray.line,
-      message: stray.section === null
-        ? `finding ${stray.id} appears before any heading, so no section governs it`
-        : `finding ${stray.id} sits under the unrecognised heading "${stray.section}", so it was never checked`,
-    });
-  }
-
-  return {
-    status: defects.length ? 'Invalid' : 'Valid',
-    findings: parsed.findings.length,
-    unrecognised: parsed.unrecognised.length,
-    exempt: parsed.exempt.length,
-    checked: [...required],
-    sections: [...(options.sections ?? ACCEPTED_FINDING_SECTIONS)],
-    defects,
-  };
-}
-
-function validateFrame(report, { title, titleItem = title, headings, values, terminator }) {
-  const lines = unfencedLines(report);
-  if (report.endsWith('\n')) lines.pop();
-  const defects = [];
-  const defect = (category, item, message) => defects.push({ category, item, message });
-  if (lines[0] !== title) {
-    defect('First-line mismatch', titleItem, `first line must be ${title}`);
-  }
-  let previous = -1;
-  for (const heading of headings) {
-    const matches = lines.flatMap((line, index) => line.trimEnd() === `## ${heading}` ? [index] : []);
-    if (matches.length === 0) defect('Missing heading', heading, `missing ## ${heading}`);
-    else if (matches.length > 1) defect('Duplicate heading', heading, `## ${heading} appears ${matches.length} times`);
-    else {
-      if (matches[0] < previous) defect('Misordered heading', heading, `## ${heading} is out of order`);
-      previous = Math.max(previous, matches[0]);
-    }
-  }
-  const firstSection = lines.findIndex((line) => /^##\s/.test(line));
-  const header = lines.slice(1, firstSection < 0 ? lines.length : firstSection);
-  const fields = {};
-  for (const [field, allowed] of Object.entries(values)) {
-    const prefix = `- ${field}:`;
-    const matches = header.filter((line) => line.startsWith(prefix));
-    if (matches.length === 0) defect('Missing field', field, `header is missing ${field}`);
-    else if (matches.length > 1) defect('Cardinality violation', field, `header repeats ${field}`);
-    else {
-      const value = matches[0].slice(prefix.length).trim();
-      fields[field] = value;
-      if (value === '') defect('Empty field', field, `header ${field} is empty`);
-      else if (allowed !== null && !allowed.includes(value)) {
-        defect('Value mismatch', field, `header ${field} does not match its required value`);
-      }
-    }
-  }
-  if (lines.at(-1) !== terminator) {
-    defect('Missing terminator', terminator, `${terminator} must be the final line outside fences`);
-  }
-  if (lines.slice(0, -1).includes(terminator)) {
-    defect('Cardinality violation', terminator, `${terminator} appears before the final line`);
-  }
-  return { lines, fields, defects };
-}
-
-function validateRoasterStructure(report, expected) {
-  const { lines, fields, defects } = validateFrame(report, {
-    title: '# Artifact Roaster Report',
-    headings: ['Dimension Coverage', 'Findings', 'Dismissed Suspicions', 'Evidence Gaps'],
-    values: {
-      'Roaster ID': null,
-      'Artifact type': [expected.artifactType],
-      'Evidence-packet identifier': [expected.packetId],
-      Lens: null,
-      'Lens source': null,
-      'Doctrine status': null,
-      'Schema version': ['1'],
-    },
-    terminator: 'END ARTIFACT ROASTER REPORT',
+  for (const stray of parsed.unrecognised) defects.push({
+    category: 'Unrecognised findings section', finding: stray.id, section: stray.section,
+    field: null, line: stray.line,
+    message: stray.section === null
+      ? `finding ${stray.id} appears before any heading, so no section governs it`
+      : `finding ${stray.id} sits under the unrecognised heading "${stray.section}", so it was never checked`,
   });
-  const options = {
-    sections: ['Findings'],
-    // Recommendation and Validation are checked once over the complete envelope.
-    requiredFields: ['Proposed severity', 'Confidence', 'Location', 'Evidence', 'Consequence'],
+  return {
+    status: defects.length ? 'Invalid' : 'Valid', findings: parsed.findings.length,
+    unrecognised: parsed.unrecognised.length, exempt: parsed.exempt.length,
+    checked: [...required], sections: [...(options.sections ?? ACCEPTED_FINDING_SECTIONS)], defects,
   };
-  defects.push(...validateFindingSchema(report, options).defects);
-  const parsed = parseFindings(report, options.sections);
-  const findingsStart = lines.findIndex((line) => line.trimEnd() === '## Findings');
-  const findingsEnd = lines.findIndex((line) => line.trimEnd() === '## Dismissed Suspicions');
-  if (findingsStart >= 0 && findingsEnd > findingsStart) {
-    const firstFinding = parsed.findings[0];
-    const prefix = lines.slice(findingsStart + 1, firstFinding ? firstFinding.line - 1 : findingsEnd).join('\n').trim();
-    if (prefix !== '' && !(parsed.findings.length === 0 && prefix === 'none')) {
-      defects.push({
-        category: 'Incomplete finding', item: 'Findings', line: findingsStart + 2,
-        message: 'Findings must contain named finding entries, none, or no content',
-      });
-    }
-  }
-  const findingIds = new Set();
-  for (const finding of parsed.findings) {
-    const prefix = `${fields['Roaster ID']}-F`;
-    const suffix = finding.id.startsWith(prefix) ? finding.id.slice(prefix.length) : '';
-    if (!fields['Roaster ID'] || !/^(?:0[1-9]|[1-9]\d)$/.test(suffix) || findingIds.has(finding.id)) {
-      defects.push({
-        category: 'Identity mismatch', finding: finding.id, line: finding.line,
-        message: 'finding IDs must be unique and match the Roaster ID with a suffix from F01 through F99',
-      });
-    }
-    findingIds.add(finding.id);
-    for (const [field, allowed] of [
-      ['Proposed severity', ['Must fix', 'Should fix', 'Consider']],
-      ['Confidence', ['High', 'Medium', 'Low']],
-    ]) {
-      const value = fieldContent(finding, field);
-      if (value !== null && !allowed.includes(value)) {
-        defects.push({
-          category: 'Value mismatch', finding: finding.id, field, line: finding.fields.get(field).line,
-          message: `${field} is outside its enum`,
-        });
-      }
-    }
-    for (const duplicate of finding.duplicateFields ?? []) {
-      defects.push({
-        category: 'Cardinality violation', finding: finding.id, ...duplicate,
-        message: `finding repeats ${duplicate.field}`,
-      });
-    }
-  }
-  return { roasterId: fields['Roaster ID'] ?? null, defects };
 }
 
-function validateNestedReports(report, lines, expected) {
-  const defects = [];
-  const start = lines.findIndex((line) => line.trimEnd() === '## Contract-Valid Reports');
-  const end = lines.findIndex((line) => line.trimEnd() === '## Failed or Excluded Roasters');
-  const starts = lines.flatMap((line, index) => line === '# Artifact Roaster Report' ? [index] : []);
-  const inside = starts.filter((index) => start >= 0 && end > start && index > start && index < end);
-  const insideSet = new Set(inside);
-  for (const index of starts.filter((index) => !insideSet.has(index))) {
-    defects.push({
-      category: 'Unexpected section entry', item: 'Artifact Roaster Report', line: index + 1,
-      message: 'roaster report is outside Contract-Valid Reports',
-    });
+/** Validate the final report, optionally bound to a revision supplied by its caller. */
+export function validateRoastReport(report, options = {}) {
+  if (options.expectedRevision !== undefined
+      && (typeof options.expectedRevision !== 'string' || !options.expectedRevision.trim())) {
+    throw new FindingSchemaError('invalid_contract', 'expectedRevision must be a non-empty string');
   }
-  const source = report.replace(/\r\n/g, '\n').split('\n');
-  if (start >= 0 && end > start) {
-    const prefix = source.slice(start + 1, inside[0] ?? end).join('\n').trim();
-    if (prefix !== '' && !(inside.length === 0 && prefix === 'none')) {
-      defects.push({
-        category: 'Invalid nested report', item: 'Contract-Valid Reports',
-        message: 'expected complete roaster reports, none, or an empty section',
-      });
+  const schema = validateFindingSchema(report, { sections: ['Findings'], requiredFields: ROAST_FINDING_FIELDS });
+  const parsed = parseFindings(report, ['Findings']);
+  const { lines } = visibleLines(report);
+  const defects = [...schema.defects];
+  const defect = (category, item, message, line) => defects.push({ category, item, message, line });
+  if (lines[0] !== '# Roast') defect('First-line mismatch', 'title', 'first line must be # Roast', 1);
+  const headings = lines.flatMap((line, index) => HEADING.test(line) ? [{ line, index }] : []);
+  const sections = headings.filter(({ line }) => /^## /.test(line));
+  for (const name of ['Findings', 'Coverage']) {
+    const matches = sections.filter(({ line }) => line === `## ${name}`);
+    if (matches.length !== 1) defect('Heading cardinality', name, `expected exactly one ## ${name}`);
+  }
+  if (sections.map(({ line }) => line).join('\n') !== '## Findings\n## Coverage') {
+    defect('Report sections', 'headings', 'sections must be Findings then Coverage');
+  }
+  for (const heading of headings) {
+    if (heading.index === 0 || heading.line === '## Findings' || heading.line === '## Coverage'
+        || /^### R[1-9]\d*: \S.*$/.test(heading.line)) continue;
+    defect('Unexpected heading', 'headings', `unexpected heading: ${heading.line}`, heading.index + 1);
+  }
+  const firstSection = headings.find(({ index }) => index > 0)?.index ?? lines.length;
+  const header = new Map();
+  for (let index = 1; index < firstSection; index += 1) {
+    const match = FIELD.exec(lines[index]);
+    if (!match) continue;
+    const name = match[1];
+    if (match[2] !== undefined) defect('Qualified field', name, `final header field ${name} must be unqualified`, index + 1);
+    if (header.has(name)) defect('Duplicate field', name, `header repeats ${name}`, index + 1);
+    header.set(name, match[3].trim());
+    if (!['Status', 'Scope', 'Standards', 'Revision'].includes(name)) {
+      defect('Unexpected field', name, `unexpected header field ${name}`, index + 1);
     }
+  }
+  for (const name of ['Status', 'Scope', 'Standards']) {
+    if (!header.get(name)) defect('Missing or empty field', name, `header requires non-empty ${name}`);
+  }
+  if (header.has('Revision') && !header.get('Revision')) defect('Empty field', 'Revision', 'Revision must be non-empty');
+  if (!['Complete', 'Partial', 'Needs clarification'].includes(header.get('Status'))) {
+    defect('Value mismatch', 'Status', 'Status must be Complete, Partial, or Needs clarification');
+  }
+  if (options.expectedRevision !== undefined && header.get('Revision') !== options.expectedRevision) {
+    defect('Revision mismatch', 'Revision', 'Revision must exactly match the caller-supplied expected revision');
   }
   const ids = new Set();
-  for (const [index, reportStart] of inside.entries()) {
-    let reportEnd = inside[index + 1] ?? end;
-    while (reportEnd > reportStart && source[reportEnd - 1].trim() === '') reportEnd -= 1;
-    const nested = validateRoasterStructure(source.slice(reportStart, reportEnd).join('\n'), expected);
-    for (const defect of nested.defects) {
-      defects.push({
-        ...defect, roasterId: nested.roasterId, reportLine: reportStart + 1,
-        ...(defect.line === undefined ? {} : { line: reportStart + defect.line }),
-      });
+  for (const finding of parsed.entries) {
+    const match = /^(R[1-9]\d*): \S.*$/.exec(finding.id);
+    if (finding.section !== 'Findings') {
+      defect('Stray finding', finding.id, 'finding headings belong only in Findings', finding.line);
     }
-    if (nested.roasterId && ids.has(nested.roasterId)) {
-      defects.push({
-        category: 'Cardinality violation', item: nested.roasterId, line: reportStart + 1,
-        message: 'more than one report has this Roaster ID',
-      });
+    if (!match) defect('Invalid finding ID', finding.id, 'expected ### R1: brief title', finding.line);
+    else if (ids.has(match[1])) defect('Duplicate finding ID', match[1], `finding ID ${match[1]} repeats`, finding.line);
+    if (match) ids.add(match[1]);
+    for (const [name, allowed] of [
+      ['Priority', ['Must fix', 'Should fix', 'Consider']], ['Confidence', ['High', 'Medium', 'Low']],
+    ]) {
+      const value = fieldContent(finding, name);
+      if (value !== null && !allowed.includes(value)) defect('Value mismatch', name, `${name} is outside its enum`, finding.line);
     }
-    if (nested.roasterId) ids.add(nested.roasterId);
+    for (const name of finding.order) {
+      const line = finding.fields.get(name).line;
+      if (FIELD.exec(lines[line - 1])?.[2] !== undefined) {
+        defect('Qualified field', name, `final finding field ${name} must be unqualified`, line);
+      }
+      if (!ROAST_FINDING_FIELDS.includes(name)) defect('Unexpected field', name, `unexpected finding field ${name}`, finding.line);
+    }
   }
-  return { count: inside.length, defects };
-}
-
-export function validateEnvelopeFraming(report, expected) {
-  if (!expected || !['artifactType', 'artifactLocator', 'allowedReviewRoot']
-    .every((key) => typeof expected[key] === 'string' && expected[key].trim() !== '')
-      || !ARTIFACT_TYPES.includes(expected.artifactType)) {
-    throw new FindingSchemaError('invalid_contract', 'expected a supported artifact type, locator, and review root');
+  const start = lines.indexOf('## Findings');
+  const end = lines.indexOf('## Coverage');
+  if (start >= 0 && end > start) {
+    const first = parsed.findings[0]?.line;
+    const prefix = lines.slice(start + 1, first ? first - 1 : end).join('\n').trim();
+    if (parsed.findings.length ? prefix !== '' : prefix !== 'None.') {
+      defect('Invalid findings body', 'Findings', 'Findings must contain named findings or exactly None.');
+    }
   }
-  const { lines, fields, defects } = validateFrame(report, {
-    title: '# Artifact Roast Envelope',
-    titleItem: 'envelope title',
-    headings: ['Evidence Manifest', 'Council Roster', 'Contract-Valid Reports', 'Failed or Excluded Roasters'],
-    values: {
-      Status: ['Complete', 'Insufficient review'],
-      'Artifact type': [expected.artifactType],
-      'Artifact locator': [expected.artifactLocator],
-      'Allowed review root': [expected.allowedReviewRoot],
-      'Evidence-packet identifier': null,
-      'Schema version': ['1'],
-    },
-    terminator: 'END ARTIFACT ROAST ENVELOPE',
-  });
-  const nested = validateNestedReports(report, lines, {
-    artifactType: expected.artifactType, packetId: fields['Evidence-packet identifier'],
-  });
-  defects.push(...nested.defects);
-  const findings = validateFindingSchema(report);
-  defects.push(...findings.defects);
+  if (end >= 0 && !lines.slice(end + 1).join('\n').trim()) {
+    defect('Empty coverage', 'Coverage', 'Coverage requires non-empty content outside quotes');
+  }
   return {
     status: defects.length ? 'Invalid' : 'Valid',
-    scope: 'envelope-framing-and-finding-fields',
-    checkedItems: [1, 2, 3, 4, 10, 99],
-    roasterReports: nested.count,
-    checkedRoasterRules: ['framing', 'required finding fields', 'severity and confidence', 'finding IDs', 'packet agreement'],
-    remainingChecks: ['evidence manifest', 'council roster and report coverage', 'dimension coverage and report semantics', 'intent', 'artifact-specific rules'],
-    findings: findings.findings,
+    scope: 'final-report-structure', reviewStatus: header.get('Status') ?? null,
+    revision: header.get('Revision') ?? null, findings: parsed.findings.length,
+    checked: ['report headings and header', 'finding IDs and fields', 'priority and confidence', 'non-empty coverage',
+      ...(options.expectedRevision === undefined ? [] : ['expected revision'])],
+    remainingChecks: ['evidence truth and freshness', 'coverage sufficiency', 'applicable standards', 'recommendation and validation quality'],
     defects,
   };
 }
 
-const ENVELOPE_FLAGS = ['artifact-type', 'artifact-locator', 'review-root'];
-const VALUE_FLAGS = ['--report', '--field', '--section', ...ENVELOPE_FLAGS.map((flag) => `--${flag}`)];
+export const USAGE = `Usage: roast-contract.mjs --report <absolute-path|-> [--roast] \\
+  [--expected-revision <revision>] [--field <name>]... [--section <name>]...
 
-export const USAGE = `Usage: roast-contract.mjs --report <path> \\
-  [--field <name>]... [--section <name>]...
-
-  --report   Absolute path to the report or envelope to check. Required.
-  --field    A field every accepted finding must carry with content.
-             Repeatable. Defaults to Recommendation and Validation.
-  --section  A section that holds accepted findings. Repeatable. Defaults to
-             Findings, Must Fix, Should Fix, and Consider.
-  --artifact-type, --artifact-locator, --review-root
-             Supply all three expected values to check envelope framing and
-             default finding fields. Other envelope checks remain separate.
-             Cannot be combined with --field or --section.
+  --report   Read a regular file, or - for stdin.
+  --roast    Validate the complete final Roast report (not approval).
+  --expected-revision  With --roast, compare the Revision header exactly.
+  --field    Generic mode: required field, repeatable; defaults to Recommendation and Validation.
+  --section  Generic mode: accepted findings section, repeatable.
   --probe    Report availability and exit.`;
 
 function failUsage(message) {
@@ -535,60 +331,48 @@ export function parseArguments(argv) {
   const values = {};
   const fields = [];
   const sections = [];
-
+  if (argv.length === 1 && argv[0] === '--probe') return { probe: true };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
-    if (flag === '--probe') {
-      return { probe: true };
+    if (flag === '--roast') {
+      if (values.roast) failUsage('--roast was given more than once');
+      values.roast = true;
+      continue;
     }
-    if (!VALUE_FLAGS.includes(flag)) {
+    if (!['--report', '--expected-revision', '--field', '--section'].includes(flag)) {
       failUsage(`unknown argument: ${flag}`);
     }
-    const value = argv[index + 1];
-    if (value === undefined || value.startsWith('--')) {
-      failUsage(`${flag} requires a value`);
-    }
-    if (flag === '--field') {
-      fields.push(value);
-    } else if (flag === '--section') {
-      sections.push(value);
-    } else {
+    const value = argv[++index];
+    if (value === undefined || value.startsWith('--') || !value.trim()) failUsage(`${flag} requires a value`);
+    if (flag === '--field') fields.push(value);
+    else if (flag === '--section') sections.push(value);
+    else {
       const name = flag.slice(2);
-      if (name in values) {
-        failUsage(`${flag} was given more than once`);
-      }
+      if (name in values) failUsage(`${flag} was given more than once`);
       values[name] = value;
     }
-    index += 1;
   }
-
-  if (!('report' in values)) {
-    failUsage('missing required argument for --report');
-  }
-  const envelope = ENVELOPE_FLAGS.some((flag) => flag in values);
-  if (envelope && (!ENVELOPE_FLAGS.every((flag) => flag in values) || fields.length || sections.length)) {
-    failUsage('envelope framing requires all three identity arguments and no --field or --section overrides');
-  }
+  if (!('report' in values)) failUsage('missing required argument for --report');
+  if (values.roast && (fields.length || sections.length)) failUsage('--roast cannot override --field or --section');
+  if ('expected-revision' in values && !values.roast) failUsage('--expected-revision requires --roast');
   return { probe: false, ...values, fields, sections };
 }
 
 function readReport(candidate) {
-  if (!path.isAbsolute(candidate)) {
-    throw new FindingSchemaError('unsafe_path', 'report path must be absolute');
+  // Windows accepts both separators; inspect before normalization can erase traversal.
+  if (!path.isAbsolute(candidate) || candidate.split(/[\\/]/).includes('..')) {
+    throw new FindingSchemaError('unsafe_path', 'report path must be absolute and must not traverse upward');
   }
-  if (candidate.split(path.sep).includes('..')) {
-    throw new FindingSchemaError('unsafe_path', 'report path must not traverse upward');
-  }
-  let stats;
   try {
-    stats = fs.lstatSync(candidate);
-  } catch {
-    throw new FindingSchemaError('unsafe_path', `report does not exist: ${candidate}`);
+    const stats = fs.lstatSync(candidate);
+    if (stats.isSymbolicLink() || !stats.isFile()) {
+      throw new FindingSchemaError('unsafe_path', 'report path must be a regular file, not a symlink');
+    }
+    return fs.readFileSync(candidate, 'utf8');
+  } catch (error) {
+    if (error instanceof FindingSchemaError) throw error;
+    throw new FindingSchemaError('file_access', `cannot read report ${candidate}: ${error.code ?? error.message}`);
   }
-  if (stats.isSymbolicLink() || !stats.isFile()) {
-    throw new FindingSchemaError('unsafe_path', 'report path must be a regular file');
-  }
-  return fs.readFileSync(candidate, 'utf8');
 }
 
 export function run(argv, streams = process) {
@@ -603,41 +387,22 @@ export function run(argv, streams = process) {
     streams.stdout.write('roast-contract: available\n');
     return 0;
   }
-
-  let result;
   try {
-    const report = readReport(parsed.report);
-    result = parsed['artifact-type'] !== undefined
-      ? validateEnvelopeFraming(report, {
-        artifactType: parsed['artifact-type'],
-        artifactLocator: parsed['artifact-locator'],
-        allowedReviewRoot: parsed['review-root'],
-      })
+    const report = parsed.report === '-' ? fs.readFileSync(0, 'utf8') : readReport(parsed.report);
+    const result = parsed.roast
+      ? validateRoastReport(report, { expectedRevision: parsed['expected-revision'] })
       : validateFindingSchema(report, {
         requiredFields: parsed.fields.length ? parsed.fields : undefined,
         sections: parsed.sections.length ? parsed.sections : undefined,
       });
+    streams.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return result.status === 'Valid' ? 0 : 2;
   } catch (error) {
-    const code = error instanceof FindingSchemaError ? error.code : 'invalid_report';
-    streams.stderr.write(`${code}: ${error.message}\n`);
+    streams.stderr.write(`${error.code ?? 'invalid_report'}: ${error.message}\n`);
     return 1;
   }
-
-  streams.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  return result.status === 'Valid' ? 0 : 2;
 }
 
-function isDirectInvocation() {
-  if (!process.argv[1]) {
-    return false;
-  }
-  try {
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
-  } catch {
-    return false;
-  }
-}
-
-if (isDirectInvocation()) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   process.exitCode = run(process.argv.slice(2));
 }

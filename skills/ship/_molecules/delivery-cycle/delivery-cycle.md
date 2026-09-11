@@ -69,6 +69,14 @@ intent. Nothing here re-asks either question, and nothing here re-opens scope.
    are severity categories: `roast` gates nothing and approves nothing, and it
    is this cycle that decides what to do with them.
 
+   Supply the confirmed delivery scope, actual requirements and authority,
+   immutable head, and existing review policy to the invocation. Consume the
+   `# Roast` report with its `Revision`, findings, and coverage; `Complete`
+   means sufficient review coverage, not approval. `Partial` or
+   `Needs clarification` retains supported findings but cannot satisfy review
+   completion. Keep the existing runtime receipts and tier-policy evidence;
+   plain prose is not a replacement for those publication gates.
+
    New confirmed delivery packets explicitly pin the version 2
    `deep-then-verify` default. The first review uses the complete deep code
    Roast. After remediation and complete validation, call the tier policy

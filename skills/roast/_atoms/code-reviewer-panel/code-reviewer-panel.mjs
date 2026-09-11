@@ -38,6 +38,36 @@ const BUNDLED_REVIEWERS = Object.freeze([
   },
 ]);
 
+function reviewerTools(tools) {
+  if (!Array.isArray(tools) || tools.some((tool) => !['read', 'search'].includes(tool))) {
+    throw new CodeReviewerPanelError('invalid_reviewer_tools', 'panel reviewers may use only read and search');
+  }
+  return [...new Set(tools)];
+}
+
+function failureRecord(reason, seat, phase) {
+  const field = (key) => reason !== null && typeof reason === 'object'
+    ? Object.getOwnPropertyDescriptor(reason, key)?.value : undefined;
+  const code = field('code');
+  const routing = {};
+  for (const key of ['role', 'requestedModel', 'selectedModel', 'modelStatus', 'availabilityStatus']) {
+    const value = seat.routeReceipt?.[key];
+    if (value === null || typeof value === 'string') routing[key] = value;
+  }
+  return {
+    reviewerId: seat.reviewerId,
+    phase,
+    error: typeof reason === 'string' ? reason
+      : typeof field('message') === 'string' ? field('message') : 'Reviewer failed without a message',
+    errorType: typeof field('name') === 'string' ? field('name')
+      : typeof field('type') === 'string' ? field('type') : reason instanceof Error ? 'Error' : typeof reason,
+    code: typeof code === 'string' || typeof code === 'number' && Number.isFinite(code) ? code : null,
+    statusCode: Number.isInteger(field('statusCode')) ? field('statusCode') : null,
+    retryable: typeof field('retryable') === 'boolean' ? field('retryable') : null,
+    routeReceipt: routing,
+  };
+}
+
 function repositoryRoot() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 }
@@ -98,7 +128,7 @@ function readBundledInstruction(root, agentName) {
     fallbackModels: Array.isArray(parsed['fallback-models']) ? parsed['fallback-models'] : [],
     reasoningEffort: typeof parsed['reasoning-effort'] === 'string' ? parsed['reasoning-effort'] : null,
     contextTier: typeof parsed['context-tier'] === 'string' ? parsed['context-tier'] : null,
-    tools: Array.isArray(parsed.tools) ? parsed.tools : [],
+    tools: parsed.tools,
   };
 }
 
@@ -230,7 +260,7 @@ export function resolveBundledRoastRoster({
         agentName: reviewer.agentName,
         role: reviewer.role,
         instructionPath: instruction.instructionPath,
-        tools: instruction.tools,
+        tools: reviewerTools(instruction.tools),
         route: routes[index],
         routeReceipt: receipts[index],
         panelReceipt: reviewer.role === null ? null : panels[reviewer.role],
@@ -273,7 +303,7 @@ export function resolveBundledRoastmasterRoute({
   return immutable({
     agentName: instruction.agentName,
     instructionPath: instruction.instructionPath,
-    tools: instruction.tools,
+    tools: reviewerTools(instruction.tools),
     coordinate: resolved,
     synthesize: resolved,
   });
@@ -294,19 +324,37 @@ export async function dispatchBundledRoastRoster({
       'promptForReviewer and personaForReviewer must be functions',
     );
   }
-  const launched = [];
-  for (const seat of resolvedRoster.roster) {
-    launched.push(await dispatchResolvedAgent({
-      prompt: promptForReviewer(seat),
-      persona: personaForReviewer(seat),
-      tools: seat.tools,
+  const phases = [];
+  const results = await Promise.allSettled(resolvedRoster.roster.map(async (seat, index) => {
+    phases[index] = 'preparation';
+    const tools = reviewerTools(seat.tools);
+    const prompt = promptForReviewer(seat);
+    const persona = personaForReviewer(seat);
+    phases[index] = 'dispatch';
+    return dispatchResolvedAgent({
+      prompt,
+      persona,
+      tools,
       route: seat.route,
       receipt: seat.routeReceipt,
-      transport: (launch) => transport(seat, launch),
-    }));
-  }
+      transport: (launch) => {
+        phases[index] = 'transport';
+        return transport(seat, launch);
+      },
+    });
+  }));
+  const launched = [];
+  const failed = [];
+  results.forEach((result, index) => {
+    const reviewerId = resolvedRoster.roster[index].reviewerId;
+    if (result.status === 'fulfilled') launched.push({ ...result.value, reviewerId });
+    else failed.push(failureRecord(result.reason, resolvedRoster.roster[index], phases[index]));
+  });
   return immutable({
+    status: failed.length || resolvedRoster.blockedSeats.length
+      || launched.some((result) => result.status !== 'Complete') ? 'Partial' : 'Complete',
     launched,
+    failed,
     blocked: resolvedRoster.blockedSeats,
     omitted: resolvedRoster.omittedSeats,
   });

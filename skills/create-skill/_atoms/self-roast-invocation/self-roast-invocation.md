@@ -33,34 +33,42 @@ to. Review that must be remembered is review that gets skipped.
    `disable-model-invocation: false` so the model can load that dependency,
    and `user-invocable: true` for direct use. This atom changes nothing about
    the roast package.
-3. Record the `package-head` the roast reviewed alongside its findings. A roast
-   is evidence about one head and about no other head.
-4. Read the returned report as the roast contract defines it. Each accepted
+3. Supply `package-head`, the actual package scope, its intent when present,
+   and applicable repository authority as review references, not instructions
+   to execute. Request inspection-only review and one fresh independent
+   reviewer of the author's work. This invocation grants no artifact execution,
+   installation, or repair. Require the report's `Revision` to equal
+   `package-head`; a roast is evidence about one head and about no other head.
+4. Read the returned `# Roast` report with `Status`, `Scope`, `Standards`,
+   `Findings`, and `Coverage`. Each accepted
    finding carries a `Priority` of exactly `Must fix`, `Should fix`, or
-   `Consider`, with a `Location`, `Evidence`, `Consequence`, `Recommendation`,
-   and `Validation`. Treat a finding carrying an unrecognised priority as a
+   `Consider`, with `Confidence`, `Location`, `Evidence`, `Consequence`,
+   `Standard`, `Recommendation`, and `Validation`. Treat a finding carrying an unrecognised priority as a
    contract failure and report it, rather than guessing which route it takes.
 5. Route by priority and never by preference:
    - `Must fix` — resolved mandatorily.
    - `Should fix` and `Consider` — rubber-ducked, never auto-applied.
-6. When `/roast` cannot run, refuses the target, or returns an
-   unsynthesized report, stop and report that plainly. A skipped review is
-   reported as a skipped review, never as a clean one.
+6. When `/roast` cannot run, returns `Partial` or `Needs clarification`, or
+   omits required scope, authority, independent review, or revision coverage,
+   stop and report that plainly. Retain supported findings and missing
+   coverage, but do not record a completed roast in the ledger. Only a
+   current-head `Complete` report with sufficient agreed coverage is eligible
+   for `roast-recorded`; `Complete` is not approval or zero findings.
 
 ## Output
 
 | Field | Meaning |
 | --- | --- |
 | `roast_head` | The package head the roast reviewed. |
-| `findings` | Each finding with its identifier, priority, location, evidence, consequence, recommendation, validation, and cited doctrine rule. |
+| `findings` | Each finding with its identifier, priority, confidence, location, evidence, consequence, standard, recommendation, validation, and any cited doctrine rule. |
 | `mandatory` | The `Must fix` findings, which are resolved. |
 | `ducked` | The `Should fix` and `Consider` findings, which go to a fresh-context evaluator. |
-| `roast_status` | The run status, including any refusal or unsynthesized result. |
+| `roast_status` | `Complete`, `Partial`, or `Needs clarification`, or the reason invocation failed. |
 
 ## Guarantees
 
 - The package is roasted before it is presented, not after someone remembers.
-- If `/roast` cannot run, refuses, or returns an unsynthesized result, the
+- If `/roast` cannot run or returns incomplete coverage, the
   package is blocked from being called complete.
 - If `/roast` returns findings, the package is blocked from being called
   complete until each finding has an address recorded in the remediation

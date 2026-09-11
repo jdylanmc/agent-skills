@@ -84,6 +84,17 @@ function roasted(findings) {
   return state;
 }
 
+test('the caller binds the new Roast report without accepting partial coverage or execution', () => {
+  const document = fs.readFileSync(new URL('./reinforce-roast.md', import.meta.url), 'utf8')
+    .replace(/\s+/g, ' ');
+  assert.match(document, /inspection-only review with one fresh independent reviewer/);
+  assert.match(document, /not artifact execution, installation, or repair/);
+  assert.match(document, /`Revision` to match `package-head`/);
+  assert.match(document, /`Status` is `Complete` and `Coverage` accounts for the agreed scope/);
+  assert.match(document, /`Partial` or `Needs clarification`/);
+  assert.match(document, /retain supported findings and missing coverage but stop without recording a completed roast/);
+});
+
 test('a remediation change set that leaves the target skill is refused', () => {
   withFixture((root) => {
     assert.equal(

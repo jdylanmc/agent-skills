@@ -121,7 +121,7 @@ legitimately have none, which is not this skill's concern.
    every finding has been addressed. Addressed means fixed, declined with a
    fresh-context rubber-duck verdict, explicitly deferred to the operator with
    a bounded way forward, or left unresolved only under a non-complete status.
-   A missing, refused, unsynthesized, stale, or unaddressed roast is a blocked
+   A missing, partial, clarification-needed, stale, or unaddressed roast is a blocked
    or halted run, not a completed package.
 
 ## Output Contract
@@ -156,7 +156,7 @@ Return:
   degraded coach never lowers the intent requirement, softens the confirmation,
   or excuses a missing intent.
 - Treats roasting and remediation as required, not best effort. A skipped,
-  missing, refused, unsynthesized, stale, or unaddressed roast blocks a
+  missing, partial, clarification-needed, stale, or unaddressed roast blocks a
   completion report even when validation passed.
 - Never lets the coach write a file or stand in for the operator's
   confirmation. The storage gate binds a confirmation to the exact bytes it
