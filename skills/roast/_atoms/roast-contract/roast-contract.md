@@ -53,6 +53,8 @@ against that caller-supplied expected revision, not a value copied from the repo
 
 Each finding uses a stable unique `R1`, `R2`, … heading followed by a brief title.
 Every displayed finding field is required and non-empty, with no exception.
+Final header and finding labels must be unqualified: `Priority (proposed)` and
+`Revision (self-attested)` are not substitutes for `Priority` and `Revision`.
 Priority is `Must fix`, `Should fix`, or `Consider`; Confidence is `High`,
 `Medium`, or `Low`. Rank by consequence without casually renumbering existing
 IDs. Cite the actual applicable standard in Standard, including its rule or
@@ -105,6 +107,7 @@ Existing shared callers may still use `parseFindings`, `fieldContent`, and
 finding fields only (defaults: Recommendation and Validation); its accepted and
 disposition headings remain compatible. An accepted findings section must contain
 named findings or an explicit `none` declaration; blank content is not a result.
+Generic compatibility mode continues to accept parenthetically qualified fields.
 Indent multiline field content by one to three spaces. Unindented text after a
 finding is not a continuation and fails validation, including an unheaded finding
 or a contradictory trailing `None.`. Four-space indentation remains quoted code.

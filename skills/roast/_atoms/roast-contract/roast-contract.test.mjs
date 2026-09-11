@@ -36,6 +36,19 @@ test('generic finding APIs and default checked vocabulary remain compatible', ()
   assert.throws(() => parseFindings(42), { code: 'invalid_report' });
 });
 
+test('generic compatibility mode continues to accept parenthetically qualified fields', () => {
+  const source = report(finding()
+    .replace('- Priority:', '- Priority (proposed):')
+    .replace('- Recommendation:', '- Recommendation (bounded):')
+    .replace('- Validation:', '- Validation (inspection):'));
+  const result = validateFindingSchema(source, { requiredFields: ['Priority', 'Recommendation', 'Validation'] });
+  assert.equal(result.status, 'Valid');
+  const parsed = parseFindings(source).findings[0];
+  assert.equal(fieldContent(parsed, 'Priority'), 'Must fix');
+  assert.equal(fieldContent(parsed, 'Recommendation'), 'Remove the unused grant.');
+  assert.equal(fieldContent(parsed, 'Validation'), 'Inspect the grant.');
+});
+
 test('missing and empty required fields cannot be silently accepted', () => {
   for (const field of REQUIRED_FINDING_FIELDS) {
     const source = report(finding());

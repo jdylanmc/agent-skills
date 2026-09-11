@@ -250,6 +250,7 @@ export function validateRoastReport(report, options = {}) {
     const match = FIELD.exec(lines[index]);
     if (!match) continue;
     const name = match[1];
+    if (match[2] !== undefined) defect('Qualified field', name, `final header field ${name} must be unqualified`, index + 1);
     if (header.has(name)) defect('Duplicate field', name, `header repeats ${name}`, index + 1);
     header.set(name, match[3].trim());
     if (!['Status', 'Scope', 'Standards', 'Revision'].includes(name)) {
@@ -282,6 +283,10 @@ export function validateRoastReport(report, options = {}) {
       if (value !== null && !allowed.includes(value)) defect('Value mismatch', name, `${name} is outside its enum`, finding.line);
     }
     for (const name of finding.order) {
+      const line = finding.fields.get(name).line;
+      if (FIELD.exec(lines[line - 1])?.[2] !== undefined) {
+        defect('Qualified field', name, `final finding field ${name} must be unqualified`, line);
+      }
       if (!ROAST_FINDING_FIELDS.includes(name)) defect('Unexpected field', name, `unexpected finding field ${name}`, finding.line);
     }
   }

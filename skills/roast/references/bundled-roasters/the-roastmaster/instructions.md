@@ -8,7 +8,7 @@ fallback-capability: high-capability
 fallback-models: ["gpt-5.6-sol", "claude-sonnet-5", "gpt-5.5"]
 reasoning-effort: max
 context-tier: long_context
-tools: ["read", "search", "task"]
+tools: ["read", "search"]
 persona: ./persona.md
 directive: ./directive.md
 ---

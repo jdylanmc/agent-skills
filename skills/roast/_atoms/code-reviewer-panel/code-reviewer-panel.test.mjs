@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -66,7 +67,7 @@ test('one failed reviewer preserves completed reports and marks the panel partia
   assert.deepEqual(result.launched.map((entry) => entry.reviewerId), [
     'SOLID-ROASTER', 'TESTING-ROASTER',
   ]);
-  assert.deepEqual(result.failed, [{
+  assert.deepEqual(result.failed.map(({ reviewerId, error }) => ({ reviewerId, error })), [{
     reviewerId: 'SECURITY-ROASTER', error: 'reviewer transport unavailable',
   }]);
 });
@@ -88,10 +89,87 @@ test('synchronous reviewer preparation failures preserve the other seats', async
     assert.deepEqual(result.launched.map((entry) => entry.reviewerId), [
       'SOLID-ROASTER', 'TESTING-ROASTER',
     ]);
-    assert.deepEqual(result.failed, [{
+    assert.deepEqual(result.failed.map(({ reviewerId, error }) => ({ reviewerId, error })), [{
       reviewerId: 'SECURITY-ROASTER', error: `${failedPreparation} unavailable`,
     }]);
   }
+});
+
+test('reviewer definitions cannot expand the executable read-only policy', (t) => {
+  const sandbox = path.join(REPOSITORY_ROOT, '.test-sandbox');
+  fs.mkdirSync(sandbox, { recursive: true });
+  const root = fs.mkdtempSync(path.join(sandbox, 'panel-tools-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const name of ['solid-yagni-kiss-roaster', 'security-roaster', 'testing-roaster', 'the-roastmaster']) {
+    const file = `skills/roast/references/bundled-roasters/${name}/instructions.md`;
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.copyFileSync(path.join(REPOSITORY_ROOT, file), path.join(root, file));
+  }
+  const relative = 'skills/roast/references/bundled-roasters/solid-yagni-kiss-roaster/instructions.md';
+  const original = fs.readFileSync(path.join(REPOSITORY_ROOT, relative), 'utf8');
+  for (const tool of ['execute', 'write', 'task', '*']) {
+    fs.writeFileSync(path.join(root, relative), original.replace(
+      /^tools:.*$/m, `tools: ["read", "${tool}"]`,
+    ));
+    assert.throws(
+      () => resolveBundledRoastRoster({ root }),
+      (error) => error.code === 'invalid_reviewer_tools',
+      tool,
+    );
+  }
+  const legacy = 'skills/roast/references/bundled-roasters/the-roastmaster/instructions.md';
+  fs.writeFileSync(path.join(root, legacy), fs.readFileSync(path.join(REPOSITORY_ROOT, legacy), 'utf8')
+    .replace(/^tools:.*$/m, 'tools: ["write"]'));
+  assert.throws(
+    () => resolveBundledRoastmasterRoute({ root }),
+    (error) => error.code === 'invalid_reviewer_tools',
+  );
+});
+
+test('dispatch enforces read-only grants even for a forged roster', async () => {
+  const resolvedRoster = structuredClone(resolveBundledRoastRoster({ root: REPOSITORY_ROOT }));
+  resolvedRoster.roster[0].tools = ['read', 'write'];
+  const observed = [];
+  const result = await dispatchBundledRoastRoster({
+    resolvedRoster,
+    promptForReviewer: () => 'Review the material.',
+    transport: async (seat, launch) => {
+      observed.push({ id: seat.reviewerId, tools: launch.tools });
+      return 'Reviewed.';
+    },
+  });
+  assert.equal(result.status, 'Partial');
+  assert.equal(result.failed[0].code, 'invalid_reviewer_tools');
+  assert.equal(result.failed[0].phase, 'preparation');
+  assert.deepEqual(observed.map((entry) => entry.id), ['SECURITY-ROASTER', 'TESTING-ROASTER']);
+  assert.ok(observed.every((entry) => entry.tools.every((tool) => ['read', 'search'].includes(tool))));
+});
+
+test('failed reviewers retain useful typed diagnostics without copying arbitrary payloads', async () => {
+  const resolvedRoster = resolveBundledRoastRoster({ root: REPOSITORY_ROOT });
+  const result = await dispatchBundledRoastRoster({
+    resolvedRoster,
+    promptForReviewer: () => 'Review the material.',
+    transport: async (seat) => {
+      if (seat.reviewerId === 'SOLID-ROASTER') {
+        throw Object.assign(new Error('Connection interrupted'), { code: 'ECONNRESET', retryable: true });
+      }
+      if (seat.reviewerId === 'SECURITY-ROASTER') {
+        throw { type: 'RateLimit', code: 'RATE_LIMITED', statusCode: 429, message: 'Try later', accessToken: 'must-not-copy' };
+      }
+      return 'Reviewed.';
+    },
+  });
+  assert.equal(result.status, 'Partial');
+  assert.equal(result.launched.length, 1);
+  assert.deepEqual(result.failed.map((entry) => entry.code), ['ECONNRESET', 'RATE_LIMITED']);
+  assert.deepEqual(result.failed.map((entry) => entry.errorType), ['Error', 'RateLimit']);
+  assert.ok(result.failed.every((entry) => entry.phase === 'transport'));
+  assert.equal(result.failed[0].retryable, true);
+  assert.equal(result.failed[1].statusCode, 429);
+  assert.equal(result.failed[1].error, 'Try later');
+  assert.equal(result.failed[0].routeReceipt.selectedModel, resolvedRoster.roster[0].route.model);
+  assert.doesNotMatch(JSON.stringify(result.failed), /must-not-copy|accessToken/);
 });
 
 test('role-aware roster routing fans out bundled architecture reviewers under the shared cap', () => {

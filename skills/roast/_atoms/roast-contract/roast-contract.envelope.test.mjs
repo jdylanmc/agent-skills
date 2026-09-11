@@ -60,6 +60,30 @@ test('priority and confidence use exact enums, not substring matching', () => {
   }
 });
 
+test('final header fields cannot be qualified, even with a matching expected revision', () => {
+  const source = report().replace('- Scope:', '- Revision: abc123\n- Scope:');
+  for (const field of ['Status', 'Scope', 'Standards', 'Revision']) {
+    for (const qualifier of ['proposed', 'self-attested', '', ' ']) {
+      const qualified = source.replace(`- ${field}:`, `- ${field} (${qualifier}):`);
+      const result = validateRoastReport(qualified, { expectedRevision: 'abc123' });
+      assert.equal(result.status, 'Invalid', `${field} (${qualifier})`);
+      assert.ok(result.defects.some((defect) => defect.category === 'Qualified field' && defect.item === field));
+    }
+  }
+  assert.equal(validateRoastReport(source, { expectedRevision: 'abc123' }).status, 'Valid');
+});
+
+test('final finding fields reject qualifiers rather than silently dropping them', () => {
+  for (const field of ROAST_FINDING_FIELDS) {
+    for (const qualifier of ['proposed', '', ' ']) {
+      const source = report().replace(`- ${field}:`, `- ${field} (${qualifier}):`);
+      const result = validateRoastReport(source);
+      assert.equal(result.status, 'Invalid', `${field} (${qualifier})`);
+      assert.ok(result.defects.some((defect) => defect.category === 'Qualified field' && defect.item === field));
+    }
+  }
+});
+
 test('IDs are unique regardless of title; stable IDs need not be sequential', () => {
   const duplicate = `${finding()}\n${finding().replace('no owner', 'a different title')}`;
   assert.equal(validateRoastReport(report(duplicate)).status, 'Invalid');
