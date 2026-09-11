@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["execute","read"]
 includes: []
 composes: []
-used-by: ["ship/_molecules/delivery-cycle/delivery-cycle.md"]
+used-by: ["ship/SKILL.md"]
 ---
 
 # Run Isolation

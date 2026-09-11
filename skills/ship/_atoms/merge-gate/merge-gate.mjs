@@ -33,7 +33,9 @@ const CONTINUABLE_RECONCILIATION = new Set(['reconciled', 'unfulfilled-entry']);
  * @param {Array<{id: string, verdict: string}>} [input.criteria]
  * @param {{verdict: string}} [input.reconciliation]
  * @param {{status: string}} [input.validation] A `run-ci` evidence envelope.
- * @param {{blockers?: Array<object>}} [input.review] `roast` findings.
+ * @param {string} [input.head] Current immutable candidate revision.
+ * @param {{status: string, revision: string, coverageComplete: boolean, blockers?: Array<object>}} [input.review]
+ *   Current Roast result and caller-checked coverage, not merely its findings.
  * @param {{state: string, consent?: boolean}} [input.isolation]
  * @param {unknown} [input.grant] Must equal MERGE_GRANT_TOKEN to grant.
  * @returns {{disposition: string, unmet: string[], grantRecorded: boolean}}
@@ -68,6 +70,12 @@ export function evaluateMergeGate(input = {}) {
   }
 
   const blockers = review?.blockers;
+  if (review?.status !== 'Complete'
+    || review?.coverageComplete !== true
+    || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(input.head ?? '')
+    || review?.revision !== input.head) {
+    unmet.push('review: complete coverage at the current immutable head was not established');
+  }
   if (!Array.isArray(blockers)) {
     unmet.push('review: no adversarial review findings were reported');
   } else if (blockers.length > 0) {

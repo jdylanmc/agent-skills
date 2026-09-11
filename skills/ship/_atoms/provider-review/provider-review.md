@@ -22,7 +22,8 @@ in it.
 
 This unit lives local to `ship`, not under `_base`. A unit earns `_base` only
 once a second skill composes it. Ship composes this unit for continuation of an
-existing change request; Shepherd does not.
+existing change request; Shepherd consumes its script through the existing
+watch-state code dependency, not through cross-skill local composition.
 
 Keeping it local to `ship` is what makes a boundary enforceable by composition
 rather than merely promised. `shepherd` reads merge and validation state through
@@ -75,6 +76,15 @@ are requested. A current threadless changes-requested verdict remains evidence.
 If `reviewDecision` is absent or `null`, gating is unknown and the read is
 incomplete.
 
+Outer thread pages repeat the first latest-review snapshot. Do not union those
+snapshots by review ID: a superseded opinion could survive beside its approval.
+If the snapshots differ, retain the latest snapshot for diagnosis, mark
+`snapshot-changed-during-pagination`, and refresh before continuation.
+Follow-ups belong to that latest snapshot's own cursor chain.
+
+Owner and repository name are GraphQL **strings**: command builders use `-f`
+even for numeric or boolean-looking names; the integer request number uses `-F`.
+
 The primary query intentionally leaves explicit completeness signals on latest
 reviews and every thread's comments. When either exceeds 100 nodes, follow its
 `endCursor` with the target-local `read-latest-reviews-page` or
@@ -108,6 +118,8 @@ or nonblocking-to-blocking transition whose GraphQL node IDs did not change.
 | A response with no thread collection. | `observed: false`, reason `review-threads-absent`, naming the missing field. |
 | A GraphQL response carrying a top-level `errors`, on any page, or an Azure DevOps error body identified by `typeKey`, `typeName`, or `errorCode`. | `observed: false`, reason `provider-error-reported`. |
 | A slurped array with an element that is not a page object. | `observed: false`, reason `response-absent`. |
+| Any requested primary page lacks an array at `reviewThreads.nodes`, including `null`. | The packet stays incomplete with `thread-nodes-absent` even if later valid pages terminate. If no collection was read, it stays unobserved. |
+| Any primary page lacks a boolean `reviewThreads.pageInfo.hasNextPage`. | The packet stays incomplete with `completeness-unconfirmed`; a later terminal page cannot erase that page's missing or malformed signal. A valid intermediate `true` followed by terminal `false` remains complete. |
 | A comment connection that confirms `hasNextPage === false` but carries no `nodes` array. | `observed: true` with `complete: false` and reason `comment-nodes-absent`. |
 | A thread whose resolution state the provider did not report. | Counted as unresolved. |
 | A read whose outer thread page, latest-review page, or nested comment page was truncated, whose latest-review `nodes` or requested `pageInfo` completeness signal was absent, or whose required follow-up was missing, failed, or not one contiguous cursor-bound chain. | `observed: true` with `complete: false` and an `incomplete` list naming what was truncated, failed, unbound, or left unconfirmed. |

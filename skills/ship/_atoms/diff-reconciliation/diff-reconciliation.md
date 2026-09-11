@@ -5,7 +5,7 @@ level: atom
 allowed-tools: ["execute","read"]
 includes: ["ship/_atoms/diff-reconciliation/diff-reconciliation.mjs"]
 composes: []
-used-by: ["ship/_molecules/delivery-cycle/delivery-cycle.md"]
+used-by: ["ship/SKILL.md"]
 ---
 
 # Diff Reconciliation
@@ -44,17 +44,29 @@ branch a change request will be opened from.
 | Subject | The isolation worktree as it stands now, including staged, unstaged, and untracked files. |
 | Detection | Rename and copy detection on, so a moved file is one change rather than a deletion and an unrelated addition. |
 
-Untracked files are invisible to a plain `git diff`, so they are given an index
-entry without content first:
+Do not flatten staged and unstaged changes into one net diff: they may cancel
+while still leaving publishable index changes. Inventory and reconcile the
+committed, staged, unstaged and untracked layers separately:
 
 ```sh
-git -C <worktree> add --intent-to-add --all
-git -C <worktree> diff --find-renames --find-copies <base-sha>
+git -C <worktree> diff --no-ext-diff --no-textconv --find-renames --find-copies <base-sha> HEAD
+git -C <worktree> diff --no-ext-diff --no-textconv --find-renames --find-copies --cached
+git -C <worktree> diff --no-ext-diff --no-textconv --find-renames --find-copies
+git -C <worktree> ls-files --others --exclude-standard -z
 ```
 
-Reconciling `HEAD` against the base instead would ignore exactly the residue a
-run is most likely to leave behind, and "it was not committed" is not a reason a
-reviewer will ever see.
+Read every NUL-delimited untracked path, including empty and binary files, and
+represent additions with content/metadata units. Do not stage them merely to
+discover them. Give each layer its own mapping and retain all results; only
+continue when every layer permits continuation. Repeated file boundaries in
+one input are refused rather than collapsing two layers into one hunk address.
+
+The parser decodes Git C-quoted paths (including octal UTF-8, tabs and literal
+backslashes), mixed quoted/unquoted headers and rename/copy source names.
+Unknown or ambiguous diff boundaries and content outside a boundary throw a
+parse error: stop reconciliation and retain the raw inventory for diagnosis.
+An `unknown` metadata unit cannot become authorized merely by claiming it.
+These checks preserve path identity, not semantic scope membership.
 
 A path excluded by the repository's ignore rules stays out of the diff and
 therefore has no unit. Record any such path the run created as residue and

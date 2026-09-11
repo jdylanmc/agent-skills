@@ -673,6 +673,7 @@ test('handoff bootstrap accepts only a running worker bound to exact identity an
       },
     },
     invocation: { mode: 'nested-worker', status: accepted.status },
+    expectedWatch: { identity: state.targetIdentity, stateDigest: state.integrityDigest },
     result: accepted.result,
     observedBase: {
       observedAt: '2026-08-30T12:00:01.000Z',

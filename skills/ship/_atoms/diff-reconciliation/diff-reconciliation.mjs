@@ -34,6 +34,54 @@ const REASON_ORDER = [...STRUCTURAL_REASONS, 'add', 'delete', 'binary'];
 /** The address of the single file-metadata unit. Never a hunk index. */
 export const METADATA_UNIT = 'metadata';
 
+// Git quotes bytes, not JavaScript characters: octal UTF-8 must be decoded
+// together, while literal backslashes and tabs remain part of the path.
+function gitPath(value) {
+  if (!value.startsWith('"')) return value;
+  if (!value.endsWith('"')) throw new SyntaxError('unterminated Git path');
+  const bytes = [];
+  const escapes = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
+  for (let i = 1; i < value.length - 1; i++) {
+    if (value[i] === '\\') {
+      const octal = /^[0-3][0-7]{2}/.exec(value.slice(i + 1));
+      if (octal) {
+        bytes.push(parseInt(octal[0], 8));
+        i += 3;
+      } else {
+        const escaped = escapes[value[++i]];
+        if (escaped === undefined) throw new SyntaxError('unknown Git path escape');
+        bytes.push(escaped);
+      }
+    } else {
+      if (value[i] === '"') throw new SyntaxError('unexpected quote in Git path');
+      const character = String.fromCodePoint(value.codePointAt(i));
+      bytes.push(...Buffer.from(character));
+      i += character.length - 1;
+    }
+  }
+  return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(bytes));
+}
+
+function filePaths(line) {
+  const rest = line.slice('diff --git '.length);
+  const quoted = /^"(?:[^"\\]|\\.)*"/;
+  const candidates = [];
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] !== ' ') continue;
+    const left = rest.slice(0, i);
+    const right = rest.slice(i + 1);
+    if (left.startsWith('"') && quoted.exec(left)?.[0] !== left) continue;
+    if (right.startsWith('"') && quoted.exec(right)?.[0] !== right) continue;
+    if (!(left.startsWith('a/') || left.startsWith('"a/'))
+      || !(right.startsWith('b/') || right.startsWith('"b/'))) continue;
+    const from = gitPath(left);
+    const to = gitPath(right);
+    if (from.length > 2 && to.length > 2) candidates.push([from.slice(2), to.slice(2)]);
+  }
+  if (candidates.length !== 1) throw new SyntaxError('unknown or ambiguous Git diff boundary');
+  return candidates[0];
+}
+
 /**
  * Parse a unified diff into files and addressable units.
  *
@@ -60,14 +108,21 @@ export function parseUnifiedDiff(text) {
   let current = null;
 
   for (const line of text.split('\n')) {
-    const fileHeader = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
-    if (fileHeader) {
-      current = { file: fileHeader[2], hunks: [], reasons: new Set() };
+    if (line.startsWith('diff ')) {
+      if (!line.startsWith('diff --git ')) throw new SyntaxError('unsupported diff boundary');
+      const [, file] = filePaths(line);
+      if (files.some((prior) => prior.file === file)) {
+        throw new SyntaxError('repeated diff path: reconcile inventory layers separately');
+      }
+      current = { file, hunks: [], reasons: new Set() };
       files.push(current);
       continue;
     }
 
-    if (!current) continue;
+    if (!current) {
+      if (line.trim()) throw new SyntaxError('content outside a Git diff boundary');
+      continue;
+    }
 
     if (/^Binary files? /.test(line) || /^GIT binary patch$/.test(line)) {
       current.reasons.add('binary');
@@ -92,14 +147,14 @@ export function parseUnifiedDiff(text) {
     const renameFrom = /^rename from (.+)$/.exec(line);
     if (renameFrom) {
       current.reasons.add('rename');
-      current.previousFile = renameFrom[1];
+      current.previousFile = gitPath(renameFrom[1]);
       continue;
     }
 
     const copyFrom = /^copy from (.+)$/.exec(line);
     if (copyFrom) {
       current.reasons.add('copy');
-      current.previousFile = copyFrom[1];
+      current.previousFile = gitPath(copyFrom[1]);
       continue;
     }
 
@@ -216,6 +271,11 @@ export function reconcile({ ledger, diff, mapping }) {
 
   for (const [key, hunk] of hunks) {
     const claimed = claims.get(key);
+
+    if (hunk.change === 'unknown') {
+      undisclosed.push({ ...hunk, reason: 'unknown file metadata cannot be authorized by a claim' });
+      continue;
+    }
 
     if (!claimed || claimed.size === 0) {
       undisclosed.push({

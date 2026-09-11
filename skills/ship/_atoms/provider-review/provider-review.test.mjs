@@ -90,6 +90,47 @@ function githubResponse(threads, {
   };
 }
 
+test('every malformed requested primary page keeps review incomplete', () => {
+  for (const malformed of [{}, { data: { repository: { pullRequest: { reviewThreads: { nodes: null } } } } }]) {
+    for (const index of [0, 1, 2]) {
+      const pages = [githubResponse([]), githubResponse([])];
+      pages.splice(index, 0, malformed);
+      const review = interpretReviewThreads(GITHUB, pages, GITHUB_TARGET);
+      assert.equal(review.complete, false);
+      assert.ok(review.incomplete.some((item) => item.reason === 'thread-nodes-absent'));
+      assert.equal(unresolvedReviewThreads(review).complete, false);
+    }
+  }
+});
+
+test('a changed latest-review snapshot cannot resurrect a superseded opinion', () => {
+  const aliceBefore = { id: 'A1', state: 'CHANGES_REQUESTED', author: { login: 'alice' } };
+  const aliceAfter = { id: 'A2', state: 'APPROVED', author: { login: 'alice' } };
+  const bob = { id: 'B1', state: 'CHANGES_REQUESTED', author: { login: 'bob' } };
+  const review = interpretReviewThreads(GITHUB, [
+    githubResponse([], { reviewDecision: 'CHANGES_REQUESTED', reviews: [aliceBefore, bob] }),
+    githubResponse([], { reviewDecision: 'CHANGES_REQUESTED', reviews: [aliceAfter, bob] }),
+  ], GITHUB_TARGET);
+  assert.equal(review.complete, false);
+  assert.equal(review.verdicts.some((item) => item.id === 'A1'), false);
+  assert.deepEqual(review.verdicts.filter((item) => item.gatesMerge).map((item) => item.id), ['B1']);
+  assert.ok(review.incomplete.some((item) => item.reason === 'snapshot-changed-during-pagination'));
+});
+
+test('GraphQL repository variables stay strings even when gh could coerce them', () => {
+  for (const name of ['2026', 'true', 'false', 'null']) {
+    const target = { ...GITHUB_TARGET, repository: { slug: `2026/${name}` } };
+    for (const command of [reviewThreadsCommand(GITHUB, target), latestReviewsCommand(GITHUB, target, { cursor: 'R0' })]) {
+      assert.equal(command.ok, true);
+      for (const value of ['owner=2026', `name=${name}`]) {
+        assert.equal(command.args[command.args.indexOf(value) - 1], '-f');
+      }
+      assert.equal(command.args[command.args.indexOf('number=42') - 1], '-F');
+      assert.doesNotThrow(() => assertReadOnlyCommand(command));
+    }
+  }
+});
+
 test('GitHub threads are read through the official tool with its own pagination and a query document', () => {
   const command = reviewThreadsCommand(GITHUB, GITHUB_TARGET);
 
