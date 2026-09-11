@@ -1428,7 +1428,7 @@ used-by: ["changelog/SKILL.md"]
       satisfied ? OUTCOME_PROGRAM : "console.log(JSON.stringify({ status: 'silent' }));\n");
     git('init', '-q');
     git('config', 'user.name', 'Workflow Fixture');
-    git('config', 'user.email', 'fixture@example.invalid');
+    git('config', 'user.email', 'test-identity');
     git('config', 'commit.gpgsign', 'false');
     git('add', '.');
     git('commit', '-qm', 'fixture baseline');
