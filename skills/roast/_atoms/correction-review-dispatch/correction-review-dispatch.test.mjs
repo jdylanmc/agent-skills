@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  correctionReviewContract,
   dispatchCorrectionReview,
   resolveTieredDeepReviewRouting,
   runNewCodeReviewFromGit,
@@ -66,6 +67,176 @@ const response = (overrides = {}) => JSON.stringify({
   newFindings: [],
   uncertainties: [],
   ...overrides,
+});
+
+test('a transport can construct a valid response from the launch contract alone', async () => {
+  function fromSchema(schema) {
+    if (Object.hasOwn(schema, 'const')) return schema.const;
+    if (schema.enum) return schema.enum[0];
+    if (schema.type === 'string') return 'Observed evidence';
+    if (schema.type === 'array') return Array.from({ length: schema.minItems }, () => fromSchema(schema.items));
+    return Object.fromEntries(schema.required.map((key) => [key, fromSchema(schema.properties[key])]));
+  }
+  const result = await dispatchCorrectionReview({
+    reviewInput: input,
+    runtimeAvailableModels: ['gpt-5.6-sol'],
+    transport: async ({ prompt }) => {
+      const contract = JSON.parse(prompt);
+      const reply = fromSchema(contract.outputSchema);
+      for (const [field, { key, values }] of Object.entries(contract.coverage)) {
+        reply[field] = values.map((value) => ({
+          ...fromSchema(contract.outputSchema.properties[field].items), [key]: value,
+        }));
+      }
+      for (const field of contract.completeWhen.emptyArrays) reply[field] = [];
+      for (const [field, rule] of Object.entries(contract.completeWhen.recordValues)) {
+        for (const entry of reply[field]) entry[rule.field] = rule.allowed[0];
+      }
+      return JSON.stringify(reply);
+    },
+  });
+  assert.equal(result.status, 'complete');
+  assert.equal(result.review.headSha, CURRENT_HEAD);
+  assert.deepEqual(result.review.requirementChecks[0].negativeCases, ['Observed evidence']);
+  assert.equal(result.review.findingDispositions[0].findingId, 'F-1');
+  assert.equal(result.review.affectedConsumersReviewed[0].consumer, 'consumer-a');
+});
+
+test('returned contract data cannot mutate canonical validation or caller inputs', () => {
+  const original = correctionReviewContract(input);
+  const modified = correctionReviewContract(input);
+  modified.outputSchema.properties.status.enum.push('approved');
+  modified.coverage.findingDispositions.values.push('F-extra');
+  modified.completeWhen.emptyArrays.length = 0;
+  assert.deepEqual(correctionReviewContract(input), original);
+  assert.deepEqual(input.originalFindingIds, ['F-1']);
+  assert.throws(() => validateCorrectionReview(JSON.parse(response({ status: 'approved' })), input), /invalid/);
+});
+
+test('malformed response data requests full review without accepting a correction receipt', async () => {
+  const missingNested = JSON.parse(response());
+  delete missingNested.requirementChecks[0].negativeCases;
+  for (const [raw, reason] of [
+    ['not JSON', 'invalid-response-json'],
+    ['null', 'invalid-response-contract'],
+    [JSON.stringify(missingNested), 'invalid-response-contract'],
+    [response({ uncertainties: ['behavior not established'] }), 'invalid-response-contract'],
+  ]) {
+    const result = await dispatchCorrectionReview({
+      reviewInput: input,
+      runtimeAvailableModels: ['gpt-5.6-sol'],
+      transport: async () => raw,
+    });
+    assert.equal(result.status, 'escalate-full', raw);
+    assert.equal(result.reason, reason);
+    assert.equal(result.review, null);
+    assert.equal(result.diagnostics.phase, 'response');
+    assert.ok(result.diagnostics.message);
+  }
+});
+
+test('a stale response requires caller intervention rather than automatic escalation', async () => {
+  const result = await dispatchCorrectionReview({
+    reviewInput: input,
+    runtimeAvailableModels: ['gpt-5.6-sol'],
+    transport: async () => response({ headSha: DEEP_HEAD }),
+  });
+  assert.equal(result.status, 'needs-human');
+  assert.equal(result.reason, 'stale-response');
+  assert.equal(result.review, null);
+});
+
+test('explicit stale identity takes precedence over other response contract defects', async () => {
+  const missing = JSON.parse(response({ headSha: DEEP_HEAD }));
+  delete missing.uncertainties;
+  const extra = JSON.parse(response({ headSha: DEEP_HEAD, extra: true }));
+  for (const receipt of [missing, extra]) {
+    const dispatched = await dispatchCorrectionReview({
+      reviewInput: input,
+      runtimeAvailableModels: ['gpt-5.6-sol'],
+      transport: async () => JSON.stringify(receipt),
+    });
+    assert.equal(dispatched.status, 'needs-human');
+    assert.equal(dispatched.reason, 'stale-response');
+    assert.equal(dispatched.review, null);
+    for (const version of [1, 2]) {
+      let fullCalls = 0;
+      const result = await runTieredCodeReview({
+        input: eligibleReviewInput(version),
+        runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
+        correctionTransport: async () => JSON.stringify(receipt),
+        fullReview: async () => { fullCalls += 1; return { status: 'complete' }; },
+      });
+      assert.equal(result.authoritative, 'none');
+      assert.equal(result.correction.reason, 'stale-response');
+      assert.equal(result.correction.receipt.review, null);
+      assert.equal(fullCalls, 0);
+    }
+  }
+});
+
+test('transport rejections preserve diagnostic classification and never authorize a retry', async () => {
+  for (const code of ['denied', 'ECONNRESET', 'ABORT_ERR']) {
+    const result = await dispatchCorrectionReview({
+      reviewInput: input,
+      runtimeAvailableModels: ['gpt-5.6-sol'],
+      transport: async () => { throw Object.assign(new Error('Transport stopped'), { code, privatePayload: 'not-for-diagnostics' }); },
+    });
+    assert.equal(result.status, 'needs-human');
+    assert.equal(result.reason, 'transport-failed');
+    assert.equal(result.dispatch, null);
+    assert.equal(result.review, null);
+    assert.equal(result.diagnostics.code, code);
+    assert.equal(result.diagnostics.errorType, 'Error');
+    assert.doesNotMatch(JSON.stringify(result.diagnostics), /privatePayload|not-for-diagnostics/);
+  }
+});
+
+test('invalid transport envelopes are classified separately from model JSON', async () => {
+  for (const envelope of [42, { response: response(), actualModel: 42 }]) {
+    const result = await dispatchCorrectionReview({
+      reviewInput: input,
+      runtimeAvailableModels: ['gpt-5.6-sol'],
+      transport: async () => envelope,
+    });
+    assert.equal(result.status, 'needs-human');
+    assert.equal(result.reason, 'invalid-transport-result');
+    assert.equal(result.review, null);
+  }
+});
+
+test('the response remains bound to the contract actually sent to the worker', async () => {
+  const mutable = structuredClone(input);
+  const result = await dispatchCorrectionReview({
+    reviewInput: mutable,
+    runtimeAvailableModels: ['gpt-5.6-sol'],
+    transport: async () => {
+      mutable.current.headSha = DEEP_HEAD;
+      mutable.originalFindingIds.push('F-other');
+      return response();
+    },
+  });
+  assert.equal(result.status, 'complete');
+  assert.equal(result.review.headSha, CURRENT_HEAD);
+});
+
+test('unfulfillable coverage and invalid transport configuration fail before dispatch', async () => {
+  let calls = 0;
+  for (const change of [
+    { requirements: [] },
+    { affectedConsumers: [] },
+    { originalFindingIds: ['F-1', 'F-1'] },
+  ]) {
+    await assert.rejects(() => dispatchCorrectionReview({
+      reviewInput: { ...input, ...change },
+      runtimeAvailableModels: ['gpt-5.6-sol'],
+      transport: async () => { calls += 1; return response(); },
+    }), /distinct non-empty strings/);
+  }
+  await assert.rejects(() => dispatchCorrectionReview({
+    reviewInput: input, runtimeAvailableModels: ['gpt-5.6-sol'],
+  }), /transport must be a function/);
+  assert.equal(calls, 0);
 });
 
 test('dispatches exact GPT-5.6 Sol QA route through the real transport seam', async () => {
@@ -142,7 +313,7 @@ test('original findings may be unsupported but unresolved evidence cannot report
   })), input), /unresolved evidence/);
 });
 
-test('tiered code review consumes correction transport and falls back to full on escalation', async () => {
+function eligibleReviewInput(version = 1) {
   const policy = {
     mode: 'tiered',
     policyVersion: 1,
@@ -194,9 +365,29 @@ test('tiered code review consumes correction transport and falls back to full on
     deltaReconciliation: { complete: true, revertedPaths: [], unexplainedPaths: [] },
     remediationAttempt: 1,
   };
+  if (version === 2) {
+    reviewInput.policy = newCodeReviewDefaultPolicy();
+    reviewInput.fileScopeAssessment = {
+      complete: true, newOrOutOfScopeFiles: false, evidence: 'same reviewed file',
+    };
+    reviewInput.churnMetrics = {
+      baseline: {
+        baseSha: BASE, headSha: DEEP_HEAD, status: 'complete',
+        addedLines: 10, deletedLines: 0, totalLines: 10,
+      },
+      cumulative: {
+        baseSha: DEEP_HEAD, headSha: CURRENT_HEAD, status: 'complete',
+        addedLines: 1, deletedLines: 0, totalLines: 1,
+      },
+    };
+  }
+  return reviewInput;
+}
+
+test('tiered code review consumes correction transport and falls back to full on escalation', async () => {
   const calls = [];
   const result = await runTieredCodeReview({
-    input: reviewInput,
+    input: eligibleReviewInput(),
     runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
     correctionTransport: async () => {
       calls.push('correction');
@@ -214,6 +405,64 @@ test('tiered code review consumes correction transport and falls back to full on
   });
   assert.deepEqual(calls, ['correction', 'full']);
   assert.equal(result.authoritative, 'full');
+});
+
+test('response format failures reach the existing full-review callback once', async () => {
+  const missing = JSON.parse(response());
+  delete missing.findingDispositions[0].reasoning;
+  for (const raw of ['invalid JSON', JSON.stringify(missing)]) {
+    const calls = [];
+    const result = await runTieredCodeReview({
+      input: eligibleReviewInput(),
+      runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
+      correctionTransport: async () => { calls.push('correction'); return raw; },
+      fullReview: async () => { calls.push('full'); return { status: 'complete' }; },
+    });
+    assert.deepEqual(calls, ['correction', 'full']);
+    assert.equal(result.authoritative, 'full');
+    assert.equal(result.correction.receipt.review, null);
+    assert.match(result.correction.reason, /invalid-response/);
+  }
+});
+
+test('denials, cancellation and stale identity never invoke full review as a workaround', async () => {
+  for (const transport of [
+    async () => { throw Object.assign(new Error('Denied'), { code: 'denied' }); },
+    async () => { throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' }); },
+    async () => response({ headSha: DEEP_HEAD }),
+  ]) {
+    let fullCalls = 0;
+    const result = await runTieredCodeReview({
+      input: eligibleReviewInput(),
+      runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
+      correctionTransport: transport,
+      fullReview: async () => { fullCalls += 1; return { status: 'complete' }; },
+    });
+
+    assert.equal(result.authoritative, 'none');
+    assert.equal(result.correction.status, 'needs-human');
+    assert.equal(result.correction.receipt.review, null);
+    assert.equal(fullCalls, 0);
+  }
+});
+
+test('the default version-two policy handles response and transport failure without false authority', async () => {
+  for (const denied of [false, true]) {
+    let fullCalls = 0;
+    const result = await runTieredCodeReview({
+      input: eligibleReviewInput(2),
+      runtimeAvailableModels: ['gpt-5.6-sol', 'gpt-6-astra'],
+      correctionTransport: async () => {
+        if (denied) throw Object.assign(new Error('Permission denied'), { code: 'denied' });
+        return 'invalid JSON';
+      },
+      fullReview: async () => { fullCalls += 1; return { status: 'complete' }; },
+    });
+    assert.equal(result.decision.outcome, 'correction-verification');
+    assert.equal(result.authoritative, denied ? 'none' : 'full');
+    assert.equal(fullCalls, denied ? 0 : 1);
+    assert.equal(result.correction.receipt.review, null);
+  }
 });
 
 test('deep routing refuses unless every council and Roastmaster seat resolves', () => {
