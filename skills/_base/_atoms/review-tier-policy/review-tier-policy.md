@@ -3,7 +3,7 @@ name: review-tier-policy
 description: Classify an explicitly opted-in code review as full or bounded correction verification using exact revision, lineage, semantic-risk, and model-policy evidence.
 level: atom
 allowed-tools: ["execute"]
-includes: ["_base/_atoms/review-tier-policy/review-tier-policy.mjs"]
+includes: ["_base/_atoms/review-tier-policy/review-tier-policy.mjs", "_base/_atoms/review-tier-policy/review-tier-policy.canonical-json.mjs"]
 composes: []
 used-by: ["ship-with-squadron/_molecules/candidate-delivery/candidate-delivery.md","ship/SKILL.md"]
 ---
@@ -13,6 +13,7 @@ used-by: ["ship-with-squadron/_molecules/candidate-delivery/candidate-delivery.m
 ## Required Files
 
 1. [Review tier classifier](./review-tier-policy.mjs)
+2. [Canonical JSON mechanics](./review-tier-policy.canonical-json.mjs)
 
 For **new code-review intake**, the explicit version 2 default is
 `deep-then-verify`: one full deep review followed by bounded correction

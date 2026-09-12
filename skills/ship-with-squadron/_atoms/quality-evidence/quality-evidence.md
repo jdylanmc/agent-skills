@@ -3,7 +3,7 @@ name: quality-evidence
 description: Enforce the candidate delivery order, exact revision binding, blast-radius contract adaptation, bounded remediation, and evidence invalidation after mutation.
 level: atom
 allowed-tools: ["execute","read","search","task"]
-includes: ["ship-with-squadron/_atoms/quality-evidence/quality-evidence.mjs"]
+includes: ["ship-with-squadron/_atoms/quality-evidence/quality-evidence.mjs", "_base/_atoms/review-tier-policy/review-tier-policy.canonical-json.mjs"]
 composes: []
 used-by: ["ship-with-squadron/_molecules/candidate-delivery/candidate-delivery.md"]
 ---
@@ -13,6 +13,7 @@ used-by: ["ship-with-squadron/_molecules/candidate-delivery/candidate-delivery.m
 ## Required Files
 
 1. [Quality evidence helper](./quality-evidence.mjs)
+2. [Canonical JSON mechanics](../../../_base/_atoms/review-tier-policy/review-tier-policy.canonical-json.mjs)
 
 Run every candidate in this order:
 
@@ -120,3 +121,13 @@ plus `next-evidence-action` and `next-evidence-reason` only when proof status is
 `unavailable`. Synthetic wrappers, completion flags, and extra provenance are
 invalid. The adapter returns the same report as its receipt; it does not
 rewrite or enrich it.
+
+## Canonical binding boundary
+
+Review-tier policy and quality evidence share only the recursive canonical JSON
+mechanics in `_base/_atoms/review-tier-policy/review-tier-policy.canonical-json.mjs`:
+object keys are sorted, array order is preserved, and scalar JSON values are
+unchanged. Each consumer keeps its own binding projection and validation policy.
+Raw-file hashing, line-ending-normalized text hashing, and Bench's stricter
+immutable/dense JSON validation are intentionally non-equivalent helpers and
+remain separate.

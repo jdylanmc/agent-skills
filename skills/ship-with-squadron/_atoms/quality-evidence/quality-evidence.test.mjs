@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
+import { stableJson } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.canonical-json.mjs';
 import {
   normalizeFleetManifest,
   normalizeNewFleetManifest,
@@ -453,6 +454,17 @@ test('enforces workflow order, conditional Shepherd intent, invalidation, and bo
   assert.equal(invalidated.terminalDisposition, null);
   assert.equal(remediationDecision({ attempt: 0, limit: 1, defects: ['failed-check'] }).action, 'dispatch-fresh-remediation-worker');
   assert.equal(remediationDecision({ attempt: 1, limit: 1, defects: ['roast-blocker'] }).action, 'hand-back');
+});
+
+test('quality binding uses canonical expected bytes for nested arrays and scalars', () => {
+  assert.equal(
+    JSON.stringify(stableJson({ outer: [{ z: 1, a: 'x' }], scalar: false })),
+    '{"outer":[{"a":"x","z":1}],"scalar":false}',
+  );
+  assert.equal(
+    reviewPolicyDigest({ scalar: 7 }),
+    '19ca161f7ac436cb6f7612320ebde8cedbfd2e8880a347b14735d880060acfa4',
+  );
 });
 
 test('stable packet identity excludes mutable cursors and policy while policy binds separately', () => {

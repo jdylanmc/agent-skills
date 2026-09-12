@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { digestJson, stableJson } from './review-tier-policy.canonical-json.mjs';
 
 export const REVIEW_TIER_POLICY_VERSION = 2;
 export const LEGACY_REVIEW_TIER_POLICY_VERSION = 1;
@@ -91,17 +91,8 @@ function same(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function stable(value) {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
-  }
-  return value;
-}
-
-function digest(value) {
-  return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
-}
+const stable = stableJson;
+const digest = digestJson;
 
 export function reviewPolicyBindingDigest({
   policyVersion = LEGACY_REVIEW_TIER_POLICY_VERSION,
