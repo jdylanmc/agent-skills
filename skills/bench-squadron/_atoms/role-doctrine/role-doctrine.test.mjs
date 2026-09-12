@@ -11,8 +11,17 @@ import { processAlive } from '../fleet-state/fleet-state.mjs';
 import { setupRuntime, resolveRuntime, loadSDK, runtimeDirectory, assertRuntimeEnvironment } from './role-doctrine.runtime.mjs';
 import { ownerReleased, terminateOwned } from '../fleet-state/fleet-state.process.mjs';
 import { normalizeWork } from '../bench-epoch/bench-epoch.mjs';
-import { prepareFileSmoke } from './role-doctrine.smoke.mjs';
+import { prepareFileSmoke, smokeToolExposure } from './role-doctrine.smoke.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
+test('smoke exposure comes from the actual session tool configuration', () => {
+  const packet = { smoke: 'files', role: 'implement', slot: 0, cwd: root, doctrine: [],
+    work: { paths: ['fixture'] } };
+  const actual = sessionOptions(packet).availableTools;
+  assert.deepEqual(smokeToolExposure(packet), { toolsExposed: actual.length, availableTools: actual });
+  assert.ok(actual.includes('custom:bench_replace'));
+  assert.deepEqual(smokeToolExposure({ ...packet, smoke: true }), { toolsExposed: 0, availableTools: [] });
+  assert.deepEqual(smokeToolExposure({ ...packet, inspectModels: true }), { toolsExposed: 0, availableTools: [] });
+});
 function directory(t, cleanup = true) {
   const dir = path.join(root, '..', '..', '.test-sandbox', `bench-sdk-files-${randomUUID()}`);
   fs.mkdirSync(path.join(dir, 'src'), { recursive: true });

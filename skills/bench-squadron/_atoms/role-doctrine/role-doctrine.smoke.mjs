@@ -3,11 +3,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { SDKWorkers } from './role-doctrine.mjs';
+import { SDKWorkers, sessionOptions } from './role-doctrine.mjs';
 import { atomicJSON } from '../fleet-state/fleet-state.mjs';
 import { loadSDK, resolveRuntime, assertRuntimeEnvironment } from './role-doctrine.runtime.mjs';
 
 const skillsRoot = fileURLToPath(new URL('../../../', import.meta.url));
+
+export function smokeToolExposure(packet) {
+  const tools = packet.inspectModels ? [] : sessionOptions(packet).availableTools;
+  return { toolsExposed: tools.length, availableTools: tools };
+}
 
 export function prepareFileSmoke(value) {
   if (!value || !path.isAbsolute(value)) throw new Error('file smoke requires an absolute fresh state directory');
@@ -48,16 +53,17 @@ async function main(args) {
   const workers = new SDKWorkers({ runtimeDirectory: cache, timeoutMs: 60000, releaseMs: 2000 });
   const startedAt = Date.now();
   let ownership;
-  const handle = workers.launch({ smoke: files ? 'files' : true, inspectModels: metadata, role: files ? 'implement' : 'review', slot: 0, cwd: directory,
+  const packet = { smoke: files ? 'files' : true, inspectModels: metadata, role: files ? 'implement' : 'review', slot: 0, cwd: directory,
     work: files ? { paths: ['fixture/input.txt', 'fixture/output.txt'] } : undefined,
-    configDirectory: path.join(directory, 'sdk'), doctrine: [], timeoutMs: 30000 }, (pid, owner) => {
+    configDirectory: path.join(directory, 'sdk'), doctrine: [], timeoutMs: 30000 };
+  const handle = workers.launch(packet, (pid, owner) => {
     ownership = owner;
     atomicJSON(path.join(directory, 'owner.json'), { pid, ownership: owner });
   });
   const result = await handle.done;
   const receipt = { sdkVersion: runtime.sdkVersion, cache: runtime.directory, elapsedMs: Date.now() - startedAt,
     released: result.released, idle: result.idle ?? false, runtime: result.runtime ?? {},
-    error: result.error ?? null, responses: metadata ? 0 : result.result ? 1 : 0, toolsExposed: files ? 4 : 0,
+    error: result.error ?? null, responses: metadata ? 0 : result.result ? 1 : 0, ...smokeToolExposure(packet),
     releaseMechanism: ownership?.kind };
   if (files) {
     const expected = `${fixture.input}\nBENCH_TOOL_OK`;

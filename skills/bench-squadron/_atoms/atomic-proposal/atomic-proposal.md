@@ -10,6 +10,10 @@ used-by: ["bench-squadron/_molecules/bench-control/bench-control.md"]
 
 # Atomic Publication Proposal
 
+Failed TAP validation retains bounded failure sections and a summary tail rather
+than burying actionable failures beneath later passing tests. Diagnostic selection
+does not alter exit-code, timeout, overflow or release checks. Proposal
+
 ## Required Files
 
 [Git and GitHub adapter](./atomic-proposal.mjs) owns worktree isolation, exact

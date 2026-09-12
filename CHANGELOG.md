@@ -357,6 +357,8 @@ below is unreleased and no comparison links are available.
   evidence and stops unchanged retry loops. Ambient runtime overrides are refused.
   Bounded source search, paginated reads and hash-checked exact replacements let
   workers make surgical changes without reconstructing entire modules.
+  Validation errors retain early failing-test diagnostics even when later passing
+  output is long; smoke receipts derive tool exposure from the actual configuration.
   Human scope, risk, approval and merge authority remain separate.
 
 - **Simpler, reliable single-skill reinforcement.** Reinforce Skill keeps its

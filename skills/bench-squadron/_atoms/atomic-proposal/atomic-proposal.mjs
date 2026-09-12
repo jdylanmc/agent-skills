@@ -3,6 +3,16 @@ import path from 'node:path';
 import { digest, authorizedWorkPath, publicationIsCurrent } from '../bench-epoch/bench-epoch.mjs';
 import { spawnOwned, ownerReleased, terminateOwned } from '../fleet-state/fleet-state.process.mjs';
 
+export function commandFailureOutput(output) {
+  const lines = output.split('\n');
+  const failures = lines.flatMap((line, index) => /^not ok\b/.test(line) ? [index] : []);
+  if (!failures.length) return output.slice(-8000);
+  // Diagnostics selection never changes exit-code, timeout or overflow verdicts.
+  const sections = failures.slice(0, 4).map((start, index) =>
+    lines.slice(start, Math.min(start + 30, failures[index + 1] ?? lines.length)).join('\n').slice(0, 1500));
+  return `[${failures.length} TAP failures; bounded failure context]\n${sections.join('\n...\n')}\n[output tail]\n${output.slice(-1500)}`;
+}
+
 export async function command(argv, { cwd, timeoutMs = 120000, env = process.env, onSpawn = () => {}, ownershipDirectory,
   tailOutput = false, outputLimit = 1000000 } = {}) {
   if (!Number.isSafeInteger(outputLimit) || outputLimit < 1 || outputLimit > 1000000) throw new Error('invalid bounded output limit');
@@ -35,7 +45,7 @@ export async function command(argv, { cwd, timeoutMs = 120000, env = process.env
       if (!released) { reject(Object.assign(new Error(`uncertain command termination: owned process ${child.pid}: ${output.slice(-8000)}`), { uncertainTermination: true })); return; }
       if (spawnError) { reject(spawnError); return; }
       if (timedOut || overflow && !tailOutput || code !== 0) {
-        reject(new Error(`${argv[0]} failed (${timedOut ? 'timeout' : overflow ? 'output limit' : code}): ${output.slice(-8000)}`));
+        reject(new Error(`${argv[0]} failed (${timedOut ? 'timeout' : overflow ? 'output limit' : code}): ${commandFailureOutput(output)}`));
       } else resolve(`${tailOutput && overflow ? '[bounded tail; earlier output omitted]\n' : ''}${output.trim()}`);
     });
   });

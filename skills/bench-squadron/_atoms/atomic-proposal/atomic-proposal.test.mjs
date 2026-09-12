@@ -5,10 +5,34 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { GitHubDelivery, command } from './atomic-proposal.mjs';
+import { GitHubDelivery, command, commandFailureOutput } from './atomic-proposal.mjs';
 import { normalizeWork, reviewedBasis, reviseRequirements, digest } from '../bench-epoch/bench-epoch.mjs';
 import { fileTools } from '../role-doctrine/role-doctrine.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
+test('early test failures remain actionable after long passing output', async (t) => {
+  const before = 'ok 1 - prior test\n'.repeat(1000);
+  const failures = 'not ok 98 - registered tests\n  ---\n  error: missing from workflow: new.test.mjs\n  ...\n' +
+    'not ok 738 - test registration\n  ---\n  error: second diagnostic\n  ...\n';
+  const tail = `${'ok 999 - passing test\n'.repeat(1000)}# tests 2002\n# fail 2\n`;
+  const output = before + failures + tail;
+  const summary = commandFailureOutput(output);
+  assert.match(summary, /missing from workflow: new\.test\.mjs/);
+  assert.match(summary, /second diagnostic/);
+  assert.match(summary, /# fail 2/);
+  assert.ok(summary.length <= 8000);
+  assert.equal(commandFailureOutput('ordinary error'), 'ordinary error');
+  const cwd = directory(t);
+  const script = path.join(cwd, 'failed-tests.cjs');
+  fs.writeFileSync(script, `process.stdout.write(${JSON.stringify(output)}); process.exitCode=1;`);
+  await assert.rejects(command([process.execPath, script], {
+    cwd, timeoutMs: 30000, ownershipDirectory: path.join(cwd, 'process-owner'),
+  }), (error) => {
+    assert.match(error.message, /failed \(1\)/);
+    assert.match(error.message, /missing from workflow/);
+    assert.match(error.message, /# fail 2/);
+    return true;
+  });
+});
 const config = { run: 'run', repository: 'owner/repo', checkout: root, base: 'main', commandMs: 3000 };
 const issue = () => {
   const value = { work: { id: 'one', title: 'Title', requirements: 'Requirement', paths: ['src'],
