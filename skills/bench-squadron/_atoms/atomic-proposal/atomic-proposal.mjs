@@ -5,7 +5,7 @@ import { spawnOwned, ownerReleased, terminateOwned } from '../fleet-state/fleet-
 
 export function commandFailureOutput(output) {
   const lines = output.split('\n');
-  const failures = lines.flatMap((line, index) => /^not ok\b/.test(line) ? [index] : []);
+  const failures = lines.flatMap((line, index) => /^[ \t]*not ok\b/.test(line) ? [index] : []);
   if (!failures.length) return output.slice(-8000);
   // Diagnostics selection never changes exit-code, timeout or overflow verdicts.
   const sections = failures.slice(0, 4).map((start, index) =>

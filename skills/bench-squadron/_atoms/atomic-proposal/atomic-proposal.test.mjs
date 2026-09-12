@@ -11,13 +11,16 @@ import { fileTools } from '../role-doctrine/role-doctrine.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 test('early test failures remain actionable after long passing output', async (t) => {
   const before = 'ok 1 - prior test\n'.repeat(1000);
-  const failures = 'not ok 98 - registered tests\n  ---\n  error: missing from workflow: new.test.mjs\n  ...\n' +
+  const failures = '    not ok 1 - nested child\n      ---\n      error: nested actionable registration\n      ...\n' +
+    'not ok 97 - parent suite\n  ---\n  error: subtestsFailed\n  ...\n' +
+    'not ok 98 - registered tests\n  ---\n  error: missing from workflow: new.test.mjs\n  ...\n' +
     'not ok 738 - test registration\n  ---\n  error: second diagnostic\n  ...\n';
   const tail = `${'ok 999 - passing test\n'.repeat(1000)}# tests 2002\n# fail 2\n`;
   const output = before + failures + tail;
   const summary = commandFailureOutput(output);
   assert.match(summary, /missing from workflow: new\.test\.mjs/);
   assert.match(summary, /second diagnostic/);
+  assert.match(summary, /nested actionable registration/);
   assert.match(summary, /# fail 2/);
   assert.ok(summary.length <= 8000);
   assert.equal(commandFailureOutput('ordinary error'), 'ordinary error');
@@ -29,6 +32,7 @@ test('early test failures remain actionable after long passing output', async (t
   }), (error) => {
     assert.match(error.message, /failed \(1\)/);
     assert.match(error.message, /missing from workflow/);
+    assert.match(error.message, /nested actionable registration/);
     assert.match(error.message, /# fail 2/);
     return true;
   });
