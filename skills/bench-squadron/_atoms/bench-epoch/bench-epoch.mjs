@@ -62,7 +62,7 @@ export function admit(state, packet) {
     return old;
   }
   const issue = { work, epoch: 0, phase: 'queued', candidate: null, votes: [], findings: [],
-    attempts: 0, pr: null, observation: null, maintenance: false };
+    attempts: 0, pr: null, observation: null, maintenance: false, deliveryPending: true };
   state.issues.push(issue);
   const visit = (id, chain = []) => {
     if (chain.includes(id)) throw new Error('dependency cycle');
@@ -85,6 +85,7 @@ export function setCandidate(issue, candidate, context) {
   }
   issue.epoch++;
   issue.candidate = candidate;
+  issue.deliveryPending = true;
   issue.authorContext = context;
   issue.votes = [];
   issue.findings = [];
@@ -140,10 +141,31 @@ export function recordImplementationResult(issue, result) {
   return true;
 }
 
-export function hasQuorum(issue, quorum) {
-  return issue.phase === 'review' && issue.candidate?.validation.every((v) => v.exitCode === 0) &&
+export function currentQuorum(issue, quorum) {
+  return !!issue.candidate?.validation.length && issue.candidate.validation.every((v) => v.exitCode === 0) &&
     new Set(issue.votes.filter((v) => v.basis === reviewedBasis(issue) &&
       v.context !== issue.authorContext).map((v) => v.slot)).size >= quorum;
+}
+
+export function hasQuorum(issue, quorum) {
+  return issue.phase === 'review' && currentQuorum(issue, quorum);
+}
+
+export function publicationIsCurrent(issue) {
+  return !!issue.candidate && issue.publication?.commit === issue.candidate.commit &&
+    issue.publication.basis === reviewedBasis(issue);
+}
+
+export function rememberDelivery(issue) {
+  issue.delivery = { basis: reviewedBasis(issue), commit: issue.candidate.commit,
+    workDigest: digest(issue.work), candidateDigest: digest(issue.candidate) };
+  issue.deliveryPending = false;
+}
+
+export function publishedWorkUnchanged(issue) {
+  return issue.deliveryPending === false && !issue.publication?.pending && !!issue.candidate && !!issue.delivery && !!issue.pr &&
+    issue.delivery?.commit === issue.pr?.headRefOid && issue.candidate.commit === issue.pr?.headRefOid &&
+    issue.delivery.workDigest === digest(issue.work) && issue.delivery.candidateDigest === digest(issue.candidate);
 }
 
 export function dependenciesReady(state, issue) {
@@ -157,6 +179,7 @@ export function reviseRequirements(issue, requirements, expectedHash) {
   if (expectedHash !== digest(issue.work.requirements)) throw new Error('requirements revision is stale');
   issue.work = normalizeWork({ ...issue.work, requirements });
   issue.epoch++; issue.votes = []; issue.phase = 'correction';
+  issue.deliveryPending = true;
   issue.maintenance = false; issue.error = null; issue.blockerEvidence = null;
   issue.findings = ['Operator explicitly rebound the requirements/context; revalidate and obtain fresh affected-candidate reviews.'];
 }

@@ -6,13 +6,17 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { GitHubDelivery, command } from './atomic-proposal.mjs';
-import { normalizeWork } from '../bench-epoch/bench-epoch.mjs';
+import { normalizeWork, reviewedBasis, reviseRequirements, digest } from '../bench-epoch/bench-epoch.mjs';
 import { fileTools } from '../role-doctrine/role-doctrine.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const config = { run: 'run', repository: 'owner/repo', checkout: root, base: 'main', commandMs: 3000 };
-const issue = () => ({ work: { id: 'one', title: 'Title', requirements: 'Requirement', paths: ['src'],
-  validation: [[process.execPath, '-e', 'process.stdout.write("verified")']] },
-candidate: { commit: 'a'.repeat(40), validation: [] }, publication: { id: 'publication-id', basis: 'basis' }, votes: [] });
+const issue = () => {
+  const value = { work: { id: 'one', title: 'Title', requirements: 'Requirement', paths: ['src'],
+    validation: [[process.execPath, '-e', 'process.stdout.write("verified")']] },
+  epoch: 0, candidate: { commit: 'a'.repeat(40), validation: [] }, votes: [] };
+  value.publication = { id: 'publication-id', basis: reviewedBasis(value), commit: value.candidate.commit };
+  return value;
+};
 function directory(t) {
   const dir = path.join(root, '..', '..', '.test-sandbox', `bench-sdk-git-${randomUUID()}`);
   fs.mkdirSync(dir, { recursive: true });
@@ -237,6 +241,16 @@ test('unexpected publication head is refused before any push and bounded diagnos
     if (argv.includes('push')) pushed = true;
     return JSON.stringify([{ number: 7, headRefName: 'bench/run/one', baseRefName: 'main', headRefOid: 'c'.repeat(40),
       state: 'OPEN', body: '<!-- bench-publication:publication-id --><!-- /bench-publication:publication-id -->' }]);
+  });
+  test('matching historical PR identity/head does not match revised requirements', () => {
+    const item = issue();
+    const pr = { headRefOid: item.candidate.commit,
+      body: `Candidate: ${item.candidate.commit}\nBasis: ${item.publication.basis}\n` };
+    const provider = new GitHubDelivery(config, root);
+    assert.equal(provider.publicationMatches(item, pr), true);
+    reviseRequirements(item, 'New approved requirements', digest(item.work.requirements));
+    assert.equal(provider.publicationMatches(item, pr), false);
+    assert.equal(item.deliveryPending, true);
   });
   await assert.rejects(adapter.publish(item), (error) => error.externalHead === 'c'.repeat(40));
   assert.equal(pushed, false);

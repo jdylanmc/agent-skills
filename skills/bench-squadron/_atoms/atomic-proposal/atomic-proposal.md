@@ -24,6 +24,9 @@ than becoming adopted work. Push without
 force; create only if absent; read back number, URL, state and head. An uncertain
 response remains pending until reconciliation. Never replace a closed/merged PR,
 auto-approve, merge or close a tracker.
+Finding the recorded PR does not satisfy revised requirements: publication
+matching also compares the pending basis/commit with the current issue basis.
+An old retired PR cannot silently complete outstanding new work.
 
 Implementation changes are limited to authorized repository-relative path
 prefixes. Validation executes the operator's exact argv commands and binds their

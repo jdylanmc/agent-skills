@@ -33,6 +33,13 @@ message claiming to have read files does not manufacture tool receipts.
 Arbitrary text, partial JSON and failed results
 are not signoff. Corrections return to the single-writer path and then fresh review.
 
+Recognizing a PR is separate from completing current work. Successful delivery
+records the reviewed work/candidate digests; `revise` and every newly accepted
+candidate mark delivery outstanding again. Pending publication can complete
+only when its basis still equals the current requirements/candidate/test basis
+and its current distinct-slot quorum remains valid. Historical PR identity is
+retained even when its evidence has been superseded.
+
 Requirements cannot change under an existing ID. Duplicate identical admissions
 are idempotent; differing packets or dependency cycles are refused. Unknown
 dependencies wait; only observed human merge satisfies them.

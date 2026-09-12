@@ -11,6 +11,7 @@ import { processAlive } from '../fleet-state/fleet-state.mjs';
 import { setupRuntime, resolveRuntime, loadSDK, runtimeDirectory, assertRuntimeEnvironment } from './role-doctrine.runtime.mjs';
 import { ownerReleased, terminateOwned } from '../fleet-state/fleet-state.process.mjs';
 import { normalizeWork } from '../bench-epoch/bench-epoch.mjs';
+import { prepareFileSmoke } from './role-doctrine.smoke.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 function directory(t, cleanup = true) {
   const dir = path.join(root, '..', '..', '.test-sandbox', `bench-sdk-files-${randomUUID()}`);
@@ -367,4 +368,58 @@ test('Windows stale PID ownership never kills an unrelated live process and unce
   const spec = JSON.parse(fs.readFileSync(handle.owner.spec, 'utf8'));
   fs.writeFileSync(handle.owner.receipt, JSON.stringify({ job: spec.job, stage: 'uncertain' }));
   assert.equal(await ownerReleased(handle.owner, true), false);
+});
+
+test('file smoke refuses existing successful evidence and empty directories before writing or launching', (t) => {
+  const parent = directory(t);
+  const existing = path.join(parent, 'prior-smoke');
+  fs.mkdirSync(path.join(existing, 'fixture'), { recursive: true });
+  const sentinels = {
+    'fixture/input.txt': 'original synthetic input',
+    'fixture/output.txt': 'original synthetic output',
+    'result.json': '{"fileRoundtrip":true,"evidence":"original receipt"}',
+    'owner.json': '{"evidence":"original owner"}',
+  };
+  for (const [name, content] of Object.entries(sentinels)) fs.writeFileSync(path.join(existing, name), content);
+  assert.throws(() => prepareFileSmoke(existing), /fresh directory/);
+  const cli = spawnSync(process.execPath, [fileURLToPath(new URL('./role-doctrine.smoke.mjs', import.meta.url)),
+    '--live-files', path.join(parent, 'missing-cache'), existing], { encoding: 'utf8' });
+  assert.notEqual(cli.status, 0);
+  assert.match(cli.stderr, /fresh directory/);
+  assert.doesNotMatch(cli.stderr, /SDK cache/);
+  for (const [name, content] of Object.entries(sentinels)) assert.equal(fs.readFileSync(path.join(existing, name), 'utf8'), content);
+  const empty = path.join(parent, 'empty-existing');
+  fs.mkdirSync(empty);
+  assert.throws(() => prepareFileSmoke(empty), /fresh directory/);
+  assert.deepEqual(fs.readdirSync(empty), []);
+  const file = path.join(parent, 'existing-file');
+  fs.writeFileSync(file, 'preserved');
+  assert.throws(() => prepareFileSmoke(file), /fresh directory/);
+  assert.equal(fs.readFileSync(file, 'utf8'), 'preserved');
+});
+
+test('file smoke refuses valid and dangling supplied symlinks without changing their targets', (t) => {
+  const parent = directory(t), target = path.join(parent, 'target');
+  fs.mkdirSync(target);
+  fs.writeFileSync(path.join(target, 'sentinel'), 'unchanged');
+  const valid = path.join(parent, 'valid-link'), dangling = path.join(parent, 'dangling-link');
+  const missing = path.join(parent, 'missing-target');
+  fs.symlinkSync(target, valid, process.platform === 'win32' ? 'junction' : 'dir');
+  fs.symlinkSync(missing, dangling, process.platform === 'win32' ? 'junction' : 'dir');
+  for (const link of [valid, dangling]) assert.throws(() => prepareFileSmoke(link), /fresh directory/);
+  assert.equal(fs.readFileSync(path.join(target, 'sentinel'), 'utf8'), 'unchanged');
+  assert.deepEqual(fs.readdirSync(target), ['sentinel']);
+  assert.equal(fs.existsSync(missing), false);
+});
+
+test('file smoke claims a genuinely fresh state directory exclusively and prepares only its synthetic input', (t) => {
+  const parent = directory(t), target = path.join(parent, 'fresh-smoke');
+  const result = prepareFileSmoke(target);
+  assert.equal(result.directory, target);
+  assert.match(result.input, /^bench-synthetic-/);
+  assert.equal(fs.readFileSync(path.join(target, 'fixture/input.txt'), 'utf8'), result.input);
+  assert.deepEqual(fs.readdirSync(target), ['fixture']);
+  assert.deepEqual(fs.readdirSync(path.join(target, 'fixture')), ['input.txt']);
+  assert.throws(() => prepareFileSmoke(target), /fresh directory/);
+  assert.equal(fs.readFileSync(path.join(target, 'fixture/input.txt'), 'utf8'), result.input);
 });

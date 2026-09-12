@@ -71,6 +71,8 @@ new source-versioned requirements text. Use `revise` only after affected ownersh
 has drained, with the current requirements hash. It invalidates only that issue's
 reviews and returns it to correction/validation. Never silently swap source text
 under existing signoffs or widen write paths through a context update.
+An existing PR keeps its identity, but old publication evidence or green CI
+cannot complete revised requirements or an unpublished changed candidate.
 
 For example: an operator says “Fix the parser; update the UI after that merges.”
 The invoking agent prepares two packets with the second dependent on the first,

@@ -4,7 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { admit, identifier, reviewedBasis, setCandidate, recordReview, recordImplementationResult, reviseRequirements,
-  hasQuorum, dependenciesReady, digest } from '../../_atoms/bench-epoch/bench-epoch.mjs';
+  hasQuorum, currentQuorum, publicationIsCurrent, publishedWorkUnchanged, rememberDelivery,
+  dependenciesReady, digest } from '../../_atoms/bench-epoch/bench-epoch.mjs';
 import { Store, readJSON, atomicJSON, processAlive } from '../../_atoms/fleet-state/fleet-state.mjs';
 import { GitHubDelivery, command as runCommand } from '../../_atoms/atomic-proposal/atomic-proposal.mjs';
 import { SDKWorkers, loadDoctrine } from '../../_atoms/role-doctrine/role-doctrine.mjs';
@@ -89,6 +90,14 @@ export class BenchController {
       status: 'running', issues: [], slots: Array(this.config.slots).fill(null), generations: 0,
       commands: {}, lastReport: 0, lastPoll: 0 };
     if (this.state.version !== 1 || digest(this.state.config) !== digest(this.config)) throw new Error('persisted run/config mismatch; do not change a running contract');
+    for (const issue of this.state.issues) {
+      if (issue.deliveryPending === undefined) {
+        if (!issue.publication?.pending && publicationIsCurrent(issue) &&
+          currentQuorum(issue, this.config.quorum) && issue.pr?.headRefOid === issue.candidate.commit) rememberDelivery(issue);
+        else issue.deliveryPending = true;
+      }
+      if (issue.phase === 'published' && issue.deliveryPending) issue.phase = 'correction';
+    }
     if (this.state.operation) {
       if (!this.state.operation.pid || !await this.ownershipReleased(this.state.operation.ownership ??
         { kind: 'posix-group', pid: this.state.operation.pid })) {
@@ -126,15 +135,26 @@ export class BenchController {
     for (const issue of this.state.issues.filter((i) => i.publication?.pending && !i.reconciliation?.required && !i.blockerEvidence &&
       !['merged', 'closed', 'cancelled'].includes(i.phase))) {
       const pr = await this.providerOperation('publication reconciliation', issue, () => this.provider.find(issue));
+      const current = publicationIsCurrent(issue) && currentQuorum(issue, this.config.quorum);
       if (pr) {
-        if (pr.state !== 'OPEN' || this.provider.publicationMatches(issue, pr)) this.published(issue, pr);
-        else if ([issue.candidate?.commit, issue.pr?.headRefOid].includes(pr.headRefOid)) {
-          issue.phase = 'review';
-          issue.error = 'Pending publication needs branch/evidence update; retain quorum and reconcile the same PR';
+        if (current && this.provider.publicationMatches(issue, pr)) this.published(issue, pr);
+        else if ([issue.publication.commit, issue.pr?.headRefOid].includes(pr.headRefOid)) {
+          this.rememberPR(issue, pr);
+          if (pr.state !== 'OPEN') this.retiredWithPendingWork(issue, pr);
+          else if (current) {
+            issue.phase = 'review';
+            issue.error = 'Pending publication needs branch/evidence update; retain quorum and reconcile the same PR';
+          } else {
+            issue.publication.pending = false;
+            issue.publication.superseded = true;
+            issue.deliveryPending = true;
+            if (issue.phase === 'published') issue.phase = 'correction';
+            issue.error = 'Existing PR identity recovered; it does not satisfy the current requirements/candidate. Outstanding work and fresh review remain required.';
+          }
         } else {
           this.blockExternalHead(issue, { ...pr, observedAt: new Date(this.clock()).toISOString() });
         }
-      } else issue.phase = 'review';
+      } else if (current) issue.phase = 'review';
     }
     this.prepared = true;
     this.save();
@@ -260,7 +280,7 @@ export class BenchController {
             if (!issue || issue.phase !== 'blocked' || this.state.slots.some((s) => s?.issue === command.issue)) throw new Error('retry requires a blocked unowned issue');
             if (issue.reconciliation?.required) throw new Error('External PR drift requires an explicit operator reconciliation/takeover decision; generic retry cannot accept it. Cancel Bench ownership to handle this PR outside Bench.');
             issue.phase = issue.candidate ? 'correction' : 'queued';
-            if (issue.pr) issue.maintenance = true;
+            issue.maintenance = publishedWorkUnchanged(issue);
             issue.error = null;
           } else if (command.type === 'revise') {
             const issue = this.issue(command.issue);
@@ -284,6 +304,8 @@ export class BenchController {
       this.pulse();
       try { await this.workCycle(); }
       catch (error) { if (!(error instanceof ControlInterrupted)) throw error; }
+      if (['stopped', 'exhausted', 'uncertain'].includes(this.state.status) &&
+        (this.handles.size || this.state.slots.some(Boolean) || this.state.operation)) await this.cancelAll();
       this.emit();
       this.save();
     } finally { this.processing = false; }
@@ -337,8 +359,29 @@ export class BenchController {
   async dispatch(issue, slot, role) {
     if (issue.reconciliation?.required || issue.phase === 'blocked') throw new ControlInterrupted('issue is durably blocked');
     this.guard(issue);
-    if (role === 'implement' && issue.maintenance && !this.checkedMaintenance.has(issue.work.id) &&
-      !await this.assessMaintenance(issue)) { this.save(); return; }
+    if (role === 'implement' && issue.maintenance && !this.checkedMaintenance.has(issue.work.id)) {
+      const previous = structuredClone(issue.observation);
+      const controlEpoch = this.state.controlEpoch, issueEpoch = issue.epoch;
+      try {
+        if (!await this.assessMaintenance(issue)) { this.save(); return; }
+      } catch (error) {
+        issue.observation = previous;
+        if (error.uncertainTermination || this.state.status === 'uncertain' || this.state.operation) {
+          this.state.status = 'uncertain'; this.state.controlError = error.message; this.save();
+          throw error;
+        }
+        if (error instanceof ControlInterrupted || this.state.status !== 'running' ||
+          this.state.controlEpoch !== controlEpoch || issue.epoch !== issueEpoch) {
+          throw new ControlInterrupted('maintenance assessment interrupted; no assignment reserved');
+        }
+        issue.phase = 'blocked';
+        issue.error = `Maintenance evidence read failed: ${error.message}. Retry when current provider evidence is accessible.`;
+        issue.findings = [issue.error];
+        issue.observationError = { at: new Date(this.clock()).toISOString(), operation: 'maintenance assessment', message: error.message };
+        this.save();
+        return;
+      }
+    }
     const selected = this.doctrine(this.config.doctrine[role]);
     const assignment = { context: randomUUID(), slot, issue: issue.work.id, role,
       basis: reviewedBasis(issue), epoch: issue.epoch, model: this.config.models[role],
@@ -389,6 +432,7 @@ export class BenchController {
       if (!issue || ['cancelled', 'merged', 'closed', 'blocked'].includes(issue.phase) || issue.reconciliation?.required ||
         assignment.epoch !== issue.epoch || this.state.status !== 'running') return;
       if (outcome.error || !outcome.idle) {
+        if (assignment.role === 'implement') issue.deliveryPending = true;
         issue.phase = 'blocked'; issue.error = outcome.error || 'no SDK idle observation'; return;
       }
       if (assignment.role === 'review') {
@@ -397,14 +441,15 @@ export class BenchController {
         assignment.filesRead = outcome.reads;
         recordReview(issue, assignment, outcome.result);
       } else {
-        if (!recordImplementationResult(issue, outcome.result)) return;
+        if (!recordImplementationResult(issue, outcome.result)) { issue.deliveryPending = true; return; }
         owner.stage = 'validating'; this.save();
         const candidate = await this.providerOperation('validation', issue, () => this.provider.validate(issue, assignment));
         this.guard(issue);
-        if (issue.maintenance && candidate.commit === issue.pr?.headRefOid) {
+        if (issue.maintenance && publishedWorkUnchanged(issue) && candidate.commit === issue.pr?.headRefOid) {
           const current = await this.providerOperation('maintenance verification', issue, () => this.provider.observe(issue));
           issue.observation = current;
-          if (current.headRefOid !== issue.pr.headRefOid) this.blockExternalHead(issue, current);
+          if (current.state === 'MERGED' || current.state === 'CLOSED') await this.observeRetirement(issue, current);
+          else if (current.headRefOid !== issue.pr.headRefOid) this.blockExternalHead(issue, current);
           else if (current.readiness === 'ready' && !current.failed && !current.stale) {
             issue.phase = 'published'; issue.maintenance = false; issue.error = null;
           } else {
@@ -419,6 +464,7 @@ export class BenchController {
     } catch (error) {
       if (error.externalHead) this.blockExternalHead(issue, { headRefOid: error.externalHead, observedAt: new Date(this.clock()).toISOString() });
       if (!['cancelled', 'merged', 'closed'].includes(issue.phase) && !issue.reconciliation?.required) {
+        if (assignment.role === 'implement') issue.deliveryPending = true;
         issue.phase = assignment.role === 'review' ? error instanceof ControlInterrupted ? 'review' : 'blocked' : 'correction';
         issue.error = error.message;
         issue.findings.push(error.message);
@@ -430,13 +476,46 @@ export class BenchController {
         owner.stage = 'uncertain'; this.state.status = 'uncertain';
       } else this.state.slots[assignment.slot] = null;
       // Paused/stopped deliveries need fresh validation/review on explicit resumption.
-      if (issue?.phase === 'implementing') issue.phase = 'correction';
+      if (issue?.phase === 'implementing') { issue.phase = 'correction'; issue.deliveryPending = true; }
       this.save();
     }
   }
-  published(issue, pr) {
+  rememberPR(issue, pr) {
     issue.pr = Object.fromEntries(['number', 'url', 'state', 'headRefOid', 'headRefName', 'baseRefName']
       .filter((key) => pr[key] !== undefined).map((key) => [key, pr[key]]));
+  }
+  retiredWithPendingWork(issue, pr) {
+    this.rememberPR(issue, { ...issue.pr, ...pr });
+    if (issue.reconciliation?.reason !== 'retired-pr-pending-work') { issue.epoch++; issue.votes = []; }
+    issue.deliveryPending = true;
+    issue.phase = 'blocked'; issue.maintenance = false;
+    issue.reconciliation = { required: true, reason: 'retired-pr-pending-work',
+      observedHead: pr.headRefOid, observedState: pr.state, observedAt: pr.observedAt ?? new Date(this.clock()).toISOString() };
+    issue.error = 'The existing PR retired before the current work was delivered. Operator must decide how to deliver the outstanding requirements/candidate; no replacement PR was created.';
+    issue.findings = [issue.error];
+  }
+  async observeRetirement(issue, observation) {
+    if (publishedWorkUnchanged(issue)) {
+      this.rememberPR(issue, { ...issue.pr, ...observation });
+      issue.phase = observation.state.toLowerCase();
+      issue.epoch++; issue.votes = []; issue.maintenance = false;
+    } else if (publicationIsCurrent(issue) && currentQuorum(issue, this.config.quorum) &&
+      observation.headRefOid === issue.candidate?.commit) {
+      const pr = await this.providerOperation('retired publication reconciliation', issue, () => this.provider.find(issue));
+      if (pr && this.provider.publicationMatches(issue, pr)) this.published(issue, pr);
+      else this.retiredWithPendingWork(issue, observation);
+    } else this.retiredWithPendingWork(issue, observation);
+    for (const owner of this.state.slots.filter((slot) => slot?.issue === issue.work.id)) {
+      const handle = this.handles.get(owner.context);
+      if (handle) Promise.resolve(handle.cancel()).catch((error) => this.controlErrors.push(error.message));
+    }
+  }
+  published(issue, pr) {
+    if (!publicationIsCurrent(issue) || !currentQuorum(issue, this.config.quorum) || pr.headRefOid !== issue.candidate?.commit) {
+      throw new Error('PR identity is not evidence that current requirements/candidate have been delivered');
+    }
+    this.rememberPR(issue, pr);
+    rememberDelivery(issue);
     issue.phase = pr.state === 'MERGED' ? 'merged' : pr.state === 'CLOSED' ? 'closed' : 'published';
     issue.publication.pending = false;
     issue.maintenance = false;
@@ -454,6 +533,7 @@ export class BenchController {
       const pr = await this.providerOperation('publication', issue, () => this.provider.publish(issue));
       this.published(issue, pr);
     } catch (error) {
+      if (error.retiredPR) this.retiredWithPendingWork(issue, error.retiredPR);
       if (error.externalHead) this.blockExternalHead(issue, { headRefOid: error.externalHead, observedAt: new Date(this.clock()).toISOString() });
       if (!['cancelled', 'merged', 'closed'].includes(issue.phase) && !issue.reconciliation?.required) {
         issue.phase = error instanceof ControlInterrupted ? 'review' : 'blocked';
@@ -471,16 +551,14 @@ export class BenchController {
         issue.observation = observation;
         issue.observationError = null;
         if (observation.state === 'MERGED' || observation.state === 'CLOSED') {
-          issue.phase = observation.state.toLowerCase();
-          issue.epoch++; issue.votes = []; issue.maintenance = false;
-          for (const owner of this.state.slots.filter((s) => s?.issue === issue.work.id)) {
-            void this.handles.get(owner.context)?.cancel();
-          }
+          await this.observeRetirement(issue, observation);
         } else if (observation.headRefOid &&
           ![issue.pr.headRefOid ?? issue.candidate?.commit, issue.publication?.pending ? issue.candidate?.commit : null].includes(observation.headRefOid)) {
           this.blockExternalHead(issue, observation);
         } else if ((observation.failed || observation.stale) && issue.phase === 'published' && !issue.maintenance) {
-          if (await this.assessMaintenance(issue, observation)) {
+          if (!publishedWorkUnchanged(issue)) {
+            issue.phase = 'correction'; issue.deliveryPending = true;
+          } else if (await this.assessMaintenance(issue, observation)) {
             issue.maintenance = true; issue.phase = 'correction'; issue.epoch++; issue.votes = [];
             issue.findings = [observation.failed ? 'Shepherd: fix the hosted failure using the attached current-head CI evidence.' : 'Shepherd: integrate the observed stale base without rewriting the PR.'];
           }
@@ -507,10 +585,14 @@ export class BenchController {
     }
   }
   async assessMaintenance(issue, supplied) {
-    const current = supplied ?? await this.providerOperation('maintenance observation', issue, () => this.provider.observe(issue));
+    if (!publishedWorkUnchanged(issue)) {
+      issue.maintenance = false;
+      return true;
+    }
+    const current = structuredClone(supplied ?? await this.providerOperation('maintenance observation', issue, () => this.provider.observe(issue)));
     issue.observation = current;
     if (current.state === 'MERGED' || current.state === 'CLOSED') {
-      issue.phase = current.state.toLowerCase(); issue.epoch++; issue.votes = []; issue.maintenance = false;
+      await this.observeRetirement(issue, current);
       return false;
     }
     if (current.headRefOid !== issue.pr?.headRefOid) { this.blockExternalHead(issue, current); return false; }
@@ -519,6 +601,7 @@ export class BenchController {
       issue.maintenance = false;
       issue.error = current.readiness === 'ready' ? null : 'Hosted readiness is not established; wait for current CI evidence before retrying maintenance.';
       if (issue.error) issue.findings = [issue.error];
+      else { issue.findings = []; issue.observationError = null; }
       return false;
     }
     if (current.failed) {
@@ -535,6 +618,7 @@ export class BenchController {
       }
     }
     this.checkedMaintenance.add(issue.work.id);
+    issue.observationError = null;
     return true;
   }
   async cancelAll() {
@@ -562,6 +646,7 @@ export class BenchController {
         readiness: readiness(i),
         dependencyGate: dependenciesReady(this.state, i), error: i.error ?? null,
         findings: [...i.findings], blockerEvidence: i.blockerEvidence ?? null, reconciliation: i.reconciliation ?? null,
+        deliveryPending: i.deliveryPending, delivery: i.delivery ?? null,
         requirementsHash: digest(i.work.requirements),
         observation: observation(i), observationError: i.observationError ?? null })) };
   }
@@ -601,6 +686,7 @@ async function main(args) {
         readiness: readiness(i),
         observation: observation(i), observationError: i.observationError, error: i.error,
         findings: i.findings, blockerEvidence: i.blockerEvidence, reconciliation: i.reconciliation,
+        deliveryPending: i.deliveryPending, delivery: i.delivery,
         requirementsHash: digest(i.work.requirements) })) ?? [],
       commandReceipts: Object.fromEntries(Object.entries(state?.commands ?? {}).slice(-20)) };
     console.log(args.includes('--json') ? JSON.stringify(snapshot, null, 2) : formatStatus(snapshot));
@@ -645,7 +731,8 @@ async function main(args) {
     if (controller.state.status !== 'stopped') process.exitCode = 1;
   } catch (error) {
     if (controller.state) {
-      controller.state.status = 'stopped'; controller.state.controlEpoch++;
+      if (controller.state.status !== 'uncertain') controller.state.status = 'stopped';
+      controller.state.controlEpoch++;
       await controller.responsive(controller.cancelAll()); controller.emit(true);
     }
     throw error;

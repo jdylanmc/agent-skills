@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { BenchController, formatStatus } from './_molecules/bench-control/bench-control.mjs';
 import { Store, readJSON } from './_atoms/fleet-state/fleet-state.mjs';
-import { admit, digest, reviewedBasis, setCandidate, recordReview } from './_atoms/bench-epoch/bench-epoch.mjs';
+import { admit, digest, reviewedBasis, setCandidate, recordReview, publicationIsCurrent, publishedWorkUnchanged } from './_atoms/bench-epoch/bench-epoch.mjs';
 import { contextSource, prepareWork } from './_atoms/bench-epoch/bench-epoch.intake.mjs';
 import { fileTools } from './_atoms/role-doctrine/role-doctrine.mjs';
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -50,7 +50,7 @@ class Provider {
   async validate() { return { commit: digest(++this.commits).slice(0, 40),
     validation: [{ exitCode: 0, observedAt: '2026-01-01T00:00:00Z', digest: 'test-output' }] }; }
   async find(issue) { return this.prs.get(issue.work.id) ?? null; }
-  publicationMatches(issue, pr) { return pr.headRefOid === issue.candidate.commit; }
+  publicationMatches(issue, pr) { return publicationIsCurrent(issue) && pr.headRefOid === issue.candidate.commit; }
   async publish(issue) {
     this.guard(issue);
     let pr = this.prs.get(issue.work.id);
@@ -696,4 +696,276 @@ test('explicit context rebinding changes only affected requirements/reviews and 
   assert.equal(h.controller.state.commands[active].status, 'rejected');
   assert.throws(() => prepareWork(work('bad'), [{ ...contextSource('fixture:AGENTS.md', 'r1', 'original'), text: 'unverified replacement' }]), /digest mismatch/);
   assert.throws(() => prepareWork({ ...work('bad'), requirements: undefined }), /faithfully supplied/);
+});
+
+async function initialPublication(h) {
+  admit(h.controller.state, work('a'));
+  await h.tick(); await h.cycle(); await h.cycle();
+}
+async function freshThreeSlotReview(h, controller = h.controller) {
+  const step = async () => { await Promise.resolve(); await controller.tick(); };
+  h.workers.completeAll();
+  await step();
+  const reviewers = [...h.workers.pending.values()].filter((value) => value.packet.issue === 'a' && value.packet.role === 'review');
+  assert.equal(reviewers.length, 3);
+  for (const reviewer of reviewers.slice(0, 2)) {
+    h.workers.complete(reviewer.packet.context);
+    await step();
+    assert.notEqual(controller.issue('a').phase, 'published');
+    assert.equal(controller.issue('a').deliveryPending, true);
+  }
+  h.workers.complete(reviewers[2].packet.context);
+  await step();
+  assert.equal(controller.issue('a').phase, 'published');
+  assert.equal(controller.issue('a').deliveryPending, false);
+  assert.equal(new Set(controller.issue('a').votes.map((vote) => vote.slot)).size, 3);
+}
+
+test('lost create acknowledgment followed by revise/restart recognizes the same PR without completing revised work', async (t) => {
+  const h = await setup(t, { slots: 3, quorum: 3 });
+  const publish = h.provider.publish.bind(h.provider);
+  h.provider.publish = async (issue) => { await publish(issue); throw new Error('create acknowledgment lost'); };
+  await initialPublication(h);
+  const item = h.controller.issue('a'), oldCandidate = structuredClone(item.candidate);
+  assert.equal(item.publication.pending, true);
+  assert.equal(item.pr, null);
+  h.store.send({ type: 'revise', issue: 'a', expectedRequirementsHash: digest(item.work.requirements),
+    requirements: 'Revised requirement needs new implementation and verification.' });
+  h.controller.commands();
+  h.store.release();
+  h.provider.publish = publish;
+  const restarted = new BenchController(h.params);
+  await restarted.initialize(true);
+  assert.equal(restarted.issue('a').pr.number, 1);
+  assert.equal(restarted.issue('a').phase, 'correction');
+  assert.equal(restarted.issue('a').deliveryPending, true);
+  assert.deepEqual(restarted.issue('a').candidate, oldCandidate);
+  assert.deepEqual(restarted.issue('a').votes, []);
+  assert.equal(h.provider.creates, 1);
+  await restarted.tick();
+  assert.equal(h.workers.packets.at(-1).role, 'implement');
+  assert.match(h.workers.packets.at(-1).work.requirements, /Revised requirement/);
+  await freshThreeSlotReview(h, restarted);
+  assert.notEqual(restarted.issue('a').candidate.commit, oldCandidate.commit);
+  assert.equal(restarted.issue('a').pr.number, 1);
+  assert.equal(h.provider.creates, 1);
+  assert.equal(h.provider.updates, 1);
+  assert.equal(restarted.issue('a').delivery.workDigest, digest(restarted.issue('a').work));
+});
+
+test('a valid blocker and generic retry cannot use the old green PR to satisfy revised requirements', async (t) => {
+  const h = await setup(t, { slots: 3, quorum: 3 });
+  await initialPublication(h);
+  const item = h.controller.issue('a');
+  h.store.send({ type: 'revise', issue: 'a', expectedRequirementsHash: digest(item.work.requirements),
+    requirements: 'New approved behavior that the old PR does not establish.' });
+  await h.tick();
+  const context = [...h.workers.pending.keys()][0];
+  h.workers.complete(context, { result: { status: 'blocked', evidence: 'Need the agreed target detail.',
+    findings: ['Which behavior variant is intended?'] } });
+  await h.tick();
+  assert.equal(item.phase, 'blocked');
+  h.store.send({ type: 'retry', issue: 'a' });
+  await h.tick();
+  assert.equal(item.phase, 'implementing');
+  assert.equal(item.maintenance, false);
+  assert.equal(item.deliveryPending, true);
+  assert.equal(h.provider.updates, 0);
+  await freshThreeSlotReview(h);
+  assert.equal(item.pr.number, 1);
+  assert.equal(h.provider.creates, 1);
+  assert.equal(h.provider.updates, 1);
+});
+
+test('an unpublished changed candidate cannot be discarded by green maintenance with unchanged requirements', async (t) => {
+  const h = await setup(t, { slots: 3, quorum: 3 });
+  await initialPublication(h);
+  const item = h.controller.issue('a'), requirements = item.work.requirements;
+  const changed = { ...structuredClone(item.candidate), commit: 'c'.repeat(40) };
+  setCandidate(item, changed, 'candidate-author');
+  item.phase = 'blocked';
+  item.error = 'Candidate correction needs another attempt.';
+  h.provider.validate = async () => structuredClone(changed);
+  h.store.send({ type: 'retry', issue: 'a' });
+  await h.tick();
+  assert.equal(item.work.requirements, requirements);
+  assert.equal(item.maintenance, false);
+  assert.equal(item.phase, 'implementing');
+  assert.equal(publishedWorkUnchanged(item), false);
+  await freshThreeSlotReview(h);
+  assert.equal(item.pr.headRefOid, changed.commit);
+  assert.equal(h.provider.creates, 1);
+  assert.equal(h.provider.updates, 1);
+});
+
+test('pending publication of a changed candidate keeps its current quorum while the old PR is green', async (t) => {
+  const h = await setup(t, { slots: 3, quorum: 3 });
+  await initialPublication(h);
+  const item = h.controller.issue('a'), oldHead = item.pr.headRefOid;
+  const changed = { ...structuredClone(item.candidate), commit: 'c'.repeat(40) };
+  setCandidate(item, changed, 'changed-author');
+  const publish = h.provider.publish.bind(h.provider);
+  h.provider.publish = async () => { throw new Error('update interrupted before push'); };
+  await h.tick(); await h.cycle();
+  assert.equal(item.publication.pending, true);
+  assert.equal(item.pr.headRefOid, oldHead);
+  assert.equal(item.votes.length, 3);
+  h.store.release(); h.provider.publish = publish;
+  const restarted = new BenchController(h.params);
+  await restarted.initialize(true);
+  assert.equal(restarted.issue('a').candidate.commit, changed.commit);
+  assert.equal(restarted.issue('a').pr.headRefOid, oldHead);
+  assert.equal(restarted.issue('a').phase, 'review');
+  assert.equal(restarted.issue('a').deliveryPending, true);
+  const generations = h.workers.packets.length;
+  await restarted.tick();
+  assert.equal(restarted.issue('a').pr.number, 1);
+  assert.equal(restarted.issue('a').pr.headRefOid, changed.commit);
+  assert.equal(h.workers.packets.length, generations);
+  assert.equal(h.provider.creates, 1);
+  assert.equal(h.provider.updates, 1);
+});
+
+test('genuinely unchanged maintenance retains its green fastpaths before dispatch and after validation', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1, pollMs: 1 });
+  await initialPublication(h);
+  const item = h.controller.issue('a');
+  item.phase = 'blocked'; item.maintenance = true;
+  h.store.send({ type: 'retry', issue: 'a' });
+  await h.tick();
+  assert.equal(item.phase, 'published');
+  assert.equal(h.workers.packets.length, 2);
+  h.provider.observations.set('a', { ...item.pr, failed: true, stale: false,
+    readiness: 'not-ready', observedAt: new Date(h.params.clock()).toISOString() });
+  h.advance(10); await h.tick();
+  const original = structuredClone(item.candidate);
+  h.provider.validate = async () => structuredClone(original);
+  h.provider.observations.set('a', { ...item.pr, failed: false, stale: false,
+    readiness: 'ready', observedAt: new Date(h.params.clock()).toISOString() });
+  await h.cycle();
+  assert.equal(item.phase, 'published');
+  assert.equal(item.deliveryPending, false);
+  assert.equal(h.workers.packets.length, 3);
+  assert.equal(h.provider.updates, 0);
+});
+
+test('retirement of an old PR retains outstanding revised work instead of merging the new requirement implicitly', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1, pollMs: 1 });
+  await initialPublication(h);
+  const item = h.controller.issue('a');
+  h.store.send({ type: 'revise', issue: 'a', expectedRequirementsHash: digest(item.work.requirements), requirements: 'New pending scope' });
+  h.controller.commands();
+  h.provider.observations.set('a', { ...item.pr, state: 'MERGED', readiness: 'ready', observedAt: new Date(h.params.clock()).toISOString() });
+  h.advance(10); await h.tick();
+  assert.equal(item.phase, 'blocked');
+  assert.equal(item.deliveryPending, true);
+  assert.equal(item.pr.number, 1);
+  assert.equal(item.pr.state, 'MERGED');
+  assert.equal(item.reconciliation.reason, 'retired-pr-pending-work');
+  assert.equal(h.provider.creates, 1);
+});
+
+async function publishedRetryWithUnrelatedOwner(t) {
+  const h = await setup(t, { slots: 2, quorum: 1, pollMs: 10000000 });
+  await initialPublication(h);
+  const item = h.controller.issue('a');
+  item.observation = { ...item.pr, failed: true, readiness: 'not-ready', observedAt: new Date(h.params.clock() - 1000).toISOString() };
+  item.phase = 'blocked'; item.maintenance = true; item.error = 'Prior maintenance assessment failed.';
+  admit(h.controller.state, work('b'));
+  await h.tick();
+  assert.equal(h.workers.active, 1);
+  return h;
+}
+
+test('ordinary observation and diagnostic read rejections block only their issue before reservation and recover on retry', async (t) => {
+  for (const failure of ['observation', 'diagnostics']) {
+    const h = await publishedRetryWithUnrelatedOwner(t);
+    const item = h.controller.issue('a'), previous = structuredClone(item.observation);
+    const generations = h.controller.state.generations, attempts = item.attempts;
+    const observe = h.provider.observe.bind(h.provider);
+    const evidence = h.provider.failureEvidence.bind(h.provider);
+    h.provider.observe = async (issue) => {
+      if (issue.work.id === 'a') {
+        if (failure === 'observation') throw new Error('observation read rejected');
+        return { ...item.pr, failed: true, readiness: 'not-ready', observedAt: new Date(h.params.clock()).toISOString() };
+      }
+      return observe(issue);
+    };
+    h.provider.failureEvidence = async () => { throw new Error('diagnostic read rejected'); };
+    h.advance(50);
+    h.store.send({ type: 'retry', issue: 'a' });
+    await h.tick();
+    assert.equal(h.controller.state.status, 'running');
+    assert.equal(item.phase, 'blocked');
+    assert.deepEqual(item.observation, previous);
+    assert.match(item.error, /read rejected/);
+    assert.equal(item.observationError.at, new Date(h.params.clock()).toISOString());
+    assert.equal(h.controller.state.generations, generations);
+    assert.equal(item.attempts, attempts);
+    assert.equal(h.workers.active, 1);
+    assert.equal(h.controller.state.slots.filter(Boolean)[0].issue, 'b');
+    h.provider.observe = failure === 'observation' ? observe : async () => ({
+      ...item.pr, failed: true, readiness: 'not-ready', observedAt: new Date(h.params.clock()).toISOString(),
+    });
+    h.provider.failureEvidence = evidence;
+    h.store.send({ type: 'retry', issue: 'a' });
+    await h.tick();
+    assert.equal(item.phase, failure === 'observation' ? 'published' : 'implementing');
+    assert.equal(item.observationError, null);
+    assert.equal(item.error, null);
+    assert.equal(h.workers.active, failure === 'observation' ? 1 : 2);
+    assert.equal(h.controller.state.generations, generations + (failure === 'observation' ? 0 : 1));
+  }
+});
+
+test('maintenance read error containment preserves pause, stop, cancel and pause/resume generation fences', async (t) => {
+  for (const failure of ['observation', 'diagnostics']) for (const control of ['pause', 'stop', 'cancel', 'pause-resume']) {
+    const h = await publishedRetryWithUnrelatedOwner(t);
+    const item = h.controller.issue('a'), previous = structuredClone(item.observation);
+    const gate = deferred(), entered = deferred();
+    const reject = async () => { entered.resolve(); await gate.promise; throw new Error('late ordinary read rejection'); };
+    h.provider.observe = failure === 'observation' ? reject : async () => ({
+      ...item.pr, failed: true, readiness: 'not-ready', observedAt: new Date(h.params.clock()).toISOString(),
+    });
+    if (failure === 'diagnostics') h.provider.failureEvidence = reject;
+    const generations = h.controller.state.generations, attempts = item.attempts;
+    h.store.send({ type: 'retry', issue: 'a' });
+    const pending = h.controller.responsive(h.tick());
+    try {
+      await entered.promise;
+      const id = h.store.send({ type: control === 'pause-resume' ? 'pause' : control, issue: 'a' });
+      await eventually(() => h.controller.state.commands[id]?.status === 'accepted');
+      if (control === 'pause-resume') {
+        const resume = h.store.send({ type: 'resume' });
+        await eventually(() => h.controller.state.commands[resume]?.status === 'accepted');
+      }
+    } finally { gate.resolve(); await pending; }
+    assert.equal(item.phase, control === 'cancel' ? 'cancelled' : 'correction');
+    assert.deepEqual(item.observation, previous);
+    assert.equal(item.error, null);
+    assert.equal(item.attempts, attempts);
+    assert.equal(h.controller.state.generations, generations);
+    assert.equal(h.workers.active, control === 'stop' ? 0 : 1);
+    assert.equal(h.controller.state.status, control === 'stop' ? 'stopped' : control === 'pause' ? 'paused' : 'running');
+  }
+});
+
+test('uncertain maintenance process termination remains global uncertainty, not an ordinary issue read failure', async (t) => {
+  const h = await publishedRetryWithUnrelatedOwner(t);
+  const item = h.controller.issue('a'), previous = structuredClone(item.observation);
+  h.provider.observe = async () => {
+    h.controller.state.operation = { pid: 900000001, stage: 'uncertain', command: 'synthetic-owned-read' };
+    throw Object.assign(new Error('owned process release unproven'), { uncertainTermination: true });
+  };
+  const attempts = item.attempts, generations = h.controller.state.generations;
+  h.store.send({ type: 'retry', issue: 'a' });
+  await assert.rejects(h.tick(), /release unproven/);
+  assert.equal(h.controller.state.status, 'uncertain');
+  assert.deepEqual(item.observation, previous);
+  assert.equal(item.phase, 'correction');
+  assert.equal(item.attempts, attempts);
+  assert.equal(h.controller.state.generations, generations);
+  await h.controller.cancelAll();
+  assert.equal(h.controller.state.status, 'uncertain');
+  assert.equal(h.controller.state.operation.stage, 'uncertain');
 });

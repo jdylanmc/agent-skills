@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { digest, authorizedWorkPath } from '../bench-epoch/bench-epoch.mjs';
+import { digest, authorizedWorkPath, publicationIsCurrent } from '../bench-epoch/bench-epoch.mjs';
 import { spawnOwned, ownerReleased, terminateOwned } from '../fleet-state/fleet-state.process.mjs';
 
 export async function command(argv, { cwd, timeoutMs = 120000, env = process.env, onSpawn = () => {}, ownershipDirectory,
@@ -160,13 +160,17 @@ export class GitHubDelivery {
     return matching[0] ?? null;
   }
   publicationMatches(issue, pr) {
-    return pr.headRefOid === issue.candidate?.commit &&
+    return publicationIsCurrent(issue) && pr.headRefOid === issue.candidate?.commit &&
       pr.body?.includes(`Candidate: ${issue.candidate.commit}\nBasis: ${issue.publication.basis}\n`);
   }
   async publish(issue) {
     // The controller persists branch + basis before entering this transaction.
     let pr = await this.find(issue);
-    if (pr && pr.state !== 'OPEN') return pr;
+    if (pr && pr.state !== 'OPEN') {
+      if (!this.publicationMatches(issue, pr)) throw Object.assign(
+        new Error('Existing PR retired without evidence for the current requirements/candidate'), { retiredPR: pr });
+      return pr;
+    }
     if (pr && issue.pr && ![issue.pr.headRefOid, issue.publication?.pending ? issue.candidate.commit : null].includes(pr.headRefOid)) {
       throw Object.assign(new Error('External PR head changed before publication'), { externalHead: pr.headRefOid });
     }

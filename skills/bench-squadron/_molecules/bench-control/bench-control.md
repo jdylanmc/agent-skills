@@ -78,6 +78,19 @@ OS scheduling can delay a service wake; this is not a hard real-time guarantee.
 Default output is human-readable; `start ... --json` and `status ... --json`
 explicitly select machine output. No notification integration is introduced.
 
+Current delivery remains separate from historical PR identity. A requirements
+revision or a new candidate stays outstanding until validation and current
+distinct-slot review complete. A green old PR is a shortcut only for genuine,
+unchanged-work maintenance, never merely because an issue has a PR. Superseded
+publication acknowledgments retain that PR identity without completing new work.
+
+Maintenance observation/diagnostic reads occur before slot reservation. Ordinary
+read errors block only the affected item, retain its previous successful
+observation/time and record a new actionable error timestamp. They consume no
+attempt/slot and do not cancel unrelated workers. Stop/pause/cancel generations
+remain fences; uncertain process ownership still fails globally rather than
+being downgraded to an ordinary read error.
+
 ## Invoking-agent machine interface
 
 These are internal agent operations and optional advanced manual commands.
@@ -104,6 +117,10 @@ process cleanup; no model session/response is created. A live verification reque
 is a separate, explicitly authorized action:
 `npm run smoke -- --live-files CACHE STATE` exercises real scoped synthetic-file
 read/write permission requests; `--live` exposes zero tools and proves less.
+For `--live-files`, STATE must not exist and its canonical parent must already
+exist. Exclusive directory creation precedes fixture writes. Existing directories
+(even empty), files and valid/dangling links are refused without changing prior
+input, output or result evidence and without launching a worker.
 
 The invoking agent writes a config using actual accepted values:
 
