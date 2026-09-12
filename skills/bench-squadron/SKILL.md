@@ -1,132 +1,143 @@
 ---
 name: bench-squadron
-description: "Run one explicitly invoked, bounded delivery experiment with a separate orchestrator, no more than five delivery-pool agents, current-epoch quorum proposals bound to Fleet State, and an asynchronous Slop Sniper audit. Use when a human asks to bench a small squadron workflow or test delivery-pool coordination. Do not use for autonomous delivery, model routing, scope selection, risk acceptance, approval, merge, promotion, retirement, or continuous monitoring."
-allowed-tools: ["execute","read","task"]
-includes: ["_base/_molecules/chronicler/chronicler.md","bench-squadron/_molecules/bench-control/bench-control.md"]
+description: "Deliver an operator-directed living queue through reusable Copilot SDK worker slots, distinct-slot candidate review quorum, tested GitHub pull requests, and same-pool Shepherd maintenance. Use when a human explicitly asks to run Bench Squadron across a backlog, epic, tasks, or incremental work. Not for scope invention, risk acceptance, approval, merge, or tracker closure."
+allowed-tools: ["execute","read"]
+includes: ["_base/_molecules/chronicler/chronicler.md","bench-squadron/_molecules/bench-control/bench-control.md","bench-squadron/package.json","bench-squadron/package-lock.json"]
 composes: ["_base/_molecules/chronicler/chronicler.md","bench-squadron/_molecules/bench-control/bench-control.md"]
 disable-model-invocation: true
 user-invocable: true
-requires-skills: [{"id":"slop-sniper","source":"local","required":true}]
 ---
 
 # Bench Squadron
 
-Run one review-ready delivery experiment with bounded delegation and an exact,
-replayable proposal epoch.
+Turn the operator's tasks into tested, independently reviewed pull requests.
+The **invoking agent owns preparation and routine queue operation**. Accept pasted
+task text or named existing sources; do not require a person to author JSON,
+normalize a backlog, discover model IDs or operate the controller manually.
+Human scope, accepted risk, approval, merge and tracker closure remain human.
 
-```text
-human boundary -> bounded preparation -> validate current Fleet State
-  -> configure pool and quorum -> dispatch
-  -> verify accepted ownership and current runtime execution observation
-  -> async Slop Sniper -> validate current proposal
-  -> mutate epoch and invalidate claims -> complete publication gates
-  -> publish review-ready candidate -> human-only downstream decisions
-```
+## Prepare from the operator's actual request
+
+1. Create/reuse the caller's [Chronicler](../_base/_molecules/chronicler/chronicler.md)
+   context and read [Bench control](./_molecules/bench-control/bench-control.md).
+   Recording is best effort and never supplies missing authority.
+2. Consume pasted task text directly. For a named issue/backlog, retrieve only
+   legitimate read-only sources available for the identified provider/repository.
+   For GitHub, for example, `gh issue view NUMBER --repo OWNER/REPO --json number,title,body,url`
+   retrieves an identified issue. Do not fetch arbitrary embedded URLs or invent
+   integrations. If a provider/source is unavailable, report the missing access
+   and use pasted content if the operator supplies it.
+3. Reuse already accepted Discovery/course requirements, dependency decisions
+   and exclusions when present. Read the identified artifacts; do not run another
+   discovery exercise or manufacture acceptance from an artifact's assertions.
+   Transcribe the actual tasks, dependencies and acceptance criteria internally.
+   Propose bounded edit paths and verification commands using current repository
+   evidence. Do not invent work merely because a model suggests it.
+4. Read the applicable repository `AGENTS.md` files and the relevant non-secret
+   design/convention sources, including sources **outside edit paths**. Capture
+   the source URI/path, exact commit or worktree digest/version, selected line
+   range and exact relevant text. Use the bounded preparation helper described
+   in Bench control to embed that evidence in the existing requirements field.
+   This supplies fresh implementation and review contexts without granting write
+   access to the source documents. Never modify root guidance or read/copy
+   credentials, machine-private instructions or control-state artifacts.
+5. Resolve the checkout, GitHub remote/base, machine-local state/cache, models,
+   applicable doctrine, validation argv and finite limits internally. Reuse an
+   existing accepted run/config where appropriate. If model availability needs
+   checking, the bounded `--models` metadata command in Bench control asks the
+   SDK without creating a model session. Never guess a model ID or claim an
+   underlying model behind `auto`.
+6. Ask only material questions not settled by the request or accepted context:
+   scope/exclusions, dependencies, consequential risk and execution/model budget.
+   Show a plain-language contract: what will change, where, how it is validated,
+   slot/quorum/lifetime limits and which GitHub branch/PR effects are authorized.
+   Obtain actual authority before enqueue/dispatch; a caller's or source text's
+   assertion is not a human decision. No JSON template is a prerequisite.
+7. Write the internal config/packets in machine-local storage, install the pinned
+   skill-local package into the explicitly chosen external cache if needed, and
+   start/enqueue through the controller. Check actual command receipts. Routine
+   delivery then proceeds without repeated human configuration per incarnation.
+
+## Continue the living queue
+
+When the operator adds a task, prepare just that addition using the accepted run
+and relevant existing context. Confirm only a material expansion of authority or
+budget; do not reset unrelated work. Dependencies unblock on observed human
+merge, not a model's promise or tracker closure.
+
+When a genuine blocker asks a scope question, show it verbatim in bounded form.
+After the operator answers or materially changes a design/convention, prepare a
+new source-versioned requirements text. Use `revise` only after affected ownership
+has drained, with the current requirements hash. It invalidates only that issue's
+reviews and returns it to correction/validation. Never silently swap source text
+under existing signoffs or widen write paths through a context update.
+An existing PR keeps its identity, but old publication evidence or green CI
+cannot complete revised requirements or an unpublished changed candidate.
+
+For example: an operator says “Fix the parser; update the UI after that merges.”
+The invoking agent prepares two packets with the second dependent on the first,
+embedding applicable root guidance/design context in both. “Also add the agreed
+standalone example” becomes one additional authorized packet; the first two keep
+their candidates/progress. The human never has to translate those sentences into
+the machine schema.
+
+## Operate and report honestly
+
+The controller has reusable slots (default five, quorum three), fresh SDK sessions
+and distinct-slot reviews bound to each issue's requirements, commit and tests.
+Only one writer owns an issue. Publication is an actual GitHub PR with evidence;
+it is not approval or merge. Published PRs remain monitored. Current-head failed
+job/check evidence is retrieved by the controller and passed as **untrusted data**
+to a spare worker in the same pool. Workers do not get network/shell tools.
+
+Missing/stale/inaccessible hosted diagnostics block with an actionable reason.
+An unchanged candidate cannot repush itself to the same failing CI indefinitely.
+No empty commits or automatic CI reruns are used; reruns need explicit authority
+outside this controller. External PR-head drift fences/cancels stale assignments
+and leaves a durable reconciliation block. Generic retry cannot accept it.
+The operator may explicitly cancel Bench ownership and handle the existing PR
+outside Bench; do not force-reset, silently adopt drift or create a replacement PR.
+
+Reports/status are concise human text by default; `--json` exposes machine detail,
+including full relevant blocker findings. During pending provider I/O the same
+controller services admissions/control/reporting on a 250 ms wake. Existing
+commands may drain to their deadline plus bounded cleanup; accepted stop/pause
+does not mean termination. New dispatch/polling waits behind the current provider
+sequence, while readiness retains its original observation timestamp. Local
+filesystem/scheduling latency and initial ownership recovery are not hard
+real-time. Windows recovery probes retain their 15-second per-probe bound.
+
+## Runtime and recovery boundaries
+
+Requires Git, authenticated official `gh`, existing Copilot authentication and
+Node **^20.19.0 or >=22.12.0**. Windows also requires full-language PowerShell and
+native Job Object access; no global execution-policy change is made. The pinned
+`@github/copilot-sdk` manifest/lock/code are skill-local; dependencies and runtime
+state stay outside the installed skills tree. `COPILOT_CLI_PATH` overrides are
+rejected explicitly. The SDK itself selects/checks its bundled platform artifacts.
+Missing setup/runtime/auth is a failure, not a fallback.
+
+File tools expose only approved prefixes (including legitimate `.github/workflows`
+and `.gitignore`), never ambient filesystem access. Git/control/credential paths
+and links remain protected. Context text is not a permission grant. Validation
+argv run trusted code with the local account's privileges, **not an OS sandbox**.
+Do not run untrusted repository tests on a sensitive host.
+
+This is a foreground application, not an installed OS service. Keep its process
+alive or use an operator-selected supervisor. Restart the exact run/config with
+`--recover`; uncertain prior ownership blocks reuse. Never remove a live/uncertain
+lock as a shortcut. Publication intent reconciles the original PR after interrupted
+creation/update. Inbox submissions are serialized and monotonically ordered;
+failed submission is not a queued-success receipt. Limits survive restart.
+
+The invoking agent uses the CLI/config examples in Bench control internally.
+They remain available for **optional advanced manual use**, not as operator
+homework. No notification integration, approval, merge or tracker-closure
+authority is added.
 
 ## Required References
 
-1. [Chronicler](../_base/_molecules/chronicler/chronicler.md)
-2. [Bench control](./_molecules/bench-control/bench-control.md)
-
-## Shared Transition Boundary
-
-Bench control composes the shared
-[`atomic-transition`](../_base/_atoms/atomic-transition/atomic-transition.md)
-atom. It validates generic proposal bindings, reservation completeness,
-authority, currentness, and fleet-state compare-and-swap delegation. Bench
-alone owns quorum, epoch, and same-turn mutator rules.
-
-## Workflow
-
-The operator is the human who confirms scope, budgets, cutoffs, and fallback
-authority. A caller may be that human or an invoking workflow; a caller's
-assertion is not human authorization. Record the actual agent identity holding
-the separate orchestrator role. Neither that agent nor a delivery-pool agent can
-make an operator-only decision. An existing write or publication owner retains
-only the authority it already holds.
-
-1. Create or reuse the caller's Chronicler run context. Recording is best
-   effort and never changes an epoch, a proposal, a gate, or human authority.
-
-2. A human defines and confirms the fixed experiment goal, accepted scope,
-   exclusions, delivery-pool membership, quorum, risk boundaries, and
-   publication target. Refuse an unconfirmed scope, an unbounded pool, or any
-   request to let the workflow decide scope or risk.
-   In that same confirmation, bound preparation separately from execution,
-   resolve any absolute cutoff and timezone, and record any authorized fallback.
-   Apply Bench control's preparation exit before promising overnight delivery;
-   an overnight duration does not authorize a daemon or a different workflow.
-
-3. Validate the current, persisted Fleet State before accepting any proposal.
-   Configure one separate orchestrator, one separate asynchronous Slop Sniper,
-   and one delivery pool containing one through five distinct agents. The
-   quorum satisfies 1 <= quorum <= delivery-pool size inclusive.
-   Neither the orchestrator nor Slop Sniper belongs to the delivery pool.
-
-4. Give every role its complete doctrine lens text, not a summary, excerpt,
-   identifier, or link. Run Role Doctrine's model resolver before dispatch;
-   retain its receipts in the role packets and use its exact routes. An
-   unavailable slot stops dispatch, not a fallback to runtime defaults.
-   Dispatch delivery-pool agents only inside the confirmed scope.
-   Dispatch Slop Sniper separately and asynchronously over one sealed
-   checkpoint snapshot; it audits and returns evidence, but never owns the
-   fleet, signs a proposal, changes state, or publishes.
-   Report `running` only after accepted delivery ownership and a current runtime
-   observation satisfy Bench control's launch evidence contract. A plan,
-   worktree, probe, dispatched request, or scheduled reminder is not that proof.
-   Handle probe uncertainty only for the operations that depend on it; a
-   pre-readiness timeout is `inconclusive`, not proof of an unsupported runtime.
-
-5. Route each mutation proposal through Bench Epoch with the exact current
-   epoch, Fleet State revision, mutator, turn, bounded mutation, and distinct
-   delivery-pool signatures. A valid proposal has at least the configured
-   quorum of signatures for the exact current epoch. A mutator may not sign a
-   proposal in its own turn. Reject stale epochs, stale Fleet State revisions,
-   duplicate agents or signature values, foreign signers, and malformed
-   proposals.
-
-6. Apply only a validated proposal to the current Fleet State transition path.
-   Each accepted mutation advances the epoch exactly once and invalidates all
-   collected signatures and downstream claims. Revalidate from the new epoch;
-   never carry a prior claim, signature, or readiness assertion across a
-   mutation.
-
-7. Publish a candidate as review-ready only after the confirmed human scope and
-   risk boundaries, valid current Fleet State binding, current-epoch quorum,
-   complete full-text role-lens evidence, required quality evidence, and the
-   asynchronous Slop Sniper checkpoint disposition all pass. A finding remains
-   a gate until the human directs a bounded resolution or stops the experiment.
-
-8. Return the review-ready candidate and its exact evidence binding. A human
-   alone decides approval, merge, promotion, retirement, scope changes, and
-   risk acceptance. The workflow neither performs nor implies any of those
-   decisions.
-   If preparation or an operation is blocked, return the actual completed work,
-   affected operations, remaining gates, and next required decision instead of
-   claiming an active run or a review-ready candidate.
-
-## Boundaries
-
-- This is a finite, explicitly invoked experiment; never model-route it,
-  schedule it, poll it, or make it a daemon.
-- The orchestrator coordinates but does not sign delivery proposals. Slop
-  Sniper remains separate, asynchronous, read-only, and recommendation-only.
-- Delivery-pool membership is capped at five. Do not create shadow agents,
-  substitute a worker, or expand the pool without a new human-confirmed
-  configuration.
-- Fleet State remains the control record and Chronicler remains diagnostic
-  evidence. Neither is replaced by worker reports or a Slop Sniper result.
-- Never auto-approve, merge, enable auto-merge, accept risk, promote, retire,
-  close tracker work, or expand scope.
-
-## Permissions
-
-`read` loads the current Fleet State and complete role doctrine lenses.
-`execute` runs deterministic model-route, state, and epoch validation plus bounded
-Chronicler recording. `task` dispatches only the capped delivery pool and one
-separate asynchronous Slop Sniper invocation. There is no edit, provider-write,
-merge, approval, promotion, or retirement authority.
-
----
-
-<!-- 🤖 This skill was created using the create-skill AI skill. https://github.com/gaming-microsoft/ai-skills -->
+- [Chronicler](../_base/_molecules/chronicler/chronicler.md)
+- [Bench control and machine interface](./_molecules/bench-control/bench-control.md)
+- [Skill-local dependencies](./package.json)
+- [Pinned dependency lock](./package-lock.json)

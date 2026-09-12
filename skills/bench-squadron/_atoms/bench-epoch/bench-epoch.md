@@ -1,9 +1,9 @@
 ---
 name: bench-epoch
-description: Deterministically validate capped delivery-pool quorum proposals and advance the Bench Squadron epoch while invalidating obsolete signatures and claims.
+description: Bind distinct-slot fresh-context signoffs to one issue's requirements, candidate commit and successful validation evidence.
 level: atom
 allowed-tools: ["execute"]
-includes: ["bench-squadron/_atoms/bench-epoch/bench-epoch.mjs"]
+includes: ["bench-squadron/_atoms/bench-epoch/bench-epoch.mjs","bench-squadron/_atoms/bench-epoch/bench-epoch.intake.mjs"]
 composes: []
 used-by: ["bench-squadron/_molecules/bench-control/bench-control.md"]
 ---
@@ -12,31 +12,50 @@ used-by: ["bench-squadron/_molecules/bench-control/bench-control.md"]
 
 ## Required Files
 
-1. [Bench epoch helper](./bench-epoch.mjs)
+[Issue and review rules](./bench-epoch.mjs) normalize authorized work, gate
+dependencies and count current-candidate votes. The reviewed basis contains the
+complete work packet, issue epoch, commit and validation evidence. It is not a
+global fleet signature or mutation quota.
 
-Create the epoch record from one to five distinct delivery-pool agents, an
-inclusive quorum, a separate orchestrator, and a separate Slop Sniper. A
-proposal binds one Fleet State revision, one exact current epoch, one mutator,
-one turn, one bounded mutation, and distinct delivery-pool signatures.
+[Invoking-agent preparation](./bench-epoch.intake.mjs) combines the agent's
+faithful task transcription with bounded, source-identified/versioned context
+already retrieved through legitimate read-only sources. It verifies source-text
+digests, not human authority or remote provenance, and performs no fetching or
+enqueue itself. Context becomes part of the existing requirements/basis without
+granting write access to its source files.
 
-Before collecting receipts, finalize the proposal's `binding` (`run`,
-`candidate`, `lease`, `fence`) and compute `benchProposalDigest(proposal)`.
-This canonical SHA-256 digest includes those bindings, proposal ID, epoch,
-Fleet State revision, mutator, turn, and mutation, but excludes signatures.
-Each receipt must carry that exact `proposalDigest` alongside its agent, epoch,
-turn, and evidence value. Any body change requires new receipts. These are
-runtime-attributed receipts, not cryptographic authentication of an agent.
-Accepted history retains the immutable body and full signer receipts and
-revalidates quorum on reload; older digest-only history cannot prove quorum
-and is rejected rather than upgraded with fabricated signatures.
+Candidate changes discard only that issue's votes. Distinct slot IDs count once
+per basis. Fresh incarnation reuse cannot multiply votes, and the actual author
+context cannot review its own output. A fresh context in the authoring slot is
+eligible. A review must return the exact basis, explicit verdict, substantive
+evidence, controller-observed file-read receipts and consistent findings. A
+message claiming to have read files does not manufacture tool receipts.
+Arbitrary text, partial JSON and failed results
+are not signoff. Corrections return to the single-writer path and then fresh review.
 
-When a transition reserves a review candidate, persist each reservation's
-lease, candidate, agent, fence, and expiry in the Bench epoch state. This is
-the sole lease authority: callers may select a persisted lease but cannot
-invent, extend, or replace its binding.
+Recognizing a PR is separate from completing current work. Successful delivery
+records the reviewed work/candidate digests; `revise` and every newly accepted
+candidate mark delivery outstanding again. Pending publication can complete
+only when its basis still equals the current requirements/candidate/test basis
+and its current distinct-slot quorum remains valid. Historical PR identity is
+retained even when its evidence has been superseded.
 
-Validate the proposal against the supplied current Fleet State and manifest
-before accepting it. A mutator may not also sign during the same turn. Accepting
-a proposal advances the epoch exactly once and clears all signatures and
-downstream claims, so every dependent assertion must be rebuilt against the
-new state.
+Requirements cannot change under an existing ID. Duplicate identical admissions
+are idempotent; differing packets or dependency cycles are refused. Unknown
+dependencies wait; only observed human merge satisfies them.
+
+Path admission and file tools share one path policy. Explicit legitimate
+dotfiles/directories are supported; authorizing a child does not authorize its
+parent or siblings. Protected components include Git metadata, Bench/Harness
+control state, vendored dependencies and known credential stores. Environment
+files (`.env` family), credential configuration such as `.npmrc`/`.netrc`,
+private-key names and dot-prefixed secret/credential stores remain reserved even
+under an authorized parent. Ordinary source such as `credentials.ts` or a
+workflow named `secrets.yml` is not classified as a credential store by a word
+in its name.
+
+Paths use portable repository-relative `/` spelling: no `.`/`..` components,
+absolute/drive/alternate-stream paths, Windows device names, empty components
+or trailing-dot/space aliases. This is path protection, not a general secret
+content detector; operators must never authorize actual secret-bearing content
+under an otherwise ordinary filename.

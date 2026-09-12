@@ -1,9 +1,9 @@
 ---
 name: role-doctrine
-description: Require complete role doctrine lenses and an explicit current-runtime model assignment for the Bench Squadron orchestrator, delivery pool, and Slop Sniper before an experiment proceeds.
+description: Dispatch fresh supported Copilot SDK sessions with exact models, full verified doctrine sources and role-scoped custom file tools.
 level: atom
 allowed-tools: ["read","execute"]
-includes: ["bench-squadron/_atoms/role-doctrine/role-doctrine.mjs"]
+includes: ["bench-squadron/_atoms/role-doctrine/role-doctrine.mjs","bench-squadron/_atoms/role-doctrine/role-doctrine.worker.mjs","bench-squadron/_atoms/role-doctrine/role-doctrine.smoke.mjs","bench-squadron/_atoms/role-doctrine/role-doctrine.runtime.mjs"]
 composes: []
 used-by: ["bench-squadron/_molecules/bench-control/bench-control.md"]
 ---
@@ -12,67 +12,72 @@ used-by: ["bench-squadron/_molecules/bench-control/bench-control.md"]
 
 ## Required Files
 
-1. [Bench policy adapter over shared model routing](./role-doctrine.mjs)
+- [Dispatch and file-tool boundary](./role-doctrine.mjs)
+- [SDK session worker](./role-doctrine.worker.mjs)
+- [Explicit import/live smoke](./role-doctrine.smoke.mjs)
+- [Pinned external dependency setup and resolution](./role-doctrine.runtime.mjs)
 
-Provide the full text of the applicable doctrine lens to each role:
+The invoking agent resolves applicable doctrine and advertised model IDs under
+the accepted operator policy, asking only material suitability/budget questions.
+Each dispatch reads complete doctrine source text, verifies its
+canonical manifest SHA-256 digest, includes the full text in the new session and
+records IDs/digests separately from model, role, context and slot identity.
+Unknown or unavailable models fail explicitly; no implicit fallback or automatic
+generation policy substitutes for operator selection.
 
-| Role | Required full-text lens | Authority |
-| --- | --- | --- |
-| Orchestrator | Coordination, state-binding, and human-boundary doctrine | Coordinates only; does not sign delivery proposals. |
-| Delivery-pool agent | Confirmed-scope delivery and evidence doctrine | May provide one proposal signature; does not decide human boundaries. |
-| Slop Sniper | Its full audit doctrine and sealed checkpoint | Asynchronous, read-only audit; never signs, mutates, or publishes. |
+The supported `@github/copilot-sdk` client uses stdio and empty mode with an
+explicit per-session base directory. The checked-in skill-local package/lock
+are installed only by the explicit setup command into a machine-local cache
+outside the skills tree. Startup verifies the source/cached manifest and lock
+digests, SDK version and resolved package location; missing/stale setup fails
+actionably. Package exports resolve from that cache with `createRequire.resolve`
+and dynamic import, never `NODE_PATH` or a source-tree dependency fallback.
+Nonempty `COPILOT_CLI_PATH` overrides are rejected before loading/starting a
+runtime. The SDK's own `start` checks the selected host platform bundle; startup
+errors remain explicit and no custom runtime resolver/fallback is substituted.
+Every
+assignment calls `createSession`, never resume or model-switch. Built-in and
+MCP tools, discovered configuration and nested agents are disabled. An explicit
+permission handler issues `approve-once` only for exact registered role-allowed
+`custom-tool` requests with valid, scoped arguments. It never uses blanket
+approval, persistent approval or `skipPermission` to bypass policy. Managed
+human-approval requests, unknown denial metadata and ambient/nested/network/shell
+requests are rejected; runtime managed denials remain authoritative. Custom tools read only
+authorized source paths; implementation additionally writes/deletes those files.
+Legitimate dot paths such as `.github/workflows/` and `.gitignore` are available
+only under the operator's explicit prefixes. Traversal, Git/control-state and
+known credential locations remain denied, including beneath an otherwise
+authorized directory. Native canonical paths are checked; symlinks (including
+dangling links/junctions) and hard-linked files are denied. Directory listings
+apply the same boundary rather than hide every dot entry. Review tools cannot
+edit, run commands or access remote providers.
 
-An identifier, title, digest, excerpt, summary, or hyperlink is not a
-full-text lens. Missing or partial doctrine is a publication gate failure.
-Doctrine informs evidence evaluation; it cannot grant scope, risk, approval,
-merge, promotion, or retirement authority.
+Existing modules support bounded literal search and line-range reads with
+explicit pagination. Implementation can replace one exact occurrence against
+the latest full-file hash, preserving every other byte. Stale or ambiguous
+replacement requests fail without writing. Reviewers receive only the reading
+tools; these operations do not widen the authorized file prefixes.
 
-## Model Assignment
+The worker sends `{prompt: ...}` MessageOptions and observes actual `session.idle`
+independently of returned JSON, calls
+SDK abort/stop, and exits. Its parent retains the slot until the entire recorded
+process tree is released: a POSIX process group on macOS/Linux, or a native
+Windows Job Object. Windows workers exchange bounded assignment/result messages
+over redirected pipes; they have the same slot/context owner, not another pool.
+Cancellation requests and timeouts alone never release capacity. POSIX uses
+bounded TERM/KILL attempts; Windows first requests SDK cleanup, then terminates
+only the owned job and checks kernel process accounting plus supervisor exit.
+Uncertain release retains ownership and fails the run closed. On controller
+disconnect the worker attempts cleanup, while restart independently checks the
+persisted platform owner. No session raw trace is copied into committed files.
 
-Before dispatch, inspect the exact model IDs the current runtime advertises.
-The human confirms generation eligibility and role suitability; the resolver
-cannot establish either. This experiment's existing policy is GPT-6 and GPT-5.6.
-Its four eligible IDs and role defaults now live in `role-doctrine.mjs`, not a
-second selection table here. If those are no longer the latest two major
-generations that the operator has confirmed, stop for a policy update rather
-than infer new IDs or comparable version numbers across providers.
-
-Run the existing role atom's support script:
-
-```text
-node <role-doctrine>/role-doctrine.mjs --stdin
-```
-
-Supply one JSON object:
-
-| Field | Meaning |
-| --- | --- |
-| `deliveryPoolSize` | The confirmed pool size, 1 through 5. These are model slots, not agent identities or reservations. |
-| `runtimeAvailableModels` | Required array of exact advertised IDs. An empty array means none are available, not a runtime default. |
-| `roleOverrides` | Optional human-confirmed route changes keyed by `orchestrator`, `delivery-1` through the configured pool size, or `slop-sniper`. Only `model`, `fallbackModels`, `reasoningEffort`, and `contextTier` are accepted. |
-
-Fallback lists are empty by default. Supply an ordered list only after the
-operator confirms those eligible models suit that role. Never silently use a
-mini, flash, older-generation, runtime-default, or otherwise unproven model.
-Use the ordinary context tier by default; increase it only when the bounded
-packet and complete lenses do not fit, recording the reason for that role.
-Do not truncate, summarize, or omit a lens, apply blanket `long_context`, or
-weaken roles to save cost. Preserve the existing pool cap, quorum, and bounded
-task packets.
-
-The adapter calls shared `resolveEligibleModelRoute` over `resolveInlineModelRoute`
-for each slot and `summarizeModelDiversity` for the delivery pool. It does not
-duplicate eligibility checks, fallback selection, or family classification.
-Keep the returned `assignments` and shared
-`receipt` fields in the role packets; pass each exact `route` to the existing
-runtime dispatch. The repeated fifth-seat model remains a separate slot, not a
-claim of another independent family.
-
-Exit `0` returns `status: resolved`, the eligible and observed model inventories,
-assignments, and delivery diversity. This proves route resolution only, not
-doctrine completeness, human approval, reservations, launch, or running state.
-Exit `1` with `status: unavailable` retains every receipt and names
-`unavailableRoles`; stop before dispatch and return the observed IDs and the
-exact human choice required. Invalid input exits `1` with a JSON error on
-standard error. Do not hand-write replacement receipts or bypass an unavailable
-slot by letting the runtime choose a default.
+The installed version's types and lifecycle implementation are the API authority.
+Deterministic worker doubles prove controller policy, not live SDK capability.
+The separately authorized smoke distinguishes import success, authentication,
+advertised-model selection, idle observation and cleanup errors. It selects
+only from the actual SDK model listing and uses a 60-second parent deadline plus
+bounded cleanup. `--live` sends one zero-tool request; `--live-files` exercises
+real read/write permission callbacks on a fresh synthetic fixture and verifies
+file contents/hash plus host read receipts. Neither publishes work or changes
+authentication on failure. `--models` performs metadata inspection without
+creating a model session/response.

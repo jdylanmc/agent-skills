@@ -1,0 +1,14 @@
+{
+  "name": "bench-squadron-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "^20.19.0 || >=22.12.0" },
+  "dependencies": { "@github/copilot-sdk": "1.0.13" },
+  "scripts": {
+    "test": "node --test bench-squadron.conformance.test.mjs _atoms/*/*.test.mjs",
+    "bench": "node _molecules/bench-control/bench-control.mjs",
+    "setup": "node _atoms/role-doctrine/role-doctrine.runtime.mjs setup",
+    "smoke": "node _atoms/role-doctrine/role-doctrine.smoke.mjs"
+  }
+}
