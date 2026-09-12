@@ -1,353 +1,188 @@
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import test from 'node:test';
+import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-
-import {
-  applyBenchAtomicFleetStateTransition,
-  createBenchAtomicCurrent,
-  createBenchAtomicTransition,
-} from './atomic-proposal.mjs';
-import { applyProposalToFleetState, createBenchEpoch, benchProposalDigest } from '../bench-epoch/bench-epoch.mjs';
-import { evaluateTransitionCurrentness, validateStrategyTransitionProposal } from '../../../_base/_atoms/atomic-transition/atomic-transition.mjs';
-import {
-  createFleetState,
-  fleetStatePath,
-  loadFleetState,
-  persistFleetState,
-} from '../../../ship-with-squadron/_atoms/fleet-state/fleet-state.mjs';
-import {
-  BASELINE_POLICY,
-  normalizeFleetManifest,
-} from '../../../ship-with-squadron/_atoms/fleet-manifest/fleet-manifest.mjs';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
-
-function sourceReceipt(issue, revision) {
-  return {
-    invocation: { id: `read-${issue}`, operation: 'read-issue' },
-    provider: 'github',
-    repository: 'owner/repo',
-    issue,
-    revision,
-    issueStatus: 'pending',
-    status: 'observed',
-    terminal: true,
-    complete: true,
-    observedAt: '2026-09-03T00:00:00Z',
-  };
+import { GitHubDelivery, command } from './atomic-proposal.mjs';
+import { normalizeWork } from '../bench-epoch/bench-epoch.mjs';
+import { fileTools } from '../role-doctrine/role-doctrine.mjs';
+const root = fileURLToPath(new URL('../../', import.meta.url));
+const config = { run: 'run', repository: 'owner/repo', checkout: root, base: 'main', commandMs: 3000 };
+const issue = () => ({ work: { id: 'one', title: 'Title', requirements: 'Requirement', paths: ['src'],
+  validation: [[process.execPath, '-e', 'process.stdout.write("verified")']] },
+candidate: { commit: 'a'.repeat(40), validation: [] }, publication: { id: 'publication-id', basis: 'basis' }, votes: [] });
+function directory(t) {
+  const dir = path.join(root, '..', '..', '.test-sandbox', `bench-sdk-git-${randomUUID()}`);
+  fs.mkdirSync(dir, { recursive: true });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
-
-function manifest(repositoryRoot) {
-  return normalizeFleetManifest({
-    confirmation: 'confirmed',
-    goal: 'bench atomic transition',
-    acceptedScope: ['bench only'],
-    issues: [{
-      identity: '1',
-      sourceRevision: 'r1',
-      sourceReceipt: sourceReceipt('1', 'r1'),
-      acceptanceCriteria: [{ id: '1-C1', description: 'criterion' }],
-      scope: ['bench'],
-      allowedPaths: ['src/bench/**'],
-    }],
-    dependencies: [],
-    exclusions: [],
-    concurrency: 1,
-    budget: { cost: 1, timeMinutes: 1, retries: 1 },
-    repository: { id: 'owner/repo', root: repositoryRoot, baseBranch: 'main' },
-    provider: {
-      name: 'github',
-      allowedOperations: [
-        'read-issue',
-        'publish-change-request',
-        'observe-merge',
-        'observe-change-request-revision',
-      ],
-    },
-    validationPolicy: [...BASELINE_POLICY],
-    stopConditions: ['cancelled'],
-    humanBoundaries: ['human merge only'],
-    humanDecisions: [],
-    shepherdIntent: 'no',
+test('real argv publication creates one PR, validates readback, and reconciles acknowledgment loss', async () => {
+  const calls = [];
+  let pr = null, loseAcknowledgment = true;
+  const adapter = new GitHubDelivery(config, root, async (argv) => {
+    calls.push(argv);
+    if (argv[0] === 'git') {
+      if (argv.includes('rev-parse')) return 'a'.repeat(40);
+      return '';
+    }
+    if (argv.includes('list')) return JSON.stringify(pr ? [pr] : []);
+    if (argv.includes('create')) {
+      pr = { number: 7, url: 'https://github.com/owner/repo/pull/7', state: 'OPEN',
+        headRefName: 'bench/run/one', baseRefName: 'main', headRefOid: 'a'.repeat(40),
+        body: argv[argv.indexOf('--body') + 1] };
+      if (loseAcknowledgment) { loseAcknowledgment = false; throw new Error('connection lost after create'); }
+    }
+    if (argv.includes('edit')) pr.body = argv[argv.indexOf('--body') + 1];
+    return '';
   });
-}
-
-function benchState(overrides = {}) {
-  return createBenchEpoch({
-    deliveryPool: ['delivery-1', 'delivery-2'],
-    quorum: 2,
-    orchestrator: 'orchestrator',
-    slopSniper: 'slop-sniper',
-    reservation: {
-      leases: [{
-        lease: 'bench-lease',
-        candidate: 'candidate-1',
-        agent: 'orchestrator',
-        fence: 1,
-        expiry: '2099-01-01T00:00:00Z',
-      }],
-    },
-    ...overrides,
+  test('preflight uses official gh repo view positional identity, not unsupported --repo', async () => {
+    let observed;
+    const adapter = new GitHubDelivery(config, root, async (argv) => {
+      if (argv.includes('--show-toplevel')) return root;
+      if (argv.includes('get-url')) return 'git@github.com:owner/repo.git';
+      observed = argv;
+      return JSON.stringify({ nameWithOwner: 'owner/repo' });
+    });
+    await adapter.preflight();
+    assert.deepEqual(observed, ['gh', 'repo', 'view', 'owner/repo', '--json', 'nameWithOwner']);
   });
-}
-
-function proposal(overrides = {}) {
-  const value = {
-    id: 'proposal-1',
-    epoch: 0,
-    fleetStateRevision: 0,
-    binding: { run: 'bench-run', ...atomicBinding() },
-    mutatorId: 'orchestrator',
-    turnId: 'orchestrator-turn',
-    mutation: { action: 'publish-review-candidate' },
-    signatures: [
-      { agentId: 'delivery-1', epoch: 0, turnId: 'delivery-1-turn', value: 'signature-1' },
-      { agentId: 'delivery-2', epoch: 0, turnId: 'delivery-2-turn', value: 'signature-2' },
-    ],
-    ...overrides,
-  };
-  value.signatures = value.signatures.map((signature) => ({
-    ...signature, proposalDigest: benchProposalDigest(value),
-  }));
-  return value;
-}
-
-function atomicBinding() {
-  return { candidate: 'candidate-1', lease: 'bench-lease', fence: 1 };
-}
-
-function withBenchStrategyState(fleetState, state = benchState()) {
-  return {
-    ...fleetState,
-    strategyState: {
-      namespace: 'bench-squadron/v1',
-      value: state,
-    },
-  };
-}
-
-function memoryFixture() {
-  const repository = path.join(ROOT, '.test-sandbox', 'bench-atomic-memory');
-  const currentManifest = manifest(repository);
-  const currentBenchState = benchState();
-  return {
-    manifest: currentManifest,
-    fleetState: withBenchStrategyState(
-      createFleetState(currentManifest, 'bench-run'),
-      currentBenchState,
-    ),
-    benchState: currentBenchState,
-  };
-}
-
-test('adapts a validated current Bench proposal to a valid shared Atomic Transition', () => {
-  const fixture = memoryFixture();
-  const adapted = createBenchAtomicTransition({
-    ...fixture,
-    proposal: proposal(),
-    binding: atomicBinding(),
-  });
-
-  const validated = validateStrategyTransitionProposal(adapted.proposal);
-  assert.equal(validated.valid, true);
-  assert.equal(adapted.proposal.strategy, 'bench-squadron/v1');
-  assert.equal(adapted.proposal.binding.expectedStateRevision, fixture.fleetState.revision);
-  assert.equal(adapted.proposal.binding.run, fixture.fleetState.runId);
-  assert.deepEqual(adapted.current.leases, [{
-    lease: 'bench-lease',
-    candidate: 'candidate-1',
-    agent: 'orchestrator',
-    fence: 1,
-  }]);
-  assert.deepEqual(evaluateTransitionCurrentness(adapted.proposal, adapted.current), {
-    current: true,
-    defects: [],
-  });
+  const item = issue();
+  await assert.rejects(adapter.publish(item), /connection lost/);
+  assert.equal((await adapter.find(item)).number, 7);
+  pr.body = `Human note\n${pr.body}\nHuman footer`;
+  assert.equal((await adapter.publish(item)).number, 7);
+  assert.ok(pr.body.startsWith('Human note\n') && pr.body.endsWith('\nHuman footer'));
+  assert.equal(calls.filter((c) => c[0] === 'gh' && c.includes('create')).length, 1);
+  const create = calls.find((c) => c.includes('create'));
+  assert.deepEqual(create.slice(0, 7), ['gh', 'pr', 'create', '--head', 'bench/run/one', '--base', 'main']);
+  assert.deepEqual(create.slice(-2), ['--repo', 'owner/repo']);
+  assert.ok(calls.every((c) => !c.some((s) => /--force|--merge|--approve/.test(s))));
+  pr.state = 'CLOSED';
+  const count = calls.filter((c) => c.includes('push')).length;
+  assert.equal((await adapter.publish(item)).state, 'CLOSED');
+  assert.equal(calls.filter((c) => c.includes('push')).length, count);
+  pr.body = 'An unrelated pull request';
+  await assert.rejects(adapter.find(item), /lacks this run publication identity/);
 });
-
-test('refuses stale Bench state and stale shared currentness projections', () => {
-  const fixture = memoryFixture();
-  const adapted = createBenchAtomicTransition({
-    ...fixture,
-    proposal: proposal(),
-    binding: atomicBinding(),
-  });
-  const advancedBench = applyProposalToFleetState(
-    fixture.benchState,
-    fixture.fleetState,
-    fixture.manifest,
-    proposal(),
-  ).nextBenchEpoch;
-  const staleBenchCurrent = createBenchAtomicCurrent({
-    ...fixture,
-    fleetState: withBenchStrategyState(fixture.fleetState, advancedBench),
-    proposal: adapted.proposal,
-  });
-  const staleFleetCurrent = {
-    ...adapted.current,
-    stateRevision: adapted.current.stateRevision + 1,
-    state: {
-      ...adapted.current.state,
-      value: {
-        ...adapted.current.state.value,
-        fleetStateRevision: adapted.current.state.value.fleetStateRevision + 1,
-      },
-    },
+test('provider readback mismatch and stop guard prevent false success/new publication', async () => {
+  const item = issue();
+  const adapter = new GitHubDelivery(config, root, async (argv) =>
+    argv.includes('list') ? '[]' : argv.includes('rev-parse') ? 'b'.repeat(40) : '');
+  await assert.rejects(adapter.publish(item), /candidate changed/);
+  let mutations = 0;
+  adapter.run = async (argv) => {
+    if (argv.includes('push') || argv.includes('create')) mutations++;
+    return argv.includes('list') ? '[]' : argv.includes('rev-parse') ? 'a'.repeat(40) : '';
   };
-
-  assert.equal(evaluateTransitionCurrentness(adapted.proposal, staleBenchCurrent).current, false);
-  assert.equal(evaluateTransitionCurrentness(adapted.proposal, staleFleetCurrent).current, false);
-  assert.throws(() => createBenchAtomicTransition({
-    ...fixture,
-    proposal: proposal({ fleetStateRevision: fixture.fleetState.revision + 1 }),
-    binding: atomicBinding(),
-  }), /does not match current Fleet State/);
+  adapter.guard = () => { throw new Error('stopped'); };
+  await assert.rejects(adapter.publish(item), /stopped/);
+  assert.equal(mutations, 0);
 });
-
-test('derives locked leases from persisted authority and rejects invented, replaced, and expired leases', () => {
-  const fixture = memoryFixture();
-  const adapted = createBenchAtomicTransition({
-    ...fixture,
-    proposal: proposal(),
-    binding: atomicBinding(),
-  });
-  const persistedWithAdditionalLease = benchState({
-    reservation: {
-      leases: [
-        fixture.benchState.reservation.leases[0],
-        {
-          lease: 'bench-lease-2',
-          candidate: 'candidate-2',
-          agent: 'delivery-2',
-          fence: 2,
-          expiry: '2099-01-01T00:00:00Z',
-        },
-      ],
-    },
-  });
-  const replacementCurrent = createBenchAtomicCurrent({
-    ...fixture,
-    fleetState: withBenchStrategyState(fixture.fleetState, persistedWithAdditionalLease),
-    proposal: adapted.proposal,
-  });
-
-  assert.deepEqual(replacementCurrent.leases, [
-    { lease: 'bench-lease', candidate: 'candidate-1', agent: 'orchestrator', fence: 1 },
-    { lease: 'bench-lease-2', candidate: 'candidate-2', agent: 'delivery-2', fence: 2 },
-  ]);
-  assert.throws(() => createBenchAtomicTransition({
-    ...fixture,
-    proposal: proposal({ binding: { run: 'bench-run', ...atomicBinding(), lease: 'invented-lease' } }),
-    binding: { ...atomicBinding(), lease: 'invented-lease' },
-  }), /not reserved/);
-  assert.throws(() => createBenchAtomicCurrent({
-    ...fixture,
-    fleetState: withBenchStrategyState(fixture.fleetState, benchState({
-      reservation: {
-        leases: [{
-          ...fixture.benchState.reservation.leases[0],
-          fence: 2,
-        }],
-      },
-    })),
-    proposal: adapted.proposal,
-  }), /binding is no longer current/);
-  assert.throws(() => createBenchAtomicTransition({
-    ...fixture,
-    fleetState: withBenchStrategyState(fixture.fleetState, benchState({
-      reservation: {
-        leases: [{
-          ...fixture.benchState.reservation.leases[0],
-          expiry: '2026-01-01T00:00:00Z',
-        }],
-      },
-    })),
-    proposal: proposal(),
-    binding: atomicBinding(),
-    now: '2026-01-02T00:00:00Z',
-  }), /lease is expired/);
+test('CI observation preserves exact provider fields and classifies unknown/pending/failure/stale', async () => {
+  let value = { state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: [] };
+  const adapter = new GitHubDelivery(config, root, async () => JSON.stringify(value));
+  const item = { ...issue(), pr: { number: 4 } };
+  assert.equal((await adapter.observe(item)).readiness, 'unknown');
+  value.statusCheckRollup = [{ status: 'IN_PROGRESS', conclusion: null }];
+  assert.equal((await adapter.observe(item)).readiness, 'unknown');
+  value.statusCheckRollup = [{ status: 'COMPLETED', conclusion: 'FAILURE' }];
+  assert.equal((await adapter.observe(item)).failed, true);
+  value.statusCheckRollup = [{ status: 'COMPLETED', conclusion: 'SUCCESS' }];
+  const ready = await adapter.observe(item);
+  assert.equal(ready.readiness, 'ready');
+  assert.ok(Number.isFinite(Date.parse(ready.observedAt)));
+  value.mergeStateStatus = 'BEHIND';
+  assert.equal((await adapter.observe(item)).stale, true);
 });
-
-test('locked acceptance rejects changed signed mutation and expiry during the wait without invoking callback', (t) => {
-  const sandbox = path.join(ROOT, '.test-sandbox', `bench-expiry-${process.pid}-${randomUUID()}`);
-  const repository = path.join(sandbox, 'repository');
-  fs.mkdirSync(repository, { recursive: true });
-  t.after(() => fs.rmSync(sandbox, { recursive: true, force: true }));
-  const currentManifest = manifest(repository);
-  const file = fleetStatePath(repository, 'bench-run');
-  persistFleetState(file, withBenchStrategyState(createFleetState(currentManifest, 'bench-run')), 0, currentManifest);
-  const fleetState = loadFleetState(file, currentManifest);
-  const signed = proposal({ fleetStateRevision: 1 });
-  assert.throws(() => applyBenchAtomicFleetStateTransition({
-    file, manifest: currentManifest, fleetState,
-    proposal: { ...signed, mutation: { action: 'unsigned' } },
-    binding: atomicBinding(),
-    transition: () => assert.fail('unsigned callback'),
-  }), /signature digest/);
-  let calls = 0;
-  assert.throws(() => applyBenchAtomicFleetStateTransition({
-    file, manifest: currentManifest, fleetState, proposal: signed, binding: atomicBinding(),
-    now: '2026-01-01T00:00:00Z',
-    clock: () => ++calls === 1 ? '2026-01-01T00:00:00Z' : '2099-01-01T00:00:00Z',
-    transition: () => assert.fail('expired callback'),
-  }), /lease is expired/);
-  assert.equal(loadFleetState(file, currentManifest).revision, 1);
+test('real Git validation seals tested tree, rejects out-of-scope and test-mutated candidates', { skip: process.platform === 'win32' }, async (t) => {
+  const cwd = directory(t);
+  const git = (...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
+  git('init', '-q'); git('config', 'user.name', 'Bench Test'); git('config', 'user.email', 'bench@example.invalid');
+  fs.mkdirSync(path.join(cwd, 'src'));
+  fs.writeFileSync(path.join(cwd, 'src/file.txt'), 'initial');
+  git('add', '.'); git('commit', '-qm', 'initial');
+  const adapter = new GitHubDelivery(config, cwd);
+  const item = issue();
+  fs.writeFileSync(path.join(cwd, 'src/file.txt'), 'changed');
+  const candidate = await adapter.validate(item, { cwd });
+  assert.equal(candidate.commit, git('rev-parse', 'HEAD'));
+  assert.equal(candidate.validation[0].exitCode, 0);
+  assert.equal(git('status', '--porcelain'), '');
+  fs.writeFileSync(path.join(cwd, 'outside.txt'), 'out of scope');
+  await assert.rejects(adapter.validate(item, { cwd }), /outside/);
+  fs.unlinkSync(path.join(cwd, 'outside.txt'));
+  item.work.validation = [[process.execPath, '-e', 'require("fs").writeFileSync("src/file.txt","mutated")']];
+  await assert.rejects(adapter.validate(item, { cwd }), /mutated the candidate/);
 });
-
-test('delegates a compatible Bench transition through the shared Fleet State CAS adapter', (t) => {
-  const sandbox = path.join(
-    ROOT,
-    '.test-sandbox',
-    `bench-atomic-${process.pid}-${randomUUID()}`,
-  );
-  const repository = path.join(sandbox, 'repository');
-  fs.mkdirSync(repository, { recursive: true });
-  t.after(() => fs.rmSync(sandbox, { recursive: true, force: true }));
-
-  const currentManifest = manifest(repository);
-  const file = fleetStatePath(repository, 'bench-run');
-  const initialFleetState = withBenchStrategyState(
-    createFleetState(currentManifest, 'bench-run'),
-    benchState(),
-  );
-  persistFleetState(file, initialFleetState, 0, currentManifest);
-  const fleetState = { ...initialFleetState, revision: 1 };
-  const result = applyBenchAtomicFleetStateTransition({
-    file,
-    manifest: currentManifest,
-    fleetState,
-    proposal: proposal({ fleetStateRevision: 1 }),
-    binding: atomicBinding(),
-    transition: (lockedFleetState, validatedBenchProposal, sharedProposal) => {
-      assert.equal(lockedFleetState.revision, 1);
-      assert.equal(validatedBenchProposal.id, 'proposal-1');
-      assert.equal(sharedProposal.strategy, 'bench-squadron/v1');
-      return lockedFleetState;
-    },
-  });
-
-  assert.equal(result.fleetState.revision, 2);
-  assert.equal(result.nextBenchEpoch.epoch, 1);
-  const reloadedFleetState = loadFleetState(file, currentManifest);
-  assert.deepEqual(
-    reloadedFleetState.strategyState,
-    { namespace: 'bench-squadron/v1', value: result.nextBenchEpoch },
-  );
-  assert.throws(() => applyBenchAtomicFleetStateTransition({
-    file,
-    manifest: currentManifest,
-    fleetState: reloadedFleetState,
-    proposal: proposal({ fleetStateRevision: 2 }),
-    binding: atomicBinding(),
-    transition: (lockedFleetState) => lockedFleetState,
-  }), /proposal id was already accepted/);
-  assert.throws(() => createBenchAtomicTransition({
-    manifest: currentManifest,
-    fleetState: reloadedFleetState,
-    proposal: proposal({ id: 'replayed-epoch-zero', fleetStateRevision: 2 }),
-    binding: atomicBinding(),
-  }), /exact current epoch/);
+test('argv process seam runs locally and a bounded timeout is failure', { skip: process.platform === 'win32' }, async () => {
+  assert.equal(await command([process.execPath, '-e', 'process.stdout.write("ok")']), 'ok');
+  await assert.rejects(command([process.execPath, '-e', 'setInterval(()=>{},1000)'], { timeoutMs: 20 }), /timeout/);
+});
+test('real Git worktrees isolate review and integrate a newer base without rewriting branch history', { skip: process.platform === 'win32' }, async (t) => {
+  const dir = directory(t), source = path.join(dir, 'source'), upstream = path.join(dir, 'upstream.git');
+  fs.mkdirSync(source);
+  const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
+  git(source, 'init', '-q', '-b', 'main');
+  git(source, 'config', 'user.name', 'Bench Test'); git(source, 'config', 'user.email', 'bench@example.invalid');
+  fs.mkdirSync(path.join(source, 'src'));
+  fs.writeFileSync(path.join(source, 'src/file.txt'), 'base');
+  git(source, 'add', '.'); git(source, 'commit', '-qm', 'base');
+  git(dir, 'init', '--bare', '-q', upstream);
+  git(source, 'remote', 'add', 'origin', upstream); git(source, 'push', '-q', 'origin', 'main');
+  const adapter = new GitHubDelivery({ ...config, checkout: source }, path.join(dir, 'state'));
+  const item = issue();
+  const cwd = await adapter.prepare(item, { role: 'implement', context: 'writer' });
+  fs.writeFileSync(path.join(cwd, 'src/file.txt'), 'feature');
+  item.candidate = await adapter.validate(item, { cwd });
+  const original = item.candidate.commit;
+  const review = { role: 'review', context: 'fresh-review' };
+  review.cwd = await adapter.prepare(item, review);
+  assert.notEqual(review.cwd, cwd);
+  await adapter.inspectReview(item, review);
+  await adapter.cleanup(review);
+  fs.writeFileSync(path.join(source, 'src/base-addition.txt'), 'new base');
+  git(source, 'add', '.'); git(source, 'commit', '-qm', 'base update'); git(source, 'push', '-q', 'origin', 'main');
+  item.maintenance = true;
+  await adapter.prepare(item, { role: 'implement', context: 'maintainer' });
+  assert.equal(fs.readFileSync(path.join(cwd, 'src/base-addition.txt'), 'utf8'), 'new base');
+  git(cwd, 'merge-base', '--is-ancestor', original, 'HEAD');
+  const updated = await adapter.validate(item, { cwd });
+  assert.notEqual(updated.commit, original);
+});
+test('Windows owned command preserves native argv quoting without a shell', {
+  skip: process.platform !== 'win32', timeout: 90000,
+}, async () => {
+  let owner;
+  const args = ['with spaces', 'quote"and\\tail\\', 'snowman-☃'];
+  const result = await command([process.execPath, '-e', 'process.stdout.write(JSON.stringify(process.argv.slice(1)))', ...args],
+    { timeoutMs: 60000, onSpawn: (pid, ownership) => { assert.equal(ownership.pid, pid); owner = ownership; } });
+  assert.deepEqual(JSON.parse(result), args);
+  assert.equal(owner.kind, 'windows-job');
+});
+test('authorized dotfile changes pass file tools and real Git validation while protected descendants cannot be staged', {
+  skip: process.platform === 'win32',
+}, async (t) => {
+  const cwd = directory(t);
+  const git = (...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
+  git('init', '-q'); git('config', 'user.name', 'Bench Test'); git('config', 'user.email', 'bench@example.invalid');
+  fs.writeFileSync(path.join(cwd, 'seed.txt'), 'baseline');
+  git('add', '.'); git('commit', '-qm', 'baseline');
+  const item = issue();
+  item.work = normalizeWork({ ...item.work, paths: ['.github', '.gitignore'] });
+  const tools = Object.fromEntries(fileTools({ cwd, role: 'implement', work: item.work })
+    .map((tool) => [tool.name, tool.handler]));
+  tools.bench_write({ path: '.gitignore', content: 'build/\n' });
+  tools.bench_write({ path: '.github/workflows/ci.yml', content: 'name: CI\n' });
+  const adapter = new GitHubDelivery(config, cwd);
+  const candidate = await adapter.validate(item, { cwd });
+  assert.equal(candidate.commit, git('rev-parse', 'HEAD'));
+  assert.equal(git('show', 'HEAD:.gitignore'), 'build/');
+  assert.equal(git('show', 'HEAD:.github/workflows/ci.yml'), 'name: CI');
+  fs.writeFileSync(path.join(cwd, '.github/.env'), 'synthetic fixture only');
+  await assert.rejects(adapter.validate(item, { cwd }), /outside the authorized paths/);
+  assert.equal(git('diff', '--cached', '--name-only'), '');
+  assert.equal(git('rev-parse', 'HEAD'), candidate.commit);
 });

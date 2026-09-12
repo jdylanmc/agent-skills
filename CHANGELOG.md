@@ -341,6 +341,17 @@ below is unreleased and no comparison links are available.
 
 ### Changed
 
+- **Executable delivery bench.** Bench Squadron replaces its fixed experimental
+  proposal protocol with a living queue driven by the supported Copilot SDK.
+  Reusable worker slots circulate work through implementation and fresh-context
+  review, counting distinct-slot signoffs against each issue's current candidate.
+  Operator-added work preserves unrelated progress. The controller publishes
+  GitHub pull requests, reports status while provider work is pending, and queues
+  subsequent CI/base maintenance into the same capacity pool. Explicit dependency
+  setup stays outside skill discovery; bounded platform-owned process cleanup and
+  persistent publication identities keep uncertain release and recovery visible.
+  Human scope, risk, approval and merge authority remain separate.
+
 - **Simpler, reliable single-skill reinforcement.** Reinforce Skill keeps its
   workflow in one place instead of three forwarding units. It commits the
   complete candidate, including the changelog, then validates and independently

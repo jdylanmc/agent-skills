@@ -1,349 +1,126 @@
-import crypto from 'node:crypto';
+import { createHash } from 'node:crypto';
 
-import { assertCurrentFleetState } from '../fleet-state/fleet-state.mjs';
-
-export const BENCH_EPOCH_SCHEMA_VERSION = 2;
-export const MAX_DELIVERY_POOL_AGENTS = 5;
-
-function isRecord(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function nonEmptyString(value) {
-  return typeof value === 'string' && value.trim() !== '';
-}
-
-function validIdentifier(value, label) {
-  if (!nonEmptyString(value) || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(value)) {
-    throw new Error(`${label} must be a non-empty identifier`);
+export const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+export function identifier(value) {
+  if (typeof value !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(value)) {
+    throw new Error('expected a short alphanumeric identifier');
   }
   return value;
 }
 
-function nonNegativeInteger(value, label) {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`${label} must be a non-negative integer`);
-  }
-  return value;
-}
+const protectedComponents = new Set([
+  '.git', '.bench', '.skill-log', '.copilot', '.user', '.test-sandbox', '.ship-with-squadron', 'node_modules',
+  '.ssh', '.aws', '.azure', '.gnupg', '.kube', '.docker', '.netrc', '.npmrc', '.pypirc',
+  '.git-credentials', '.gitconfig', '.envrc', '.vault-token', '.s3cfg', '.pgpass', '.authinfo',
+  'id_rsa', 'id_ecdsa', 'id_ed25519', 'id_dsa',
+]);
+const credentialConfig = new Set(['gh', 'gcloud', 'aws', 'azure']);
 
-function positiveSafeInteger(value, label) {
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw new Error(`${label} must be a positive safe integer`);
-  }
-  return value;
-}
-
-function expiry(value, label) {
-  if (!nonEmptyString(value) || !Number.isFinite(Date.parse(value))) {
-    throw new Error(`${label} must be a valid timestamp`);
-  }
-  return value;
-}
-
-function stable(value, ancestors = new Set()) {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (!value || typeof value !== 'object' || ancestors.has(value)
-      || (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype)
-      || Object.getOwnPropertySymbols(value).length
-      || Object.entries(Object.getOwnPropertyDescriptors(value)).some(([key, descriptor]) =>
-        !(Array.isArray(value) && key === 'length')
-          && (!descriptor.enumerable || descriptor.get || descriptor.set))) {
-    throw new Error('proposal body must be immutable JSON data');
-  }
-  ancestors.add(value);
-  let normalized;
-  if (Array.isArray(value)) {
-    if (Object.keys(value).length !== value.length
-        || !Object.keys(value).every((key, index) => key === String(index))) {
-      throw new Error('proposal body arrays must contain only dense JSON elements');
-    }
-    normalized = value.map((entry) => stable(entry, ancestors));
-  } else {
-    normalized = Object.fromEntries(
-      Object.keys(value).sort().map((key) => [key, stable(value[key], ancestors)]),
-    );
-  }
-  ancestors.delete(value);
-  return normalized;
-}
-
-function digest(value) {
-  return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
-}
-
-export function benchProposalDigest(proposal) {
-  return digest({
-    id: proposal.id,
-    epoch: proposal.epoch,
-    fleetStateRevision: proposal.fleetStateRevision,
-    binding: proposal.binding,
-    mutatorId: proposal.mutatorId,
-    turnId: proposal.turnId,
-    mutation: proposal.mutation,
+export function isWorkPath(value) {
+  if (typeof value !== 'string' || !value || value.startsWith('/') || /[\\:\u0000-\u001f\u007f]/.test(value)) return false;
+  const parts = value.split('/');
+  return parts.every((part, index) => {
+    const name = part.toLowerCase();
+    return part && part !== '.' && part !== '..' && !/[. ]$/.test(part) &&
+      !protectedComponents.has(name) && !/^\.env(?:\.|$)/.test(name) &&
+      !/^\.(?:secrets?|credentials?)(?:\.|$)/.test(name) &&
+      !/^(?:con|conin\$|conout\$|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/.test(name) &&
+      !(parts[index - 1]?.toLowerCase() === '.config' && credentialConfig.has(name));
   });
 }
 
-function assertDistinctIdentifiers(values, label) {
-  if (!Array.isArray(values) || !values.length || !values.every(nonEmptyString)) {
-    throw new Error(`${label} must contain one or more identifiers`);
-  }
-  if (new Set(values).size !== values.length) {
-    throw new Error(`${label} must contain distinct identifiers`);
-  }
+export function authorizedWorkPath(value, paths) {
+  return isWorkPath(value) && Array.isArray(paths) &&
+    paths.some((prefix) => isWorkPath(prefix) && (value === prefix || value.startsWith(`${prefix}/`)));
 }
 
-function normalizeConfiguration(input) {
-  if (!isRecord(input)) throw new Error('bench configuration must be an object');
-  const deliveryPool = input.deliveryPool;
-  assertDistinctIdentifiers(deliveryPool, 'deliveryPool');
-  if (deliveryPool.length > MAX_DELIVERY_POOL_AGENTS) {
-    throw new Error(`deliveryPool exceeds the ${MAX_DELIVERY_POOL_AGENTS}-agent cap`);
+export function normalizeWork(input) {
+  const { id, title, requirements, dependsOn = [], paths, validation } = input;
+  identifier(id);
+  if (typeof title !== 'string' || !title.trim() || title.length > 200 ||
+      typeof requirements !== 'string' || !requirements.trim() || requirements.length > 100000) {
+    throw new Error('work needs a title and complete bounded requirements');
   }
-  deliveryPool.forEach((agent) => validIdentifier(agent, 'deliveryPool agent'));
+  if (!Array.isArray(dependsOn) || new Set(dependsOn).size !== dependsOn.length) throw new Error('invalid dependencies');
+  dependsOn.forEach(identifier);
+  if (dependsOn.includes(id)) throw new Error('self dependency');
+  if (!Array.isArray(paths) || !paths.length || paths.some((p) => !isWorkPath(p))) {
+    throw new Error('paths must be canonical repository-relative prefixes outside protected metadata, state and credential locations');
+  }
+  if (!Array.isArray(validation) || !validation.length || validation.some((argv) =>
+    !Array.isArray(argv) || !argv.length || argv.some((s) => typeof s !== 'string' || !s || s.includes('\0')))) {
+    throw new Error('validation must contain operator-authorized argv arrays');
+  }
+  return { id, title, requirements, dependsOn, paths, validation };
+}
 
-  if (!Number.isInteger(input.quorum) || input.quorum < 1 || input.quorum > deliveryPool.length) {
-    throw new Error('quorum must satisfy 1 <= quorum <= deliveryPool.length');
+export function admit(state, packet) {
+  const work = normalizeWork(packet);
+  const old = state.issues.find((i) => i.work.id === work.id);
+  if (old) {
+    if (digest(old.work) !== digest(work)) throw new Error(`work ${work.id} already exists with different requirements`);
+    return old;
   }
-
-  const orchestrator = validIdentifier(input.orchestrator, 'orchestrator');
-  const slopSniper = validIdentifier(input.slopSniper, 'slopSniper');
-  if (orchestrator === slopSniper
-      || deliveryPool.includes(orchestrator)
-      || deliveryPool.includes(slopSniper)) {
-    throw new Error('orchestrator, slopSniper, and deliveryPool roles must be separate');
-  }
-  return {
-    deliveryPool: [...deliveryPool],
-    quorum: input.quorum,
-    orchestrator,
-    slopSniper,
+  const issue = { work, epoch: 0, phase: 'queued', candidate: null, votes: [], findings: [],
+    attempts: 0, pr: null, observation: null, maintenance: false };
+  state.issues.push(issue);
+  const visit = (id, chain = []) => {
+    if (chain.includes(id)) throw new Error('dependency cycle');
+    const node = state.issues.find((i) => i.work.id === id);
+    node?.work.dependsOn.forEach((dep) => visit(dep, [...chain, id]));
   };
+  try { visit(work.id); } catch (error) { state.issues.pop(); throw error; }
+  return issue;
 }
 
-function normalizeReservation(input) {
-  if (input === undefined) return { leases: [] };
-  if (!isRecord(input) || !Array.isArray(input.leases)) {
-    throw new Error('bench reservation must contain a leases array');
-  }
-  const leases = input.leases.map((lease, index) => {
-    if (!isRecord(lease)
-        || Object.keys(lease).length !== 5
-        || !['lease', 'candidate', 'agent', 'fence', 'expiry'].every(
-          (key) => Object.hasOwn(lease, key),
-        )) {
-      throw new Error(`bench reservation lease ${index} has an invalid envelope`);
-    }
-    return {
-      lease: validIdentifier(lease.lease, 'bench reservation lease'),
-      candidate: validIdentifier(lease.candidate, 'bench reservation candidate'),
-      agent: validIdentifier(lease.agent, 'bench reservation agent'),
-      fence: positiveSafeInteger(lease.fence, 'bench reservation fence'),
-      expiry: expiry(lease.expiry, 'bench reservation expiry'),
-    };
-  });
-  if (new Set(leases.map((lease) => lease.lease)).size !== leases.length) {
-    throw new Error('bench reservation leases must be unique');
-  }
-  return { leases };
+export function reviewedBasis(issue) {
+  return digest({ requirements: issue.work, epoch: issue.epoch, candidate: issue.candidate });
 }
 
-export function createBenchEpoch(configuration) {
-  const normalized = normalizeConfiguration(configuration);
-  return {
-    schemaVersion: BENCH_EPOCH_SCHEMA_VERSION,
-    epoch: 0,
-    ...normalized,
-    reservation: normalizeReservation(configuration.reservation),
-    signatures: [],
-    downstreamClaims: [],
-    acceptedProposals: [],
-  };
+export function setCandidate(issue, candidate, context) {
+  if (!candidate || !/^[0-9a-f]{40,64}$/.test(candidate.commit) || !candidate.validation?.length ||
+    candidate.validation.some((v) => v.exitCode !== 0 || !v.observedAt || !v.digest)) {
+    throw new Error('candidate needs a real commit and successful validation evidence');
+  }
+  issue.epoch++;
+  issue.candidate = candidate;
+  issue.authorContext = context;
+  issue.votes = [];
+  issue.findings = [];
+  issue.phase = 'review';
 }
 
-export function assertBenchEpoch(state) {
-  if (!isRecord(state) || state.schemaVersion !== BENCH_EPOCH_SCHEMA_VERSION) {
-    throw new Error('bench epoch schema version is invalid');
+export function recordReview(issue, assignment, result) {
+  if (assignment.basis !== reviewedBasis(issue) || assignment.context === issue.authorContext ||
+      !Array.isArray(assignment.filesRead) || !assignment.filesRead.length ||
+      assignment.filesRead.some((read) => !/^[0-9a-f]{64}$/.test(read.sha256 ?? '') ||
+        !authorizedWorkPath(read.path, issue.work.paths)) ||
+      result?.basis !== assignment.basis || !['signoff', 'correction', 'blocked'].includes(result?.verdict) ||
+      typeof result.evidence !== 'string' || !result.evidence.trim() ||
+      !Array.isArray(result.findings) || result.findings.some((f) => typeof f !== 'string' || !f.trim())) {
+    throw new Error('review is incomplete, ineligible, or stale');
   }
-  nonNegativeInteger(state.epoch, 'epoch');
-  const configuration = normalizeConfiguration(state);
-  const reservation = normalizeReservation(state.reservation);
-  if (!Array.isArray(state.signatures) || state.signatures.length) {
-    throw new Error('persisted signatures must be empty between proposals');
+  if (result.verdict === 'signoff' && result.findings.length) throw new Error('signoff has unresolved findings');
+  if (issue.votes.some((v) => v.slot === assignment.slot || v.context === assignment.context)) {
+    throw new Error('duplicate slot or context vote');
   }
-  if (!Array.isArray(state.downstreamClaims) || !Array.isArray(state.acceptedProposals)) {
-    throw new Error('bench epoch collections are invalid');
+  if (result.verdict !== 'signoff') {
+    if (!result.findings.length) throw new Error('non-signoff needs actionable findings');
+    issue.findings.push(...result.findings);
+    issue.phase = result.verdict === 'blocked' ? 'blocked' : 'correction';
+    issue.votes = [];
+    return;
   }
-  const claimIds = new Set();
-  for (const claim of state.downstreamClaims) {
-    if (!isRecord(claim)
-        || validIdentifier(claim.id, 'downstream claim id') !== claim.id
-        || claim.epoch !== state.epoch
-        || !nonEmptyString(claim.subject)
-        || claimIds.has(claim.id)) {
-      throw new Error('downstream claims must be unique and bound to the current epoch');
-    }
-    claimIds.add(claim.id);
-  }
-  const proposalIds = new Set();
-  for (const proposal of state.acceptedProposals) {
-    if (!isRecord(proposal)
-        || validIdentifier(proposal.id, 'accepted proposal id') !== proposal.id
-        || !Number.isInteger(proposal.acceptedAtEpoch)
-        || proposal.acceptedAtEpoch < 0
-        || proposal.acceptedAtEpoch >= state.epoch
-        || proposalIds.has(proposal.id)) {
-      throw new Error('accepted proposals must be unique historical epoch records');
-    }
-    proposalIds.add(proposal.id);
-    if (!proposal.body || proposal.digest !== benchProposalDigest(proposal.body)
-        || proposal.body.id !== proposal.id
-        || proposal.body.epoch !== proposal.acceptedAtEpoch
-        || proposal.body.fleetStateRevision !== proposal.fleetStateRevision) {
-      throw new Error('accepted proposal body digest is invalid');
-    }
-    validateProposal({
-      ...state,
-      epoch: proposal.acceptedAtEpoch,
-      acceptedProposals: [],
-      downstreamClaims: [],
-    }, { ...proposal.body, signatures: proposal.signatures });
-  }
-  return { ...configuration, reservation };
+  issue.votes.push({ slot: assignment.slot, context: assignment.context, basis: assignment.basis,
+    evidence: result.evidence, doctrine: assignment.doctrine, filesRead: assignment.filesRead });
 }
 
-function normalizeSignature(signature, state, proposal) {
-  if (!isRecord(signature)) throw new Error('proposal signature must be an object');
-  const agentId = validIdentifier(signature.agentId, 'signature agentId');
-  if (!state.deliveryPool.includes(agentId)) {
-    throw new Error('proposal signature agent is not in deliveryPool');
-  }
-  if (signature.epoch !== state.epoch) {
-    throw new Error('proposal signatures must bind the exact current epoch');
-  }
-  const turnId = validIdentifier(signature.turnId, 'signature turnId');
-  const value = validIdentifier(signature.value, 'signature value');
-  if (signature.proposalDigest !== benchProposalDigest(proposal)) {
-    throw new Error('proposal signature digest does not bind the immutable proposal body');
-  }
-  if (agentId === proposal.mutatorId && turnId === proposal.turnId) {
-    throw new Error('a mutator cannot sign a proposal in the same turn');
-  }
-  return { agentId, epoch: signature.epoch, turnId, value, proposalDigest: signature.proposalDigest };
+export function hasQuorum(issue, quorum) {
+  return issue.phase === 'review' && issue.candidate?.validation.every((v) => v.exitCode === 0) &&
+    new Set(issue.votes.filter((v) => v.basis === reviewedBasis(issue) &&
+      v.context !== issue.authorContext).map((v) => v.slot)).size >= quorum;
 }
 
-export function validateProposal(state, proposal) {
-  assertBenchEpoch(state);
-  if (!isRecord(proposal)) throw new Error('proposal must be an object');
-  const id = validIdentifier(proposal.id, 'proposal id');
-  if (state.acceptedProposals.some((entry) => entry.id === id)) {
-    throw new Error('proposal id was already accepted');
-  }
-  if (proposal.epoch !== state.epoch) {
-    throw new Error('proposal must bind the exact current epoch');
-  }
-  const mutatorId = validIdentifier(proposal.mutatorId, 'proposal mutatorId');
-  if (![state.orchestrator, ...state.deliveryPool].includes(mutatorId)
-      || mutatorId === state.slopSniper) {
-    throw new Error('proposal mutator must be the orchestrator or a delivery-pool agent');
-  }
-  const turnId = validIdentifier(proposal.turnId, 'proposal turnId');
-  nonNegativeInteger(proposal.fleetStateRevision, 'proposal fleetStateRevision');
-  if (!isRecord(proposal.binding)
-      || Object.keys(proposal.binding).sort().join(',') !== 'candidate,fence,lease,run') {
-    throw new Error('proposal binding must contain run, candidate, lease, and fence');
-  }
-  for (const key of ['run', 'candidate', 'lease']) validIdentifier(proposal.binding[key], `proposal ${key}`);
-  positiveSafeInteger(proposal.binding.fence, 'proposal fence');
-  if (!isRecord(proposal.mutation) || !Object.keys(proposal.mutation).length) {
-    throw new Error('proposal mutation must be a non-empty object');
-  }
-  if (!Array.isArray(proposal.signatures) || proposal.signatures.length < state.quorum) {
-    throw new Error('proposal lacks the configured quorum');
-  }
-  const signatures = proposal.signatures.map((signature) => normalizeSignature(
-    signature,
-    state,
-    proposal,
-  ));
-  if (new Set(signatures.map((signature) => signature.agentId)).size !== signatures.length) {
-    throw new Error('proposal signatures must be from distinct delivery-pool agents');
-  }
-  if (new Set(signatures.map((signature) => signature.value)).size !== signatures.length) {
-    throw new Error('proposal signature values must be distinct');
-  }
-  return {
-    id,
-    epoch: state.epoch,
-    fleetStateRevision: proposal.fleetStateRevision,
-    binding: structuredClone(proposal.binding),
-    mutatorId,
-    turnId,
-    mutation: structuredClone(proposal.mutation),
-    signatures,
-    digest: benchProposalDigest(proposal),
-  };
-}
-
-export function validateProposalForFleetState(state, fleetState, manifest, proposal) {
-  assertCurrentFleetState(fleetState, manifest);
-  const validated = validateProposal(state, proposal);
-  if (validated.fleetStateRevision !== fleetState.revision) {
-    throw new Error('proposal fleetStateRevision does not match current Fleet State');
-  }
-  if (validated.binding.run !== fleetState.runId) throw new Error('proposal run does not match current Fleet State');
-  return validated;
-}
-
-export function addDownstreamClaim(state, claim) {
-  assertBenchEpoch(state);
-  if (!isRecord(claim)) throw new Error('downstream claim must be an object');
-  const id = validIdentifier(claim.id, 'downstream claim id');
-  if (claim.epoch !== state.epoch) {
-    throw new Error('downstream claim must bind the exact current epoch');
-  }
-  if (!nonEmptyString(claim.subject)) throw new Error('downstream claim subject must be non-empty');
-  if (state.downstreamClaims.some((entry) => entry.id === id)) {
-    throw new Error('downstream claim id already exists');
-  }
-  return {
-    ...structuredClone(state),
-    downstreamClaims: [
-      ...structuredClone(state.downstreamClaims),
-      { id, epoch: state.epoch, subject: claim.subject },
-    ],
-  };
-}
-
-export function applyValidatedProposal(state, validatedProposal) {
-  assertBenchEpoch(state);
-  if (!isRecord(validatedProposal)) throw new Error('validated proposal must be an object');
-  if (validatedProposal.epoch !== state.epoch) {
-    throw new Error('validated proposal is stale for the current epoch');
-  }
-  const revalidated = validateProposal(state, validatedProposal);
-  const next = structuredClone(state);
-  next.epoch += 1;
-  next.signatures = [];
-  next.downstreamClaims = [];
-  next.acceptedProposals.push({
-    id: revalidated.id,
-    digest: revalidated.digest,
-    fleetStateRevision: revalidated.fleetStateRevision,
-    acceptedAtEpoch: state.epoch,
-    body: Object.fromEntries(Object.entries(revalidated).filter(([key]) => !['signatures', 'digest'].includes(key))),
-    signatures: structuredClone(revalidated.signatures),
-  });
-  assertBenchEpoch(next);
-  return next;
-}
-
-export function applyProposalToFleetState(state, fleetState, manifest, proposal) {
-  const validatedProposal = validateProposalForFleetState(state, fleetState, manifest, proposal);
-  return {
-    fleetStateRevision: fleetState.revision,
-    validatedProposal,
-    nextBenchEpoch: applyValidatedProposal(state, validatedProposal),
-  };
+export function dependenciesReady(state, issue) {
+  return issue.work.dependsOn.every((id) => state.issues.find((i) => i.work.id === id)?.phase === 'merged');
 }

@@ -1,302 +1,465 @@
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-
-import { deriveGraph, unitClosure } from '../../scripts/derive-skill-graph.mjs';
-import { closureFor, readFrontmatter, validateRepository } from '../../scripts/validate-skill-graph.mjs';
-import {
-  BENCH_EPOCH_SCHEMA_VERSION,
-  MAX_DELIVERY_POOL_AGENTS,
-} from './_atoms/bench-epoch/bench-epoch.mjs';
-import { BENCH_ATOMIC_STRATEGY } from './_atoms/atomic-proposal/atomic-proposal.mjs';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const SKILLS = path.join(ROOT, 'skills');
-const ENTRY = 'bench-squadron/SKILL.md';
-const MOLECULE = 'bench-squadron/_molecules/bench-control/bench-control.md';
-const ATOMS = [
-  '_base/_atoms/atomic-transition/atomic-transition.md',
-  'bench-squadron/_atoms/atomic-proposal/atomic-proposal.md',
-  'bench-squadron/_atoms/bench-epoch/bench-epoch.md',
-  'bench-squadron/_atoms/fleet-state/fleet-state.md',
-  'bench-squadron/_atoms/role-doctrine/role-doctrine.md',
-];
-
-function read(relative) {
-  return fs.readFileSync(path.join(SKILLS, ...relative.split('/')), 'utf8');
+import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { BenchController, formatStatus } from './_molecules/bench-control/bench-control.mjs';
+import { Store, readJSON } from './_atoms/fleet-state/fleet-state.mjs';
+import { admit, digest, reviewedBasis } from './_atoms/bench-epoch/bench-epoch.mjs';
+const root = path.dirname(fileURLToPath(import.meta.url));
+const work = (id, dependsOn = []) => ({ id, title: id, requirements: `Implement ${id}`, dependsOn,
+  paths: ['src'], validation: [['node', '--test']] });
+class Workers {
+  packets = [];
+  pending = new Map();
+  active = 0;
+  max = 0;
+  launch(packet, persistPid) {
+    this.packets.push(packet);
+    this.active++; this.max = Math.max(this.max, this.active);
+    let resolve;
+    const done = new Promise((r) => { resolve = r; });
+    const finish = (outcome) => {
+      if (!this.pending.has(packet.context)) return;
+      this.pending.delete(packet.context); this.active--; resolve(outcome);
+    };
+    this.pending.set(packet.context, { packet, finish });
+    persistPid(900000000 + this.packets.length);
+    return { done, cancel: async () => finish({ released: true, error: 'cancelled' }) };
+  }
+  complete(context, override = {}) {
+    const item = this.pending.get(context);
+    const result = item.packet.role === 'review'
+      ? { basis: item.packet.basis, verdict: 'signoff', evidence: 'Read src; requirement and successful test evidence agree', findings: [] }
+      : { status: 'implemented', evidence: 'Implemented src and tests', findings: [] };
+    item.finish({ released: true, idle: true, result, reads: [{ path: 'src/file', sha256: 'a'.repeat(64) }], ...override });
+  }
+  completeAll() { for (const context of [...this.pending.keys()]) this.complete(context); }
 }
-
-function frontmatter(relative) {
-  return readFrontmatter(read(relative), relative);
-}
-
-test('is an explicit human-only workflow with a deliberate bounded grant', () => {
-  const parsed = frontmatter(ENTRY);
-  assert.equal(parsed.name, 'bench-squadron');
-  assert.equal(parsed.disableModelInvocation, true);
-  assert.equal(parsed.userInvocable, true);
-  assert.deepEqual(parsed.allowedTools, ['execute', 'read', 'task']);
-  assert.deepEqual(parsed.requiresSkills, [
-    { id: 'slop-sniper', source: 'local', required: true },
-  ]);
-  assert.ok(!parsed.allowedTools.includes('edit'));
-  assert.ok(!parsed.allowedTools.includes('*'));
-});
-
-test('composes the shared atomic transition while keeping Bench choreography local', () => {
-  const raw = read(ENTRY);
-  const parsed = frontmatter(ENTRY);
-  assert.match(raw, /atomic-transition/);
-  assert.deepEqual(parsed.composes, [
-    '_base/_molecules/chronicler/chronicler.md',
-    MOLECULE,
-  ]);
-  assert.deepEqual(frontmatter(MOLECULE).composes, ATOMS);
-
-  const closure = closureFor(validateRepository(ROOT), ENTRY);
-  for (const unit of ['_base/_molecules/chronicler/chronicler.md', MOLECULE, ...ATOMS]) {
-    assert.ok(closure.includes(unit), `${ENTRY} must reach ${unit}`);
+class Provider {
+  prs = new Map(); observations = new Map(); creates = 0; updates = 0; commits = 0; maintenance = 0;
+  async preflight() {}
+  branch(issue) { return `bench/run/${issue.work.id}`; }
+  async prepare(issue, assignment) { if (issue.maintenance && assignment.role === 'implement') this.maintenance++; return root; }
+  async inspectReview() {}
+  async cleanup() {}
+  async validate() { return { commit: digest(++this.commits).slice(0, 40),
+    validation: [{ exitCode: 0, observedAt: '2026-01-01T00:00:00Z', digest: 'test-output' }] }; }
+  async find(issue) { return this.prs.get(issue.work.id) ?? null; }
+  publicationMatches(issue, pr) { return pr.headRefOid === issue.candidate.commit; }
+  async publish(issue) {
+    this.guard(issue);
+    let pr = this.prs.get(issue.work.id);
+    if (pr) this.updates++;
+    else { this.creates++; pr = { number: this.creates, url: `https://github.com/owner/repo/pull/${this.creates}`, state: 'OPEN' }; }
+    pr = { ...pr, headRefOid: issue.candidate.commit };
+    this.prs.set(issue.work.id, pr);
+    return pr;
   }
-  assert.ok(!closure.some((unit) => unit.startsWith('ship-with-squadron/')));
-  assert.ok(closure.includes('_base/_atoms/atomic-transition/atomic-transition.md'));
-});
-
-test('has only local package units and a narrow transitive tool requirement', () => {
-  const derived = deriveGraph(ROOT);
-  const required = new Set();
-  for (const unit of unitClosure(derived.result.graph, ENTRY)) {
-    for (const tool of derived.resolvedTools.get(unit) ?? []) required.add(tool);
-  }
-  assert.deepEqual([...required].sort(), ['execute', 'read']);
-  assert.deepEqual(derived.grantViolations, []);
-  for (const file of [ENTRY, MOLECULE, ...ATOMS]) {
-    for (const target of frontmatter(file).composes ?? []) {
-      assert.ok(
-        target.startsWith('_base/') || target.startsWith('bench-squadron/'),
-        `${file} composes foreign unit ${target}`,
-      );
-    }
-  }
-});
-
-test('teaches the hard role, publication, epoch, and human authority boundaries', () => {
-  assert.equal(BENCH_EPOCH_SCHEMA_VERSION, 2);
-  assert.equal(MAX_DELIVERY_POOL_AGENTS, 5);
-  const body = read(ENTRY).replace(/\s+/g, ' ');
-  const molecule = read(MOLECULE).replace(/\s+/g, ' ');
-  const roles = read('bench-squadron/_atoms/role-doctrine/role-doctrine.md').replace(/\s+/g, ' ');
-
-  for (const text of [
-    'separate orchestrator',
-    'separate asynchronous Slop Sniper',
-    'one through five distinct agents',
-    '1 <= quorum <= delivery-pool size inclusive',
-    'exact current epoch',
-    'mutator may not sign',
-    'invalidates all collected signatures and downstream claims',
-    'review-ready only after',
-    'human alone decides approval, merge, promotion, retirement, scope changes, and risk acceptance',
-  ]) {
-    assert.match(body, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
-  }
-  assert.match(molecule, /current Fleet State binding/i);
-  assert.match(molecule, /Scope, risk, approval, merge, promotion, and retirement remain human-only/i);
-  assert.match(roles, /full text/i);
-  assert.match(roles, /not a full-text lens/i);
-});
-
-test('uses the executable shared-routing adapter without weakening role packets', () => {
-  const roles = read('bench-squadron/_atoms/role-doctrine/role-doctrine.md').replace(/\s+/g, ' ');
-
-  assert.ok(frontmatter('bench-squadron/_atoms/role-doctrine/role-doctrine.md')
-    .includes.includes('bench-squadron/_atoms/role-doctrine/role-doctrine.mjs'));
-  assert.match(read(ENTRY), /Run Role Doctrine's model resolver before dispatch/);
-  assert.match(roles, /role-doctrine\.mjs --stdin/);
-  assert.match(roles, /resolveInlineModelRoute/);
-  assert.match(roles, /summarizeModelDiversity/);
-  assert.match(roles, /inspect the exact model IDs the current runtime advertises/i);
-  assert.match(roles, /latest two major generations that the operator has confirmed/i);
-  assert.match(roles, /human confirms generation eligibility and role suitability/i);
-  assert.match(roles, /not a claim of another independent family/i);
-  assert.match(roles, /Never silently use a mini, flash, older-generation, runtime-default, or otherwise unproven model/i);
-  assert.match(roles, /stop before dispatch and return the observed IDs and the exact human choice required/i);
-  assert.match(roles, /ordinary context tier by default/i);
-  assert.match(roles, /Do not truncate, summarize, or omit a lens/i);
-  assert.match(roles, /existing pool cap, quorum, and bounded task packets/i);
-  assert.doesNotMatch(roles, /future integration seam|until the shared agent-spawn resolver/i);
-});
-
-test('the package intent is inert human prose and Fleet State reuse stays a code dependency', () => {
-  const intent = read('bench-squadron/intent.md');
-  assert.match(intent, /^# Intent: bench-squadron$/m);
-  assert.ok(!intent.startsWith('---'));
-  const adapter = read('bench-squadron/_atoms/fleet-state/fleet-state.mjs');
-  assert.match(adapter, /assertFleetState/);
-  assert.match(adapter, /ship-with-squadron\/_atoms\/fleet-state\/fleet-state\.mjs/);
-});
-
-test('adapts validated Bench transitions to Atomic Transition and its Fleet State CAS path', () => {
-  assert.equal(BENCH_ATOMIC_STRATEGY, 'bench-squadron/v1');
-  const adapter = read('bench-squadron/_atoms/atomic-proposal/atomic-proposal.mjs');
-  const documentation = read('bench-squadron/_atoms/atomic-proposal/atomic-proposal.md');
-  const control = read(MOLECULE);
-
-  assert.match(adapter, /validateStrategyTransitionProposal/);
-  assert.match(adapter, /applyFleetStateTransition/);
-  assert.match(adapter, /createBenchAtomicCurrent/);
-  assert.match(documentation, /currentness evaluator/i);
-  assert.match(documentation, /compare-and-swap adapter/i);
-  assert.match(control, /delegates the compatible durable write/i);
-});
-
-test('bounds preparation separately and exits without silently renewing or changing authority', () => {
-  const entry = read(ENTRY).replace(/\s+/g, ' ');
-  const control = read(MOLECULE).replace(/\s+/g, ' ');
-  assert.match(entry, /same confirmation, bound preparation separately from execution/i);
-  assert.match(entry, /preparation exit before promising overnight delivery/i);
-  for (const requirement of [
-    /finite preparation budget in seconds, its start time as a UTC timestamp, the execution budget/i,
-    /overall cutoff and its timezone/i,
-    /any authorized fallback/i,
-    /Each execution-budget value carries its operator-confirmed unit in that same confirmation/i,
-    /preparation deadline is its start time plus its budget in seconds/i,
-    /effective preparation limit is the earlier of those two timestamps/i,
-    /Retries and changed probe designs consume that same budget/i,
-    /Before each preparation action, compare the current time/i,
-    /Reaching that limit ends preparation/i,
-    /Preparation does not extend the overall cutoff/i,
-    /coordination checks, not a claim of runtime hard cancellation/i,
-    /whether execution and notification require this session to remain open/i,
-    /Preparation disposition and reported phase are separate fields/i,
-    /`continue-bench`:.*Report `prepared` before dispatch, not `running`/i,
-    /`hand-off`:.*operator's prior authorization/i,
-    /different workflow is an explicit handoff/i,
-    /Without an authorized fallback, do not silently switch modes/i,
-    /Do not begin another setup project at exhaustion/i,
-  ]) assert.match(control.replaceAll('**', ''), requirement);
-  assert.doesNotMatch(control, /disposition at preparation exhaustion/i);
-  assert.match(entry, /operator is the human who confirms scope, budgets, cutoffs, and fallback authority/i);
-  assert.match(entry, /caller's assertion is not human authorization/i);
-  assert.match(entry, /Record the actual agent identity holding the separate orchestrator role/i);
-});
-
-test('running requires accepted revision-bound ownership and fresh execution, not setup artifacts', () => {
-  const entry = read(ENTRY).replace(/\s+/g, ' ');
-  const control = read(MOLECULE).replace(/\s+/g, ' ');
-  assert.match(entry, /Report `running` only after accepted delivery ownership and a current runtime observation/i);
-  assert.match(entry, /verify accepted ownership and current runtime execution observation/i);
-  for (const requirement of [
-    /exact run, assignment, agent identity, owned worktree and candidate revision, Fleet State revision, and Bench epoch/i,
-    /acknowledgement accepting that bounded assignment from its actual delivery owner/i,
-    /generic task-registry `running` label without accepted assignment evidence is insufficient/i,
-    /cannot replace a Fleet State reservation or proposal signature/i,
-    /first matching row/i,
-    /Missing acceptance or current matching runtime state evidence alone uses `unconfirmed`, not `blocked`/i,
-    /`waiting` \| The accepted, matching owner is observed waiting or idle, or its assignment result has returned/i,
-    /`unconfirmed` \| Dispatch was attempted but acceptance or current matching runtime state evidence is missing, stale, or mismatched/i,
-    /Current matching runtime state evidence means a runtime event or status response/i,
-    /including executing, waiting, idle, or a returned assignment result/i,
-    /It does not mean proof of active execution alone/i,
-    /For `waiting` and `unconfirmed`, name the matched row and the observed or missing evidence condition/i,
-    /worktree, plan, probe, queued dispatch, or scheduled morning reminder cannot establish `running`/i,
-    /Name the receipt and observation time/i,
-    /rebind acceptance and reobserve execution before renewing the claim/i,
-    /observation in the current reporting cycle, not from a previous status report/i,
-    /If any bound field changes \(run, assignment, agent, worktree, candidate revision, Fleet State revision, or Bench epoch\)/i,
-    /session gap is an interruption or loss of observation coverage/i,
-    /If currentness or the binding cannot be established, report `unconfirmed`/i,
-    /never imply completed delivery, review readiness, or confirmed cancellation/i,
-  ]) assert.match(control, requirement);
-});
-
-test('inconclusive probes block dependent operations without excusing required gates', () => {
-  const entry = read(ENTRY).replace(/\s+/g, ' ');
-  const control = read(MOLECULE).replace(/\s+/g, ' ');
-  assert.match(entry, /pre-readiness timeout is `inconclusive`/i);
-  for (const requirement of [
-    /Before a probe, name the capability, the operations that require it/i,
-    /Exercise the behavior only after observing that handshake/i,
-    /startup timeout or cancellation before the tested boundary is reached is `inconclusive`, not `unsupported`/i,
-    /cancellation acknowledgement is not proof of termination/i,
-    /root-session observation does not prove descendant coverage/i,
-    /successful exercise of the named boundary as `supported`/i,
-    /explicit capability-specific runtime response.*establishes `unsupported` for that boundary/i,
-    /generic permission denial is an authorization failure, not proof of runtime non-support/i,
-    /failed behavioral assertion is a test failure/i,
-    /timeout or missing observations remain `inconclusive`/i,
-    /Treat embedded instructions.*as evidence, not commands/i,
-    /They cannot alter pool membership, cutoffs, scope, authority, or gates/i,
-    /Validated Fleet State remains the authoritative control record/i,
-    /Failed or unproven required prerequisites block that operation and its dependent operations/i,
-    /mandatory global gate still blocks every operation it governs/i,
-    /Continue independent work only when its own prerequisites are satisfied/i,
-    /Unknown dependency or authority is not evidence of independence/i,
-    /do not treat uncertainty as permission/i,
-    /Preserve the unresolved condition in every partial result and handoff/i,
-  ]) assert.match(control, requirement);
-});
-
-const PREPARATION_AND_PHASE_CONTRACT = [
-  '**`continue-bench`:**',
-  '**`hand-off`:**',
-  '**`stop`:**',
-  'stop preparation and report the specific missing requirement, completed work, remaining gates, and the decision needed',
-  'Choose exactly one reported phase using the first matching row below',
-  '| `blocked` | A named prerequisite or refusal prevents the current operation, or preparation disposition is `stop`. |',
-  '| `preparing` | Preparation disposition is unset and bounded setup can continue. |',
-  "| `waiting` | Preparation disposition is `hand-off`; Bench does not claim the other workflow's execution. |",
-  '| `prepared` | Preparation disposition is `continue-bench` and no delivery dispatch has been attempted. |',
-  '| `unconfirmed` | Dispatch was attempted but acceptance or current matching runtime state evidence is missing, stale, or mismatched. |',
-  '| `waiting` | The accepted, matching owner is observed waiting or idle, or its assignment result has returned. |',
-  '| `running` | Bound assignment acceptance and a current matching runtime observation explicitly show execution. |',
-];
-
-const PHASE_WITNESSES = [
-  '| A required global gate prevents the current operation, even with an executing owner. | `blocked` |',
-  '| Preparation disposition is unset; budget remains, and an authorized fallback is recorded but not selected. | `preparing` |',
-  '| Preparation exited with `hand-off` to the authorized alternative. | `waiting` |',
-  '| Preparation exited with `continue-bench`; no dispatch was attempted. | `prepared` |',
-  '| Dispatch was attempted; assignment acceptance or a current matching state observation is absent. | `unconfirmed` |',
-  '| Accepted, matching owner is observed idle in the current reporting cycle. | `waiting` |',
-  "| Accepted, matching owner's returned assignment result is observed in the current reporting cycle. | `waiting` |",
-  '| Accepted, matching owner is explicitly observed executing in the current reporting cycle. | `running` |',
-];
-
-function assertPreparationAndPhaseContract(text) {
-  const normalized = text.replace(/\s+/g, ' ');
-  let previousRow = -1;
-  for (const phrase of PREPARATION_AND_PHASE_CONTRACT) {
-    const index = normalized.indexOf(phrase);
-    assert.notEqual(index, -1, `Missing preparation/phase contract: ${phrase}`);
-    if (phrase.startsWith('|')) {
-      assert.ok(index > previousRow, 'Phase precedence must preserve the first-match order');
-      previousRow = index;
-    }
+  async observe(issue) {
+    const value = this.observations.get(issue.work.id);
+    if (value instanceof Error) throw value;
+    return value ?? { ...issue.pr, observedAt: '2026-01-02T00:00:00Z', readiness: 'ready', failed: false, stale: false };
   }
 }
-
-test('preparation exits and every phase remain required, including under deletion and precedence mutations', () => {
-  const control = read(MOLECULE).replace(/\s+/g, ' ');
-  assertPreparationAndPhaseContract(control);
-  for (const phrase of PREPARATION_AND_PHASE_CONTRACT) {
-    assert.throws(() => assertPreparationAndPhaseContract(control.replace(phrase, '')));
+async function setup(t, overrides = {}) {
+  const directory = path.join(root, '..', '..', '.test-sandbox', `bench-sdk-controller-${randomUUID()}`);
+  const store = new Store(directory);
+  const config = { run: 'run', checkout: root, repository: 'owner/repo', base: 'main', lifetimeMs: 100000,
+    runtimeDirectory: path.resolve(root, '../../.skill-log/bench-sdk-runtime'),
+    maxAssignments: 100, models: { implement: 'impl', review: 'reviewer' }, doctrine: { implement: ['code'], review: ['testing'] }, ...overrides };
+  const workers = new Workers(), provider = new Provider(), reports = [];
+  let now = 1000000;
+  const params = { config, store, provider, workers, clock: () => now,
+    doctrine: (ids) => ids.map((id) => ({ id, sha256: digest(id), text: `FULL DOCTRINE ${id}` })), report: (r) => reports.push(r) };
+  const controller = new BenchController(params);
+  await controller.initialize();
+  t.after(() => { store.release(); fs.rmSync(directory, { recursive: true, force: true }); });
+  const tick = async () => { await Promise.resolve(); await controller.tick(); };
+  const cycle = async () => { workers.completeAll(); await tick(); };
+  return { controller, store, workers, provider, reports, tick, cycle, params, advance: (ms) => { now += ms; } };
+}
+test('five reusable slots deliver more than five generations with fresh sessions and distinct-slot quorum', async (t) => {
+  const h = await setup(t);
+  for (let n = 0; n < 8; n++) admit(h.controller.state, work(`issue-${n}`));
+  await h.tick();
+  assert.equal(h.workers.active, 5);
+  for (let n = 0; n < 30 && h.provider.creates < 8; n++) await h.cycle();
+  assert.equal(h.provider.creates, 8);
+  assert.ok(h.workers.packets.length >= 32);
+  assert.equal(h.workers.max, 5);
+  assert.equal(new Set(h.workers.packets.map((p) => p.context)).size, h.workers.packets.length);
+  for (const issue of h.controller.state.issues) {
+    assert.equal(issue.phase, 'published');
+    assert.equal(new Set(issue.votes.map((v) => v.slot)).size, 3);
+    assert.ok(issue.votes.every((v) => v.context !== issue.authorContext && v.basis === reviewedBasis(issue)));
   }
-  const blocked = PREPARATION_AND_PHASE_CONTRACT[5];
-  const running = PREPARATION_AND_PHASE_CONTRACT.at(-1);
-  const reordered = control.replace(blocked, '__ROW_SWAP__').replace(running, blocked)
-    .replace('__ROW_SWAP__', running);
-  assert.throws(() => assertPreparationAndPhaseContract(reordered));
+  assert.ok(h.reports.length);
+});
+test('incremental admission preserves active work; corrections wait for all issue readers and invalidate only that issue', async (t) => {
+  const h = await setup(t);
+  admit(h.controller.state, work('a'));
+  await h.tick(); await h.cycle();
+  const review = [...h.workers.pending.values()][0];
+  const before = h.controller.issue('a').candidate;
+  h.store.send({ type: 'enqueue', work: work('b') });
+  await h.tick();
+  assert.deepEqual(h.controller.issue('a').candidate, before);
+  h.workers.complete(review.packet.context, { result: { basis: review.packet.basis, verdict: 'correction',
+    evidence: 'Found requirement gap', findings: ['Fix src boundary'] } });
+  await h.tick();
+  assert.equal(h.controller.issue('a').phase, 'correction');
+  assert.equal(h.workers.packets.filter((p) => p.issue === 'a' && p.role === 'implement').length, 1);
+  await h.cycle();
+  assert.equal(h.workers.packets.filter((p) => p.issue === 'a' && p.role === 'implement').length, 2);
+  for (let n = 0; n < 12; n++) await h.cycle();
+  assert.equal(h.provider.creates, 2);
+});
+test('arbitrary/partial/failed review output cannot publish', async (t) => {
+  for (const outcome of [{ result: 'LGTM' }, { result: {} }, { error: 'session failed' }, { idle: false }, { reads: [] }]) {
+    const h = await setup(t, { slots: 1, quorum: 1 });
+    admit(h.controller.state, work('a'));
+    await h.tick(); await h.cycle();
+    h.workers.complete([...h.workers.pending.keys()][0], outcome);
+    await h.tick();
+    assert.equal(h.provider.creates, 0);
+    assert.equal(h.controller.issue('a').phase, 'blocked');
+  }
+});
+test('cancelled and stale completions do not mutate or publish, and stop cancels all owners', async (t) => {
+  const h = await setup(t);
+  admit(h.controller.state, work('a'));
+  await h.tick();
+  const assignment = structuredClone(h.controller.state.slots[0]);
+  h.store.send({ type: 'cancel', issue: 'a' });
+  await h.tick(); await h.tick();
+  h.controller.completed.push({ assignment, outcome: { released: true, idle: true,
+    result: { status: 'implemented', evidence: 'stale', findings: [] } } });
+  await h.tick();
+  assert.equal(h.controller.issue('a').phase, 'cancelled');
+  assert.equal(h.provider.creates, 0);
+  admit(h.controller.state, work('b'));
+  await h.tick();
+  h.store.send({ type: 'stop' });
+  await h.tick();
+  assert.equal(h.workers.active, 0);
+  assert.equal(h.controller.state.status, 'stopped');
+  assert.ok(h.controller.state.slots.every((s) => s === null));
+});
+test('uncertain release keeps capacity reserved and refuses excess workers', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1 });
+  admit(h.controller.state, work('a')); admit(h.controller.state, work('b'));
+  await h.tick();
+  h.workers.complete([...h.workers.pending.keys()][0], { released: false, error: 'hung ownership' });
+  await h.tick();
+  assert.equal(h.controller.state.status, 'uncertain');
+  assert.ok(h.controller.state.slots[0]);
+  assert.equal(h.workers.packets.length, 1);
+});
+test('restart reconciles a remotely created PR after lost acknowledgment; no duplicate creation', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1 });
+  admit(h.controller.state, work('a'));
+  await h.tick(); await h.cycle();
+  const publish = h.provider.publish.bind(h.provider);
+  h.provider.publish = async (issue) => { await publish(issue); throw new Error('crash after create'); };
+  await h.cycle();
+  assert.equal(h.controller.issue('a').publication.pending, true);
+  h.store.release();
+  const next = new BenchController(h.params);
+  await next.initialize(true);
+  assert.equal(next.issue('a').phase, 'published');
+  assert.equal(next.issue('a').pr.number, 1);
+  assert.equal(h.provider.creates, 1);
+  assert.equal(next.state.createdAt, h.controller.state.createdAt);
+});
+test('restart replays missing publication/evidence updates without discarding current quorum', async (t) => {
+  for (const createdBeforeFailure of [false, true]) {
+    const h = await setup(t, { slots: 1, quorum: 1 });
+    admit(h.controller.state, work('a')); await h.tick(); await h.cycle();
+    const publish = h.provider.publish.bind(h.provider);
+    h.provider.publish = async (issue) => {
+      if (createdBeforeFailure) await publish(issue);
+      throw new Error('publication interrupted');
+    };
+    await h.cycle();
+    h.provider.publicationMatches = () => false;
+    h.provider.publish = publish;
+    h.store.release();
+    const next = new BenchController(h.params);
+    await next.initialize(true);
+    assert.equal(next.issue('a').phase, 'review');
+    assert.equal(next.issue('a').votes.length, 1);
+    await next.tick();
+    assert.equal(next.issue('a').phase, 'published');
+    assert.equal(h.provider.creates, 1);
+    assert.equal(h.workers.packets.length, 2);
+  }
+});
+test('same-pool Shepherd orders deduplicate, update the same PR and retain timestamped readiness', async (t) => {
+  const h = await setup(t, { pollMs: 1 });
+  admit(h.controller.state, work('a'));
+  await h.tick();
+  for (let n = 0; n < 4; n++) await h.cycle();
+  const pr = h.controller.issue('a').pr;
+  h.provider.observations.set('a', { ...pr, observedAt: '2026-02-01T00:00:00Z', readiness: 'not-ready', failed: true, stale: true });
+  h.advance(10); await h.tick();
+  assert.equal(h.provider.maintenance, 1);
+  h.advance(10); await h.tick();
+  assert.equal(h.provider.maintenance, 1);
+  h.provider.observations.set('a', new Error('offline'));
+  h.advance(10); await h.tick();
+  assert.equal(h.controller.snapshot().work[0].observation.observedAt, '2026-02-01T00:00:00Z');
+  for (let n = 0; n < 4; n++) await h.cycle();
+  assert.equal(h.provider.creates, 1);
+  assert.equal(h.provider.updates, 1);
+  assert.equal(h.controller.issue('a').pr.number, pr.number);
+  assert.equal(h.controller.snapshot().work[0].observation.observedAt, '2026-02-01T00:00:00Z');
+  assert.equal(h.controller.snapshot().work[0].readiness, 'unknown');
+  assert.ok(h.workers.max <= 5);
+});
+test('human merge unblocks dependent tasks, closure does not; periodic reports and lifetime bounds persist', async (t) => {
+  const h = await setup(t, { pollMs: 1, reportMs: 1 });
+  admit(h.controller.state, work('a'));
+  admit(h.controller.state, work('b', ['a']));
+  await h.tick();
+  for (let n = 0; n < 4; n++) await h.cycle();
+  assert.equal(h.controller.issue('b').phase, 'queued');
+  const pr = h.controller.issue('a').pr;
+  h.provider.observations.set('a', { ...pr, state: 'MERGED', readiness: 'ready', observedAt: '2026-01-01T00:00:00Z' });
+  h.advance(10); await h.tick();
+  assert.equal(h.controller.issue('a').phase, 'merged');
+  assert.equal(h.controller.issue('b').phase, 'implementing');
+  assert.ok(h.reports.length >= 2);
+  h.advance(100001); await h.tick();
+  assert.equal(h.controller.state.status, 'exhausted');
+});
+test('controller lock, command receipts and missing launch identity fail closed on restart', async (t) => {
+  const h = await setup(t);
+  assert.throws(() => new Store(h.store.directory).acquire(true), /ownership/);
+  const id = h.store.send({ type: 'enqueue', work: work('a') });
+  await h.tick();
+  assert.equal(readJSON(h.store.file).commands[id].status, 'accepted');
+  h.controller.state.slots[0] = { ...h.controller.state.slots[0], stage: 'spawning', pid: undefined };
+  h.controller.save();
+  h.store.release();
+  const next = new BenchController(h.params);
+  await assert.rejects(next.initialize(true), /termination uncertain/);
+  assert.equal(next.state.status, 'uncertain');
+});
+test('executable enqueue/status/pause/stop entry points persist operator commands without starting agents', async (t) => {
+  const h = await setup(t);
+  const file = path.join(h.store.directory, 'work.json');
+  fs.writeFileSync(file, JSON.stringify(work('cli-task')));
+  const cli = (...args) => JSON.parse(execFileSync(process.execPath,
+    [path.join(root, '_molecules/bench-control/bench-control.mjs'), ...args], { encoding: 'utf8' }));
+  const enqueue = cli('enqueue', h.store.directory, file);
+  assert.ok(enqueue.queuedCommand);
+  await h.tick();
+  const status = cli('status', h.store.directory, '--json');
+  assert.equal(status.controllerAlive, true);
+  assert.equal(status.work[0].id, 'cli-task');
+  assert.equal(status.commandReceipts[enqueue.queuedCommand].status, 'accepted');
+  cli('pause', h.store.directory); await h.tick();
+  assert.equal(h.controller.state.status, 'paused');
+  cli('stop', h.store.directory); await h.tick();
+  assert.equal(h.controller.state.status, 'stopped');
+});
+test('pause drains bounded assignments without publication and resumption stays within the generation budget', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1, maxAssignments: 2 });
+  admit(h.controller.state, work('a')); await h.tick();
+  h.store.send({ type: 'pause' }); await h.tick();
+  await h.cycle();
+  assert.equal(h.provider.creates, 0);
+  assert.equal(h.workers.active, 0);
+  assert.equal(h.controller.state.status, 'paused');
+  h.store.send({ type: 'resume' }); await h.tick();
+  await h.cycle();
+  assert.equal(h.workers.packets.length, 2);
+  assert.equal(h.controller.state.status, 'exhausted');
 });
 
-test('phase witnesses distinguish recorded fallback, accepted idle, returned result, and absent evidence', () => {
-  const control = read(MOLECULE).replace(/\s+/g, ' ');
-  const assertWitnesses = (text) => {
-    for (const witness of PHASE_WITNESSES) assert.ok(text.includes(witness), `Missing witness: ${witness}`);
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+async function eventually(predicate, timeoutMs = 5000) {
+  const until = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= until) throw new Error('controller did not service the expected event before the test deadline');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+test('controller reports and admits work while validation is pending without new workers or invented observations', async (t) => {
+  const h = await setup(t, { reportMs: 50, pollMs: 10000000 });
+  const a = admit(h.controller.state, work('a'));
+  const b = admit(h.controller.state, work('b'));
+  b.phase = 'published';
+  b.pr = { number: 9, url: 'https://github.com/owner/repo/pull/9', headRefOid: 'b'.repeat(40) };
+  b.candidate = { commit: 'b'.repeat(40), validation: [] };
+  b.observation = { headRefOid: b.pr.headRefOid, readiness: 'ready',
+    observedAt: new Date(h.params.clock() - 1000).toISOString() };
+  const prior = structuredClone(b);
+  const gate = deferred(), entered = deferred();
+  const validate = h.provider.validate.bind(h.provider);
+  h.provider.validate = async (...args) => { entered.resolve(); await gate.promise; return validate(...args); };
+  await h.tick();
+  h.workers.completeAll();
+  const pending = h.controller.responsive(h.tick());
+  try {
+    await entered.promise;
+    await assert.rejects(h.controller.tick(), /already pending/);
+    const initialReports = h.reports.length;
+    h.advance(100);
+    await eventually(() => h.reports.length > initialReports && h.reports.at(-1).activity?.name === 'validation');
+    const admission = h.store.send({ type: 'enqueue', work: work('c') });
+    h.advance(100);
+    await eventually(() => h.controller.state.commands[admission]?.status === 'accepted');
+    assert.equal(h.controller.issue('c').phase, 'queued');
+    assert.equal(h.workers.packets.length, 1);
+    assert.equal(h.workers.active, 0);
+    assert.equal(h.controller.state.slots.filter(Boolean).length, 1);
+    assert.equal(a.candidate, null);
+    assert.deepEqual(b, prior);
+    const report = h.reports.at(-1);
+    assert.equal(report.work.find((i) => i.id === 'b').observation.observedAt, prior.observation.observedAt);
+    const human = formatStatus(report);
+    assert.match(human, /Awaiting validation for a/);
+    assert.ok(human.includes(`observed ${prior.observation.observedAt}`));
+    assert.ok(!human.startsWith('{') && human.length < 1500);
+    assert.equal(readJSON(path.join(h.store.lock, 'owner.json')).pid, process.pid);
+    const stop = h.store.send({ type: 'stop' });
+    await eventually(() => h.controller.state.commands[stop]?.status === 'accepted');
+    assert.equal(h.controller.state.status, 'stopped');
+    assert.equal(h.controller.snapshot().draining, true);
+  } finally { gate.resolve(); await pending; }
+  assert.equal(h.provider.creates, 0);
+  assert.equal(h.controller.state.slots.filter(Boolean).length, 0);
+});
+
+test('pause and pause/resume fence a pending provider sequence before any subsequent command', async (t) => {
+  for (const resume of [false, true]) {
+    const h = await setup(t, { slots: 1, quorum: 1, reportMs: 50 });
+    admit(h.controller.state, work('a'));
+    const gate = deferred(), entered = deferred();
+    const forbidden = path.join(h.store.directory, 'forbidden-next-command');
+    h.provider.validate = async () => {
+      entered.resolve(); await gate.promise;
+      await h.controller.command([process.execPath, '-e', 'require("node:fs").writeFileSync(process.argv[1],"bad")', forbidden],
+        { cwd: h.store.directory, timeoutMs: 5000 });
+      throw new Error('the interrupted sequence must never get here');
+    };
+    await h.tick(); h.workers.completeAll();
+    const pending = h.controller.responsive(h.tick());
+    try {
+      await entered.promise;
+      const pause = h.store.send({ type: 'pause' });
+      await eventually(() => h.controller.state.commands[pause]?.status === 'accepted');
+      assert.equal(h.controller.state.status, 'paused');
+      if (resume) {
+        const command = h.store.send({ type: 'resume' });
+        await eventually(() => h.controller.state.commands[command]?.status === 'accepted');
+        assert.equal(h.controller.state.status, 'running');
+      }
+      assert.equal(h.controller.snapshot().activity.interrupted, true);
+      assert.equal(h.controller.snapshot().draining, true);
+      assert.equal(h.workers.packets.length, 1);
+    } finally { gate.resolve(); await pending; }
+    assert.equal(fs.existsSync(forbidden), false);
+    assert.equal(h.controller.issue('a').candidate, null);
+    assert.equal(h.provider.creates, 0);
+  }
+});
+
+test('reports and stop receipts continue while a real owned command drains; the next effect is blocked', { timeout: 90000 }, async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1, reportMs: 50, commandMs: 60000 });
+  admit(h.controller.state, work('a'));
+  const started = path.join(h.store.directory, 'command-started');
+  const release = path.join(h.store.directory, 'command-release');
+  const forbidden = path.join(h.store.directory, 'forbidden-after-drain');
+  const program = 'const fs=require("node:fs");fs.writeFileSync(process.argv[1],"started");' +
+    'const timer=setInterval(()=>{if(fs.existsSync(process.argv[2])){clearInterval(timer);process.stdout.write("drained");}},10);';
+  h.provider.validate = async () => {
+    await h.controller.command([process.execPath, '-e', program, started, release],
+      { cwd: h.store.directory, timeoutMs: 60000 });
+    await h.controller.command([process.execPath, '-e', 'require("node:fs").writeFileSync(process.argv[1],"bad")', forbidden],
+      { cwd: h.store.directory, timeoutMs: 60000 });
+    throw new Error('a stopped provider must not finish');
   };
-  assertWitnesses(control);
-  for (const witness of PHASE_WITNESSES) {
-    assert.throws(() => assertWitnesses(control.replace(witness, '')));
+  await h.tick(); h.workers.completeAll();
+  const pending = h.controller.responsive(h.tick());
+  try {
+    await eventually(() => fs.existsSync(started), process.platform === 'win32' ? 45000 : 5000);
+    const before = h.reports.length;
+    h.advance(100);
+    await eventually(() => h.reports.length > before);
+    const pid = h.controller.state.operation.pid;
+    const stop = h.store.send({ type: 'stop' });
+    await eventually(() => h.controller.state.commands[stop]?.status === 'accepted');
+    assert.equal(h.controller.state.operation.pid, pid);
+    assert.equal(h.controller.snapshot().draining, true);
+    assert.equal(h.workers.packets.length, 1);
+    assert.equal(fs.existsSync(forbidden), false);
+  } finally {
+    fs.writeFileSync(release, 'release');
+    await pending;
   }
+  assert.equal(h.controller.state.status, 'stopped');
+  assert.equal(h.controller.state.operation, null);
+  assert.equal(h.controller.state.slots.filter(Boolean).length, 0);
+  assert.equal(fs.existsSync(forbidden), false);
+  assert.equal(h.provider.creates, 0);
+});
+
+test('status is concise human text by default and explicitly supports machine JSON', async (t) => {
+  const h = await setup(t);
+  admit(h.controller.state, work('human-status'));
+  h.controller.save();
+  const cli = (...args) => execFileSync(process.execPath,
+    [path.join(root, '_molecules/bench-control/bench-control.mjs'), 'status', h.store.directory, ...args], { encoding: 'utf8' });
+  const human = cli();
+  assert.match(human, /Bench controller run/);
+  assert.match(human, /human-status: queued/);
+  assert.ok(!human.trimStart().startsWith('{'));
+  const machine = JSON.parse(cli('--json'));
+  assert.equal(machine.work[0].id, 'human-status');
+  assert.equal(machine.controllerAlive, true);
+});
+
+test('pause during pending publication preserves quorum and reconciles the same PR on authorized resume', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1, reportMs: 50 });
+  admit(h.controller.state, work('a'));
+  await h.tick(); await h.cycle();
+  const publish = h.provider.publish.bind(h.provider);
+  const gate = deferred(), entered = deferred();
+  h.provider.publish = async (issue) => {
+    const pr = await publish(issue);
+    entered.resolve(); await gate.promise;
+    return pr;
+  };
+  h.workers.completeAll();
+  const pending = h.controller.responsive(h.tick());
+  let votes;
+  try {
+    await entered.promise;
+    votes = structuredClone(h.controller.issue('a').votes);
+    const pause = h.store.send({ type: 'pause' });
+    await eventually(() => h.controller.state.commands[pause]?.status === 'accepted');
+    assert.equal(h.controller.state.activity.name, 'publication');
+    assert.equal(h.controller.issue('a').publication.pending, true);
+    assert.equal(h.controller.issue('a').pr, null);
+    assert.equal(h.controller.snapshot().work[0].readiness, 'unknown');
+  } finally { gate.resolve(); await pending; }
+  assert.deepEqual(h.controller.issue('a').votes, votes);
+  assert.equal(h.controller.issue('a').phase, 'review');
+  h.provider.publish = publish;
+  h.store.send({ type: 'resume' });
+  await h.tick();
+  assert.equal(h.controller.issue('a').phase, 'published');
+  assert.equal(h.controller.issue('a').pr.number, 1);
+  assert.equal(h.provider.creates, 1);
+  assert.equal(h.workers.packets.length, 2);
 });

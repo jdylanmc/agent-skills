@@ -5,7 +5,7 @@ level: atom
 allowed-tools: []
 includes: ["_base/_atoms/atomic-transition/atomic-transition.mjs"]
 composes: []
-used-by: ["bench-squadron/_molecules/bench-control/bench-control.md","tdd-squadron/_molecules/tdd-candidate-loop/tdd-candidate-loop.md"]
+used-by: ["tdd-squadron/_molecules/tdd-candidate-loop/tdd-candidate-loop.md"]
 ---
 
 # Atomic Transition
