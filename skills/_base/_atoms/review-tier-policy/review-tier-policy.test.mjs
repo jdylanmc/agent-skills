@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { digestJson, stableJson } from './review-tier-policy.canonical-json.mjs';
 import {
   CORRECTION_REVIEW_ROUTE,
   DEEP_REVIEW_ROUTE,
@@ -16,6 +17,19 @@ import {
   normalizeReviewPolicy,
   reviewPolicyBindingDigest,
 } from './review-tier-policy.mjs';
+
+test('canonical JSON has independent expected bytes for objects, arrays, and scalars', () => {
+  const value = { z: 3, nested: [{ b: false, a: null }, 'scalar', 7], a: 'text' };
+  const reordered = { a: 'text', nested: [{ a: null, b: false }, 'scalar', 7], z: 3 };
+
+  assert.equal(
+    JSON.stringify(stableJson(value)),
+    '{"a":"text","nested":[{"a":null,"b":false},"scalar",7],"z":3}',
+  );
+  assert.equal(digestJson(value), digestJson(reordered));
+  assert.equal(JSON.stringify(stableJson(7)), '7');
+  assert.equal(digestJson({ scalar: 7 }), '19ca161f7ac436cb6f7612320ebde8cedbfd2e8880a347b14735d880060acfa4');
+});
 
 const BASE = '1'.repeat(40);
 const DEEP_HEAD = '2'.repeat(40);

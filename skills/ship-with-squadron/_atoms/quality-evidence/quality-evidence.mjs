@@ -1,5 +1,5 @@
-import crypto from 'node:crypto';
 import { reconcile } from '../../../ship/_atoms/diff-reconciliation/diff-reconciliation.mjs';
+import { digestJson, stableJson } from '../../../_base/_atoms/review-tier-policy/review-tier-policy.canonical-json.mjs';
 import { runTieredCodeReviewFromGit } from '../../../roast/_atoms/correction-review-dispatch/correction-review-dispatch.mjs';
 import { assertFleetManifest } from '../fleet-manifest/fleet-manifest.mjs';
 
@@ -60,17 +60,8 @@ function exactObjectKeys(value, expected) {
     && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
 }
 
-function stable(value) {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
-  }
-  return value;
-}
-
-function digest(value) {
-  return crypto.createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
-}
+const stable = stableJson;
+const digest = digestJson;
 
 function same(left, right) {
   return JSON.stringify(stable(left)) === JSON.stringify(stable(right));
