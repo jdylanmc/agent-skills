@@ -39,3 +39,16 @@ sandbox; authorize it accordingly.
 PR observations distinguish failure, pending/unknown and stale base; they retain
 the provider-read timestamp. Base updates merge the new base rather than rewrite
 published history. Conflicts enter the ordinary bounded correction path.
+
+Failed hosted checks require current-head evidence, not only a rollup label.
+The adapter uses fixed GitHub API paths for check output/annotations and matching
+Actions run/attempt/job IDs, then `gh run view --attempt --job --log-failed` for
+bounded failed-step log tails. Check/run versions and the PR head are read back;
+missing, inaccessible or stale evidence remains explicit and blocks dispatch.
+Arbitrary check URLs are not fetched. Excerpts retain provenance and are data,
+never permission to expand worker scope.
+
+An unchanged candidate with unresolved hosted readiness blocks instead of
+repushing/requeueing forever. There are no empty commits or automatic reruns.
+External head drift is refused before publication and requires the controller's
+durable operator-reconciliation boundary.

@@ -350,6 +350,11 @@ below is unreleased and no comparison links are available.
   subsequent CI/base maintenance into the same capacity pool. Explicit dependency
   setup stays outside skill discovery; bounded platform-owned process cleanup and
   persistent publication identities keep uncertain release and recovery visible.
+  The invoking agent prepares pasted or source-backed tasks with pinned context
+  instead of requiring operator-authored JSON. Scoped custom-tool approval,
+  ordered intake and visible blocker questions keep routine work actionable.
+  External head changes remain fenced; maintenance uses current-attempt failure
+  evidence and stops unchanged retry loops. Ambient runtime overrides are refused.
   Human scope, risk, approval and merge authority remain separate.
 
 - **Simpler, reliable single-skill reinforcement.** Reinforce Skill keeps its

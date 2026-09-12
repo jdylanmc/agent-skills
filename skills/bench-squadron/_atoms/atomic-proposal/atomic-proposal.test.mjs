@@ -186,3 +186,65 @@ test('authorized dotfile changes pass file tools and real Git validation while p
   assert.equal(git('diff', '--cached', '--name-only'), '');
   assert.equal(git('rev-parse', 'HEAD'), candidate.commit);
 });
+test('hosted failure evidence uses fixed current-head check/run/attempt endpoints and actual failed-job logs', async () => {
+  const head = 'a'.repeat(40), calls = [];
+  let changedAttempt = false, missingLog = false;
+  const check = { id: 11, head_sha: head, conclusion: 'failure', completed_at: '2026-01-01T00:00:00Z',
+    check_suite: { id: 22 }, app: { slug: 'github-actions' }, name: 'build', output: {} };
+  const run = { id: 33, head_sha: head, run_attempt: 2, conclusion: 'failure', check_suite_id: 22 };
+  const adapter = new GitHubDelivery(config, root, async (argv, options) => {
+    calls.push(argv);
+    if (argv[1] === 'run') {
+      assert.deepEqual(argv, ['gh', 'run', 'view', '33', '--attempt', '2', '--job', '44', '--log-failed', '--repo', 'owner/repo']);
+      assert.equal(options.tailOutput, true);
+      assert.equal(options.outputLimit, 12000);
+      if (missingLog) throw new Error('log access denied');
+      return 'Hosted-only error at src/platform.ts: missing Windows build input.';
+    }
+    if (argv[1] === 'pr') return JSON.stringify({ headRefOid: head, state: 'OPEN' });
+    assert.equal(argv[1], 'api');
+    assert.deepEqual(argv.slice(-2), ['--method', 'GET']);
+    const endpoint = argv[2];
+    assert.ok(endpoint.startsWith('repos/owner/repo/'));
+    if (endpoint.includes('/commits/')) return JSON.stringify({ check_runs: [check] });
+    if (endpoint.endsWith('/annotations?per_page=10')) return '[]';
+    if (endpoint.endsWith('/check-runs/11')) return JSON.stringify(check);
+    if (endpoint.includes('actions/runs?')) return JSON.stringify({ workflow_runs: [run] });
+    if (endpoint.endsWith('/attempts/2/jobs?per_page=10')) return JSON.stringify({ jobs: [
+      { id: 44, run_id: 33, run_attempt: 2, head_sha: head, conclusion: 'failure', name: 'windows-build' },
+    ] });
+    if (endpoint.endsWith('/actions/runs/33')) return JSON.stringify({ ...run, run_attempt: changedAttempt ? 3 : 2 });
+    assert.fail(`unexpected provider command ${argv.join(' ')}`);
+  });
+  const item = { ...issue(), pr: { number: 7, headRefOid: head } };
+  const available = await adapter.failureEvidence(item, { headRefOid: head });
+  assert.equal(available.status, 'available');
+  assert.match(available.jobs[0].excerpt, /Hosted-only error/);
+  assert.deepEqual([available.jobs[0].runId, available.jobs[0].attempt, available.jobs[0].jobId], [33, 2, 44]);
+  assert.ok(calls.every((args) => args.every((arg) => !arg.startsWith('https://'))));
+  changedAttempt = true;
+  assert.equal((await adapter.failureEvidence(item, { headRefOid: head })).status, 'stale');
+  changedAttempt = false; missingLog = true;
+  const absent = await adapter.failureEvidence(item, { headRefOid: head });
+  assert.equal(absent.status, 'unavailable');
+  assert.match(absent.errors[0], /log access denied/);
+});
+test('unexpected publication head is refused before any push and bounded diagnostic tails retain the actual error', async () => {
+  let pushed = false;
+  const item = issue();
+  item.pr = { headRefOid: 'b'.repeat(40) };
+  const adapter = new GitHubDelivery(config, root, async (argv) => {
+    if (argv.includes('push')) pushed = true;
+    return JSON.stringify([{ number: 7, headRefName: 'bench/run/one', baseRefName: 'main', headRefOid: 'c'.repeat(40),
+      state: 'OPEN', body: '<!-- bench-publication:publication-id --><!-- /bench-publication:publication-id -->' }]);
+  });
+  await assert.rejects(adapter.publish(item), (error) => error.externalHead === 'c'.repeat(40));
+  assert.equal(pushed, false);
+  if (process.platform !== 'win32') {
+    const tail = await command([process.execPath, '-e', 'process.stdout.write("x".repeat(50000)+"REAL_DIAGNOSTIC")'],
+      { tailOutput: true, outputLimit: 2000 });
+    assert.ok(tail.length < 2100);
+    assert.ok(tail.endsWith('REAL_DIAGNOSTIC'));
+    assert.match(tail, /bounded tail/);
+  }
+});

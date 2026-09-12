@@ -4,11 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { loadDoctrine, fileTools, sessionOptions, executeSession, SDKWorkers } from './role-doctrine.mjs';
 import { processAlive } from '../fleet-state/fleet-state.mjs';
-import { setupRuntime, resolveRuntime, loadSDK, runtimeDirectory } from './role-doctrine.runtime.mjs';
+import { setupRuntime, resolveRuntime, loadSDK, runtimeDirectory, assertRuntimeEnvironment } from './role-doctrine.runtime.mjs';
 import { ownerReleased, terminateOwned } from '../fleet-state/fleet-state.process.mjs';
 import { normalizeWork } from '../bench-epoch/bench-epoch.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -67,6 +67,51 @@ test('SDK cancellation before creation prevents a late new owner', async () => {
   const client = { start: async () => {}, createSession: () => assert.fail('cancelled creation') };
   await assert.rejects(executeSession(client, {}, { emit() {}, cancelled: () => true }), /cancelled/);
 });
+test('custom-tool permission approves only exact role-owned scoped requests, never ambient or managed asks', (t) => {
+  const cwd = directory(t);
+  fs.writeFileSync(path.join(cwd, 'src/input.txt'), 'synthetic');
+  const packet = { cwd, role: 'implement', slot: 0, model: 'chosen', doctrine: [], work: { paths: ['src'] } };
+  const implement = sessionOptions(packet);
+  const review = sessionOptions({ ...packet, role: 'review' });
+  const request = (toolName, args = { path: 'src/input.txt' }) =>
+    ({ kind: 'custom-tool', toolName, toolDescription: 'registered file tool', toolCallId: 'call-1', args });
+  assert.deepEqual(implement.onPermissionRequest(request('bench_read')), { kind: 'approve-once' });
+  assert.deepEqual(implement.onPermissionRequest(request('bench_write', { path: 'src/new.txt', content: 'synthetic' })), { kind: 'approve-once' });
+  assert.equal(fs.existsSync(path.join(cwd, 'src/new.txt')), false, 'permission approval itself must not execute the tool');
+  assert.equal(review.onPermissionRequest(request('bench_read')).kind, 'approve-once');
+  assert.equal(review.onPermissionRequest(request('bench_write', { path: 'src/new.txt', content: 'synthetic' })).kind, 'reject');
+  for (const value of [
+    request('task'), request('custom:bench_read'), { ...request('bench_read'), kind: 'shell' },
+    { ...request('bench_read'), kind: 'mcp' }, { ...request('bench_read'), kind: 'url' },
+    request('bench_read', { path: '../outside' }), request('bench_read', { path: '.git/config' }),
+    request('bench_read', { path: 'src/.env' }), request('bench_read', { path: 'src/input.txt', cwd: '/outside' }),
+    { ...request('bench_read'), managedApprovalRequired: true },
+    { ...request('bench_read'), policyDecision: 'denied-by-rules' },
+    { ...request('bench_read'), kind: 'denied-by-rules' },
+  ]) assert.equal(implement.onPermissionRequest(value, { sessionId: 's', managedSettingsEnabled: true }).kind, 'reject');
+  assert.ok(implement.tools.every((tool) => tool.skipPermission !== true));
+});
+test('conflicting runtime override is rejected before cache lookup and SDK startup failures remain explicit', async () => {
+  assert.throws(() => assertRuntimeEnvironment({ COPILOT_CLI_PATH: '/synthetic/unrelated-runtime' }), /No alternate runtime was invoked/);
+  assert.doesNotThrow(() => assertRuntimeEnvironment({ COPILOT_CLI_PATH: '' }));
+  let created = false;
+  const client = { start: async () => { throw new Error('platform package missing required runtime.node'); },
+    createSession: () => { created = true; } };
+  await assert.rejects(executeSession(client, {}, { emit() {} }), /SDK-managed runtime startup failed.*runtime.node/);
+  assert.equal(created, false);
+});
+test('the real smoke entry point refuses an ambient override before loading or invoking a runtime', (t) => {
+  const cwd = directory(t);
+  const marker = path.join(cwd, 'must-not-run');
+  const override = path.join(cwd, 'synthetic-runtime.cjs');
+  fs.writeFileSync(override, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'bad');`);
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL('./role-doctrine.smoke.mjs', import.meta.url)), path.join(cwd, 'missing-cache')], {
+    encoding: 'utf8', env: { ...process.env, COPILOT_CLI_PATH: override },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /COPILOT_CLI_PATH is set/);
+  assert.equal(fs.existsSync(marker), false);
+});
 test('smoke selects only a returned advertised model and exposes zero tools', async () => {
   let selected, calls = 0;
   const events = [];
@@ -93,6 +138,12 @@ test('missing auth stops smoke before model selection or any response', async ()
   const client = { start: async () => {}, getAuthStatus: async () => ({ isAuthenticated: false }),
     listModels: () => assert.fail('must not select a model without existing auth') };
   await assert.rejects(executeSession(client, { smoke: true }, { emit() {} }), /no alternative authentication/);
+});
+test('metadata inspection reports advertised IDs without creating a model session', async () => {
+  const client = { start: async () => {}, getAuthStatus: async () => ({ isAuthenticated: true }),
+    listModels: async () => [{ id: 'advertised-only' }], createSession: () => assert.fail('no session for metadata inspection') };
+  const result = await executeSession(client, { smoke: true, inspectModels: true }, { emit() {} });
+  assert.deepEqual(result, { status: 'models', models: ['advertised-only'] });
 });
 test('setup installs only pinned source manifests into an explicit external cache and resolves exports there', async (t) => {
   const parent = directory(t);

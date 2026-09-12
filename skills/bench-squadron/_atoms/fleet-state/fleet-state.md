@@ -26,12 +26,22 @@ State records normalized work, per-issue epochs/candidates/votes, reusable slot
 owners and platform process trees, assignment budgets, command receipts, PR identity and
 timestamped observations. A filesystem inbox admits operator commands without
 concurrent state writers. Accepted/rejected receipts precede inbox removal.
+Publishers serialize under a separate local inbox-publication lock, reserve a
+durable monotonically increasing sequence, then atomically publish the envelope.
+The controller consumes sequence order, never UUID or timestamp order. Failed
+reservations may leave gaps but are never recycled. Known-dead publisher locks
+can be recovered; live/missing ownership fails a bounded submission explicitly.
+Legacy unsequenced or duplicate-sequence envelopes require operator reconciliation.
 
 Restart requires the same configuration and run identity. The controller verifies
 prior process trees are released before reusing ownership. Missing launch identity
 is uncertain, not idle. A live controller or unresolved group blocks recovery;
 never remove its lock as a shortcut. Publication intent is durable before remote
 effects and reconciles the original branch/PR after an interruption.
+Operator-reconciliation blocks survive interruption and released-worker recovery.
+External-head drift fences/cancels old assignments; generic retry cannot accept
+it. The human may explicitly take over the existing PR by cancelling local
+Bench ownership, not by forcing a reset or manufacturing remote acceptance.
 
 ## Platform ownership
 

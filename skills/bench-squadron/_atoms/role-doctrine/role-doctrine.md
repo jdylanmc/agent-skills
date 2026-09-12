@@ -17,8 +17,9 @@ used-by: ["bench-squadron/_molecules/bench-control/bench-control.md"]
 - [Explicit import/live smoke](./role-doctrine.smoke.mjs)
 - [Pinned external dependency setup and resolution](./role-doctrine.runtime.mjs)
 
-The operator selects applicable doctrine IDs and exact implementation/review
-model IDs. Each dispatch reads complete doctrine source text, verifies its
+The invoking agent resolves applicable doctrine and advertised model IDs under
+the accepted operator policy, asking only material suitability/budget questions.
+Each dispatch reads complete doctrine source text, verifies its
 canonical manifest SHA-256 digest, includes the full text in the new session and
 records IDs/digests separately from model, role, context and slot identity.
 Unknown or unavailable models fail explicitly; no implicit fallback or automatic
@@ -31,10 +32,17 @@ outside the skills tree. Startup verifies the source/cached manifest and lock
 digests, SDK version and resolved package location; missing/stale setup fails
 actionably. Package exports resolve from that cache with `createRequire.resolve`
 and dynamic import, never `NODE_PATH` or a source-tree dependency fallback.
+Nonempty `COPILOT_CLI_PATH` overrides are rejected before loading/starting a
+runtime. The SDK's own `start` checks the selected host platform bundle; startup
+errors remain explicit and no custom runtime resolver/fallback is substituted.
 Every
 assignment calls `createSession`, never resume or model-switch. Built-in and
 MCP tools, discovered configuration and nested agents are disabled. An explicit
-permission handler rejects ambient permission requests. Custom tools read only
+permission handler issues `approve-once` only for exact registered role-allowed
+`custom-tool` requests with valid, scoped arguments. It never uses blanket
+approval, persistent approval or `skipPermission` to bypass policy. Managed
+human-approval requests, unknown denial metadata and ambient/nested/network/shell
+requests are rejected; runtime managed denials remain authoritative. Custom tools read only
 authorized source paths; implementation additionally writes/deletes those files.
 Legitimate dot paths such as `.github/workflows/` and `.gitignore` are available
 only under the operator's explicit prefixes. Traversal, Git/control-state and
@@ -53,7 +61,7 @@ over redirected pipes; they have the same slot/context owner, not another pool.
 Cancellation requests and timeouts alone never release capacity. POSIX uses
 bounded TERM/KILL attempts; Windows first requests SDK cleanup, then terminates
 only the owned job and checks kernel process accounting plus supervisor exit.
-uncertain release retains ownership and fails the run closed. On controller
+Uncertain release retains ownership and fails the run closed. On controller
 disconnect the worker attempts cleanup, while restart independently checks the
 persisted platform owner. No session raw trace is copied into committed files.
 
@@ -61,6 +69,9 @@ The installed version's types and lifecycle implementation are the API authority
 Deterministic worker doubles prove controller policy, not live SDK capability.
 The separately authorized smoke distinguishes import success, authentication,
 advertised-model selection, idle observation and cleanup errors. It selects
-only from the actual SDK model listing, sends one tiny zero-tool request, and
-uses a 60-second parent deadline plus bounded cleanup. It never publishes work
-or tries alternative authentication on failure.
+only from the actual SDK model listing and uses a 60-second parent deadline plus
+bounded cleanup. `--live` sends one zero-tool request; `--live-files` exercises
+real read/write permission callbacks on a fresh synthetic fixture and verifies
+file contents/hash plus host read receipts. Neither publishes work or changes
+authentication on failure. `--models` performs metadata inspection without
+creating a model session/response.

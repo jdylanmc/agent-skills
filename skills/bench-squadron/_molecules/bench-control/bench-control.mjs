@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { admit, identifier, reviewedBasis, setCandidate, recordReview, hasQuorum, dependenciesReady, digest } from '../../_atoms/bench-epoch/bench-epoch.mjs';
+import { admit, identifier, reviewedBasis, setCandidate, recordReview, recordImplementationResult, reviseRequirements,
+  hasQuorum, dependenciesReady, digest } from '../../_atoms/bench-epoch/bench-epoch.mjs';
 import { Store, readJSON, atomicJSON, processAlive } from '../../_atoms/fleet-state/fleet-state.mjs';
 import { GitHubDelivery, command as runCommand } from '../../_atoms/atomic-proposal/atomic-proposal.mjs';
 import { SDKWorkers, loadDoctrine } from '../../_atoms/role-doctrine/role-doctrine.mjs';
@@ -37,7 +38,7 @@ function readiness(issue) {
 }
 function observation(issue) {
   if (!issue.observation) return null;
-  return Object.fromEntries(['observedAt', 'readiness', 'state', 'headRefOid', 'failed', 'stale']
+  return Object.fromEntries(['observedAt', 'readiness', 'state', 'headRefOid', 'failed', 'stale', 'ciEvidence']
     .filter((key) => issue.observation[key] !== undefined).map((key) => [key, issue.observation[key]]));
 }
 
@@ -56,7 +57,7 @@ export function formatStatus(snapshot) {
   for (const item of (snapshot.work ?? []).slice(0, 8)) {
     lines.push(`- ${item.id}: ${item.phase}; ${item.readiness ?? 'unknown'}` +
       `${item.observation?.observedAt ? ` (observed ${item.observation.observedAt})` : ' (not observed)'}` +
-      `${item.pr ? `; ${item.pr}` : ''}${item.error ? `; ${String(item.error).replace(/\s+/g, ' ').slice(0, 240)}` : ''}`);
+      `${item.pr ? `; ${item.pr}` : ''}${item.error ? `; ${String(item.error).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').slice(0, 240)}` : ''}`);
   }
   const omitted = (snapshot.omitted ?? 0) + Math.max(0, (snapshot.work?.length ?? 0) - 8);
   if (omitted) lines.push(`${omitted} more items; use status --json for machine details.`);
@@ -65,7 +66,7 @@ export function formatStatus(snapshot) {
 
 export class BenchController {
   constructor({ config, store, provider, workers, clock = Date.now, doctrine = loadDoctrine,
-    report = (snapshot) => console.log(formatStatus(snapshot)) }) {
+    report = (snapshot) => console.log(formatStatus(snapshot)), ownershipReleased = ownerReleased }) {
     this.config = configuration(config);
     this.store = store;
     this.provider = provider;
@@ -73,10 +74,12 @@ export class BenchController {
     this.clock = clock;
     this.doctrine = doctrine;
     this.report = report;
+    this.ownershipReleased = ownershipReleased;
     this.handles = new Map();
     this.completed = [];
     this.cancelling = new Set();
     this.controlErrors = [];
+    this.checkedMaintenance = new Set();
     this.provider.guard = (issue) => this.guard(issue);
   }
   save() { this.store.save(this.state); }
@@ -87,7 +90,7 @@ export class BenchController {
       commands: {}, lastReport: 0, lastPoll: 0 };
     if (this.state.version !== 1 || digest(this.state.config) !== digest(this.config)) throw new Error('persisted run/config mismatch; do not change a running contract');
     if (this.state.operation) {
-      if (!this.state.operation.pid || !await ownerReleased(this.state.operation.ownership ??
+      if (!this.state.operation.pid || !await this.ownershipReleased(this.state.operation.ownership ??
         { kind: 'posix-group', pid: this.state.operation.pid })) {
         this.state.status = 'uncertain'; this.save();
         throw new Error('prior provider/validation process termination is uncertain');
@@ -98,13 +101,13 @@ export class BenchController {
       const owner = this.state.slots[slot];
       if (!owner) continue;
       if (owner.stage === 'spawning' && !owner.pid || owner.pid &&
-        !await ownerReleased(owner.ownership ?? { kind: 'posix-group', pid: owner.pid })) {
+        !await this.ownershipReleased(owner.ownership ?? { kind: 'posix-group', pid: owner.pid })) {
         this.state.status = 'uncertain';
         this.save();
         throw new Error(`slot ${slot} termination uncertain; owned tree ${owner.ownership?.job ?? owner.pid ?? 'unknown'} must be resolved before restart`);
       }
       const issue = this.issue(owner.issue);
-      if (issue && !['cancelled', 'merged', 'closed'].includes(issue.phase)) {
+      if (issue && !['cancelled', 'merged', 'closed', 'blocked'].includes(issue.phase) && !issue.reconciliation?.required) {
         issue.phase = owner.role === 'review' && issue.candidate ? 'review' : 'correction';
         issue.findings.push('Prior assignment interrupted; inspect current files and reconstruct missing evidence.');
       }
@@ -120,7 +123,7 @@ export class BenchController {
   }
   async prepareProvider() {
     await this.providerOperation('provider preflight', null, () => this.provider.preflight());
-    for (const issue of this.state.issues.filter((i) => i.publication?.pending &&
+    for (const issue of this.state.issues.filter((i) => i.publication?.pending && !i.reconciliation?.required && !i.blockerEvidence &&
       !['merged', 'closed', 'cancelled'].includes(i.phase))) {
       const pr = await this.providerOperation('publication reconciliation', issue, () => this.provider.find(issue));
       if (pr) {
@@ -129,8 +132,7 @@ export class BenchController {
           issue.phase = 'review';
           issue.error = 'Pending publication needs branch/evidence update; retain quorum and reconcile the same PR';
         } else {
-          issue.phase = 'blocked';
-          issue.error = 'Existing PR head differs from pending candidate; operator reconciliation required';
+          this.blockExternalHead(issue, { ...pr, observedAt: new Date(this.clock()).toISOString() });
         }
       } else issue.phase = 'review';
     }
@@ -234,7 +236,7 @@ export class BenchController {
   }
   commands() {
     for (const { file, command } of this.store.commands()) {
-      if (!this.state.commands[command.id]) {
+      if (!Object.hasOwn(this.state.commands, command.id)) {
         try {
           if (command.type === 'enqueue') admit(this.state, command.work);
           else if (command.type === 'pause' && ['running', 'paused'].includes(this.state.status)) {
@@ -256,12 +258,19 @@ export class BenchController {
           } else if (command.type === 'retry') {
             const issue = this.issue(command.issue);
             if (!issue || issue.phase !== 'blocked' || this.state.slots.some((s) => s?.issue === command.issue)) throw new Error('retry requires a blocked unowned issue');
+            if (issue.reconciliation?.required) throw new Error('External PR drift requires an explicit operator reconciliation/takeover decision; generic retry cannot accept it. Cancel Bench ownership to handle this PR outside Bench.');
             issue.phase = issue.candidate ? 'correction' : 'queued';
+            if (issue.pr) issue.maintenance = true;
             issue.error = null;
+          } else if (command.type === 'revise') {
+            const issue = this.issue(command.issue);
+            if (!issue || this.state.slots.some((slot) => slot?.issue === command.issue) ||
+              this.state.activity?.issue === command.issue) throw new Error('requirements revision requires unowned work');
+            reviseRequirements(issue, command.requirements, command.expectedRequirementsHash);
           } else throw new Error('unknown or inapplicable operator command');
-          this.state.commands[command.id] = { status: 'accepted', at: this.clock() };
+          this.state.commands[command.id] = { status: 'accepted', sequence: command.sequence, at: this.clock() };
         } catch (error) {
-          this.state.commands[command.id] = { status: 'rejected', error: error.message, at: this.clock() };
+          this.state.commands[command.id] = { status: 'rejected', sequence: command.sequence, error: error.message, at: this.clock() };
         }
         this.save();
       }
@@ -280,6 +289,7 @@ export class BenchController {
     } finally { this.processing = false; }
   }
   async workCycle() {
+    this.checkedMaintenance.clear();
     for (const event of this.completed.splice(0)) await this.finish(event);
     if (['stopped', 'exhausted', 'uncertain'].includes(this.state.status)) {
       await this.cancelAll();
@@ -325,7 +335,10 @@ export class BenchController {
     return null;
   }
   async dispatch(issue, slot, role) {
+    if (issue.reconciliation?.required || issue.phase === 'blocked') throw new ControlInterrupted('issue is durably blocked');
     this.guard(issue);
+    if (role === 'implement' && issue.maintenance && !this.checkedMaintenance.has(issue.work.id) &&
+      !await this.assessMaintenance(issue)) { this.save(); return; }
     const selected = this.doctrine(this.config.doctrine[role]);
     const assignment = { context: randomUUID(), slot, issue: issue.work.id, role,
       basis: reviewedBasis(issue), epoch: issue.epoch, model: this.config.models[role],
@@ -354,7 +367,7 @@ export class BenchController {
         this.state.status = 'uncertain'; assignment.error = error.message;
       } else {
         this.state.slots[slot] = null;
-        if (!['cancelled', 'merged', 'closed'].includes(issue.phase)) {
+        if (!['cancelled', 'merged', 'closed'].includes(issue.phase) && !issue.reconciliation?.required) {
           issue.phase = error instanceof ControlInterrupted ? role === 'review' ? 'review' : 'correction' : 'blocked';
           issue.error = error.message;
         }
@@ -373,7 +386,7 @@ export class BenchController {
     this.cancelling.delete(assignment.context);
     const issue = this.issue(assignment.issue);
     try {
-      if (!issue || ['cancelled', 'merged', 'closed'].includes(issue.phase) ||
+      if (!issue || ['cancelled', 'merged', 'closed', 'blocked'].includes(issue.phase) || issue.reconciliation?.required ||
         assignment.epoch !== issue.epoch || this.state.status !== 'running') return;
       if (outcome.error || !outcome.idle) {
         issue.phase = 'blocked'; issue.error = outcome.error || 'no SDK idle observation'; return;
@@ -384,21 +397,28 @@ export class BenchController {
         assignment.filesRead = outcome.reads;
         recordReview(issue, assignment, outcome.result);
       } else {
-        const result = outcome.result;
-        if (result?.status !== 'implemented' || typeof result.evidence !== 'string' || !result.evidence.trim() ||
-          !Array.isArray(result.findings) || result.findings.length) {
-          issue.phase = 'blocked';
-          issue.error = 'Worker did not return complete implementation evidence';
-          issue.findings.push(...(Array.isArray(result?.findings) ? result.findings.filter((f) => typeof f === 'string') : []));
-          return;
-        }
+        if (!recordImplementationResult(issue, outcome.result)) return;
         owner.stage = 'validating'; this.save();
         const candidate = await this.providerOperation('validation', issue, () => this.provider.validate(issue, assignment));
         this.guard(issue);
+        if (issue.maintenance && candidate.commit === issue.pr?.headRefOid) {
+          const current = await this.providerOperation('maintenance verification', issue, () => this.provider.observe(issue));
+          issue.observation = current;
+          if (current.headRefOid !== issue.pr.headRefOid) this.blockExternalHead(issue, current);
+          else if (current.readiness === 'ready' && !current.failed && !current.stale) {
+            issue.phase = 'published'; issue.maintenance = false; issue.error = null;
+          } else {
+            issue.phase = 'blocked';
+            issue.error = 'Maintenance produced an unchanged head with unresolved hosted readiness. No repush, empty commit or automatic rerun was performed. Operator must investigate current CI or explicitly authorize a rerun outside Bench.';
+            issue.findings = [issue.error];
+          }
+          return;
+        }
         setCandidate(issue, candidate, assignment.context);
       }
     } catch (error) {
-      if (!['cancelled', 'merged', 'closed'].includes(issue.phase)) {
+      if (error.externalHead) this.blockExternalHead(issue, { headRefOid: error.externalHead, observedAt: new Date(this.clock()).toISOString() });
+      if (!['cancelled', 'merged', 'closed'].includes(issue.phase) && !issue.reconciliation?.required) {
         issue.phase = assignment.role === 'review' ? error instanceof ControlInterrupted ? 'review' : 'blocked' : 'correction';
         issue.error = error.message;
         issue.findings.push(error.message);
@@ -425,6 +445,7 @@ export class BenchController {
   }
   async publish(issue) {
     try {
+      if (issue.reconciliation?.required) return;
       this.guard(issue);
       issue.publication = { id: issue.publication?.id ?? randomUUID(), pending: true,
         branch: this.provider.branch(issue), basis: reviewedBasis(issue),
@@ -433,7 +454,8 @@ export class BenchController {
       const pr = await this.providerOperation('publication', issue, () => this.provider.publish(issue));
       this.published(issue, pr);
     } catch (error) {
-      if (!['cancelled', 'merged', 'closed'].includes(issue.phase)) {
+      if (error.externalHead) this.blockExternalHead(issue, { headRefOid: error.externalHead, observedAt: new Date(this.clock()).toISOString() });
+      if (!['cancelled', 'merged', 'closed'].includes(issue.phase) && !issue.reconciliation?.required) {
         issue.phase = error instanceof ControlInterrupted ? 'review' : 'blocked';
         issue.error = `publication pending/failed: ${error.message}; next authorized attempt reconciles the recorded branch`;
       }
@@ -456,10 +478,12 @@ export class BenchController {
           }
         } else if (observation.headRefOid &&
           ![issue.pr.headRefOid ?? issue.candidate?.commit, issue.publication?.pending ? issue.candidate?.commit : null].includes(observation.headRefOid)) {
-          issue.phase = 'blocked'; issue.error = 'PR head changed outside Bench; operator reconciliation required';
+          this.blockExternalHead(issue, observation);
         } else if ((observation.failed || observation.stale) && issue.phase === 'published' && !issue.maintenance) {
-          issue.maintenance = true; issue.phase = 'correction'; issue.epoch++; issue.votes = [];
-          issue.findings = [`Shepherd maintenance: ${JSON.stringify(observation)}`];
+          if (await this.assessMaintenance(issue, observation)) {
+            issue.maintenance = true; issue.phase = 'correction'; issue.epoch++; issue.votes = [];
+            issue.findings = [observation.failed ? 'Shepherd: fix the hosted failure using the attached current-head CI evidence.' : 'Shepherd: integrate the observed stale base without rewriting the PR.'];
+          }
         }
       } catch (error) {
         // Preserve the last successful observation and its timestamp, never refresh old readiness.
@@ -467,6 +491,51 @@ export class BenchController {
       }
     }
     this.save();
+  }
+  blockExternalHead(issue, observation) {
+    if (!issue.reconciliation?.required) {
+      issue.epoch++; issue.votes = [];
+      issue.reconciliation = { required: true, reason: 'external-head', expectedHead: issue.pr?.headRefOid,
+        observedHead: observation.headRefOid, observedAt: observation.observedAt };
+    }
+    issue.phase = 'blocked';
+    issue.error = 'PR head changed outside Bench. Operator must reconcile/take over this PR explicitly; generic retry cannot accept drift.';
+    issue.findings = [issue.error];
+    for (const owner of this.state.slots.filter((slot) => slot?.issue === issue.work.id)) {
+      const handle = this.handles.get(owner.context);
+      if (handle) Promise.resolve(handle.cancel()).catch((error) => this.controlErrors.push(error.message));
+    }
+  }
+  async assessMaintenance(issue, supplied) {
+    const current = supplied ?? await this.providerOperation('maintenance observation', issue, () => this.provider.observe(issue));
+    issue.observation = current;
+    if (current.state === 'MERGED' || current.state === 'CLOSED') {
+      issue.phase = current.state.toLowerCase(); issue.epoch++; issue.votes = []; issue.maintenance = false;
+      return false;
+    }
+    if (current.headRefOid !== issue.pr?.headRefOid) { this.blockExternalHead(issue, current); return false; }
+    if (!current.failed && !current.stale) {
+      issue.phase = current.readiness === 'ready' ? 'published' : 'blocked';
+      issue.maintenance = false;
+      issue.error = current.readiness === 'ready' ? null : 'Hosted readiness is not established; wait for current CI evidence before retrying maintenance.';
+      if (issue.error) issue.findings = [issue.error];
+      return false;
+    }
+    if (current.failed) {
+      const evidence = await this.providerOperation('CI failure evidence', issue, () => this.provider.failureEvidence(issue, current));
+      current.ciEvidence = evidence;
+      if (evidence.currentHead && evidence.currentHead !== current.headRefOid) {
+        this.blockExternalHead(issue, { ...current, headRefOid: evidence.currentHead }); return false;
+      }
+      if (evidence.status !== 'available' || evidence.head !== current.headRefOid) {
+        issue.phase = 'blocked';
+        issue.error = 'Current-head hosted failure diagnostics are missing or stale; operator must resolve access/current attempt before maintenance.';
+        issue.findings = [issue.error, ...(evidence.errors ?? [])];
+        return false;
+      }
+    }
+    this.checkedMaintenance.add(issue.work.id);
+    return true;
   }
   async cancelAll() {
     await Promise.all([...this.handles.values()].map((h) => h.cancel()));
@@ -492,6 +561,8 @@ export class BenchController {
         votes: i.votes.length, quorum: this.config.quorum, pr: i.pr?.url ?? null,
         readiness: readiness(i),
         dependencyGate: dependenciesReady(this.state, i), error: i.error ?? null,
+        findings: [...i.findings], blockerEvidence: i.blockerEvidence ?? null, reconciliation: i.reconciliation ?? null,
+        requirementsHash: digest(i.work.requirements),
         observation: observation(i), observationError: i.observationError ?? null })) };
   }
   emit(force = false) {
@@ -528,15 +599,23 @@ async function main(args) {
       generations: state?.generations ?? 0, active: state?.slots.filter(Boolean) ?? [],
       work: state?.issues.map((i) => ({ id: i.work.id, phase: i.phase, pr: i.pr?.url ?? null,
         readiness: readiness(i),
-        observation: observation(i), observationError: i.observationError, error: i.error })) ?? [],
+        observation: observation(i), observationError: i.observationError, error: i.error,
+        findings: i.findings, blockerEvidence: i.blockerEvidence, reconciliation: i.reconciliation,
+        requirementsHash: digest(i.work.requirements) })) ?? [],
       commandReceipts: Object.fromEntries(Object.entries(state?.commands ?? {}).slice(-20)) };
     console.log(args.includes('--json') ? JSON.stringify(snapshot, null, 2) : formatStatus(snapshot));
     return;
   }
   if (operation !== 'start') {
-    if (!['enqueue', 'stop', 'pause', 'resume', 'cancel', 'retry'].includes(operation)) throw new Error('unknown operation');
+    if (!['enqueue', 'stop', 'pause', 'resume', 'cancel', 'retry', 'revise'].includes(operation)) throw new Error('unknown operation');
     const command = { type: operation };
     if (operation === 'enqueue') command.work = readJSON(input);
+    if (operation === 'revise') {
+      const revision = readJSON(input);
+      command.issue = identifier(revision.issue);
+      command.requirements = revision.requirements;
+      command.expectedRequirementsHash = revision.expectedRequirementsHash;
+    }
     if (['cancel', 'retry'].includes(operation)) command.issue = identifier(input);
     console.log(JSON.stringify({ queuedCommand: store.send(command), note: 'accepted/rejected receipt appears in persisted state after the controller handles it' }));
     return;

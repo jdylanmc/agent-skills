@@ -3,7 +3,7 @@ name: bench-epoch
 description: Bind distinct-slot fresh-context signoffs to one issue's requirements, candidate commit and successful validation evidence.
 level: atom
 allowed-tools: ["execute"]
-includes: ["bench-squadron/_atoms/bench-epoch/bench-epoch.mjs"]
+includes: ["bench-squadron/_atoms/bench-epoch/bench-epoch.mjs","bench-squadron/_atoms/bench-epoch/bench-epoch.intake.mjs"]
 composes: []
 used-by: ["bench-squadron/_molecules/bench-control/bench-control.md"]
 ---
@@ -16,6 +16,13 @@ used-by: ["bench-squadron/_molecules/bench-control/bench-control.md"]
 dependencies and count current-candidate votes. The reviewed basis contains the
 complete work packet, issue epoch, commit and validation evidence. It is not a
 global fleet signature or mutation quota.
+
+[Invoking-agent preparation](./bench-epoch.intake.mjs) combines the agent's
+faithful task transcription with bounded, source-identified/versioned context
+already retrieved through legitimate read-only sources. It verifies source-text
+digests, not human authority or remote provenance, and performs no fetching or
+enqueue itself. Context becomes part of the existing requirements/basis without
+granting write access to its source files.
 
 Candidate changes discard only that issue's votes. Distinct slot IDs count once
 per basis. Fresh incarnation reuse cannot multiply votes, and the actual author

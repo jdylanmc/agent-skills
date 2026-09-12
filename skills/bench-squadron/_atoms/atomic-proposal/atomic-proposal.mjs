@@ -3,7 +3,9 @@ import path from 'node:path';
 import { digest, authorizedWorkPath } from '../bench-epoch/bench-epoch.mjs';
 import { spawnOwned, ownerReleased, terminateOwned } from '../fleet-state/fleet-state.process.mjs';
 
-export async function command(argv, { cwd, timeoutMs = 120000, env = process.env, onSpawn = () => {}, ownershipDirectory } = {}) {
+export async function command(argv, { cwd, timeoutMs = 120000, env = process.env, onSpawn = () => {}, ownershipDirectory,
+  tailOutput = false, outputLimit = 1000000 } = {}) {
+  if (!Number.isSafeInteger(outputLimit) || outputLimit < 1 || outputLimit > 1000000) throw new Error('invalid bounded output limit');
   return new Promise((resolve, reject) => {
     const { child, owner } = spawnOwned(argv, { cwd, env, timeoutMs, ownershipDirectory, stdio: ['ignore', 'pipe', 'pipe'] });
     let spawnError;
@@ -14,8 +16,9 @@ export async function command(argv, { cwd, timeoutMs = 120000, env = process.env
     }
     let output = '', overflow = false, timedOut = false;
     const collect = (data) => {
-      if (output.length < 1000000) output += data.toString();
-      else overflow = true;
+      const next = output + data.toString();
+      if (next.length > outputLimit) overflow = true;
+      output = tailOutput ? next.slice(-outputLimit) : next.slice(0, outputLimit);
     };
     child.stdout.on('data', collect);
     child.stderr.on('data', collect);
@@ -31,9 +34,9 @@ export async function command(argv, { cwd, timeoutMs = 120000, env = process.env
       const released = await ownerReleased(owner, true) || await terminateOwned(owner, 100, child);
       if (!released) { reject(Object.assign(new Error(`uncertain command termination: owned process ${child.pid}: ${output.slice(-8000)}`), { uncertainTermination: true })); return; }
       if (spawnError) { reject(spawnError); return; }
-      if (timedOut || overflow || code !== 0) {
+      if (timedOut || overflow && !tailOutput || code !== 0) {
         reject(new Error(`${argv[0]} failed (${timedOut ? 'timeout' : overflow ? 'output limit' : code}): ${output.slice(-8000)}`));
-      } else resolve(output.trim());
+      } else resolve(`${tailOutput && overflow ? '[bounded tail; earlier output omitted]\n' : ''}${output.trim()}`);
     });
   });
 }
@@ -54,6 +57,11 @@ export class GitHubDelivery {
   gh(...args) {
     return this.run(['gh', ...args, '--repo', this.config.repository], { cwd: this.config.checkout,
       timeoutMs: this.config.commandMs, env: { ...process.env, GH_PROMPT_DISABLED: '1' } });
+  }
+  api(endpoint) {
+    return this.run(['gh', 'api', `repos/${this.config.repository}/${endpoint}`, '--method', 'GET'],
+      { cwd: this.config.checkout, timeoutMs: this.config.commandMs, env: { ...process.env, GH_PROMPT_DISABLED: '1' } })
+      .then((text) => JSON.parse(text));
   }
   branch(issue) { return `bench/${this.config.run}/${issue.work.id}`; }
   worktree(issue) { return path.join(this.directory, 'worktrees', issue.work.id); }
@@ -159,6 +167,9 @@ export class GitHubDelivery {
     // The controller persists branch + basis before entering this transaction.
     let pr = await this.find(issue);
     if (pr && pr.state !== 'OPEN') return pr;
+    if (pr && issue.pr && ![issue.pr.headRefOid, issue.publication?.pending ? issue.candidate.commit : null].includes(pr.headRefOid)) {
+      throw Object.assign(new Error('External PR head changed before publication'), { externalHead: pr.headRefOid });
+    }
     const head = await this.git(this.worktree(issue), 'rev-parse', 'HEAD');
     if (head !== issue.candidate.commit || await this.git(this.worktree(issue), 'status', '--porcelain')) {
       throw new Error('publication candidate changed after review');
@@ -196,5 +207,67 @@ export class GitHubDelivery {
     const stale = pr.mergeStateStatus === 'BEHIND' || pr.mergeStateStatus === 'DIRTY';
     return { ...pr, observedAt: new Date().toISOString(), failed, stale,
       readiness: failed || stale ? 'not-ready' : pending || pr.mergeStateStatus !== 'CLEAN' || !checks.length ? 'unknown' : 'ready' };
+  }
+  async failureEvidence(issue, observation) {
+    const head = observation.headRefOid;
+    const evidence = { head, observedAt: new Date().toISOString(), status: 'unavailable', checks: [], jobs: [], errors: [],
+      limits: { checks: 3, runs: 2, jobs: 3, annotationsPerCheck: 10, charactersPerJob: 12000 } };
+    const failure = (value) => ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE']
+      .includes(String(value ?? '').toUpperCase());
+    const number = (value) => Number.isSafeInteger(value) && value > 0;
+    try {
+      if (!/^[a-f0-9]{40,64}$/.test(head ?? '')) throw new Error('current PR head is missing');
+      const response = await this.api(`commits/${head}/check-runs?filter=latest&per_page=30`);
+      const checks = (response.check_runs ?? []).filter((check) => check.head_sha === head && failure(check.conclusion)).slice(0, 3);
+      if (!checks.length) throw new Error('no accessible failed check-run evidence for this head; external status URLs are not fetched');
+      for (const check of checks) {
+        if (!number(check.id)) throw new Error('invalid check identity');
+        const annotations = await this.api(`check-runs/${check.id}/annotations?per_page=10`);
+        evidence.checks.push({ id: check.id, suite: check.check_suite?.id, name: check.name, head,
+          completedAt: check.completed_at, source: `GitHub check-run ${check.id}`,
+          excerpt: [check.output?.summary ?? '', check.output?.text ?? '',
+            ...annotations.map((a) => `${a.path ?? ''}:${a.start_line ?? ''} ${a.message ?? ''}`)].join('\n').slice(0, 6000) });
+        const current = await this.api(`check-runs/${check.id}`);
+        if (current.head_sha !== head || current.completed_at !== check.completed_at || !failure(current.conclusion)) {
+          evidence.status = 'stale'; throw new Error('check changed during diagnostic retrieval');
+        }
+      }
+      const actionChecks = checks.filter((check) => check.app?.slug === 'github-actions');
+      const runs = actionChecks.length ? await this.api(`actions/runs?head_sha=${head}&per_page=5`) : { workflow_runs: [] };
+      const selected = (runs.workflow_runs ?? []).filter((run) => run.head_sha === head && failure(run.conclusion) && number(run.check_suite_id) &&
+        actionChecks.some((check) => check.check_suite?.id === run.check_suite_id)).slice(0, 2);
+      for (const run of selected) {
+        if (!number(run.id) || !number(run.run_attempt)) throw new Error('invalid run/attempt identity');
+        const response = await this.api(`actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=10`);
+        const jobs = (response.jobs ?? []).filter((job) => failure(job.conclusion)).slice(0, 3 - evidence.jobs.length);
+        for (const job of jobs) {
+          if (!number(job.id) || job.run_id !== run.id || job.run_attempt !== run.run_attempt || job.head_sha !== head) {
+            throw new Error('stale or mismatched failed-job provenance');
+          }
+          const excerpt = await this.run(['gh', 'run', 'view', String(run.id), '--attempt', String(run.run_attempt),
+            '--job', String(job.id), '--log-failed', '--repo', this.config.repository],
+          { cwd: this.config.checkout, timeoutMs: this.config.commandMs, tailOutput: true, outputLimit: 12000,
+            env: { ...process.env, GH_PROMPT_DISABLED: '1' } });
+          if (!excerpt.trim()) throw new Error('failed job log is empty or inaccessible');
+          evidence.jobs.push({ runId: run.id, attempt: run.run_attempt, jobId: job.id, name: job.name,
+            head, checkSuite: run.check_suite_id, source: `GitHub Actions run ${run.id} attempt ${run.run_attempt} job ${job.id}`, excerpt });
+        }
+        const current = await this.api(`actions/runs/${run.id}`);
+        if (current.head_sha !== head || current.run_attempt !== run.run_attempt || !failure(current.conclusion)) {
+          evidence.status = 'stale'; throw new Error('run/attempt changed during diagnostic retrieval');
+        }
+      }
+      if (checks.some((check) => check.app?.slug === 'github-actions') && !evidence.jobs.length) {
+        throw new Error('current GitHub Actions failure has no accessible matching failed-job log');
+      }
+      const current = JSON.parse(await this.gh('pr', 'view', String(issue.pr.number), '--json', 'headRefOid,state'));
+      if (current.headRefOid !== head || current.state !== 'OPEN') {
+        evidence.status = 'stale'; evidence.currentHead = current.headRefOid;
+        throw new Error('PR head/state changed during diagnostic retrieval');
+      }
+      if (!evidence.jobs.length && !evidence.checks.some((check) => check.excerpt.trim())) throw new Error('no actionable check output or annotations');
+      evidence.status = 'available';
+    } catch (error) { evidence.errors.push(String(error.message).slice(0, 1500)); }
+    return evidence;
   }
 }

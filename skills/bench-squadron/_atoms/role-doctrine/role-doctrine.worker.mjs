@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { createInterface } from 'node:readline';
 import { executeSession } from './role-doctrine.mjs';
-import { loadSDK } from './role-doctrine.runtime.mjs';
+import { loadSDK, assertRuntimeEnvironment } from './role-doctrine.runtime.mjs';
 
 let client, session, closing = false, accepted = false;
 let input;
@@ -32,6 +32,7 @@ async function receive(packet) {
   try {
     const { CopilotClient, RuntimeConnection } = await loadSDK(packet.runtimeDirectory);
     if (closing) return;
+    assertRuntimeEnvironment();
     fs.mkdirSync(packet.configDirectory, { recursive: true, mode: 0o700 });
     client = new CopilotClient({ mode: 'empty', connection: RuntimeConnection.forStdio(),
       baseDirectory: packet.configDirectory, workingDirectory: packet.cwd, logLevel: 'error', useLoggedInUser: true });

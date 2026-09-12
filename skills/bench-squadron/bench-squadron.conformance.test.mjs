@@ -4,10 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { BenchController, formatStatus } from './_molecules/bench-control/bench-control.mjs';
 import { Store, readJSON } from './_atoms/fleet-state/fleet-state.mjs';
-import { admit, digest, reviewedBasis } from './_atoms/bench-epoch/bench-epoch.mjs';
+import { admit, digest, reviewedBasis, setCandidate, recordReview } from './_atoms/bench-epoch/bench-epoch.mjs';
+import { contextSource, prepareWork } from './_atoms/bench-epoch/bench-epoch.intake.mjs';
+import { fileTools } from './_atoms/role-doctrine/role-doctrine.mjs';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const work = (id, dependsOn = []) => ({ id, title: id, requirements: `Implement ${id}`, dependsOn,
   paths: ['src'], validation: [['node', '--test']] });
@@ -63,6 +65,10 @@ class Provider {
     if (value instanceof Error) throw value;
     return value ?? { ...issue.pr, observedAt: '2026-01-02T00:00:00Z', readiness: 'ready', failed: false, stale: false };
   }
+  async failureEvidence(issue, observation) {
+    return { status: 'available', head: observation.headRefOid, errors: [], checks: [],
+      jobs: [{ runId: 1, attempt: 1, jobId: 1, head: observation.headRefOid, excerpt: 'Synthetic hosted-only failure: missing platform-specific build input' }] };
+  }
 }
 async function setup(t, overrides = {}) {
   const directory = path.join(root, '..', '..', '.test-sandbox', `bench-sdk-controller-${randomUUID()}`);
@@ -72,7 +78,7 @@ async function setup(t, overrides = {}) {
     maxAssignments: 100, models: { implement: 'impl', review: 'reviewer' }, doctrine: { implement: ['code'], review: ['testing'] }, ...overrides };
   const workers = new Workers(), provider = new Provider(), reports = [];
   let now = 1000000;
-  const params = { config, store, provider, workers, clock: () => now,
+  const params = { config, store, provider, workers, clock: () => now, ownershipReleased: async () => true,
     doctrine: (ids) => ids.map((id) => ({ id, sha256: digest(id), text: `FULL DOCTRINE ${id}` })), report: (r) => reports.push(r) };
   const controller = new BenchController(params);
   await controller.initialize();
@@ -462,4 +468,232 @@ test('pause during pending publication preserves quorum and reconciles the same 
   assert.equal(h.controller.issue('a').pr.number, 1);
   assert.equal(h.provider.creates, 1);
   assert.equal(h.workers.packets.length, 2);
+});
+
+test('external-head fence survives late maintenance results, restart and generic retry', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1, pollMs: 1 });
+  admit(h.controller.state, work('a'));
+  await h.tick(); await h.cycle(); await h.cycle();
+  const issue = h.controller.issue('a'), candidate = structuredClone(issue.candidate);
+  h.provider.observations.set('a', { ...issue.pr, failed: true, stale: false, readiness: 'not-ready', observedAt: '2026-01-03T00:00:00Z' });
+  h.advance(10); await h.tick();
+  const assignment = structuredClone(h.controller.state.slots[0]);
+  assert.equal(assignment.role, 'implement');
+  h.provider.observations.set('a', { ...issue.pr, headRefOid: 'f'.repeat(40), failed: false, readiness: 'unknown', observedAt: '2026-01-04T00:00:00Z' });
+  h.advance(10); await h.tick();
+  assert.equal(issue.phase, 'blocked');
+  assert.equal(issue.reconciliation.required, true);
+  const commits = h.provider.commits;
+  h.controller.completed.push({ assignment, outcome: { released: true, idle: true,
+    result: { status: 'implemented', evidence: 'late stale implementation', findings: [] } } });
+  await h.tick();
+  assert.equal(h.provider.commits, commits);
+  assert.deepEqual(issue.candidate, candidate);
+  assert.equal(h.provider.creates, 1);
+  assert.equal(h.provider.updates, 0);
+  h.controller.state.slots[0] = assignment; // Persisted released assignment at an interruption.
+  h.controller.save(); h.store.release();
+  const next = new BenchController(h.params);
+  await next.initialize(true);
+  assert.equal(next.issue('a').phase, 'blocked');
+  assert.deepEqual(next.issue('a').candidate, candidate);
+  const retry = h.store.send({ type: 'retry', issue: 'a' });
+  await next.tick();
+  assert.equal(next.state.commands[retry].status, 'rejected');
+  assert.match(next.state.commands[retry].error, /reconciliation/);
+  assert.equal(next.issue('a').phase, 'blocked');
+});
+
+test('external-head block during validation cannot be overwritten by the awaiting continuation', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1 });
+  const issue = admit(h.controller.state, work('a'));
+  const gate = deferred(), entered = deferred();
+  const validate = h.provider.validate.bind(h.provider);
+  h.provider.validate = async (...args) => { entered.resolve(); await gate.promise; return validate(...args); };
+  await h.tick(); h.workers.completeAll();
+  const pending = h.controller.responsive(h.tick());
+  try {
+    await entered.promise;
+    h.controller.blockExternalHead(issue, { headRefOid: 'f'.repeat(40), observedAt: '2026-01-04T00:00:00Z' });
+  } finally { gate.resolve(); await pending; }
+  assert.equal(issue.phase, 'blocked');
+  assert.equal(issue.reconciliation.required, true);
+  assert.equal(issue.candidate, null);
+  assert.equal(h.provider.creates, 0);
+});
+
+test('deliberate implementation/review blockers surface their questions in periodic, plain and JSON status', async (t) => {
+  for (const role of ['implement', 'review']) {
+    const h = await setup(t, { slots: 1, quorum: 1 });
+    admit(h.controller.state, work('a'));
+    await h.tick();
+    if (role === 'review') await h.cycle();
+    const pending = [...h.workers.pending.values()][0];
+    const question = 'Which supported release branch and platform should this requirement target?';
+    h.workers.complete(pending.packet.context, { reads: [], result: role === 'review'
+      ? { basis: pending.packet.basis, verdict: 'blocked', evidence: 'The supplied requirements omit a material scope decision.', findings: [question] }
+      : { status: 'blocked', evidence: 'The supplied requirements omit a material scope decision.', findings: [question] } });
+    await h.tick();
+    assert.equal(h.controller.issue('a').phase, 'blocked');
+    assert.ok(formatStatus(h.reports.at(-1)).includes(question));
+    const entry = path.join(root, '_molecules/bench-control/bench-control.mjs');
+    const plain = execFileSync(process.execPath, [entry, 'status', h.store.directory], { encoding: 'utf8' });
+    const json = JSON.parse(execFileSync(process.execPath, [entry, 'status', h.store.directory, '--json'], { encoding: 'utf8' }));
+    assert.ok(plain.includes(question));
+    assert.deepEqual(json.work[0].findings, [question]);
+    assert.match(json.work[0].blockerEvidence, /material scope/);
+    assert.equal(h.provider.creates, 0);
+  }
+});
+
+test('inbox ordering is submission sequence, not lexical command identity', async (t) => {
+  const h = await setup(t);
+  const pause = h.store.send({ type: 'pause' }, { id: 'zz-pause' });
+  const resume = h.store.send({ type: 'resume' }, { id: 'aa-resume' });
+  h.store.send({ type: 'enqueue', work: work('ordered') }, { id: 'zz-enqueue' });
+  h.store.send({ type: 'cancel', issue: 'ordered' }, { id: 'aa-cancel' });
+  await h.tick();
+  assert.equal(h.controller.state.status, 'running');
+  assert.equal(h.controller.issue('ordered').phase, 'cancelled');
+  assert.ok(h.controller.state.commands[pause].sequence < h.controller.state.commands[resume].sequence);
+  assert.equal(h.workers.packets.length, 0);
+});
+
+test('concurrent inbox publishers have durable unique order across restart and failed publication', async (t) => {
+  const h = await setup(t);
+  const module = new URL('./_atoms/fleet-state/fleet-state.mjs', import.meta.url).href;
+  const writer = 'const {Store}=await import(process.argv[1]); const store=new Store(process.argv[2]); console.log(store.send({type:"pause"}));';
+  await Promise.all(Array.from({ length: 6 }, () => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', writer, module, h.store.directory],
+      { stdio: ['ignore', 'pipe', 'pipe'] });
+    let error = '';
+    child.stderr.on('data', (data) => { error += data; });
+    child.once('error', reject);
+    child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(error || `publisher exit ${code}`)));
+  })));
+  const entries = h.store.commands();
+  assert.deepEqual(entries.map((e) => e.command.sequence), [1, 2, 3, 4, 5, 6]);
+  assert.equal(new Set(entries.map((e) => e.command.id)).size, 6);
+  for (const { file } of entries) fs.unlinkSync(file);
+  const restarted = new Store(h.store.directory);
+  restarted.send({ type: 'resume' });
+  assert.equal(restarted.commands()[0].command.sequence, 7);
+  fs.unlinkSync(restarted.commands()[0].file);
+  fs.rmdirSync(path.join(h.store.directory, 'inbox'));
+  fs.writeFileSync(path.join(h.store.directory, 'inbox'), 'obstruct publication');
+  assert.throws(() => restarted.send({ type: 'pause' }), /EEXIST|ENOTDIR/);
+  fs.unlinkSync(path.join(h.store.directory, 'inbox'));
+  restarted.send({ type: 'pause' });
+  assert.equal(restarted.commands()[0].command.sequence, 9, 'failed reservation must not be recycled');
+});
+test('dead publisher recovery preserves the reserved sequence; unknown publisher identity is not queued success', async (t) => {
+  const h = await setup(t);
+  const dead = spawnSync(process.execPath, ['-e', ''], { stdio: 'ignore' });
+  assert.equal(dead.status, 0);
+  const lock = path.join(h.store.directory, 'inbox-publish.lock');
+  fs.mkdirSync(lock);
+  fs.writeFileSync(path.join(lock, 'owner.json'), JSON.stringify({ pid: dead.pid, id: 'interrupted' }));
+  fs.writeFileSync(path.join(h.store.directory, 'inbox-sequence.json'), JSON.stringify({ sequence: 40 }));
+  new Store(h.store.directory).send({ type: 'pause' });
+  assert.equal(h.store.commands()[0].command.sequence, 41);
+  fs.mkdirSync(lock);
+  assert.throws(() => h.store.send({ type: 'stop' }, { timeoutMs: 20 }), /not acknowledged/);
+  assert.equal(h.store.commands().length, 1);
+  fs.rmdirSync(lock);
+});
+
+test('an observed hosted-only failure reaches the worker, but an unchanged candidate cannot republish or requeue itself', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1, pollMs: 1 });
+  admit(h.controller.state, work('a'));
+  await h.tick(); await h.cycle(); await h.cycle();
+  const issue = h.controller.issue('a');
+  const published = structuredClone(issue.candidate);
+  h.provider.observations.set('a', { ...issue.pr, failed: true, stale: false, readiness: 'not-ready', observedAt: '2026-01-03T00:00:00Z' });
+  h.advance(10); await h.tick();
+  assert.match(h.workers.packets.at(-1).observation.ciEvidence.jobs[0].excerpt, /hosted-only failure/);
+  h.provider.validate = async () => structuredClone(published);
+  await h.cycle();
+  assert.equal(issue.phase, 'blocked');
+  assert.match(issue.error, /unchanged head/);
+  const generations = h.workers.packets.length;
+  for (let n = 0; n < 4; n++) { h.advance(10); await h.tick(); }
+  assert.equal(h.workers.packets.length, generations);
+  assert.equal(h.provider.creates, 1);
+  assert.equal(h.provider.updates, 0);
+});
+
+test('missing or stale hosted evidence blocks maintenance without consuming a worker', async (t) => {
+  for (const status of ['unavailable', 'stale']) {
+    const h = await setup(t, { slots: 1, quorum: 1, pollMs: 1 });
+    admit(h.controller.state, work('a')); await h.tick(); await h.cycle(); await h.cycle();
+    const issue = h.controller.issue('a');
+    h.provider.observations.set('a', { ...issue.pr, failed: true, readiness: 'not-ready', observedAt: '2026-01-03T00:00:00Z' });
+    h.provider.failureEvidence = async () => ({ status, head: issue.pr.headRefOid, errors: ['Current attempt log is inaccessible'] });
+    h.advance(10); await h.tick();
+    assert.equal(issue.phase, 'blocked');
+    assert.equal(h.workers.packets.length, 2);
+    assert.ok(h.controller.snapshot().work[0].findings.includes('Current attempt log is inaccessible'));
+  }
+});
+
+test('invoking-agent preparation handles pasted dependent tasks and later additions with bounded read-only context', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1 });
+  const pasted = ['Fix the settings parser.', 'After the parser task merges, update the consuming UI.'];
+  const guidance = contextSource('fixture:AGENTS.md', 'fixture-revision-1, full relevant section', 'Repository convention: preserve compatibility; edit only the authorized src paths.');
+  const design = contextSource('fixture:docs/design.md', 'fixture-revision-1, lines 10-14', 'Design: the parser returns structured errors and never throws for user input.');
+  // This is the invoking agent's faithful transcription, not JSON demanded from the human.
+  const a = prepareWork({ ...work('parser'), requirements: pasted[0] }, [guidance, design]);
+  const b = prepareWork({ ...work('ui', ['parser']), requirements: pasted[1] }, [guidance, design]);
+  assert.equal(h.store.commands().length, 0, 'preparation itself cannot claim authority or enqueue');
+  h.store.send({ type: 'enqueue', work: a }); h.store.send({ type: 'enqueue', work: b });
+  await h.tick();
+  assert.equal(h.controller.issue('ui').phase, 'queued');
+  await h.cycle();
+  for (const packet of h.workers.packets) {
+    assert.ok(packet.work.requirements.includes(guidance.text));
+    assert.ok(packet.work.requirements.includes(design.text));
+    assert.ok(packet.work.requirements.includes(design.sha256));
+    assert.deepEqual(packet.work.paths, ['src']);
+    const write = fileTools({ ...packet, cwd: h.store.directory, role: 'implement' }).find((tool) => tool.name === 'bench_write');
+    assert.throws(() => write.handler({ path: 'AGENTS.md', content: 'not authorized' }), /outside assignment/);
+    assert.throws(() => write.handler({ path: 'docs/design.md', content: 'not authorized' }), /outside assignment/);
+  }
+  const prior = structuredClone(h.controller.issue('parser'));
+  h.store.send({ type: 'enqueue', work: prepareWork({ ...work('later'), requirements: 'Also add the agreed standalone parser example.' }, [guidance]) });
+  h.controller.commands();
+  assert.deepEqual(h.controller.issue('parser'), prior);
+  assert.equal(h.controller.issue('later').phase, 'queued');
+});
+
+test('explicit context rebinding changes only affected requirements/reviews and rejects stale or active revisions', async (t) => {
+  const h = await setup(t, { slots: 1, quorum: 1 });
+  const a = admit(h.controller.state, prepareWork(work('a'), [contextSource('fixture:AGENTS.md', 'r1', 'Use the old error shape.')]));
+  const b = admit(h.controller.state, work('b'));
+  for (const item of [a, b]) {
+    setCandidate(item, { commit: 'a'.repeat(40), validation: [{ exitCode: 0, observedAt: 'fixture-time', digest: 'fixture-tests' }] }, `author-${item.work.id}`);
+    const basis = reviewedBasis(item);
+    recordReview(item, { slot: 0, context: `reviewer-${item.work.id}`, basis, doctrine: [],
+      filesRead: [{ path: 'src/file', sha256: 'a'.repeat(64) }] },
+    { basis, verdict: 'signoff', evidence: 'Synthetic current-candidate review', findings: [] });
+  }
+  const untouched = structuredClone(b);
+  const oldHash = digest(a.work.requirements), oldEpoch = a.epoch;
+  const revised = prepareWork(work('a'), [contextSource('fixture:AGENTS.md', 'r2', 'Use the newly approved structured error shape.')]);
+  const id = h.store.send({ type: 'revise', issue: 'a', requirements: revised.requirements, expectedRequirementsHash: oldHash });
+  h.controller.commands();
+  assert.equal(h.controller.state.commands[id].status, 'accepted');
+  assert.ok(a.epoch > oldEpoch);
+  assert.deepEqual(a.votes, []);
+  assert.deepEqual(a.work.paths, ['src']);
+  assert.deepEqual(b, untouched);
+  assert.ok(a.work.requirements.includes('r2'));
+  const stale = h.store.send({ type: 'revise', issue: 'a', requirements: revised.requirements, expectedRequirementsHash: oldHash });
+  h.controller.commands();
+  assert.equal(h.controller.state.commands[stale].status, 'rejected');
+  await h.tick();
+  const active = h.store.send({ type: 'revise', issue: 'a', requirements: 'No silent edits', expectedRequirementsHash: digest(a.work.requirements) });
+  h.controller.commands();
+  assert.equal(h.controller.state.commands[active].status, 'rejected');
+  assert.throws(() => prepareWork(work('bad'), [{ ...contextSource('fixture:AGENTS.md', 'r1', 'original'), text: 'unverified replacement' }]), /digest mismatch/);
+  assert.throws(() => prepareWork({ ...work('bad'), requirements: undefined }), /faithfully supplied/);
 });

@@ -11,6 +11,12 @@ const skills = path.dirname(source.replace(/[\\/]$/, ''));
 const sha = (file) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const ownerName = 'bench-runtime.json';
 
+export function assertRuntimeEnvironment(environment = process.env) {
+  if (environment.COPILOT_CLI_PATH !== undefined && environment.COPILOT_CLI_PATH !== '') {
+    throw new Error('COPILOT_CLI_PATH is set. Bench requires the pinned SDK-managed platform runtime; remove the override explicitly before starting Bench. No alternate runtime was invoked.');
+  }
+}
+
 export function runtimeDirectory(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value)) throw new Error('runtimeDirectory must be an explicit absolute machine-local cache path');
   const directory = path.resolve(value);
@@ -56,6 +62,7 @@ export async function setupRuntime(value, { run = command, npm = process.env.npm
 }
 
 export function resolveRuntime(value) {
+  assertRuntimeEnvironment();
   const directory = runtimeDirectory(value);
   const expected = provenance();
   const failure = () => new Error(`SDK cache missing, incomplete or stale. Run npm run setup -- ${JSON.stringify(directory)} from ${source}`);

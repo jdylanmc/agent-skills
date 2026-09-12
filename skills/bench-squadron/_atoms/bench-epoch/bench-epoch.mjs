@@ -78,6 +78,7 @@ export function reviewedBasis(issue) {
 }
 
 export function setCandidate(issue, candidate, context) {
+  if (issue.reconciliation?.required) throw new Error('candidate cannot bypass required operator reconciliation');
   if (!candidate || !/^[0-9a-f]{40,64}$/.test(candidate.commit) || !candidate.validation?.length ||
     candidate.validation.some((v) => v.exitCode !== 0 || !v.observedAt || !v.digest)) {
     throw new Error('candidate needs a real commit and successful validation evidence');
@@ -87,19 +88,20 @@ export function setCandidate(issue, candidate, context) {
   issue.authorContext = context;
   issue.votes = [];
   issue.findings = [];
+  issue.error = null; issue.blockerEvidence = null;
   issue.phase = 'review';
 }
 
 export function recordReview(issue, assignment, result) {
   if (assignment.basis !== reviewedBasis(issue) || assignment.context === issue.authorContext ||
-      !Array.isArray(assignment.filesRead) || !assignment.filesRead.length ||
-      assignment.filesRead.some((read) => !/^[0-9a-f]{64}$/.test(read.sha256 ?? '') ||
-        !authorizedWorkPath(read.path, issue.work.paths)) ||
       result?.basis !== assignment.basis || !['signoff', 'correction', 'blocked'].includes(result?.verdict) ||
       typeof result.evidence !== 'string' || !result.evidence.trim() ||
       !Array.isArray(result.findings) || result.findings.some((f) => typeof f !== 'string' || !f.trim())) {
     throw new Error('review is incomplete, ineligible, or stale');
   }
+  if (result.verdict !== 'blocked' && (!Array.isArray(assignment.filesRead) || !assignment.filesRead.length ||
+    assignment.filesRead.some((read) => !/^[0-9a-f]{64}$/.test(read.sha256 ?? '') ||
+      !authorizedWorkPath(read.path, issue.work.paths)))) throw new Error('review needs current scoped file-read evidence');
   if (result.verdict === 'signoff' && result.findings.length) throw new Error('signoff has unresolved findings');
   if (issue.votes.some((v) => v.slot === assignment.slot || v.context === assignment.context)) {
     throw new Error('duplicate slot or context vote');
@@ -108,11 +110,34 @@ export function recordReview(issue, assignment, result) {
     if (!result.findings.length) throw new Error('non-signoff needs actionable findings');
     issue.findings.push(...result.findings);
     issue.phase = result.verdict === 'blocked' ? 'blocked' : 'correction';
+    if (result.verdict === 'blocked') {
+      issue.error = `Review blocked: ${result.findings.join('; ')}`;
+      issue.blockerEvidence = result.evidence;
+    }
     issue.votes = [];
     return;
   }
   issue.votes.push({ slot: assignment.slot, context: assignment.context, basis: assignment.basis,
     evidence: result.evidence, doctrine: assignment.doctrine, filesRead: assignment.filesRead });
+}
+
+export function recordImplementationResult(issue, result) {
+  if (!['implemented', 'blocked'].includes(result?.status) ||
+    typeof result.evidence !== 'string' || !result.evidence.trim() || !Array.isArray(result.findings) ||
+    result.findings.some((finding) => typeof finding !== 'string' || !finding.trim()) ||
+    result.status === 'implemented' && result.findings.length ||
+    result.status === 'blocked' && !result.findings.length) {
+    issue.phase = 'blocked'; issue.error = 'Malformed implementation response: explicit status, evidence and consistent findings required';
+    return false;
+  }
+  if (result.status === 'blocked') {
+    issue.phase = 'blocked';
+    issue.findings = [...result.findings];
+    issue.blockerEvidence = result.evidence;
+    issue.error = `Implementation blocked: ${result.findings.join('; ')}`;
+    return false;
+  }
+  return true;
 }
 
 export function hasQuorum(issue, quorum) {
@@ -123,4 +148,15 @@ export function hasQuorum(issue, quorum) {
 
 export function dependenciesReady(state, issue) {
   return issue.work.dependsOn.every((id) => state.issues.find((i) => i.work.id === id)?.phase === 'merged');
+}
+
+export function reviseRequirements(issue, requirements, expectedHash) {
+  if (issue.reconciliation?.required || ['cancelled', 'merged', 'closed'].includes(issue.phase)) {
+    throw new Error('requirements revision cannot bypass reconciliation or revive retired work');
+  }
+  if (expectedHash !== digest(issue.work.requirements)) throw new Error('requirements revision is stale');
+  issue.work = normalizeWork({ ...issue.work, requirements });
+  issue.epoch++; issue.votes = []; issue.phase = 'correction';
+  issue.maintenance = false; issue.error = null; issue.blockerEvidence = null;
+  issue.findings = ['Operator explicitly rebound the requirements/context; revalidate and obtain fresh affected-candidate reviews.'];
 }

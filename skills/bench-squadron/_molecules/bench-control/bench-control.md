@@ -77,3 +77,81 @@ control receipts and concise reports do not. Synchronous local persistence and
 OS scheduling can delay a service wake; this is not a hard real-time guarantee.
 Default output is human-readable; `start ... --json` and `status ... --json`
 explicitly select machine output. No notification integration is introduced.
+
+## Invoking-agent machine interface
+
+These are internal agent operations and optional advanced manual commands.
+The person supplies tasks and material decisions, not machine JSON.
+
+From the skill directory:
+
+```sh
+npm run setup -- /absolute/machine-state/bench/runtime
+npm run smoke -- /absolute/machine-state/bench/runtime
+npm run smoke -- --models /absolute/machine-state/bench/runtime /absolute/machine-state/bench/model-inspection
+npm run bench -- start /absolute/machine-state/bench/run .bench/config.json
+npm run bench -- enqueue /absolute/machine-state/bench/run .bench/task.json
+npm run bench -- status /absolute/machine-state/bench/run
+npm run bench -- status /absolute/machine-state/bench/run --json
+npm run bench -- pause /absolute/machine-state/bench/run
+npm run bench -- resume /absolute/machine-state/bench/run
+npm run bench -- revise /absolute/machine-state/bench/run .bench/revision.json
+npm run bench -- stop /absolute/machine-state/bench/run
+```
+
+`--models` starts the SDK only for authenticated metadata and stops it with owned
+process cleanup; no model session/response is created. A live verification request
+is a separate, explicitly authorized action:
+`npm run smoke -- --live-files CACHE STATE` exercises real scoped synthetic-file
+read/write permission requests; `--live` exposes zero tools and proves less.
+
+The invoking agent writes a config using actual accepted values:
+
+```json
+{
+  "run": "example",
+  "checkout": "/absolute/delivery-repository",
+  "runtimeDirectory": "/absolute/machine-state/bench/runtime",
+  "repository": "OWNER/REPOSITORY",
+  "base": "main",
+  "slots": 5,
+  "quorum": 3,
+  "lifetimeMs": 3600000,
+  "maxAssignments": 100,
+  "models": { "implement": "ACTUAL_ADVERTISED_ID", "review": "ACTUAL_ADVERTISED_ID" },
+  "doctrine": { "implement": ["code", "testing"], "review": ["code", "testing"] }
+}
+```
+
+Prepare each work packet through Bench Epoch's `prepareWork(task, sources)`
+helper after retrieving/transcribing the evidence. The underlying task shape is:
+
+```json
+{
+  "id": "parser",
+  "title": "Repair the agreed parser behavior",
+  "requirements": "The actual operator task and acceptance criteria.",
+  "dependsOn": [],
+  "paths": ["src", "test"],
+  "validation": [["npm", "test"]]
+}
+```
+
+Each source has `uri`, `revision` (including selected lines when applicable),
+exact bounded `text` and `sha256`. Requirements embed this source evidence without
+changing `paths`. Source digests prove text integrity, not human approval.
+Never claim a source was read or version-verified when it was not.
+
+For an explicitly approved material answer/context update, the agent prepares
+`revision.json` with `issue`, the current `expectedRequirementsHash` from
+`status --json`, and new complete `requirements`. `revise` requires unowned work,
+does not change file/command grants, and cannot bypass external-head reconciliation.
+It rebinds requirements and invalidates only affected issue reviews.
+
+`retry STATE ID` is only for blocked unowned work with unchanged authorized
+inputs; it cannot accept external drift. `cancel STATE ID` retires local Bench
+ownership without closing the tracker or PR. Inbox publication takes a local
+exclusive lock and durable sequence; bounded contention can fail explicitly
+(up to two seconds), not silently reverse commands. Known-dead publisher locks
+can be recovered; missing/live identity remains a refusal. Retain failed command
+IDs/receipts and reconcile an uncertain submission rather than assume success.
