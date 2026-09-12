@@ -52,6 +52,12 @@ dangling links/junctions) and hard-linked files are denied. Directory listings
 apply the same boundary rather than hide every dot entry. Review tools cannot
 edit, run commands or access remote providers.
 
+Existing modules support bounded literal search and line-range reads with
+explicit pagination. Implementation can replace one exact occurrence against
+the latest full-file hash, preserving every other byte. Stale or ambiguous
+replacement requests fail without writing. Reviewers receive only the reading
+tools; these operations do not widen the authorized file prefixes.
+
 The worker sends `{prompt: ...}` MessageOptions and observes actual `session.idle`
 independently of returned JSON, calls
 SDK abort/stop, and exits. Its parent retains the slot until the entire recorded

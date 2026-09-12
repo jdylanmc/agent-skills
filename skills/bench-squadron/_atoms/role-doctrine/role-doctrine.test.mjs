@@ -198,7 +198,64 @@ test('review has read/list only; writer paths cannot escape via traversal or lin
     fs.linkSync(path.join(cwd, 'src/file.txt'), path.join(cwd, 'src/hard.txt'));
     assert.throws(() => write({ path: 'src/hard.txt', content: 'denied' }), /hard-linked/);
   }
-  assert.deepEqual(fileTools({ ...packet, role: 'review' }).map((tool) => tool.name), ['bench_read', 'bench_list']);
+  assert.deepEqual(fileTools({ ...packet, role: 'review' }).map((tool) => tool.name),
+    ['bench_read', 'bench_read_range', 'bench_search', 'bench_list']);
+});
+test('large modules support bounded reads and exact edits without reconstructing untouched code', (t) => {
+  const cwd = directory(t);
+  const prefix = Array.from({ length: 500 }, (_, i) => `// retained line ${i}\r\n`).join('');
+  const suffix = '\r\n// untouched café\r\n';
+  const original = `${prefix}const answer = 1;${suffix}`;
+  const target = path.join(cwd, 'src/large.mjs');
+  fs.writeFileSync(target, original);
+  const packet = { cwd, role: 'implement', doctrine: [], work: { paths: ['src'] } };
+  const tools = Object.fromEntries(fileTools(packet).map(tool => [tool.name, tool.handler]));
+  const match = tools.bench_search({ path: 'src/large.mjs', query: 'const answer' });
+  assert.equal(match.matches[0].line, 501);
+  const range = tools.bench_read_range({ path: 'src/large.mjs', startLine: 501, count: 2 });
+  assert.equal(range.content, `const answer = 1;${suffix}`);
+  assert.equal(range.nextLine, null);
+  const first = tools.bench_read_range({ path: 'src/large.mjs', startLine: 1, count: 100 });
+  assert.equal(first.nextLine, 101);
+  assert.ok(Buffer.byteLength(first.content) <= 12000);
+  const changed = tools.bench_replace({ path: 'src/large.mjs', sha256: range.sha256,
+    oldText: 'const answer = 1;', newText: 'const answer = 2;' });
+  assert.equal(fs.readFileSync(target, 'utf8'), `${prefix}const answer = 2;${suffix}`);
+  assert.notEqual(changed.sha256, range.sha256);
+  assert.throws(() => tools.bench_replace({ path: 'src/large.mjs', sha256: range.sha256,
+    oldText: 'const answer = 2;', newText: '' }), /file changed/);
+  for (const oldText of ['missing text', '// retained line']) {
+    assert.throws(() => tools.bench_replace({ path: 'src/large.mjs', sha256: changed.sha256,
+      oldText, newText: '' }), /exactly once/);
+  }
+  assert.equal(fs.readFileSync(target, 'utf8'), `${prefix}const answer = 2;${suffix}`);
+  const request = (toolName, args) => ({ kind: 'custom-tool', toolName, args });
+  const writer = sessionOptions(packet);
+  const reviewer = sessionOptions({ ...packet, role: 'review' });
+  const readArgs = { path: 'src/large.mjs', startLine: 501, count: 2 };
+  assert.equal(reviewer.onPermissionRequest(request('bench_read_range', readArgs)).kind, 'approve-once');
+  const editArgs = { path: 'src/large.mjs', sha256: changed.sha256, oldText: 'const answer = 2;', newText: '' };
+  assert.equal(writer.onPermissionRequest(request('bench_replace', editArgs)).kind, 'approve-once');
+  assert.equal(reviewer.onPermissionRequest(request('bench_replace', editArgs)).kind, 'reject');
+  for (const args of [{ ...readArgs, count: 0 }, { ...readArgs, count: '2' }, { ...readArgs, path: '../outside' }]) {
+    assert.equal(writer.onPermissionRequest(request('bench_read_range', args)).kind, 'reject');
+    assert.throws(() => tools.bench_read_range(args));
+  }
+  assert.equal(writer.onPermissionRequest(request('bench_replace', { ...editArgs, sha256: 'bad' })).kind, 'reject');
+  fs.writeFileSync(path.join(cwd, 'src/invalid'), Buffer.from([0xff]));
+  assert.throws(() => tools.bench_read_range({ path: 'src/invalid', startLine: 1, count: 1 }), /UTF-8/);
+});
+test('range/search results expose limits instead of silently losing source', (t) => {
+  const cwd = directory(t);
+  fs.writeFileSync(path.join(cwd, 'src/rows'), Array.from({ length: 40 }, () => `${'x'.repeat(500)}\n`).join(''));
+  const tools = Object.fromEntries(fileTools({ cwd, role: 'review', work: { paths: ['src'] } })
+    .map(tool => [tool.name, tool.handler]));
+  const range = tools.bench_read_range({ path: 'src/rows', startLine: 1, count: 100 });
+  assert.ok(range.endLine < range.totalLines);
+  assert.equal(range.nextLine, range.endLine + 1);
+  assert.ok(Buffer.byteLength(range.content) <= 12000);
+  assert.equal(tools.bench_search({ path: 'src/rows', query: 'xxx' }).truncated, true);
+  assert.throws(() => tools.bench_read_range({ path: 'src/rows', startLine: 999, count: 1 }), /beyond/);
 });
 test('authorized workflow and ignore-file repair works through the actual constrained file tools', (t) => {
   const cwd = directory(t);
@@ -219,7 +276,7 @@ test('authorized workflow and ignore-file repair works through the actual constr
   assert.equal(fs.existsSync(path.join(cwd, '.github/workflows/.settings.yml')), false);
   const reviewer = Object.fromEntries(fileTools({ cwd, role: 'review', work }).map((tool) => [tool.name, tool.handler]));
   assert.equal(reviewer.bench_read({ path: '.gitignore' }), 'build/\n');
-  assert.deepEqual(Object.keys(reviewer), ['bench_read', 'bench_list']);
+  assert.deepEqual(Object.keys(reviewer), ['bench_read', 'bench_read_range', 'bench_search', 'bench_list']);
 });
 test('broad authorized dot directories still cannot expose state or credentials, including directory listings', (t) => {
   const cwd = directory(t);

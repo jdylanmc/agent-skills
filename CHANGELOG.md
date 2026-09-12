@@ -355,6 +355,8 @@ below is unreleased and no comparison links are available.
   ordered intake and visible blocker questions keep routine work actionable.
   External head changes remain fenced; maintenance uses current-attempt failure
   evidence and stops unchanged retry loops. Ambient runtime overrides are refused.
+  Bounded source search, paginated reads and hash-checked exact replacements let
+  workers make surgical changes without reconstructing entire modules.
   Human scope, risk, approval and merge authority remain separate.
 
 - **Simpler, reliable single-skill reinforcement.** Reinforce Skill keeps its
