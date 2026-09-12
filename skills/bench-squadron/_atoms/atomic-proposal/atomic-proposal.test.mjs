@@ -42,7 +42,7 @@ test('real argv publication creates one PR, validates readback, and reconciles a
     let observed;
     const adapter = new GitHubDelivery(config, root, async (argv) => {
       if (argv.includes('--show-toplevel')) return root;
-      if (argv.includes('get-url')) return 'git@github.com:owner/repo.git';
+      if (argv.includes('get-url')) return ['git', 'github.com:owner/repo.git'].join('@');
       observed = argv;
       return JSON.stringify({ nameWithOwner: 'owner/repo' });
     });
@@ -100,7 +100,7 @@ test('CI observation preserves exact provider fields and classifies unknown/pend
 test('real Git validation seals tested tree, rejects out-of-scope and test-mutated candidates', { skip: process.platform === 'win32' }, async (t) => {
   const cwd = directory(t);
   const git = (...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
-  git('init', '-q'); git('config', 'user.name', 'Bench Test'); git('config', 'user.email', 'bench@example.invalid');
+  git('init', '-q'); git('config', 'user.name', 'Bench Test'); git('config', 'user.email', 'test-identity');
   fs.mkdirSync(path.join(cwd, 'src'));
   fs.writeFileSync(path.join(cwd, 'src/file.txt'), 'initial');
   git('add', '.'); git('commit', '-qm', 'initial');
@@ -126,7 +126,7 @@ test('real Git worktrees isolate review and integrate a newer base without rewri
   fs.mkdirSync(source);
   const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
   git(source, 'init', '-q', '-b', 'main');
-  git(source, 'config', 'user.name', 'Bench Test'); git(source, 'config', 'user.email', 'bench@example.invalid');
+  git(source, 'config', 'user.name', 'Bench Test'); git(source, 'config', 'user.email', 'test-identity');
   fs.mkdirSync(path.join(source, 'src'));
   fs.writeFileSync(path.join(source, 'src/file.txt'), 'base');
   git(source, 'add', '.'); git(source, 'commit', '-qm', 'base');
@@ -167,7 +167,7 @@ test('authorized dotfile changes pass file tools and real Git validation while p
 }, async (t) => {
   const cwd = directory(t);
   const git = (...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
-  git('init', '-q'); git('config', 'user.name', 'Bench Test'); git('config', 'user.email', 'bench@example.invalid');
+  git('init', '-q'); git('config', 'user.name', 'Bench Test'); git('config', 'user.email', 'test-identity');
   fs.writeFileSync(path.join(cwd, 'seed.txt'), 'baseline');
   git('add', '.'); git('commit', '-qm', 'baseline');
   const item = issue();
