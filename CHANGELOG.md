@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove `cavecrew`, its agent-preset/Claude setup guidance, and installer
+  provenance entry. Keep 35 active skills.
 - Merge `ask-matt` and `using-superpowers` into session-long `joe-mode`:
   anchored GitHub/Azure DevOps backlog selection, configured readiness roles,
   concurrent discovery/ADR/spec/ticketing/delivery, and reviewable PR handoff.

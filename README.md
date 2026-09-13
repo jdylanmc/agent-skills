@@ -23,13 +23,13 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | Source | Initial count | Remaining | Initial selection |
 | --- | --- | --- | --- |
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 20 | Complete collection |
-| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 9 | Complete skill collection; not its engine or gateway |
+| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 8 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 0 | `skill-creator` only; now removed |
 | [obra/superpowers](https://github.com/obra/superpowers) | 14 | 5 | Complete skill collection |
 
-Human keep/drop passes have removed 29 skills outright; three three-to-one and
-three two-to-one consolidations leave **34 imported/adapted skills**.
-The locally built `shepherd` and `synthesize` bring the active total to **36**. All
+Human keep/drop passes have removed 30 skills outright; three three-to-one and
+three two-to-one consolidations leave **33 imported/adapted skills**.
+The locally built `shepherd` and `synthesize` bring the active total to **35**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -84,6 +84,8 @@ tracker labels, and cross-skill references.
   and hook-dependent `stats` skills are removed. Generic communication and
   engineering skills remain.
 - `caveman-help` is removed.
+- `cavecrew` is removed, including its unavailable agent-preset routing and
+  Claude-specific setup guidance.
 - `skill-creator` is removed; its original license is retained in `licenses/`.
 - `safe-refactor` is now [`refactor`](./.agents/skills/refactor/SKILL.md);
   behavior-preservation guidance is unchanged.
@@ -98,7 +100,7 @@ tracker labels, and cross-skill references.
 Further reworking and integration of doctrine are subsequent work.
 
 Lockfile keys follow local names for imported skills; source paths and hashes
-retain upstream provenance, not hashes of locally adapted content. Its 34
+retain upstream provenance, not hashes of locally adapted content. Its 33
 records exclude locally authored `shepherd` and `synthesize`, which have no
 upstream imports to record. Counts above assign imported skills to their primary source; additional
 sources are recorded in [NOTICE.md](./NOTICE.md).
