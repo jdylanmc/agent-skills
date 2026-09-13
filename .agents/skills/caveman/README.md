@@ -53,4 +53,4 @@ Caveman (ultra):
 ## See also
 
 - [`SKILL.md`](./SKILL.md): full LLM-facing instructions
-- [Library README](../../../README.md): current collection and installation boundaries
+- [Library README](https://github.com/jdylanmc/agent-skills#readme): source collection and installation boundaries (online)

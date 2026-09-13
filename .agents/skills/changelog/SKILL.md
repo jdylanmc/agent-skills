@@ -8,7 +8,7 @@ user-invocable: false
 # Changelog
 
 **Entry:** internal to authorized modifying work, under the
-[invocation contract](../../INVOCATION.md). Reuse the caller's scope and
+[invocation contract](../setup/INVOCATION.md). Reuse the caller's scope and
 permissions; this helper never independently authorizes edits or publication.
 Preserve applicable [doctrine selections](../doctrine/APPLY.md); `documentation`
 may inform curation. A PR-bound edit inherits the delivery's required `worktrees`.

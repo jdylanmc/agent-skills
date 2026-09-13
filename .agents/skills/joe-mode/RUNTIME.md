@@ -39,9 +39,9 @@ Do not create `.claude/`, `CLAUDE.md`, Claude hooks, or Claude permission config
 
 Provider access uses the configured GitHub CLI or Azure DevOps integration and authenticated identity. A Copilot subscription, Git author email, or an available shell is not proof of tracker permissions.
 
-All commit-producing workers receive the [shared commit-message policy](../../COMMIT-STYLE.md). It applies independently of chat style, respects repository/operator requirements, and does not authorize additional Git actions. Keep it with the library; do not install it into global Copilot configuration as a side effect.
+All commit-producing workers receive the [shared commit-message policy](../setup/COMMIT-STYLE.md). It applies independently of chat style, respects repository/operator requirements, and does not authorize additional Git actions. Keep it with the library; do not install it into global Copilot configuration as a side effect.
 
-Follow [invocation and communication contracts](../../INVOCATION.md). Prefer
+Follow [invocation and communication contracts](../setup/INVOCATION.md). Prefer
 terse exact worker messages without changing the human's chat mode. Caller
 restrictions still apply when the runtime ignores invocation metadata.
 

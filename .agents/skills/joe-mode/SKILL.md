@@ -11,7 +11,7 @@ Hand the human pull requests to review. Loop the existing skills; do not replace
 
 Use [Doctrine](../doctrine/SKILL.md) under the [common application contract](../doctrine/APPLY.md). Scope explicit selections to the named delivery, not every unrelated backlog item. With none preselected, choose appropriate doctrines per worker from catalog metadata; each work packet carries IDs, required flags, reasons, source locations, and digests. Applying workers retrieve the texts. Require `worktrees` for each PR-producing lane and preserve role-specific requirements such as `solid` for code Roast.
 
-Joe-mode starts only when requested and stays active in this session until paused or stopped. Apply its routing to subsequent turns within the anchor. A side question does not silently stop the work; an explicit redirection does. A worker dispatched for a bounded task must not activate another Joe-mode controller. Follow the [invocation contract](../../INVOCATION.md): one controller per repository, not one per issue, branch, worktree, or selected scope.
+Joe-mode starts only when requested and stays active in this session until paused or stopped. Apply its routing to subsequent turns within the anchor. A side question does not silently stop the work; an explicit redirection does. A worker dispatched for a bounded task must not activate another Joe-mode controller. Follow the [invocation contract](../setup/INVOCATION.md): one controller per repository, not one per issue, branch, worktree, or selected scope.
 
 Kickoff authorizes ordinary delivery of selected in-scope work, including repairs, commits, PR publication, review, and shepherding. Do not ask again at each routine transition. Preserve explicit narrower requests, human product decisions, scope changes, and each planning/recording approval gate. Human approval and merging are never delegated.
 
@@ -183,7 +183,7 @@ On re-anchoring, settle active ownership first. Do not silently expand the old s
 
 ## Other requests inside Joe-mode
 
-For commit-message drafting, apply the [shared commit-message policy](../../COMMIT-STYLE.md) directly. No separate formatter skill or Caveman chat mode is needed. Drafting grants no Git mutation authority; if the human separately requests synthesis, preserve that workflow's own input/altitude rules.
+For commit-message drafting, apply the [shared commit-message policy](../setup/COMMIT-STYLE.md) directly. No separate formatter skill or Caveman chat mode is needed. Drafting grants no Git mutation authority; if the human separately requests synthesis, preserve that workflow's own input/altitude rules.
 
 Select a permitted relevant skill rather than forcing every turn through delivery.
 [Evolve Architecture](../evolve-architecture/SKILL.md) can propose an evidenced

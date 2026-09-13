@@ -7,7 +7,7 @@ user-invocable: true
 
 # Shepherd
 
-Own one published pull request (PR), not a one-time green snapshot. Follow the common [invocation policy](../../INVOCATION.md) for human invocation or machine handoff. A human may invoke `/shepherd` on a conflicted PR; the resolver is an internal helper, not the human entry point. Observe, rebase whenever the target advances, and return functional work to the existing Ship, Patch, or Refactor route owner. Never merge, approve, enable auto-merge, accept product risk, or delete the delivery branch. See the human-authored [intent](intent.md).
+Own one published pull request (PR), not a one-time green snapshot. Follow the common [invocation policy](../setup/INVOCATION.md) for human invocation or machine handoff. A human may invoke `/shepherd` on a conflicted PR; the resolver is an internal helper, not the human entry point. Observe, rebase whenever the target advances, and return functional work to the existing Ship, Patch, or Refactor route owner. Never merge, approve, enable auto-merge, accept product risk, or delete the delivery branch. See the human-authored [intent](intent.md).
 
 Preserve the delivery's [doctrine selection](../doctrine/APPLY.md) through maintenance and repair handoffs. **Require `worktrees` before preparing PR changes** and use the [workspace procedure](../ship/WORKSPACE.md) to reuse the owned delivery workspace. Invocation/handoff grants bounded maintenance within established ownership; an explicit observation-only request does not. Load the standards you apply; pass metadata and pinned digests to the route owner rather than requiring the monitor to read every worker doctrine.
 
@@ -76,7 +76,7 @@ Use [the shared current-base readiness gate](../ship/DELIVERY.md#current-base-re
 
 7. Re-observe provider checks/policies for the published head; rerun required provider checks when needed and supported, never reuse old-head successes. Reread live source/target before readiness. If target moved again, withdraw readiness and repeat maintenance/proof, not a stale green handoff. If provider access or safe update capability is unavailable, report the blocker and stop.
 
-Use the [shared commit-message policy](../../COMMIT-STYLE.md) for newly authored maintenance messages. Preserve existing messages during replay/rebase; formatting does not broaden maintenance authority.
+Use the [shared commit-message policy](../setup/COMMIT-STYLE.md) for newly authored maintenance messages. Preserve existing messages during replay/rebase; formatting does not broaden maintenance authority.
 
 ### Feedback repair
 

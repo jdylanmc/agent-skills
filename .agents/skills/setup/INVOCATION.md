@@ -3,7 +3,7 @@
 Use the entrypoint's caller contract before running its workflow. A relevant
 description is not permission to start a human-only mode, widen a task, or
 cross an approval gate. Read the current local skill and required references.
-Keep this policy beside the skills when copying the library.
+Keep the complete pack, including this Setup-bundled policy, when copying the library.
 
 ## Metadata is not authorization
 
@@ -32,38 +32,38 @@ No mode grants authority beyond the request, and explicit narrower scope wins.
 
 | Skill | Entry contract |
 | --- | --- |
-| [automate-this](skills/automate-this/SKILL.md) | Human only; designs automation, does not run it. |
-| [breakdown-tickets](skills/breakdown-tickets/SKILL.md) | Both; after Specify, with human approval before publishing the breakdown. |
-| [caveman](skills/caveman/SKILL.md) | Human-only session mode. Shared commit and worker-message styles do not activate it. |
-| [changelog](skills/changelog/SKILL.md) | Internal; every modifying agent consults the same curation helper. |
-| [discovery](skills/discovery/SKILL.md) | Both; material unknowns, with alignment and experiment/write gates. |
-| [doctrine](skills/doctrine/SKILL.md) | Both; catalog, selection, and verified loading, never approval. |
-| [domain-modeling](skills/domain-modeling/SKILL.md) | Internal; authorized domain work and separately agreed recording. |
-| [eli5](skills/eli5/SKILL.md) | Human only; read-only explanation. |
-| [evolve-architecture](skills/evolve-architecture/SKILL.md) | Human + Joe; proposal first, human chooses the direction. |
-| [handoff](skills/handoff/SKILL.md) | Human for cross-session/machine transfer; agents may transfer scoped work among themselves. |
-| [interrogate](skills/interrogate/SKILL.md) | Internal to Discovery or Joe-mode only. |
-| [joe-mode](skills/joe-mode/SKILL.md) | Human-only activation; one controller per repository, never nested. |
-| [migration](skills/migration/SKILL.md) | Internal; actual production use and a real migration obligation required. |
-| [patch](skills/patch/SKILL.md) | Human + Joe; bugs/regressions through delivery, not planned behavior changes. |
-| [poc](skills/poc/SKILL.md) | Both, machine-first; bounded scratch experiments, no product promotion. |
-| [refactor](skills/refactor/SKILL.md) | Internal delivery route selected by Joe; scoped structural work may stay under an existing delivery owner. |
-| [research](skills/research/SKILL.md) | Both; questions or link batches, evidence-grounded and read-only by default. |
-| [conflicts](skills/conflicts/SKILL.md) | Internal to Shepherd or an authorized delivery owner; human decisions stay human. |
-| [retro](skills/retro/SKILL.md) | Human only; inspect actual session evidence, propose, obtain approval, then deliver selected fixes. |
-| [roast](skills/roast/SKILL.md) | Both; independent review, no implicit repair or approval. |
-| [scout](skills/scout/SKILL.md) | Internal; read-only code localization, distinct from Scout doctrine. |
-| [setup](skills/setup/SKILL.md) | Human-directed; Joe may bootstrap absent/incomplete repository setup under the existing controller, preserving human choices and exact-file approval. |
-| [shepherd](skills/shepherd/SKILL.md) | Both; one owner maintains the existing PR, reviewed, green, and rebased/current. |
-| [ship](skills/ship/SKILL.md) | Human + Joe; an issue or scoped graph through delivery. |
-| [specify](skills/specify/SKILL.md) | Both; aligned Discovery artifact to full requirements specification. |
-| [squadron](skills/squadron/SKILL.md) | Both; parallel independent assignments, aggressively used by Joe-mode. |
-| [status-report](skills/status-report/SKILL.md) | Human; Joe may request a snapshot at full-cycle completion or confirmed major-feature merge. |
-| [synthesize](skills/synthesize/SKILL.md) | Human; agent sub-flow only with supplied sources, output purpose, and altitude. |
-| [tdd](skills/tdd/SKILL.md) | Internal; any authorized task may select test-first work. |
-| [triage](skills/triage/SKILL.md) | Human + Joe; selected backlog scope, preserving tracker-change gates. |
-| [verify](skills/verify/SKILL.md) | Internal; evidence before completion claims. |
-| [wait-what](skills/wait-what/SKILL.md) | Human only; re-explain, no automatic invocation. |
+| [automate-this](../automate-this/SKILL.md) | Human only; designs automation, does not run it. |
+| [breakdown-tickets](../breakdown-tickets/SKILL.md) | Both; after Specify, with human approval before publishing the breakdown. |
+| [caveman](../caveman/SKILL.md) | Human-only session mode. Shared commit and worker-message styles do not activate it. |
+| [changelog](../changelog/SKILL.md) | Internal; every modifying agent consults the same curation helper. |
+| [discovery](../discovery/SKILL.md) | Both; material unknowns, with alignment and experiment/write gates. |
+| [doctrine](../doctrine/SKILL.md) | Both; catalog, selection, and verified loading, never approval. |
+| [domain-modeling](../domain-modeling/SKILL.md) | Internal; authorized domain work and separately agreed recording. |
+| [eli5](../eli5/SKILL.md) | Human only; read-only explanation. |
+| [evolve-architecture](../evolve-architecture/SKILL.md) | Human + Joe; proposal first, human chooses the direction. |
+| [handoff](../handoff/SKILL.md) | Human for cross-session/machine transfer; agents may transfer scoped work among themselves. |
+| [interrogate](../interrogate/SKILL.md) | Internal to Discovery or Joe-mode only. |
+| [joe-mode](../joe-mode/SKILL.md) | Human-only activation; one controller per repository, never nested. |
+| [migration](../migration/SKILL.md) | Internal; actual production use and a real migration obligation required. |
+| [patch](../patch/SKILL.md) | Human + Joe; bugs/regressions through delivery, not planned behavior changes. |
+| [poc](../poc/SKILL.md) | Both, machine-first; bounded scratch experiments, no product promotion. |
+| [refactor](../refactor/SKILL.md) | Internal delivery route selected by Joe; scoped structural work may stay under an existing delivery owner. |
+| [research](../research/SKILL.md) | Both; questions or link batches, evidence-grounded and read-only by default. |
+| [conflicts](../conflicts/SKILL.md) | Internal to Shepherd or an authorized delivery owner; human decisions stay human. |
+| [retro](../retro/SKILL.md) | Human only; inspect actual session evidence, propose, obtain approval, then deliver selected fixes. |
+| [roast](../roast/SKILL.md) | Both; independent review, no implicit repair or approval. |
+| [scout](../scout/SKILL.md) | Internal; read-only code localization, distinct from Scout doctrine. |
+| [setup](SKILL.md) | Human-directed; Joe may bootstrap absent/incomplete repository setup under the existing controller, preserving human choices and exact-file approval. |
+| [shepherd](../shepherd/SKILL.md) | Both; one owner maintains the existing PR, reviewed, green, and rebased/current. |
+| [ship](../ship/SKILL.md) | Human + Joe; an issue or scoped graph through delivery. |
+| [specify](../specify/SKILL.md) | Both; aligned Discovery artifact to full requirements specification. |
+| [squadron](../squadron/SKILL.md) | Both; parallel independent assignments, aggressively used by Joe-mode. |
+| [status-report](../status-report/SKILL.md) | Human; Joe may request a snapshot at full-cycle completion or confirmed major-feature merge. |
+| [synthesize](../synthesize/SKILL.md) | Human; agent sub-flow only with supplied sources, output purpose, and altitude. |
+| [tdd](../tdd/SKILL.md) | Internal; any authorized task may select test-first work. |
+| [triage](../triage/SKILL.md) | Human + Joe; selected backlog scope, preserving tracker-change gates. |
+| [verify](../verify/SKILL.md) | Internal; evidence before completion claims. |
+| [wait-what](../wait-what/SKILL.md) | Human only; re-explain, no automatic invocation. |
 
 ## Carry authority, not another controller
 
@@ -95,7 +95,7 @@ Refactor work inside an existing delivery returns to that owner on the same PR;
 it does not start a competing publication or monitoring loop. Human-approved
 Retro recommendations can initiate a bounded delivery without activating Joe.
 
-Every modifying agent consults [Changelog](skills/changelog/SKILL.md). An isolated
+Every modifying agent consults [Changelog](../changelog/SKILL.md). An isolated
 worker can return entry proposals for the integration owner to consolidate;
 never race on a shared changelog or manufacture an entry for incidental scratch
 files. Read-only skills remain read-only.

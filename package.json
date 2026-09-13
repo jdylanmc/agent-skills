@@ -1,0 +1,13 @@
+{
+  "name": "agent-skills-validation",
+  "private": true,
+  "engines": {
+    "node": ">=22.20.0"
+  },
+  "scripts": {
+    "test:pack": "node --test scripts/skill-pack.test.mjs"
+  },
+  "devDependencies": {
+    "skills": "1.5.23"
+  }
+}

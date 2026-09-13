@@ -1,6 +1,6 @@
 # Bounded implementation worker
 
-The delivery route supplies this contract to each implementer. It is supporting guidance, not another delivery controller. Ship, Patch, and Refactor retain their own scope and delivery ownership under [the common invocation policy](../../INVOCATION.md).
+The delivery route supplies this contract to each implementer. It is supporting guidance, not another delivery controller. Ship, Patch, and Refactor retain their own scope and delivery ownership under [the common invocation policy](../setup/INVOCATION.md).
 
 ## Inputs from the owner
 
@@ -25,7 +25,7 @@ Inspect your own diff before returning, fixing supported in-scope omissions. Sel
 
 Use [changelog](../changelog/SKILL.md) for notable change-entry proposals with the appropriate component file and any existing entry to reuse. Return proposals rather than concurrently editing a shared changelog; the integration owner consolidates before final review. Do not create per-tool churn, automatic releases/versions, or a recursive entry for changelog-only maintenance.
 
-Commit only within the authority the owner supplied. Use the [shared commit-message policy](../../COMMIT-STYLE.md). Do not stage unrelated changes, amend history, or change another worker's branch to make the report look complete.
+Commit only within the authority the owner supplied. Use the [shared commit-message policy](../setup/COMMIT-STYLE.md). Do not stage unrelated changes, amend history, or change another worker's branch to make the report look complete.
 
 Escalate missing context, ambiguous requirements, unexpected architectural choices, exhausted approaches, or blockers with the evidence and smallest needed decision. Do not settle human-owned scope/risk decisions or mark a known acceptance gap complete.
 

@@ -7,7 +7,7 @@ user-invocable: true
 
 # ELI5
 
-**Entry:** Human only. Ground a subject in actual evidence and explain it at five-year-old, junior-practitioner, and expert depths. Read-only. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Human only. Ground a subject in actual evidence and explain it at five-year-old, junior-practitioner, and expert depths. Read-only. Follow the [invocation contract](../setup/INVOCATION.md).
 
 Explain one subject three ways and warm the session's context for later work. The original [intent](intent.md) is preserved unchanged. Stay read-only: understanding the subject is the entire job, not permission to act on it.
 

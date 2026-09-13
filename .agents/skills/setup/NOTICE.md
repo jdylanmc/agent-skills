@@ -98,7 +98,7 @@ Modifications to Apache-licensed files must carry prominent change notices.
 These workflows and their callers have been adapted locally. Original import
 records and contents remain recoverable from Git history.
 
-The shared [commit-message policy](./.agents/skills/setup/COMMIT-STYLE.md) adapts Julius
+The shared [commit-message policy](./COMMIT-STYLE.md) adapts Julius
 Brussee's `caveman-commit`. The standalone skill is retired; its policy is a
 library default rather than a routable import. The Caveman MIT notice above
 continues to apply alongside the repository license for new material.
@@ -157,5 +157,5 @@ restore Caveman's compression runtime.
 ## Archived collection
 
 Earlier third-party adaptations and their notices remain in
-[`archive/atomic-v1/NOTICE.md`](./archive/atomic-v1/NOTICE.md) and the archived
+[`archive/atomic-v1/NOTICE.md`](https://github.com/jdylanmc/agent-skills/blob/main/archive/atomic-v1/NOTICE.md) and the archived
 files themselves. Paths in those historical documents describe the old layout.

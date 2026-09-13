@@ -7,11 +7,11 @@ user-invocable: false
 
 # Conflicts
 
-Internal-only under [the invocation policy](../../INVOCATION.md). Humans invoke [Shepherd](../shepherd/SKILL.md) on a conflicted PR, not this helper. Shepherd supplies the operation, owner/return owner, PR/source/target refs, expected remote head, scoped paths, requirements, workspace, validation, and doctrine packet. Do not create a PR, route work, publish, or start a monitor.
+Internal-only under [the invocation policy](../setup/INVOCATION.md). Humans invoke [Shepherd](../shepherd/SKILL.md) on a conflicted PR, not this helper. Shepherd supplies the operation, owner/return owner, PR/source/target refs, expected remote head, scoped paths, requirements, workspace, validation, and doctrine packet. Do not create a PR, route work, publish, or start a monitor.
 
 Preserve the task's [doctrine selection](../doctrine/APPLY.md); `code` and `sequencing` are candidates when none was selected. Preparing changes for an existing PR requires `worktrees` and the owning delivery's workspace. Load selected texts and verify packet digests. Doctrine does not override semantic-conflict boundaries or authorize rewriting existing messages.
 
-Use the [shared commit-message policy](../../COMMIT-STYLE.md) for newly authored resolution commits. Preserve existing commit messages during rebase unless rewriting them was separately authorized; formatting grants no additional Git authority.
+Use the [shared commit-message policy](../setup/COMMIT-STYLE.md) for newly authored resolution commits. Preserve existing commit messages during rebase unless rewriting them was separately authorized; formatting grants no additional Git authority.
 
 1. **Inspect before mutation.** Confirm the actual in-progress operation, branch/worktree owner, status/index, affected paths, and both sides' commits. Preserve unrelated edits and staged changes; uncertain ownership or unpreserved work is a blocker, not permission to reset or stash it away.
 

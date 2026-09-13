@@ -36,4 +36,4 @@ When asked only to draft a message, return a paste-ready code block. Do not stag
 
 Keep this shared file with the library when copying skills. Repository setup can install a reviewed, local copy in the consuming repository's guidance; it must not modify global Copilot configuration. If the shared file is unavailable, identify the missing dependency rather than claiming the default was loaded.
 
-Adapted from Julius Brussee's MIT-licensed `caveman-commit`; see the library's [attribution](../NOTICE.md) and [Caveman license](../licenses/caveman.LICENSE). A standalone policy copy must retain attribution and the applicable license notices, not only links back to files it does not include.
+Adapted from Julius Brussee's MIT-licensed `caveman-commit`; see the library's [attribution](NOTICE.md) and [Caveman license](licenses/caveman.LICENSE). A standalone policy copy must retain attribution and the applicable license notices, not only links back to files it does not include.

@@ -8,7 +8,7 @@ user-invocable: true
 
 # Automate This
 
-**Entry:** Human only. Turn recurring activities into workflow specifications; do not implement or execute the automation. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Human only. Turn recurring activities into workflow specifications; do not implement or execute the automation. Follow the [invocation contract](../setup/INVOCATION.md).
 
 Use [doctrine selection and application](../doctrine/APPLY.md). Preserve explicit choices; with none, `machine` and `laziness` are candidates for automation design, not mandatory ingredients of every life workflow. Carry selections into any authorized delivery handoff. If a separately authorized PR will deliver the workflow documents, require `worktrees` before preparing those changes.
 

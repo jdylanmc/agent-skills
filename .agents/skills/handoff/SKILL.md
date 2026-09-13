@@ -9,7 +9,7 @@ user-invocable: true
 # Handoff
 
 **Entry:** human direction for cross-session/machine transfers, or scoped
-agent-to-agent work under the [invocation contract](../../INVOCATION.md).
+agent-to-agent work under the [invocation contract](../setup/INVOCATION.md).
 Confirm destination/access and what is actually being transferred. A request
 for a portable document does not authorize starting another Joe-mode.
 

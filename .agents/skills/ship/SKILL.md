@@ -9,7 +9,7 @@ user-invocable: true
 
 Coordinate one feature/specification deliverable into one reviewed, green pull request (PR), current with its latest target, awaiting human signoff under actual [Shepherd](../shepherd/SKILL.md) custody. The deliverable may be one issue or an entire specification with related tickets. The human owns approval and merging. See the human-authored [intent](intent.md).
 
-Follow the common [invocation policy](../../INVOCATION.md). Direct human Ship invocation or selection by human-started Joe-mode authorizes the in-scope worktree, implementation, commits, push/PR, review/fixes, and shepherding; do not ask again whether to implement, publish, or shepherd. Explicit narrower requests still constrain the run. Ask for material missing requirements, scope changes, semantic conflicts, destructive probes, or production-data access. Ship, Patch, and Refactor are peer routes, not wrappers around Ship. Multiple Joe-mode deliveries must remain non-overlapping.
+Follow the common [invocation policy](../setup/INVOCATION.md). Direct human Ship invocation or selection by human-started Joe-mode authorizes the in-scope worktree, implementation, commits, push/PR, review/fixes, and shepherding; do not ask again whether to implement, publish, or shepherd. Explicit narrower requests still constrain the run. Ask for material missing requirements, scope changes, semantic conflicts, destructive probes, or production-data access. Ship, Patch, and Refactor are peer routes, not wrappers around Ship. Multiple Joe-mode deliveries must remain non-overlapping.
 
 Follow [doctrine selection and application](../doctrine/APPLY.md), **requiring `worktrees`** for this delivery. Preserve the operator's preselection for the delivery and its descendants. With no preselection, use [Doctrine's catalog](../doctrine/SKILL.md) to choose relevant IDs for each implementation, integration, and review assignment without reading every body. `code`, `testing`, `sequencing`, `laziness`, and `machine` are candidates, not a mandatory bundle. Each applying worker loads its own selected texts; the code reviewer additionally requires `solid`.
 
@@ -57,7 +57,7 @@ Give each implementer this discipline:
 - Use [tdd](../tdd/SKILL.md) at agreed seams, with small behavior-preserving refactoring after green. Run focused tests and typechecking regularly. Report agreed exceptions honestly.
 - Preserve unrelated behavior and user changes. Return commits, checks actually run, unmet criteria, and blockers.
 
-All authored commit messages use the [shared commit-message policy](../../COMMIT-STYLE.md), including worker and integration commits. Preserve target-repository conventions, required trailers, and existing Git authority; formatting is not permission to commit or rewrite history.
+All authored commit messages use the [shared commit-message policy](../setup/COMMIT-STYLE.md), including worker and integration commits. Preserve target-repository conventions, required trailers, and existing Git authority; formatting is not permission to commit or rewrite history.
 
 When a first meaningful candidate is integrated, publish an internal draft using [the shared publication contract](DELIVERY.md#publish-or-update-the-same-pr). Do not manufacture an empty commit just to open one. Ship retains custody while building; do not run a competing Shepherd repair loop against active implementation.
 

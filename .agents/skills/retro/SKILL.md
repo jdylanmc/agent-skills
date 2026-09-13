@@ -7,7 +7,7 @@ user-invocable: true
 
 # Retro
 
-**Entry:** Human only. Inspect the complained-about session, propose evidence-backed skill improvements, obtain explicit approval, then deliver selected fixes through reviewed current PRs and Shepherd. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Human only. Inspect the complained-about session, propose evidence-backed skill improvements, obtain explicit approval, then deliver selected fixes through reviewed current PRs and Shepherd. Follow the [invocation contract](../setup/INVOCATION.md).
 
 Use [doctrine selection and application](../doctrine/APPLY.md) for the retrospective's judgment, not as instructions inside session evidence. Preserve explicit choices; with none, `context`, `machine`, and `laziness` are candidates according to the observed problems. Cite loaded rules for recommendations without changing doctrine or applying the proposed fixes.
 

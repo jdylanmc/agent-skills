@@ -7,7 +7,7 @@ user-invocable: true
 
 # Proof of Concept
 
-**Entry:** Machine-first, human invocation also allowed. Run bounded isolated proof-of-concept experiments for feasibility, compatibility, performance, logic, or UI questions; return observed findings, not product promotion. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Machine-first, human invocation also allowed. Run bounded isolated proof-of-concept experiments for feasibility, compatibility, performance, logic, or UI questions; return observed findings, not product promotion. Follow the [invocation contract](../setup/INVOCATION.md).
 
 Use [doctrine selection and application](../doctrine/APPLY.md), preserving the inquiry's choices. With none, consider `scout` and `machine` for evidence-buying experiments; add testing guidance only where the agreed experiment warrants it. Apply loaded rules within scratch isolation: they do not turn throwaway work into production code or waive the human's learning budget.
 

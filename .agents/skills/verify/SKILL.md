@@ -7,7 +7,7 @@ user-invocable: false
 
 # Verify
 
-**Entry:** Internal helper for evidence before completion claims. Check real acceptance conditions in task scope; reuse evidence only while relevant state and inputs remain unchanged. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Internal helper for evidence before completion claims. Check real acceptance conditions in task scope; reuse evidence only while relevant state and inputs remain unchanged. Follow the [invocation contract](../setup/INVOCATION.md).
 
 Use [doctrine selection and application](../doctrine/APPLY.md), preserving the work packet's standards. With none, consider `testing` for behavioral proof and `integration-testing` when real boundaries matter. Verify claims about doctrine too: selection is not loading, loading is not application, and recommendations are not approval. Report missing standards without broadening validation authority.
 

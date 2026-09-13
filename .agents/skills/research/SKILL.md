@@ -7,7 +7,7 @@ user-invocable: true
 
 # Research
 
-**Entry:** Human or scoped agent use for questions or batches of links. Investigate primary sources and return cited findings; Synthesize sub-flows require supplied sources, purpose, and altitude. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Human or scoped agent use for questions or batches of links. Investigate primary sources and return cited findings; Synthesize sub-flows require supplied sources, purpose, and altitude. Follow the [invocation contract](../setup/INVOCATION.md).
 
 Preserve the caller's [doctrine selection](../doctrine/APPLY.md). With none, select from catalog metadata only when a doctrine is relevant to the inquiry; `context` may help preserve evidence. Pass selected IDs/reasons/digests to delegated readers, who load the text they apply. Doctrine is a judgment source, not evidence that an external technical claim is true.
 
