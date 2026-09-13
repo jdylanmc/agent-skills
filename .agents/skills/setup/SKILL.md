@@ -1,15 +1,24 @@
 ---
 name: setup
-description: "Human only. Configure repository-local workflow guidance for GitHub, Azure DevOps, or local Markdown. Preserve existing human configuration and confirmation gates."
-disable-model-invocation: true
+description: "Human-directed repository setup for GitHub, Azure DevOps, or local Markdown. Human-started Joe-mode may bootstrap missing/incomplete setup under one owner; human choices and exact-file approval remain required."
+disable-model-invocation: false
 user-invocable: true
 ---
 
 # Setup
 
-**Entry:** Human only. Configure repository-local workflow guidance for GitHub, Azure DevOps, or local Markdown. Preserve existing human configuration and confirmation gates. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Human-directed, with one named automatic caller: the human-started Joe-mode controller bootstrapping absent/incomplete repository setup after establishing repository-wide ownership. Follow the [invocation contract](../../INVOCATION.md). Model-loadable metadata permits that subflow, not unrelated autonomous callers.
 
-Only a human invokes Setup. Missing configuration is not an automatic setup trigger: callers report what is missing and tell the human to invoke `/setup`, then wait. This invocation authorizes proposing configuration, not bypassing the write confirmation below.
+Accept a direct human request or that bounded Joe-mode bootstrap only. Other
+callers report what is missing and tell the human to invoke `/setup`, then wait.
+Either permitted entry authorizes exploration and proposals, not provider/label
+choices on the human's behalf or bypassing exact-file write confirmation.
+
+Reconcile repository identity and any active Setup owner before starting, across
+worktrees/sessions. Join or resume that owner rather than creating a duplicate;
+uncertain ownership blocks a new run. For Joe-mode, retain its controller,
+original anchor/exclusions, objective-start evidence, configuration gaps, and
+return destination. Setup is not a new Joe controller or delivery owner.
 
 Use [doctrine selection and application](../doctrine/APPLY.md) within this setup's existing approval gates. If these configuration changes will be delivered in a PR, require `worktrees` before preparing them. No doctrine selection authorizes setup writes or changes to global instructions.
 
@@ -20,6 +29,36 @@ Scaffold the per-repo configuration that the engineering skills assume:
 - **Domain docs**: where `CONTEXT.md` and ADRs live, and the consumer rules for reading them
 
 This is a prompt-driven skill, not a deterministic script. Explore, present what you found, confirm with the user, then write.
+
+## Joe-mode bootstrap readiness
+
+Inspect the repository's actual guidance and referenced configuration, including
+explicitly configured equivalent locations. Completeness means usable content
+for the existing Setup outputs, not matching seeds or finding files on disk:
+
+- Issue-tracker guidance identifies a supported provider and concrete repository,
+  planning scope, or local paths. Joe's selected backlog/default view and
+  authenticated-identity method are defined where applicable, along with
+  provider-required type/state/relation conventions.
+- Triage guidance maps all five canonical roles to the provider's representation,
+  including a usable `ready-for-agent` value. Custom human vocabulary is valid.
+- Domain guidance defines the chosen layout and consumer rules; repository
+  instructions point to the tracker, triage, domain, commit-style policy, and
+  doctrine guidance described in steps 3–4. Preserve explicit repository overrides.
+  An honestly recorded unavailable doctrine package is a downstream capability
+  blocker, not a reason to repeat Setup. Actual `CONTEXT.md`/ADR content is created
+  lazily and its absence does not make setup incomplete.
+
+Missing outputs, blank mappings, or unresolved template placeholders are gaps.
+Existing unsupported providers or conflicting/ambiguous human choices are instead
+decision blockers: leave them intact and seek a human decision, never reset them
+as "not set up." Tracker authentication/access failures are capability blockers,
+not missing setup. No setup marker, new schema, or live backlog mutation is needed.
+
+For the Joe bootstrap, return without changes if already complete. Otherwise
+propose only the missing/incomplete portions, preserving settled human choices.
+No automatic migration, global changes, issue creation, assignment, or readiness
+updates follow from bootstrap authorization.
 
 ## Process
 
@@ -41,7 +80,7 @@ Look at the current repo to understand its starting state. Read whatever exists;
 
 Summarise what's present and what's missing. Then take the sections in order. One section, one answer, then the next.
 
-Lead each section with the recommended answer so the user can accept it in a word. Give a one-line explainer only when the choice genuinely branches; skip the section entirely when exploration already settled it (Section B when neither `triage` nor `joe-mode` is installed, Section C when there's no monorepo).
+Lead each section with the recommended answer so the user can accept it in a word. Give a one-line explainer only when the choice genuinely branches; skip the section entirely when exploration already settled it (Section B when neither `triage` nor `joe-mode` is installed, Section C when there's no monorepo). During a Joe bootstrap, reuse settled provider/layout/label choices; ask only for missing decisions, never reconfirm defaults as a reason to overwrite custom values.
 
 **Section A: Issue tracker.**
 
@@ -61,11 +100,14 @@ For Joe-mode, record the selected repository/project/area or saved query, how au
 
 **Section B: Triage label vocabulary.** Skip only when neither `triage` nor `joe-mode` is installed.
 
-When either skill is installed, ask exactly one question:
+When either skill is installed and no vocabulary is already settled, ask exactly one question:
 
 > Do you want to keep the default triage labels? (recommended: **yes**)
 
 The defaults are the five canonical roles, each label string equal to its name: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. On **yes**, write them as-is. Only if the user says no, usually because their tracker already uses other names (e.g. `bug:triage` for `needs-triage`), collect the overrides so `triage` applies existing labels instead of creating duplicates.
+
+For a partial existing mapping, preserve its values and ask for the missing roles
+instead of replacing the table with defaults. All writes still wait for step 3.
 
 For Azure DevOps, record the corresponding tag values or explicitly configured field representation; do not replace workflow states with these role names. On GitHub they are labels; local trackers record the mapped value in the agreed status convention.
 
@@ -141,4 +183,16 @@ For the authorized repository changes, use [Changelog](../changelog/SKILL.md) fo
 
 ### 5. Done
 
-Tell the user the setup is complete and which engineering skills will now read from these files. Mention they can edit `docs/agents/*.md` directly later; re-running this skill is only necessary if they want to switch issue trackers or restart from scratch.
+Read back the approved outputs before reporting completion. Tell the user which
+engineering skills will read them and that human-owned configuration can be
+edited directly later; rerunning Setup is optional for repairing gaps or changing
+choices, not required merely because Joe-mode starts again.
+
+For a Joe bootstrap, return to the same controller with completed/reused,
+waiting-for-human, or blocked status, the actual files/workspace and remaining
+gaps, decisions, and Setup ownership. Human unavailability, refusal, failed
+invocation, or failed/partial writes are not completion: report what is needed,
+preserve existing configuration and any actual partial result, and wait without
+an automatic retry loop. Joe re-reads the configuration before resuming its
+original anchor, readiness mapping, and objective timing; Setup never marks
+backlog items ready or widens that scope.
