@@ -1,12 +1,14 @@
 ---
-name: to-spec
+name: specify
 description: "Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed."
 disable-model-invocation: true
 ---
 
+Follow [doctrine selection and application](../doctrine/APPLY.md), preserving the originating task's choices. With none, consider `documentation`, `domain`, and `test-seams` for the relevant portions of the spec. If separately authorized to prepare a documentation PR, require `worktrees` before its changes. Publishing a tracker item alone is not PR creation or implementation permission.
+
 This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
 
-The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup`.
 
 ## Process
 

@@ -5,6 +5,8 @@ description: Build and sharpen a project's domain model. Use when discussing cod
 
 # Domain Modeling
 
+Use [doctrine selection and application](../doctrine/APPLY.md), preserving caller/operator selections. With none, consider `domain`, `boundaries`, and `documentation` according to whether this work concerns executable concepts, context boundaries, or durable records. If these changes will be delivered as a PR, require `worktrees` before writing them; the existing recording gates still apply.
+
 Actively build and sharpen the project's domain model as you design. This is the *active* discipline: challenging terms, inventing edge-case scenarios, and writing the glossary and decisions down the moment they crystallise. (Merely *reading* `CONTEXT.md` for vocabulary is not this skill: that's a one-line habit any skill can do. This skill is for when you're changing the model, not just consuming it.)
 
 ## File structure

@@ -4,6 +4,7 @@ Joe-mode targets GitHub Copilot and uses the actual tools exposed by the current
 
 ## Skills and workers
 
+- Use [Doctrine's catalog and metadata selection](../doctrine/SKILL.md) to assign standards without reading full bodies in the orchestrator. Follow [the common packet contract](../doctrine/APPLY.md): preserve scoped operator choices, add required IDs, and send work plus ID/reason/path/digest metadata. The applying sub-agent loads the full text and reports what it actually used.
 - Invoke an available skill through the harness's skill tool. If the local skill is not registered and repository instructions permit direct loading, read its local `SKILL.md` and required references; do not substitute an upstream version or search a Claude plugin installation.
 - Use the exposed agent-dispatch tool for bounded workers. In a Copilot session exposing `task`, `read_agent`, and `write_agent`, use those tools according to their current schemas. Other installations may expose different names or no worker support.
 - Use background agents for genuinely concurrent discovery, planning, and delivery. Continue independent coordination while they work; consume notifications rather than polling for reassurance. Resume the known worker for follow-up when supported.
@@ -29,6 +30,8 @@ Give each independent writing worker its own authorized workspace. Discovery/res
 Ship owns its delivery branch, integration queue, and nested workers. Joe-mode owns non-overlapping delivery groups and planning outputs, not cherry-picks into those branches. Transfer artifacts and permissions through the owner, with one writer/integrator per shared mutable target.
 
 Read the repository's actual worktree guidance before creating any workspace. Do not infer that being in an existing linked worktree makes it safe for several writers. Never clean up a worker's branch, worktree, or process merely because its last message said "done."
+
+Every PR-producing lane requires `worktrees`, including domain/ADR and documentation deliveries. Route workspace operations to the owning workflow's [workspace procedure](../ship/WORKSPACE.md); doctrine selection does not create a workspace or authorize publication.
 
 ## Copilot-specific restraint
 

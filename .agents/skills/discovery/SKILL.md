@@ -23,7 +23,7 @@ The cycle body is read-only: acquire evidence, draft findings in the conversatio
 
 ## Scout the meaningful design space
 
-For consequential uncertainty, apply canonical doctrine **`scout`** from the [doctrine manifest](../../../doctrine/manifest.md). Resolve its path within the doctrine directory, reject symlinks/path escapes, verify the declared SHA-256 digest, then read the verified source. Missing or mismatched doctrine is a reported dependency gap; seek direction rather than inventing its rules or claiming a Scout-grounded result. Load no unrelated doctrine merely because it exists.
+Follow [doctrine selection and application](../doctrine/APPLY.md), preserving selections for this inquiry. For consequential uncertainty, **require `scout`** through [Doctrine](../doctrine/SKILL.md). A coordinating agent may select from catalog metadata; the agent applying Scout loads its verified full text. Missing or mismatched doctrine is an explicit coverage gap, not permission to invent its rules. Load no unrelated doctrine merely because it exists.
 
 Use Scout within the evidence cycle, not as a second workflow that skips alignment or persistence:
 
@@ -118,7 +118,7 @@ Continue with the next bounded inquiry when it is within the agreed scope and co
 
 For consequential uncertainty, use Scout's stopping case above to explain why further exploration is or is not worthwhile. A recommendation is not a selected design; a selected design is not implementation permission. Ready work routes onward without reopening settled decisions merely to satisfy a process.
 
-Return foundation and handoff locations, the current state, and the recommended next action. Discovery owns that recommendation; research and POC return evidence, not the decision to advance. Hand an aligned foundation to `to-spec` when specification is warranted; ticket breakdown belongs to `to-tickets` and delivery to `ship`, as separate authorized work.
+Return foundation and handoff locations, the current state, and the recommended next action. Discovery owns that recommendation; research and POC return evidence, not the decision to advance. Hand an aligned foundation to `specify` when specification is warranted; ticket breakdown belongs to `breakdown-tickets` and delivery to `ship`, as separate authorized work.
 
 ## Optional tracker maintenance
 

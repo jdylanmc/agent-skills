@@ -5,11 +5,13 @@ The coordinator supplies the following context, resolving placeholders before di
 - **Material:** paths, PR/repository references, pasted content, or other accessible sources; include the fixed revision/snapshot and requested Git comparison when applicable.
 - **Scope:** incremental changes, full integrated deliverable, whole artifact, or a bounded specialist question; identify exclusions.
 - **Purpose and requirements:** the actual human intent, acceptance conditions, and relevant issue/spec sources. Mark unavailable sources explicitly.
-- **Standards:** applicable repository guidance and selected, integrity-verified doctrine passages, with why they apply. For code, include the relevant [code guidance](CODE.md).
+- **Standards:** applicable repository guidance and the [doctrine packet](../doctrine/APPLY.md): IDs, required flags, reasons, accessible sources/selector, and pinned digests. For code, `solid` is required; include the relevant [code guidance](CODE.md). The coordinator need not load doctrine bodies just to assign them.
 - **Evidence access:** allowed tools and any already-set-up execution environment, with its permitted effects. Inspection-only is not authorization to install or alter the environment.
 - **Return:** one prioritized findings list using the fields below, plus requirements/standards coverage and execution/access limitations.
 
 Review the supplied material against those requirements and standards. Apply independent critical judgment; do not accept the implementer's assertions as proof or try to confirm the coordinator's preferred answer.
+
+Before reviewing, retrieve the selected full texts through [Doctrine](../doctrine/SKILL.md) and verify the packet's digests. Preserve required selections; report missing or changed sources to the coordinator. In the coverage statement, distinguish doctrines selected, actually loaded, applicable, and unavailable. A selection packet alone is not evidence of applying its standards.
 
 Do not modify source, index, HEAD, branches, or shared external state. Do not approve, publish a review, or implement fixes. Do not launch another reviewer or invent a human decision. If evidence or capabilities are missing, report the exact gap and question for the coordinator.
 

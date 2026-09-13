@@ -28,6 +28,15 @@ Modifications to Apache-licensed files must carry prominent change notices.
 
 ## Consolidated skills
 
+- `evolve-architecture` adapts Matt Pocock's `improve-codebase-architecture`
+  around the operator-approved evolution workflow and newly requested intent.
+  It retains evidenced hotspot analysis and useful visual comparisons, not
+  the mandatory HTML/CDN scaffold or a blanket deepening preference. Its
+  original source path/hash remain in the lock record; the Matt Pocock MIT
+  notice applies.
+- `setup`, `specify`, and `breakdown-tickets` rename Matt Pocock's
+  `setup-matt-pocock-skills`, `to-spec`, and `to-tickets`. Original upstream
+  source paths and hashes are retained; the Matt Pocock MIT notice applies.
 - `discovery` retains Matt Pocock's `wayfinder` provenance and absorbs useful
   inquiry, alternative-comparison, visual-question, and artifact-checking
   guidance from Jesse Vincent's `brainstorming`. The separate Superpowers
@@ -88,6 +97,13 @@ Preserve applicable attribution and license when distributing a policy copy.
 repository-localization behavior, tests, and original import source/hash.
 The Caveman MIT notice above applies. This skill is distinct from the
 repository's human-authored Scout doctrine.
+
+`doctrine` is a locally authored read-only catalog/selection/loading skill,
+not an installer import. It contains the unchanged existing human-curated
+doctrine sources and uses the repository MIT license. The newly requested
+`worktrees` doctrine and Ship's workspace procedure adapt Jesse Vincent's
+`using-git-worktrees`, whose standalone skill is retired. The Superpowers MIT
+notice applies to that adapted material alongside the repository license.
 
 `poc` adapts Matt Pocock's `prototype`, including its logic and UI references,
 and retains the original `skills/engineering/prototype/SKILL.md` import record.

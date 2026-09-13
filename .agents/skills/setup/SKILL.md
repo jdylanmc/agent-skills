@@ -1,10 +1,12 @@
 ---
-name: setup-matt-pocock-skills
+name: setup
 description: "Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills."
 disable-model-invocation: true
 ---
 
-# Setup Matt Pocock's Skills
+# Setup
+
+Use [doctrine selection and application](../doctrine/APPLY.md) within this setup's existing approval gates. If these configuration changes will be delivered in a PR, require `worktrees` before preparing them. No doctrine selection authorizes setup writes or changes to global instructions.
 
 Scaffold the per-repo configuration that the engineering skills assume:
 
@@ -27,6 +29,7 @@ Look at the current repo to understand its starting state. Read whatever exists;
 - `docs/agents/`: does this skill's prior output already exist?
 - `.scratch/`: a sign that a local-markdown issue tracker convention is already in use
 - Is `triage` or `joe-mode` installed? Either needs the configured readiness-role mapping in Section B.
+- Is the complete `doctrine` package available to this repository and its workers? Record its actual location and any existing repository-required IDs; do not read all bodies merely to inspect the catalog.
 - Monorepo signals: a `pnpm-workspace.yaml`, a `workspaces` field in `package.json`, or a populated `packages/*` with its own `src/`. These are present only in a genuinely large multi-package repo; their absence means single-context, which is almost every repo.
 
 ### 2. Present findings and ask
@@ -37,7 +40,7 @@ Lead each section with the recommended answer so the user can accept it in a wor
 
 **Section A: Issue tracker.**
 
-> Explainer: The "issue tracker" is where issues live for this repo. Skills like `to-tickets`, `triage`, and `to-spec` read from and write to it. They need to know whether to call `gh issue create`, write a markdown file under `.scratch/`, or follow some other workflow you describe. Pick the place you actually track work for this repo.
+> Explainer: The "issue tracker" is where issues live for this repo. Skills like `breakdown-tickets`, `triage`, and `specify` read from and write to it. They need to know whether to call `gh issue create`, write a markdown file under `.scratch/`, or follow some other workflow you describe. Pick the place you actually track work for this repo.
 
 Propose the provider identified by the configured remote, not GitHub regardless of evidence. Confirm ambiguous remotes and code-versus-planning locations. If the remote points at Azure DevOps, use the [Azure DevOps template](issue-tracker-azure-devops.md) to resolve its organization/project/repository and separately confirm the planning scope. Offer:
 
@@ -72,6 +75,7 @@ Show the user a draft of:
 - The `## Agent skills` block for the actual repository instructions used by the harness (see step 4)
 - The contents of `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and `docs/agents/triage-labels.md` (the last when `triage` or `joe-mode` is installed)
 - A repository-local `docs/agents/commit-style.md` copy of the [shared commit-message policy](../../COMMIT-STYLE.md), retaining applicable attribution/license and the target repository's explicit overrides
+- A doctrine guidance subsection pointing to the actual installed package, listing any operator-confirmed repository-required IDs, and explaining scoped worker selections. Do not copy/rewrite doctrine sources or install a missing package as a setup side effect.
 
 Let them edit before writing.
 
@@ -109,7 +113,13 @@ The block:
 ### Commit messages
 
 Use the library's terse Conventional Commits default in `docs/agents/commit-style.md`, subject to this repository's explicit conventions and required trailers. This formatting policy grants no staging, commit, or history-rewrite authority.
+
+### Doctrine
+
+Use `/doctrine` at <verified package location>: no arguments lists catalog metadata; named IDs retrieve verified text; orchestrators send scoped selection packets and workers load their assigned doctrines. Repository-required IDs: <confirmed IDs or none>. Code Roast requires `solid`; PR-producing workflows require `worktrees`. Preserve operator choices for the named delivery without applying them to unrelated work.
 ```
+
+Resolve the doctrine placeholders before writing. If the package is unavailable, record that limitation and the needed installation/location instead of claiming doctrine loading is configured. Keep its bundled manifest, sources, and helper together; never change global configuration to make the path work.
 
 Include the `### Triage labels` sub-block, and write `docs/agents/triage-labels.md`, when Section B ran for `triage` or `joe-mode`. Otherwise omit both.
 

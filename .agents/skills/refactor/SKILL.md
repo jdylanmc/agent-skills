@@ -5,6 +5,8 @@ description: Restructure code while preserving behavior. Use for extraction, con
 
 # Refactor
 
+Use [doctrine selection and application](../doctrine/APPLY.md), preserving the task's selections. With none, consider `code`, `solid`, and `laziness` for the actual restructuring; choose relevant IDs from metadata rather than loading the whole bundle. Apply loaded rules without weakening behavior-preservation requirements.
+
 Define behavior-preservation boundary and establish verification before structural edits.
 
 - Keep feature changes outside refactor.

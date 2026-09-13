@@ -7,6 +7,8 @@ user-invocable: true
 
 # Research
 
+Preserve the caller's [doctrine selection](../doctrine/APPLY.md). With none, select from catalog metadata only when a doctrine is relevant to the inquiry; `context` may help preserve evidence. Pass selected IDs/reasons/digests to delegated readers, who load the text they apply. Doctrine is a judgment source, not evidence that an external technical claim is true.
+
 Resolve a knowledge gap by reading evidence, not by implementing an answer.
 
 ## Frame and investigate

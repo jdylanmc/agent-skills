@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 Coordinate one deliverable into one pull request (PR), then always hand it to [shepherd](../shepherd/SKILL.md). The deliverable may be one issue or an entire specification with related tickets. The human owns approval and merging. See the human-authored [intent](intent.md).
 
+Follow [doctrine selection and application](../doctrine/APPLY.md), **requiring `worktrees`** for this delivery. Preserve the operator's preselection for the delivery and its descendants. With no preselection, use [Doctrine's catalog](../doctrine/SKILL.md) to choose relevant IDs for each implementation, integration, and review assignment without reading every body. `code`, `testing`, `sequencing`, `laziness`, and `machine` are candidates, not a mandatory bundle. Each applying worker loads its own selected texts; the code reviewer additionally requires `solid`.
+
 ## 1. Ground the delivery
 
 Read repository guidance, the request, spec, tickets, relevant code, and any existing PR. Resolve the repository, hosting provider, target branch, acceptance conditions, non-goals, and agreed test seams. Use existing tracker configuration when available; ask for missing decisions instead of inventing requirements.
@@ -16,9 +18,11 @@ Do not demand a readiness label or reject the assignment just because a ticket i
 
 For a ticket graph, record each task, its prerequisites, and its acceptance conditions. Surface missing dependencies, cycles, or ambiguous edges before scheduling affected tasks. Stay within the agreed deliverable; do not sweep in the rest of the backlog.
 
-Inspect local changes and branch state. Preserve unrelated work. Use or create an isolated delivery branch/worktree with [using-git-worktrees](../using-git-worktrees/SKILL.md), respecting the caller's existing workspace. Do not deliver from the default branch. Record the starting commit for review; it is not a prerequisite packet for resuming a PR.
+Inspect local changes and branch state. Preserve unrelated work. Apply the loaded `worktrees` doctrine using the [workspace procedure](WORKSPACE.md), respecting suitable existing isolation and its owner. Do not deliver from the default branch. Record the starting commit for review; it is not a prerequisite packet for resuming a PR.
 
 Keep a short progress record in the harness session workspace: task states, worker identities/worktrees, integrated commits, checks, decisions, and the PR URL when known. Reconcile it with current Git/provider state after interruption rather than replaying completed work.
+
+Keep the scoped doctrine selection and per-worker required IDs, source/digest references, and load/application reports with that record. Pass them to fixes, review, and Shepherd; do not lose operator choices at an agent boundary or assume selection means a worker has read the doctrine.
 
 ## 2. Coordinate implementation
 
@@ -68,7 +72,7 @@ Report every acceptance condition as **met**, **unmet**, or **unverified**, with
 
 ## 4. Publish or update one PR
 
-Use the repository's provider tools: `gh` for GitHub, `glab` for GitLab, or the configured Azure DevOps integration using its [provider reference](../setup-matt-pocock-skills/issue-tracker-azure-devops.md). Resolve code-project PR operations separately from planning-project work items. Follow repository publishing permissions and templates. Missing access is a blocker, not a successful handoff.
+Use the repository's provider tools: `gh` for GitHub, `glab` for GitLab, or the configured Azure DevOps integration using its [provider reference](../setup/issue-tracker-azure-devops.md). Resolve code-project PR operations separately from planning-project work items. Follow repository publishing permissions and templates. Missing access is a blocker, not a successful handoff.
 
 Before creating a PR, look for one already associated with this deliverable and delivery branch. Reuse it; if the match is ambiguous, ask. If creation reports an uncertain result, query before retrying so a network failure does not create duplicates.
 

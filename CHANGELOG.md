@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Add `/doctrine` with catalog-only browsing, scoped metadata-only worker
+  selections, required IDs, and verified full-text loading. Move all 22 existing
+  doctrine texts unchanged into the skill; add requested worktree doctrine and
+  retire the standalone worktree skill. Wire consumers, worker/handoff packets,
+  required SOLID for code Roast, setup, and integrity/selector CI checks.
+- Replace `improve-codebase-architecture` with `evolve-architecture` and its
+  requested intent: evidenced diagnosis, independent challenge, delegated
+  discovery, optional visuals, and a bounded proposal before authorized delivery.
+- Rename `setup-matt-pocock-skills` to `setup`, `to-spec` to `specify`, and
+  `to-tickets` to `breakdown-tickets`; preserve behavior and provenance. Keep
+  29 active skills: 26 imports/adaptations and three locally authored skills.
 - Rename `caveman-explore` to `scout`, updating package metadata and tests while
   preserving read-only code localization and upstream provenance.
 - Fold Brainstorming's useful inquiry and comparison techniques into Discovery

@@ -5,6 +5,8 @@ description: Build features and fix bugs test-first through public interfaces. U
 
 # Test-Driven Development
 
+Follow [doctrine selection and application](../doctrine/APPLY.md), **requiring `testing`**. Preserve the work packet's selections. With no preselection, consider `test-seams` when choosing boundaries/doubles and `code` for implementation; load the selected full texts before applying them. Doctrine does not waive the observed red/green loop or grant unrelated refactoring authority.
+
 Work in vertical slices: one behavior, a demonstrated failure, the smallest implementation, and a demonstrated pass. Small, behavior-preserving refactoring is allowed **after green**, followed by another test run.
 
 Read repository guidance, relevant `CONTEXT.md`, and architectural decisions before choosing test names or interfaces. Follow the project's existing test tools and conventions.

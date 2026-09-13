@@ -1,14 +1,16 @@
 ---
-name: to-tickets
+name: breakdown-tickets
 description: Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker).
 disable-model-invocation: true
 ---
 
-# To Tickets
+# Breakdown Tickets
+
+Use [doctrine selection and application](../doctrine/APPLY.md), preserving the parent deliverable's choices. With none, consider `sequencing` and `documentation` for dependency-aware, durable work packets. Carry scoped selections and required IDs into implementation handoffs. A separately authorized PR for local ticket files requires `worktrees`; tracker publication alone does not.
 
 Break a plan, spec, or conversation into a set of **tickets**: tracer-bullet vertical slices, each declaring the tickets that **block** it.
 
-The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup`.
 
 ## Process
 
@@ -58,12 +60,12 @@ Iterate until the user approves the breakdown.
 
 ### 5. Publish the tickets to the configured tracker
 
-Publish the approved tickets. **How** depends on the tracker `/setup-matt-pocock-skills` configured; the tickets are the same either way, only the shape of the blocking edges changes:
+Publish the approved tickets. **How** depends on the tracker `/setup` configured; the tickets are the same either way, only the shape of the blocking edges changes:
 
 - **Local files** → write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Each file's "Blocked by" lists the numbers/titles it depends on. Use the per-ticket file template below: one ticket per file, never a single combined file.
 - **A real issue tracker (GitHub, Azure DevOps, Linear, …)** → publish one item per ticket in dependency order (blockers first) using the configured planning scope, work-item type, and required fields. Use native parent/dependency relationships where available; otherwise record "Blocked by" references. Apply the configured mapping for the `ready-for-agent` role unless instructed otherwise, preserving unrelated labels/tags; the tickets are agent-grabbable by construction. Use the approved assignee policy rather than silently reassigning work.
 
-For local files, substitute the configured role value in the status field below too. For Azure DevOps use the [provider reference](../setup-matt-pocock-skills/issue-tracker-azure-devops.md), not GitHub commands or assumed process fields.
+For local files, substitute the configured role value in the status field below too. For Azure DevOps use the [provider reference](../setup/issue-tracker-azure-devops.md), not GitHub commands or assumed process fields.
 
 Return all created IDs/URLs, dependency edges, and grouping to the coordinating owner. In Joe-mode, reserve the parent specification before publication and reconcile the entire graph before dispatch: either one Ship owns the spec and its children or the parent is suppressed while intentionally independent child deliveries run. Do not launch both. After uncertain publication, reconcile actual tracker results before retrying; report partial graphs instead of duplicating tickets.
 

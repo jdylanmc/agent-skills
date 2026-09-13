@@ -2,6 +2,8 @@
 
 Use only for relevant code, design, or implementation evidence. Repository requirements override optional heuristics. Roast's review-only boundaries and output contract apply throughout.
 
+For code, load required `solid` through [Doctrine](../doctrine/SKILL.md) before applying these optional heuristics. Assess relevant SOLID principles against the actual evidence; loading them does not mandate abstractions or manufacture findings. Preserve other selections from Roast's work packet.
+
 ## Requirements and correctness
 
 Trace the actual behavior against the supplied acceptance requirements. Look for missing or partial functionality, scope creep, incorrect state transitions, edge cases, error propagation, data loss, concurrency hazards, and incompatible API or data changes. Ground a finding in a real path or bounded experiment, not merely a suspicious-looking line.

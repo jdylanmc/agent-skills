@@ -38,7 +38,7 @@ Run `glab issue view <number> --comments`.
 
 Older discovery maps use the layout below. Current `/discovery` reads these as evidence; it does not automatically create a map, claim or resolve tickets, or build dependency graphs. Experimental questions route to `/poc`, including items with the old `discovery:prototype` label. Do not migrate existing labels automatically.
 
-Any discovery-tracker maintenance using these commands requires an exact proposed change and explicit approval outside the read-only cycle. Delivery ticketing belongs to `/to-tickets`, not discovery.
+Any discovery-tracker maintenance using these commands requires an exact proposed change and explicit approval outside the read-only cycle. Delivery ticketing belongs to `/breakdown-tickets`, not discovery.
 
 - **Map**: a single issue labelled `discovery:map`, holding the Notes / Decisions-so-far / Fog body. `glab issue create --label discovery:map`. (On GitLab tiers with native epics, an epic may hold the map instead; a labelled issue works everywhere.)
 - **Child ticket**: an issue carrying `Part of #<map>` at the top of its description and labels `discovery:<type>` (`research`/`prototype`/`interrogate`/`task`). Once claimed, the ticket is assigned to the driving dev.

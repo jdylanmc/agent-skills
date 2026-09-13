@@ -67,6 +67,9 @@ doctrine:
   - id: integration-testing
     path: integration-testing.doctrine.md
     sha256: 6b455ee604a67656b9c47515bfe8ecfc079217533f5b6c0a29863c8f45a8e16a
+  - id: worktrees
+    path: worktrees.doctrine.md
+    sha256: 7dea063d55456fed452267b00e976403986b39b132877c65bdd10ed97cbe56ea
 ---
 
 # Doctrine Manifest

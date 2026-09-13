@@ -9,6 +9,8 @@ user-invocable: true
 
 Hand the human pull requests to review. Loop the existing skills; do not replace their workflows with a second implementation process. The human-authored [intent](intent.md) defines the purpose.
 
+Use [Doctrine](../doctrine/SKILL.md) under the [common application contract](../doctrine/APPLY.md). Scope explicit selections to the named delivery, not every unrelated backlog item. With none preselected, choose appropriate doctrines per worker from catalog metadata; each work packet carries IDs, required flags, reasons, source locations, and digests. Applying workers retrieve the texts. Require `worktrees` for each PR-producing lane and preserve role-specific requirements such as `solid` for code Roast.
+
 Joe-mode starts only when requested and stays active in this session until paused or stopped. Apply its routing to subsequent turns within the anchor. A side question does not silently stop the work; an explicit redirection does. A worker dispatched for a bounded task must not activate another Joe-mode controller.
 
 ## 1. Resolve the anchor
@@ -24,7 +26,7 @@ Establish the backlog selection from the request and configuration:
 - An assigned-to-me request adds the authenticated provider user's assignee filter; Git commit identity is not proof of that identity.
 - A folder or idea may need a repository and backlog scope clarified. Ask the smallest material question rather than silently choosing full backlog.
 
-Resolve ambiguous remotes, planning scopes, and identities before dispatch. Use [setup](../setup-matt-pocock-skills/SKILL.md) when configuration is missing, preserving its confirmation gates. Its [GitHub](../setup-matt-pocock-skills/issue-tracker-github.md) and [Azure DevOps](../setup-matt-pocock-skills/issue-tracker-azure-devops.md) references describe provider operations. Existing GitLab or local configurations remain usable; do not replace them merely because GitHub and Azure DevOps are the common case.
+Resolve ambiguous remotes, planning scopes, and identities before dispatch. Use [setup](../setup/SKILL.md) when configuration is missing, preserving its confirmation gates. Its [GitHub](../setup/issue-tracker-github.md) and [Azure DevOps](../setup/issue-tracker-azure-devops.md) references describe provider operations. Existing GitLab or local configurations remain usable; do not replace them merely because GitHub and Azure DevOps are the common case.
 
 If the anchor has no repository yet, discovery can start without one. Report backlog/provider discovery as unresolved and defer tracker publication and delivery until their destinations are agreed. An unavailable tracker is not an empty backlog.
 
@@ -55,7 +57,7 @@ Use provider-qualified item identities and record the full coverage of each deli
 - **One specification, one PR:** reserve the specification and its child graph for one Ship owner. Ship schedules its internal frontier; Joe-mode does not also launch child Ship jobs.
 - **Intentionally separate deliveries:** reserve non-overlapping ticket groups, suppress the spec parent as an implementation candidate, and observe cross-delivery dependencies. Choose this only when the slices are intentionally separate PRs.
 
-Reserve a spec's group before starting ticket breakdown: `to-spec` may already have applied the readiness label. Newly published children must not race a parent delivery or be dispatched before the approved graph and grouping are recorded. If grouping is materially ambiguous, ask.
+Reserve a spec's group before starting ticket breakdown: `specify` may already have applied the readiness label. Newly published children must not race a parent delivery or be dispatched before the approved graph and grouping are recorded. If grouping is materially ambiguous, ask.
 
 A dependency across separate PRs is satisfied only when the required changes are available on the consumer's agreed base, normally after the prerequisite merges. A green but unmerged PR or a closed tracker item alone is insufficient. Inside one Ship graph, Ship's integrated-commit and validation rules govern.
 
@@ -68,8 +70,8 @@ Fill available capacity with independent work. Do not stop all delivery while th
 | Unsettled question; no defined backlog yet | [discovery](../discovery/SKILL.md): aligned findings, domain understanding, frontier, full foundation and compact handoff. It can request [research](../research/SKILL.md) or [poc](../poc/SKILL.md); those return evidence, not product changes. |
 | A focused human question | [interrogate](../interrogate/SKILL.md): actual human answers. During discovery, use its conversation-only intake and let discovery own the alignment gate. |
 | Aligned terminology or a consequential architectural choice needs a record | [domain-modeling](../domain-modeling/SKILL.md): glossary and Architecture Decision Records (ADRs) when its criteria warrant one. Distinguish proposals from human decisions; do not generate ceremonial ADRs for every ticket. |
-| Enough is known to specify an outcome | [to-spec](../to-spec/SKILL.md): publish the scoped spec through its existing test-seam/human checks and configured tracker. Supply the aligned foundation and agreed decisions; do not invent missing requirements. |
-| An approved spec needs actionable slices | [to-tickets](../to-tickets/SKILL.md): human-approved vertical slices, blocking edges, and configured readiness labels. Reserve the delivery group before publication and reconcile the resulting IDs afterward. |
+| Enough is known to specify an outcome | [specify](../specify/SKILL.md): publish the scoped spec through its existing test-seam/human checks and configured tracker. Supply the aligned foundation and agreed decisions; do not invent missing requirements. |
+| An approved spec needs actionable slices | [breakdown-tickets](../breakdown-tickets/SKILL.md): human-approved vertical slices, blocking edges, and configured readiness labels. Reserve the delivery group before publication and reconcile the resulting IDs afterward. |
 | External requests need classification | [triage](../triage/SKILL.md): apply the configured workflow to incoming external work. Do not retriage generated, already-ready tickets. |
 | Ready, unowned delivery work can run | [ship](../ship/SKILL.md): isolated implementation, [tdd](../tdd/SKILL.md), independent [roast](../roast/SKILL.md), [verify](../verify/SKILL.md), one PR, and mandatory [shepherd](../shepherd/SKILL.md). |
 | A published PR needs attention | Its existing Shepherd: observe checks/reviews/policies and route functional feedback to Ship on that same PR. Join the current owner rather than starting another monitor. |
@@ -116,6 +118,6 @@ On re-anchoring, settle active ownership first. Do not silently expand the old s
 
 For commit-message drafting, apply the [shared commit-message policy](../../COMMIT-STYLE.md) directly. No separate formatter skill or Caveman chat mode is needed. Drafting grants no Git mutation authority; if the human separately requests synthesis, preserve that workflow's own input/altitude rules.
 
-Select an existing relevant skill rather than forcing every turn through delivery: for example [roast](../roast/SKILL.md) for any supplied material, [patch](../patch/SKILL.md) for bounded repair or explicitly scoped diagnosis, [refactor](../refactor/SKILL.md), [migration](../migration/SKILL.md), [synthesize](../synthesize/SKILL.md), [wait-what](../wait-what/SKILL.md), or [handoff](../handoff/SKILL.md). Codebase-health findings can feed discovery only when within the anchor; ask before expanding scope. Communication preferences do not grant additional work authority.
+Select an existing relevant skill rather than forcing every turn through delivery: for example [roast](../roast/SKILL.md) for any supplied material, [patch](../patch/SKILL.md) for bounded repair or explicitly scoped diagnosis, [evolve-architecture](../evolve-architecture/SKILL.md) for evidenced architectural friction and a bounded evolution proposal, [refactor](../refactor/SKILL.md), [migration](../migration/SKILL.md), [synthesize](../synthesize/SKILL.md), [wait-what](../wait-what/SKILL.md), or [handoff](../handoff/SKILL.md). Codebase-health findings can feed discovery only when within the anchor; ask before expanding scope. Communication preferences do not grant additional work authority.
 
 Read and use the current local skill for the route, not a remembered or upstream workflow. Prefer process guidance appropriate to the actual problem, but do not force Discovery for already-ready work or call every loosely related skill. Missing skills or capabilities are explicit blockers for their route, not permission to invent tools or silently remove required review.

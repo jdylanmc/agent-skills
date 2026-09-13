@@ -5,6 +5,8 @@ description: Use when facing 2+ independent tasks that can be worked on without 
 
 # Dispatching Parallel Agents
 
+Use [Doctrine](../doctrine/SKILL.md) under the [shared packet contract](../doctrine/APPLY.md). Preserve scoped operator selections and required IDs; without a preselection, choose appropriate doctrines per task from catalog metadata. Each worker receives its work plus canonical IDs, required flags, reasons, source/selector location, and pinned digests, then loads the actual texts before applying them. The coordinator need not read those bodies to delegate.
+
 ## Overview
 
 You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
@@ -62,6 +64,7 @@ Each agent gets:
 - **Clear goal:** Make these tests pass
 - **Constraints:** Don't change other code
 - **Expected output:** Summary of what you found and fixed
+- **Doctrine packet:** Scoped selections and required standards; return actual load/application coverage and evidence-backed recommendations alongside the work result.
 
 ### 3. Dispatch in Parallel
 

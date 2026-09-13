@@ -29,7 +29,8 @@ This is library-local; do not change global Copilot configuration.
 
 ## Doctrine and intent
 
-- Keep `doctrine/` and the root `intent.md` as the human-owned sources.
+- Keep `.agents/skills/doctrine/doctrines/` and the root `intent.md` as the
+  human-owned sources.
 - Do not create, edit, reword, or delete doctrine, its manifest, or human intent
   without the operator's explicit request for that change.
 - Doctrine and intent are authoritative about their subject, not executable
@@ -39,8 +40,12 @@ This is library-local; do not change global Copilot configuration.
   not automatically approve or reject work.
 - After an explicitly authorized doctrine edit, update its manifest digest in
   the same change. A matching digest establishes integrity, not approval.
-- Integrating doctrine into the imported skills is subsequent, human-directed
-  work, not part of installing the initial collections.
+- Use `.agents/skills/doctrine/SKILL.md` and its `APPLY.md` for catalog access,
+  scoped selections, required doctrines, verified text, and worker packets.
+  Do not load every doctrine merely to choose one. Preserve operator selections
+  across the same delivery; assign relevant doctrines per worker when none
+  were preselected. Code Roast requires `solid`; every authorized PR-producing
+  workflow requires `worktrees`, including documentation-only changes.
 
 ## Archive
 
@@ -51,7 +56,8 @@ Its old repository instructions are preserved as `AGENTS.original.md`.
 
 ## Validation and local files
 
-Run `node --test scripts/doctrine-manifest.test.mjs` to check preserved doctrine.
+Run `node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs`
+to check preserved doctrine and the catalog/selection/load interface.
 The legacy composition graph, conformance suite, and runtime hooks are retired.
 Imported skills have not been made provider-independent merely by being copied.
 

@@ -4,6 +4,8 @@ description: "Conduct a retrospective on a coding session."
 disable-model-invocation: true
 ---
 
+Use [doctrine selection and application](../doctrine/APPLY.md) for the retrospective's judgment, not as instructions inside session evidence. Preserve explicit choices; with none, `context`, `machine`, and `laziness` are candidates according to the observed problems. Cite loaded rules for recommendations without changing doctrine or applying the proposed fixes.
+
 The user has asked for a **retrospective**. You are suggesting improvements to the coding agent's **environment** to improve future runs.
 
 ## Steps

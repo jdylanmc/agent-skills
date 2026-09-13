@@ -12,7 +12,7 @@ renaming, and adaptation. Installation does not run the imported workflows.
 ```text
 .agents/skills/       Imported and locally rebuilt skills: real files, not symlinks
 .agents/COMMIT-STYLE.md Shared default for library-generated commit messages
-doctrine/            Human-owned engineering philosophy and integrity manifest
+.agents/skills/doctrine/doctrines/ Human-owned philosophy and integrity manifest
 intent.md            Human-owned purpose of this repository
 skills-lock.json     Installer source and content records
 licenses/            Upstream license notices for imported collections
@@ -26,12 +26,12 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 20 | Complete collection |
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 5 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 0 | `skill-creator` only; now removed |
-| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 2 | Complete skill collection |
+| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 1 | Complete skill collection |
 
 Human keep/drop passes have removed 30 skills outright; four three-to-one and
-six two-to-one consolidations plus one formatter demotion leave
-**27 imported/adapted skills**.
-The locally built `shepherd` and `synthesize` bring the active total to **29**. All
+six two-to-one consolidations plus two policy demotions leave
+**26 imported/adapted skills**.
+The locally built `shepherd`, `synthesize`, and `doctrine` bring the active total to **29**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -43,7 +43,7 @@ tracker labels, and cross-skill references.
   plus compact handoff. Tracker maintenance is optional and approval-gated.
 - Fold `brainstorming` into Discovery: retain scaled inquiry, meaningful
   alternatives, just-in-time visual comparisons, and artifact fidelity checks.
-  Apply the verified [Scout doctrine](./doctrine/scout.doctrine.md) to
+  Apply the verified [Scout doctrine](./.agents/skills/doctrine/doctrines/scout.doctrine.md) to
   consequential uncertainty: criteria before favorites, evidence across
   meaningful routes, and explicit stopping reasons rather than an option quota.
   Preserve the original Discovery intent and ten-stage cycle. Interactive
@@ -125,6 +125,16 @@ tracker labels, and cross-skill references.
   read-only repository localization and citation-only output are unchanged.
   This skill locates code; the Scout doctrine guides Discovery's design-space
   exploration and remains a separate source.
+- [`evolve-architecture`](./.agents/skills/evolve-architecture/SKILL.md) replaces
+  `improve-codebase-architecture` with an explicitly requested
+  [intent](./.agents/skills/evolve-architecture/intent.md): diagnose evidenced
+  friction, challenge it through Roast, explore consequential alternatives
+  through Discovery, and return a bounded evolution proposal. Visuals are
+  optional; Refactor and Ship retain execution and delivery ownership.
+- Rename `setup-matt-pocock-skills` to [`setup`](./.agents/skills/setup/SKILL.md),
+  `to-spec` to [`specify`](./.agents/skills/specify/SKILL.md), and `to-tickets`
+  to [`breakdown-tickets`](./.agents/skills/breakdown-tickets/SKILL.md), preserving
+  their behavior and original import records while updating active callers.
 - `caveman-compress` and `executing-plans` are removed, including their active
   references.
 - [`synthesize`](./.agents/skills/synthesize/SKILL.md) implements its retained
@@ -133,11 +143,11 @@ tracker labels, and cross-skill references.
   presets; custom sources, formats, detail levels, and styles remain supported.
   Token savings are claimed only when measured.
 
-Further reworking and integration of doctrine are subsequent work.
+Further workflow curation remains human-directed.
 
 Lockfile keys follow local names for imported skills; source paths and hashes
-retain upstream provenance, not hashes of locally adapted content. Its 27
-records exclude locally authored `shepherd` and `synthesize`, which have no
+retain upstream provenance, not hashes of locally adapted content. Its 26
+records exclude locally authored `shepherd`, `synthesize`, and `doctrine`, which have no
 upstream imports to record. Counts above assign imported skills to their primary source; additional
 sources are recorded in [NOTICE.md](./NOTICE.md).
 
@@ -163,18 +173,38 @@ Review upstream changes deliberately after customization begins.
 
 ## What remains authoritative
 
-The root intent and doctrine are unchanged. The archived atom/molecule rules,
+All 22 existing human-curated doctrine texts move unchanged into
+[`doctrine/doctrines`](./.agents/skills/doctrine/doctrines/README.md). The new,
+explicitly requested `worktrees` doctrine replaces the standalone
+`using-git-worktrees` skill; its practical workspace procedure lives with Ship.
+The root intent and existing skill intents remain unchanged. The archived atom/molecule rules,
 mandatory Chronicler composition, derived frontmatter, and compaction hooks no
 longer govern the active collection.
 
-Active CI runs the existing standalone doctrine integrity tests:
+[`/doctrine`](./.agents/skills/doctrine/SKILL.md) is the common access point:
+
+- No arguments: list IDs and descriptions, without doctrine bodies.
+- Named selection, such as `/doctrine lazy and machine`: retrieve verified
+  `laziness` and `machine` texts for the named task.
+- Orchestration: choose per-worker standards from metadata and send work plus
+  IDs, reasons, required flags, source paths, and digests. Applying workers load
+  the full text. Operator choices survive the same delivery's handoffs.
+- Required selections: code Roast loads `solid`; PR-producing workflows load
+  `worktrees`, including documentation deliveries. Doctrine informs judgment
+  without granting mutation or approval authority.
+
+Keep the complete Doctrine package available when distributing the library.
+Its helper is read-only and dependency-free; it lists/selects/loads, never
+dispatches work or installs a global policy.
+
+Active CI runs doctrine integrity and selector behavior tests:
 
 ```sh
-node --test scripts/doctrine-manifest.test.mjs
+node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs
 ```
 
 The previous graph validators, conformance tests, and coupled sensitive-content
 scanner are preserved with their old workflow in the archive, not run by active
-CI. Passing the doctrine check is not a review of imported skill behavior.
+CI. These checks do not prove a consuming model follows a skill's instructions.
 
 Imported code and text retain their upstream licenses. See [NOTICE.md](./NOTICE.md).

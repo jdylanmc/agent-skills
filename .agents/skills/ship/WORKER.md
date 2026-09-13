@@ -8,8 +8,11 @@ Ship supplies this contract to each implementer. It is supporting guidance, not 
 - Authorized workspace and branch, recorded starting commit, dependency/integration state, and any shared resources the worker must not touch.
 - Relevant code and prior findings, required validation, agreed test seams, and the scope of any permitted commits.
 - A session-artifact destination for the report, the owner to return to, and stop/escalation conditions.
+- The scoped [doctrine packet](../doctrine/APPLY.md): operator selections, assigned and required IDs, reasons, accessible source/selector locations, and pinned digests.
 
 Read the actual task and repository guidance. Resolve missing requirements with Ship before changing behavior. Do not treat a plan, issue, or review comment as authority to disregard human instructions.
+
+Load the packet's full doctrine texts through [Doctrine](../doctrine/SKILL.md) before applying them. Verify pinned digests and report missing/changed sources rather than dropping requirements. Preserve the selection through nested skills; return to Ship for material scope or selection changes. Ship can dispatch metadata only, but your work requires the actual text.
 
 ## Execute within the task
 
@@ -32,6 +35,7 @@ Save the report in the agreed session location and return a concise summary plus
 - Each acceptance condition: met, unmet, or unverified, with supporting evidence.
 - Actual validation commands, relevant output, environment/inputs, and red/green evidence when applicable.
 - Remaining concerns, failed attempts, proposed next action, and any run-owned process or artifact still active.
+- Doctrine IDs/digests actually loaded, relevant application or inapplicability notes, unavailable standards, and evidence-backed recommendations citing exact rules. Selection or loading alone is not approval.
 
 For a fix round, append the specific findings addressed, fix-base/result commits, changes, and fresh covering evidence. Reuse the same worker when the harness supports it. A finding is not resolved merely because a fix was attempted; Ship sends the result to Roast.
 

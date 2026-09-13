@@ -5,6 +5,8 @@ description: Stress-test a plan, decision, or idea through a dependency-aware in
 
 # Interrogate
 
+Preserve the caller's [doctrine selection](../doctrine/APPLY.md). With none, use catalog metadata to choose relevant guidance only when it informs this decision; do not impose engineering doctrine on an unrelated conversation. Pass the scoped packet to any exploration or domain-recording worker. Loading doctrine does not select requirements for the human or enable recording.
+
 ## Recording
 
 Default to a conversation-only interview: this skill does not authorize file writes merely because a repository is present.

@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Triage
 
+Use [doctrine selection and application](../doctrine/APPLY.md), preserving explicit choices. With none, consider `debugging` for causal investigation and `documentation` for agent briefs. Pass the scoped packet with a work handoff. Reading/testing a submitted PR is not permission to create or change one; separately authorized PR-producing work requires `worktrees`.
+
 Move issues on the project issue tracker through a small state machine of triage roles.
 
 If this repo treats external pull requests as a request surface (see the issue-tracker config), triage covers them too: **a PR is an issue with attached code**, using the same roles, same states, and same machine, with a few deltas marked "for a PR" below. Resolve a bare `#42` to an issue or PR per the tracker config.
@@ -40,7 +42,7 @@ For a PR, the same states read against the attached code: `ready-for-agent` mean
 
 Every triaged issue should carry exactly one category role and one state role. If state roles conflict, flag it and ask the maintainer before doing anything else.
 
-These are canonical role names. The actual label strings used in the issue tracker may differ. The mapping should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+These are canonical role names. The actual label strings used in the issue tracker may differ. The mapping should have been provided to you. If not, tell the user to run `/setup`.
 
 State transitions: an unlabeled issue normally goes to `needs-triage` first; from there it moves to `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`. `needs-info` returns to `needs-triage` once the reporter replies. The maintainer can override at any time; flag transitions that look unusual and ask before proceeding.
 

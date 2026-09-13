@@ -5,6 +5,8 @@ disable-model-invocation: false
 user-invocable: true
 ---
 
+Use [doctrine selection and application](../doctrine/APPLY.md). For defect diagnosis, require `debugging`; a requested behavior change without a defect does not require inventing one. Preserve inherited selections; with none, consider `code` and `testing` for the actual repair. Load selected texts before applying them, without expanding diagnosis-only or mutation boundaries.
+
 # Patch
 
 Separate the observed symptom from the inferred cause. Establish a mechanism that explains the evidence before changing product behavior.

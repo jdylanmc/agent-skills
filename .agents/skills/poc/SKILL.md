@@ -7,6 +7,8 @@ user-invocable: true
 
 # Proof of Concept
 
+Use [doctrine selection and application](../doctrine/APPLY.md), preserving the inquiry's choices. With none, consider `scout` and `machine` for evidence-buying experiments; add testing guidance only where the agreed experiment warrants it. Apply loaded rules within scratch isolation: they do not turn throwaway work into production code or waive the human's learning budget.
+
 Buy real information cheaply. The prototype is usually throwaway; the learning is not. The retained [intent](intent.md) defines the purpose.
 
 ## 1. Frame the experiment

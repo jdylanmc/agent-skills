@@ -5,6 +5,8 @@ description: Prove existing work meets acceptance conditions before claiming com
 
 # Verify
 
+Use [doctrine selection and application](../doctrine/APPLY.md), preserving the work packet's standards. With none, consider `testing` for behavioral proof and `integration-testing` when real boundaries matter. Verify claims about doctrine too: selection is not loading, loading is not application, and recommendations are not approval. Report missing standards without broadening validation authority.
+
 Evidence before claims. Identify the smallest sufficient proof for the actual acceptance conditions, inspect it, report the result, and stop.
 
 ## Scope

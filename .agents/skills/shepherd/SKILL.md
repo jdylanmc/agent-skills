@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 Own one published pull request (PR), not a one-time green snapshot. Observe, maintain the branch when necessary, and send functional repairs through [ship](../ship/SKILL.md). Never merge, approve, enable auto-merge, accept product risk, or delete the delivery branch. See the human-authored [intent](intent.md).
 
+Preserve the delivery's [doctrine selection](../doctrine/APPLY.md) through maintenance and repair handoffs. **Require `worktrees` before preparing PR changes** and use the [workspace procedure](../ship/WORKSPACE.md) to reuse the owned delivery workspace. Observation alone does not create workspace authority. Load the standards you apply; pass metadata and pinned digests to Ship rather than requiring the monitor to read every worker doctrine.
+
 ## Take ownership
 
 Read repository guidance and resolve the PR, provider, delivery branch/worktree, requirements, and declared validation. Reuse Ship's handoff and available evidence; a missing old handoff is not a reason to refuse a PR that can be inspected now.
@@ -37,7 +39,7 @@ gh api --paginate "repos/$REPO/pulls/$PR/comments"
 
 Read check details/logs when a result needs diagnosis. A nonzero `gh pr checks` status can mean checks failed or remain pending; inspect its output rather than calling it a provider outage.
 
-For Azure DevOps, use the configured integration and the [provider reference](../setup-matt-pocock-skills/issue-tracker-azure-devops.md). Inspect the code-project PR's `status`, `isDraft`, `mergeStatus`, reviewer votes, threads, PR statuses, and applicable blocking policy evaluations. `active` is open, `completed` is merged, and `abandoned` is closed without merge. A successful merge calculation or an empty check list is not approval. Inspect live refs where the last merge-calculation commits lag, and distinguish missing policy evidence from success. Report pre-existing auto-completion rather than silently relying on human-only merging. For another host, use equivalent configured operations; report missing capabilities instead of guessing endpoints.
+For Azure DevOps, use the configured integration and the [provider reference](../setup/issue-tracker-azure-devops.md). Inspect the code-project PR's `status`, `isDraft`, `mergeStatus`, reviewer votes, threads, PR statuses, and applicable blocking policy evaluations. `active` is open, `completed` is merged, and `abandoned` is closed without merge. A successful merge calculation or an empty check list is not approval. Inspect live refs where the last merge-calculation commits lag, and distinguish missing policy evidence from success. Report pre-existing auto-completion rather than silently relying on human-only merging. For another host, use equivalent configured operations; report missing capabilities instead of guessing endpoints.
 
 Compare with the last observation. An unchanged check failure or previously handled comment is not new repair work. Reopen it only when new evidence warrants it; a failed remedy becomes an explicit blocker, not a fresh identical dispatch.
 

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
  */
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DOCTRINE_ROOT = path.join(REPOSITORY_ROOT, 'doctrine');
+const DOCTRINE_ROOT = path.join(REPOSITORY_ROOT, '.agents', 'skills', 'doctrine', 'doctrines');
 const MANIFEST = path.join(DOCTRINE_ROOT, 'manifest.md');
 
 function manifestEntries() {
@@ -55,7 +55,7 @@ test('every declared doctrine digest reproduces', () => {
   assert.deepEqual(
     drifted,
     [],
-    `recompute with shasum -a 256 and update doctrine/manifest.md in the same commit:\n${drifted.join('\n')}`,
+    `recompute with shasum -a 256 and update .agents/skills/doctrine/doctrines/manifest.md in the same commit:\n${drifted.join('\n')}`,
   );
 });
 

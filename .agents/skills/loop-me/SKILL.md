@@ -5,6 +5,8 @@ disable-model-invocation: true
 argument-hint: "A workflow to design, or nothing to go find one"
 ---
 
+Use [doctrine selection and application](../doctrine/APPLY.md). Preserve explicit choices; with none, `machine` and `laziness` are candidates for automation design, not mandatory ingredients of every life workflow. Carry selections into Interrogate. If a separately authorized PR will deliver the workflow documents, require `worktrees` before preparing those changes.
+
 Run an `/interrogate` session whose persisted outputs stay within the **workflow** specs and `NOTES.md` defined below; do not enable additional domain-model recording. Use the interrogation discipline (relentless, a round of questions at a time, a recommended answer attached to each) aimed at the vocabulary and goal below. This workflow owns creating, editing, and deleting specs as the interrogation resolves things.
 
 ## The loop lens
