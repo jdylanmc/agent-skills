@@ -70,3 +70,34 @@ Imported skills have not been made provider-independent merely by being copied.
 
 Read `.user/instructions.md` when present. Never commit `.user/`, credentials,
 private runtime evidence, dependency installations, or generated caches.
+
+## Agent skills
+
+### Issue tracker
+
+Use GitHub Issues in `jdylanmc/agent-skills` through `gh`.
+See `docs/agents/issue-tracker.md` for scope, identity, and ownership rules.
+
+### Triage labels
+
+Use the five canonical labels mapped in `docs/agents/triage-labels.md`.
+Configuration does not authorize labeling existing issues or creating labels.
+
+### Domain docs
+
+Use one repository context: optional `CONTEXT.md` and relevant `docs/adr/` records.
+See `docs/agents/domain.md`; do not create domain records during Setup.
+
+### Commit messages
+
+Use the self-contained local policy in `docs/agents/commit-style.md`, copied from
+`.agents/COMMIT-STYLE.md`. Preserve explicit operator overrides and required
+trailers. Formatting grants no Git mutation authority.
+
+### Doctrine
+
+Use `.agents/skills/doctrine/SKILL.md` and its bundled helper, manifest, and sources.
+Select scoped IDs and pass source/digest packets; applying workers load verified
+texts. Existing requirements remain: `worktrees` for PR-producing work and
+`solid` for code Roast. Add no new repository-wide mandatory doctrines.
+Do not edit doctrine or intent without the human's explicit request.
