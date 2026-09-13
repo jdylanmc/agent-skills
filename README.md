@@ -22,12 +22,12 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 
 | Source | Initial count | Remaining | Initial selection |
 | --- | --- | --- | --- |
-| [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 25 | Complete collection |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 24 | Complete collection |
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 20 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 1 | `skill-creator` only |
 | [obra/superpowers](https://github.com/obra/superpowers) | 14 | 10 | Complete skill collection |
 
-Human keep/drop passes have removed 16 skills; 56 remain. All `openai.yaml`
+Human keep/drop passes have removed 17 skills; 55 remain. All `openai.yaml`
 agent metadata files have also been removed. Other kept skill files retain their
 upstream contents. Renaming, workflow changes, and integration of doctrine are
 subsequent work.
