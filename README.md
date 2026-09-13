@@ -20,16 +20,22 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 
 ## Starting collections
 
-| Source | Initial count | Selection |
-| --- | --- | --- |
-| [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | Complete collection |
-| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | Complete skill collection; not its engine or gateway |
-| [anthropics/skills](https://github.com/anthropics/skills) | 1 | `skill-creator` only |
-| [obra/superpowers](https://github.com/obra/superpowers) | 14 | Complete skill collection |
+| Source | Initial count | Remaining | Initial selection |
+| --- | --- | --- | --- |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 25 | Complete collection |
+| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 20 | Complete skill collection; not its engine or gateway |
+| [anthropics/skills](https://github.com/anthropics/skills) | 1 | 1 | `skill-creator` only |
+| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 11 | Complete skill collection |
 
-These are uncurated imports. Overlapping concepts and provider-specific
-assumptions are expected. Keep/drop decisions, renaming, workflow changes, and
-integration of doctrine happen after the operator reviews the directory.
+The first human keep/drop pass removed 15 skills; 57 remain. Kept skills still
+have their upstream contents. Renaming, workflow changes, and integration of
+doctrine are subsequent work.
+
+Overlapping concepts and provider-specific assumptions are expected. Some kept
+skills still reference removed skills: `ask-matt`, `retro`, and `brainstorming`
+contain routes or invocations, and `test-driven-development` has a supporting
+reference. Resolve these during the rework pass before using the affected flows;
+the selection pass does not silently redesign them.
 
 The initial import uses CLI version `1.5.23`, project scope, Copilot's
 `.agents/skills/` directory, copy mode, and disabled telemetry:
@@ -43,6 +49,7 @@ DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add https://github.com/obra/superpow
 
 These commands document the import, not an automatic update procedure. Upstream
 contents can change; reinstalling or updating may overwrite local adaptations.
+Reinstalling complete collections also restores deliberately removed skills.
 Review upstream changes deliberately after customization begins.
 
 ## What remains authoritative
