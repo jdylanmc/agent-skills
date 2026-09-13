@@ -12,13 +12,13 @@ Bugs often manifest deep in the call stack (git init in wrong directory, file cr
 digraph when_to_use {
     "Bug appears deep in stack?" [shape=diamond];
     "Can trace backwards?" [shape=diamond];
-    "Fix at symptom point" [shape=box];
+    "Report tracing blocker" [shape=box];
     "Trace to original trigger" [shape=box];
     "BETTER: Also add defense-in-depth" [shape=box];
 
     "Bug appears deep in stack?" -> "Can trace backwards?" [label="yes"];
     "Can trace backwards?" -> "Trace to original trigger" [label="yes"];
-    "Can trace backwards?" -> "Fix at symptom point" [label="no - dead end"];
+    "Can trace backwards?" -> "Report tracing blocker" [label="no - dead end"];
     "Trace to original trigger" -> "BETTER: Also add defense-in-depth";
 }
 ```
@@ -98,7 +98,7 @@ npm test 2>&1 | grep 'DEBUG git init'
 
 If something appears during tests but you don't know which test:
 
-Use the bisection script `find-polluter.sh` in this directory:
+Inspect `find-polluter.sh` before use. It runs tests and may delete the named pollution artifact; use it only in a disposable reproduction directory with an explicitly approved target, never against a valuable checkout or its repository metadata:
 
 ```bash
 ./find-polluter.sh '.git' 'src/**/*.test.ts'
@@ -136,8 +136,8 @@ digraph principle {
     "Trace backwards" [shape=box];
     "Is this the source?" [shape=diamond];
     "Fix at source" [shape=box];
-    "Add validation at each layer" [shape=box];
-    "Bug impossible" [shape=doublecircle];
+    "Validate justified bypass paths" [shape=box];
+    "Verify original reproduction" [shape=doublecircle];
     "NEVER fix just the symptom" [shape=octagon, style=filled, fillcolor=red, fontcolor=white];
 
     "Found immediate cause" -> "Can trace one level up?";
@@ -145,9 +145,9 @@ digraph principle {
     "Can trace one level up?" -> "NEVER fix just the symptom" [label="no"];
     "Trace backwards" -> "Is this the source?";
     "Is this the source?" -> "Trace backwards" [label="no - keeps going"];
-    "Is this the source?" -> "Fix at source" [label="yes"];
-    "Fix at source" -> "Add validation at each layer";
-    "Add validation at each layer" -> "Bug impossible";
+    "Is this the source?" -> "Fix at source" [label="yes, repair authorized"];
+    "Fix at source" -> "Validate justified bypass paths";
+    "Validate justified bypass paths" -> "Verify original reproduction";
 }
 ```
 

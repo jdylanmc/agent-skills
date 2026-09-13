@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "A workflow to design, or nothing to go find one"
 ---
 
-Run a stateful `/grilling` session whose only output is **workflow** specs. Use the grilling discipline (relentless, a round of questions at a time, a recommended answer attached to each) aimed at the vocabulary and goal below. Create, edit, and delete specs as the grilling resolves things.
+Run an `/interrogate` session whose persisted outputs stay within the **workflow** specs and `NOTES.md` defined below; do not enable additional domain-model recording. Use the interrogation discipline (relentless, a round of questions at a time, a recommended answer attached to each) aimed at the vocabulary and goal below. This workflow owns creating, editing, and deleting specs as the interrogation resolves things.
 
 ## The loop lens
 
@@ -15,7 +15,7 @@ A **workflow** is the spec of one loop, made real. You run a workflow on a loop:
 
 ## Vocabulary
 
-A shared language, reached for only when a workflow calls for it: never a checklist. **Mandate nothing structural**: a workflow needs no AI, no checkpoint, and no schedule unless the grilling shows it does.
+A shared language, reached for only when a workflow calls for it: never a checklist. **Mandate nothing structural**: a workflow needs no AI, no checkpoint, and no schedule unless the interrogation shows it does.
 
 - **Trigger**: what fires each run, an **event** (a new email, a new issue) or a **schedule** (every morning). Event-triggering is usually the more efficient.
 - **Checkpoint**: a human-in-the-loop point where the user is asked to verify or decide. Some workflows have none and run autonomously; some use no AI at all.

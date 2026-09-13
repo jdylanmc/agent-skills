@@ -2,6 +2,8 @@
 
 Reference example of extracting, structuring, and bulletproofing a critical skill.
 
+This is the upstream creation history, not a validation report for the locally merged `debug` skill. Local skill references below have been updated; historical results apply only to the original upstream version.
+
 ## Source Material
 
 Extracted debugging framework from `~/.claude/CLAUDE.md`:
@@ -82,7 +84,7 @@ Created 4 validation tests following skills/meta/testing-skills-with-subagents:
 - Flowchart for "fix failed" decision
 
 ### Enhancement 1: TDD Reference
-- Added link to skills/testing/test-driven-development
+- Added a TDD reference (now `.agents/skills/tdd/SKILL.md` locally)
 - Note explaining TDD's "simplest code" ≠ debugging's "root cause"
 - Prevents confusion between methodologies
 
@@ -104,7 +106,7 @@ Bulletproof skill that:
 ## Usage Example
 
 When encountering a bug:
-1. Load skill: skills/debugging/systematic-debugging
+1. Load skill: `.agents/skills/debug/SKILL.md`
 2. Read overview (10 sec) - reminded of mandate
 3. Follow Phase 1 checklist - forced investigation
 4. If tempted to skip - see anti-pattern, stop

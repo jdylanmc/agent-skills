@@ -39,7 +39,7 @@ Repo name, date, and a compact legend: solid box = module, dashed line = seam, r
 
 ## Candidate card
 
-The diagrams carry the weight. Prose is sparse, plain, and uses the glossary terms (from the `/codebase-design` skill) without ceremony.
+The diagrams carry the weight. Prose is sparse, plain, and uses the project's established domain and architecture terms without ceremony.
 
 Each candidate is one `<article>`:
 
@@ -105,11 +105,11 @@ One larger card. Candidate name, one sentence on why, anchor link to its card. T
 
 ## Tone
 
-Plain English, concise, but the architectural nouns and verbs come straight from the `/codebase-design` skill. Concision is not an excuse to drift.
+Plain English, concise, using architectural nouns and verbs consistently with the project's documentation. Concision is not an excuse to drift.
 
-**Use exactly:** module, interface, implementation, depth, deep, shallow, seam, adapter, leverage, locality.
+Define unfamiliar architectural terms before using them. Prefer the project's established names when available.
 
-**Never substitute:** component, service, unit (for module) · API, signature (for interface) · boundary (for seam) · layer, wrapper (for module, when you mean module).
+Do not alternate between terms such as module, component, and service when you mean the same responsibility; preserve distinctions the project actually makes.
 
 **Phrasings that fit the style:**
 
@@ -118,6 +118,6 @@ Plain English, concise, but the architectural nouns and verbs come straight from
 - "Deepen: one interface, one place to test."
 - "Two adapters justify the seam: HTTP in prod, in-memory in tests."
 
-**Wins bullets** name the gain in glossary terms: *"locality: bugs concentrate in one module"*, *"leverage: one interface, N call sites"*, *"interface shrinks; implementation absorbs the wrappers"*. Don't write *"easier to maintain"* or *"cleaner code"*, because those terms aren't in the glossary and don't earn their place.
+**Wins bullets** name a concrete gain: *"bugs concentrate in one module"*, *"one interface, N call sites"*, *"interface shrinks; implementation absorbs the wrappers"*. Don't write *"easier to maintain"* or *"cleaner code"* without identifying what changes.
 
-No hedging, no throat-clearing, no "it's worth noting that…". If a sentence could be a bullet, make it a bullet. If a bullet could be cut, cut it. If a term isn't in the `/codebase-design` glossary, reach for one that is before inventing a new one.
+No hedging, no throat-clearing, no "it's worth noting that…". If a sentence could be a bullet, make it a bullet. If a bullet could be cut, cut it. Prefer an established project term before inventing a new one.

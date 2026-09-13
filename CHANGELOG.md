@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Collapse `grilling`, `grill-me`, and `grill-with-docs` into `interrogate`,
+  retaining optional domain-model recording and updating callers and ticket types.
+- Merge `diagnosing-bugs`, `systematic-debugging`, and `investigate-first` into
+  `debug`: distinguish diagnosis from authorized repairs, retain relevant
+  techniques and helper scripts, and update callers and evaluation prompts.
+- Remove `codebase-design` and its active dependencies. Use repository-local
+  architecture and terminology in surviving callers.
+- Remove Caveman product integrations: `caveman-setup`, `caveman-discover`,
+  `caveman-evidence-review`, `caveman-manage`, `caveman-optimize`, `caveman-learn`,
+  and `caveman-stats`. Update help for the standalone collection.
+- Keep 43 active skills after these consolidations and removals; preserve
+  source attribution, doctrine, and the historical archive.
 - Rename `wayfinder` to `discovery`, including invocation names, tracker labels,
   and cross-skill references. Preserve the original upstream provenance.
 - Remove all `openai.yaml` agent metadata files from the active collection.

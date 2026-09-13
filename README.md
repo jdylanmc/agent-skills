@@ -22,19 +22,35 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 
 | Source | Initial count | Remaining | Initial selection |
 | --- | --- | --- | --- |
-| [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 24 | Complete collection |
-| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 20 | Complete skill collection; not its engine or gateway |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 21 | Complete collection |
+| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 12 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 1 | `skill-creator` only |
-| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 10 | Complete skill collection |
+| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 9 | Complete skill collection |
 
-Human keep/drop passes have removed 17 skills; 55 remain. All `openai.yaml`
+Human keep/drop passes have removed 25 skills outright; two three-to-one
+consolidations reduce the remaining entry points to **43**. All `openai.yaml`
 agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
-tracker labels, and cross-skill references. Other workflow behavior remains
-unchanged; further reworking and integration of doctrine are subsequent work.
+tracker labels, and cross-skill references.
+
+- [`interrogate`](./.agents/skills/interrogate/SKILL.md) combines `grilling`,
+  `grill-me`, and `grill-with-docs`: one interview, with optional domain-model
+  recording.
+- [`debug`](./.agents/skills/debug/SKILL.md) combines `diagnosing-bugs`,
+  `systematic-debugging`, and `investigate-first`: evidence-led diagnosis,
+  followed by a bounded repair only when authorized.
+- `codebase-design` is removed; its callers use the project's own interfaces
+  and terminology.
+- Caveman's `setup`, `discover`, `evidence-review`, `manage`, `optimize`, `learn`,
+  and hook-dependent `stats` skills are removed. Generic communication and
+  engineering skills remain.
+
+Further reworking and integration of doctrine are subsequent work.
 
 Lockfile keys follow local skill names; source paths and hashes retain the
-original upstream provenance, including the original name of renamed skills.
+original upstream provenance, not hashes of locally adapted content. Counts
+above assign each skill to its primary source; additional sources used in
+consolidated skills are recorded in [NOTICE.md](./NOTICE.md).
 
 Overlapping concepts and provider-specific assumptions are expected. Some kept
 skills still reference removed skills: `ask-matt`, `retro`, and `brainstorming`

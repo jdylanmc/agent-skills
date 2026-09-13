@@ -39,23 +39,11 @@ Say "stop caveman" or "normal mode". Resume anytime with `/caveman`.
 
 Keep user's language by default. User write Portuguese → reply Portuguese caveman. Compress the style, not the language. Technical terms, code, commands, commit types, and exact error strings stay verbatim unless user ask for translation.
 
-## Configure Default Mode
+## Choose a Mode
 
-Default mode = `full`. Change it:
+Default mode = `full`. Choose another with `/caveman lite`, `/caveman ultra`, or a listed wenyan mode.
 
-**Environment variable** (highest priority):
-```bash
-export CAVEMAN_DEFAULT_MODE=ultra
-```
-
-**Config file** (`~/.config/caveman/config.json`):
-```json
-{ "defaultMode": "lite" }
-```
-
-Set `"off"` to disable auto-activation on session start. User can still activate manually with `/caveman`.
-
-Resolution: env var > config file > `full`.
+These are standalone copied skills. Caveman's product integrations, session hooks, automatic activation, and plugin configuration are not installed by this library.
 
 ## More
 

@@ -1,7 +1,17 @@
 ---
-name: grilling
-description: Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.
+name: interrogate
+description: Stress-test a plan, decision, or idea through a dependency-aware interview. Use when the user wants to interrogate assumptions, sharpen an idea, or be grilled; optionally record agreed domain terms and decisions.
 ---
+
+# Interrogate
+
+## Recording
+
+Default to a conversation-only interview: this skill does not authorize file writes merely because a repository is present.
+
+When the user or calling workflow requests domain-model recording, call the Skill tool with "domain-modeling" and apply it as answers settle. Reuse existing domain documents; create them lazily only when there is a resolved term or a justified architectural decision to record. Preserve that skill's confirmation gates and the calling workflow's output scope. Do not invent additional documents or duplicate an already active domain-modeling session.
+
+## Interview
 
 Interview the user relentlessly until you reach a shared understanding. Map this as a **design tree**: every decision branches into the decisions that hang off it.
 

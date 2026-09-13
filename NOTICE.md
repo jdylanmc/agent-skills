@@ -13,9 +13,10 @@ license does not replace those terms.
 | [anthropics/skills](https://github.com/anthropics/skills), `skill-creator` only | 2026 Anthropic, PBC. | [Apache-2.0](./.agents/skills/skill-creator/LICENSE.txt) |
 | [obra/superpowers](https://github.com/obra/superpowers) | 2025 Jesse Vincent | [MIT](./licenses/superpowers.LICENSE) |
 
-`skills-lock.json` maps installed skill names to their upstream sources and
-content hashes. Upstream skill files are imported for later curation, not
-relicensed as original work.
+`skills-lock.json` maps local skill names to their primary upstream sources and
+imported content hashes, not hashes of local adaptations. Additional sources
+for consolidated skills are recorded below. Imported material is not relicensed
+as original work.
 
 Caveman uses split licensing. Its `skills/` directory is MIT-licensed; its
 engine-linked runtime has separate terms. This import contains skills, not
@@ -24,6 +25,21 @@ is retained alongside its license.
 
 Preserve applicable notices when copying, renaming, or adapting a skill.
 Modifications to Apache-licensed files must carry prominent change notices.
+
+## Consolidated skills
+
+- `interrogate` combines `grilling`, `grill-me`, and `grill-with-docs` from
+  Matt Pocock's collection. Its primary lock record retains the imported
+  `skills/productivity/grilling/SKILL.md` source.
+- `debug` combines Matt Pocock's `diagnosing-bugs`, Jesse Vincent's
+  `systematic-debugging` from Superpowers, and Julius Brussee's `investigate-first`.
+  Its primary lock record retains `skills/engineering/diagnosing-bugs/SKILL.md`.
+  The supporting tracing, waiting, validation, test-pollution, and evaluation
+  material comes from Superpowers; the human-assisted loop template comes from
+  Matt Pocock's collection. All three MIT notices above apply.
+
+These workflows and their callers have been adapted locally. Original import
+records and contents remain recoverable from Git history.
 
 ## Archived collection
 
