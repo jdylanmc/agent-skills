@@ -1,11 +1,11 @@
 ---
-name: resolving-merge-conflicts
+name: conflicts
 description: "Internal to Shepherd or an authorized delivery owner. Resolve evidence-supported merge/rebase conflicts without guessing semantic decisions; humans invoke Shepherd for PR conflicts."
 disable-model-invocation: false
 user-invocable: false
 ---
 
-# Resolve merge conflicts
+# Conflicts
 
 Internal-only under [the invocation policy](../../INVOCATION.md). Humans invoke [Shepherd](../shepherd/SKILL.md) on a conflicted PR, not this helper. Shepherd supplies the operation, owner/return owner, PR/source/target refs, expected remote head, scoped paths, requirements, workspace, validation, and doctrine packet. Do not create a PR, route work, publish, or start a monitor.
 

@@ -26,6 +26,8 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- Rename internal `resolving-merge-conflicts` to `conflicts`; preserve its
+  caller restrictions and original upstream provenance.
 - Make invocation explicit across every skill: human-only modes, internal
   helpers, scoped automatic selection, and named-caller exceptions. Treat
   loading metadata as consumer-dependent, not as a permission boundary.

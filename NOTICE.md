@@ -28,6 +28,8 @@ Modifications to Apache-licensed files must carry prominent change notices.
 
 ## Consolidated skills
 
+- `conflicts` renames Matt Pocock's `resolving-merge-conflicts`, retaining its
+  original import source path/hash. The Matt Pocock MIT notice applies.
 - `automate-this` renames Matt Pocock's `loop-me`, retaining its workflow-design
   behavior and original import source/hash. The Matt Pocock MIT notice applies.
 - `squadron` renames Jesse Vincent's `dispatching-parallel-agents`, retaining

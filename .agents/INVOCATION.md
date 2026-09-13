@@ -49,7 +49,7 @@ No mode grants authority beyond the request, and explicit narrower scope wins.
 | [poc](skills/poc/SKILL.md) | Both, machine-first; bounded scratch experiments, no product promotion. |
 | [refactor](skills/refactor/SKILL.md) | Internal delivery route selected by Joe; scoped structural work may stay under an existing delivery owner. |
 | [research](skills/research/SKILL.md) | Both; questions or link batches, evidence-grounded and read-only by default. |
-| [resolving-merge-conflicts](skills/resolving-merge-conflicts/SKILL.md) | Internal to Shepherd or an authorized delivery owner; human decisions stay human. |
+| [conflicts](skills/conflicts/SKILL.md) | Internal to Shepherd or an authorized delivery owner; human decisions stay human. |
 | [retro](skills/retro/SKILL.md) | Human only; inspect actual session evidence, propose, obtain approval, then deliver selected fixes. |
 | [roast](skills/roast/SKILL.md) | Both; independent review, no implicit repair or approval. |
 | [scout](skills/scout/SKILL.md) | Internal; read-only code localization, distinct from Scout doctrine. |
