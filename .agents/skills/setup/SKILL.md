@@ -1,16 +1,18 @@
 ---
 name: setup
-description: "Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills."
+description: "Human-invoked repository setup for GitHub, Azure DevOps, or local Markdown tracking, readiness roles, domain docs, commit style, and doctrine guidance."
 disable-model-invocation: true
 ---
 
 # Setup
 
+Only a human invokes Setup. Missing configuration is not an automatic setup trigger: callers report what is missing and tell the human to invoke `/setup`, then wait. This invocation authorizes proposing configuration, not bypassing the write confirmation below.
+
 Use [doctrine selection and application](../doctrine/APPLY.md) within this setup's existing approval gates. If these configuration changes will be delivered in a PR, require `worktrees` before preparing them. No doctrine selection authorizes setup writes or changes to global instructions.
 
 Scaffold the per-repo configuration that the engineering skills assume:
 
-- **Issue tracker**: where issues live (detect GitHub, Azure DevOps, or GitLab from the remote; local markdown is also supported)
+- **Issue tracker**: where issues live (GitHub, Azure DevOps, or local Markdown only)
 - **Triage labels**: the strings used for the five canonical triage roles
 - **Domain docs**: where `CONTEXT.md` and ADRs live, and the consumer rules for reading them
 
@@ -40,17 +42,17 @@ Lead each section with the recommended answer so the user can accept it in a wor
 
 **Section A: Issue tracker.**
 
-> Explainer: The "issue tracker" is where issues live for this repo. Skills like `breakdown-tickets`, `triage`, and `specify` read from and write to it. They need to know whether to call `gh issue create`, write a markdown file under `.scratch/`, or follow some other workflow you describe. Pick the place you actually track work for this repo.
+> Explainer: The "issue tracker" is where issues live for this repo. Skills like `breakdown-tickets`, `triage`, and `specify` read from and write to it. They need to know whether to use GitHub Issues, Azure DevOps work items, or local Markdown files. Pick the supported place you actually track work for this repo.
 
-Propose the provider identified by the configured remote, not GitHub regardless of evidence. Confirm ambiguous remotes and code-versus-planning locations. If the remote points at Azure DevOps, use the [Azure DevOps template](issue-tracker-azure-devops.md) to resolve its organization/project/repository and separately confirm the planning scope. Offer:
+Propose a supported provider identified by the configured remote, not GitHub regardless of evidence. Detection identifies a candidate code location, not planning scope or organization-wide authority. Confirm ambiguous remotes and code-versus-planning locations. If the remote points at Azure DevOps, use the [Azure DevOps template](issue-tracker-azure-devops.md) to resolve its organization/project/repository and separately confirm the planning scope. Offer only:
 
 - **GitHub**: issues live in the repo's GitHub Issues (uses the `gh` CLI)
 - **Azure DevOps**: work items live in a configured planning project/backlog; code may live in another project (uses the available Azure DevOps integration)
-- **GitLab**: issues live in the repo's GitLab Issues (uses the [`glab`](https://gitlab.com/gitlab-org/cli) CLI)
 - **Local markdown**: issues live as files under `.scratch/<feature>/` in this repo (good for solo projects or repos without a remote)
-- **Other** (Jira, Linear, etc.): ask the user to describe the workflow in one paragraph; the skill will record it as freeform prose
 
-Record the choice in `docs/agents/issue-tracker.md`. The GitHub and GitLab templates carry a "PRs as a request surface" flag, defaulted **off**. Leave it off and don't raise it: a user who wants external PRs in the triage queue can flip the flag in the file later.
+If existing human configuration uses an unsupported tracker, state that it is unsupported and ask the human to choose one of these supported destinations. Leave that configuration and its work untouched until the human approves the exact replacement. Do not silently translate, migrate, or discard an existing backlog. An unsupported code remote does not select a planning provider or confer PR capabilities.
+
+Record the choice in `docs/agents/issue-tracker.md`, including the actual host/repository or planning scope, or the confirmed local paths (the seed defaults are not mandatory). The GitHub template carries a "PRs as a request surface" flag, defaulted **off**. Leave it off and don't raise it: a user who wants external PRs in the triage queue can flip the flag in the file later.
 
 For Joe-mode, record the selected repository/project/area or saved query, how authenticated identity is resolved, and whether the default view is that full selected backlog or assigned-to-me. An explicit invocation can narrow that selection. Do not silently broaden an issue/folder anchor to the full organization. Record work-item type/state and relation conventions when the provider requires them, plus any existing shared claim convention. Setup does not assign work or grant a new blanket mutation permission.
 
@@ -77,7 +79,7 @@ Show the user a draft of:
 - A repository-local `docs/agents/commit-style.md` copy of the [shared commit-message policy](../../COMMIT-STYLE.md), retaining applicable attribution/license and the target repository's explicit overrides
 - A doctrine guidance subsection pointing to the actual installed package, listing any operator-confirmed repository-required IDs, and explaining scoped worker selections. Do not copy/rewrite doctrine sources or install a missing package as a setup side effect.
 
-Let them edit before writing.
+Let them edit, then obtain explicit approval of the exact proposed files and changes before writing. Existing configuration is human-owned; never overwrite it merely to match a seed.
 
 Read the shared policy before proposing its copy. If the library was copied without that dependency, obtain its location rather than inventing an equivalent or reinstalling the retired formatter. Reuse or reconcile an existing repository policy; do not overwrite human customizations. This setup never edits global Copilot instructions.
 
@@ -127,13 +129,12 @@ Then write the docs files using the seed templates in this skill folder as a sta
 
 - [issue-tracker-github.md](./issue-tracker-github.md): GitHub issue tracker
 - [issue-tracker-azure-devops.md](./issue-tracker-azure-devops.md): Azure DevOps work items, planning/code scopes, readiness tags, and PR operations
-- [issue-tracker-gitlab.md](./issue-tracker-gitlab.md): GitLab issue tracker
 - [issue-tracker-local.md](./issue-tracker-local.md): local-markdown issue tracker
 - [triage-labels.md](./triage-labels.md): label mapping (when `triage` or `joe-mode` is installed)
 - [domain.md](./domain.md): domain doc consumer rules + layout
 - [shared commit-message policy](../../COMMIT-STYLE.md): reviewed local commit-style guidance; preserve its attribution/license and approved repository-specific differences
 
-For "other" issue trackers, write `docs/agents/issue-tracker.md` from scratch using the user's description.
+For the authorized repository changes, use [Changelog](../changelog/SKILL.md) for the correct repository/component: curate notable `Unreleased` entries in Keep a Changelog 1.1.0 format, not a commit dump, version bump, or release. Include any proposed entry in the write approval; no notable change may mean no entry needed. A changelog-only edit does not generate another entry. Do not write a changelog during read-only setup exploration.
 
 ### 5. Done
 

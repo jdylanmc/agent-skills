@@ -11,7 +11,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
-Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
+Confirm the host and owner/repository from setup, using `git remote -v` as evidence rather than authority. Pass the configured repository explicitly (`--repo [HOST/]OWNER/REPO` on issue/PR commands); a code remote does not authorize another repository or organization-wide operations.
 
 ## Joe-mode backlog selection
 
@@ -35,7 +35,7 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue.
+Create a GitHub issue only within the calling workflow's approved scope. Publish the complete specification or ticket, preserving source/revision and acceptance references. If the complete artifact exceeds provider limits, obtain approval for an accessible document/attachment and link it; never truncate or silently write a repository file. Mark only ready work with the configured readiness label. Reconcile uncertain publication before retrying.
 
 ## When a skill says "fetch the relevant ticket"
 

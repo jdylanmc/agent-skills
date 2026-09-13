@@ -1,79 +1,94 @@
 ---
 name: specify
-description: "Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed."
+description: "Turn an accessible, human-aligned Discovery artifact into a complete product requirements specification and publish it to the configured GitHub, Azure DevOps, or local Markdown tracker. For humans or coordinating agents, before ticket breakdown."
 disable-model-invocation: true
 ---
 
 Follow [doctrine selection and application](../doctrine/APPLY.md), preserving the originating task's choices. With none, consider `documentation`, `domain`, and `test-seams` for the relevant portions of the spec. If separately authorized to prepare a documentation PR, require `worktrees` before its changes. Publishing a tracker item alone is not PR creation or implementation permission.
 
-This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
+# Specify
 
-The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup`.
+Humans and coordinating agents may invoke Specify after [Discovery](../discovery/SKILL.md). It synthesizes a complete product requirements specification from an actual accessible, human-aligned Discovery artifact. Current conversation alone, an agent's assertion of alignment, or an inaccessible link is not sufficient intake. This is specification, not another discovery interview or implementation.
+
+Read the configured tracker and triage vocabulary. Only GitHub, Azure DevOps, and local Markdown are supported. If configuration is missing, tell the human to invoke `/setup`; do not run it automatically. If it names an unsupported destination, report that and ask the human to choose a supported destination through Setup without changing the existing configuration.
 
 ## Process
 
-1. Explore the repo to understand the current state of the codebase, if you haven't already. Use the project's domain glossary vocabulary throughout the spec, and respect any ADRs in the area you're touching.
+### 1. Validate the Discovery source
 
-2. Sketch out the seams at which you're going to test the feature. Existing seams should be preferred to new ones. Use the highest seam possible. If new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better - the ideal number is one.
+Read the complete artifact and relevant linked evidence, decisions, and comments. Identify its location, owner, and revision (commit, tracker revision, or timestamp/content identity as available), and the human alignment evidence for that scope. State inaccessible evidence or revision uncertainty rather than claiming it was read. Separate confirmed requirements and agreed choices from assumptions, open questions, and superseded ideas.
 
-Check with the user that these seams match their expectations.
+If the artifact is absent, materially incomplete, stale in a way that affects scope, or not human-aligned, return the specific gaps to the Discovery owner for completion. A direct human can use Discovery to supply that source. Do not turn Specify into a substitute interview, infer missing human decisions, or publish an incomplete artifact as ready.
 
-3. Write the spec using the template below, then publish it to the configured planning tracker using its provider/type/required-field conventions. Apply the configured mapping for the `ready-for-agent` role (a label, Azure DevOps tag, or local equivalent), preserving unrelated metadata; no additional triage is needed.
+### 2. Ground requirements and testing expectations
 
-When Joe-mode coordinates this work, return the spec's actual ID/URL, scope, and planned breakdown to that owner. It reserves the spec delivery group before ticketing so the ready parent cannot race its children. Publishing a spec does not dispatch Ship or approve a future ticket breakdown.
+Read relevant domain vocabulary, architectural decisions, and implementation evidence where needed to verify feasibility or current behavior. Product choices belong to the aligned source, not to whatever the code currently does. Surface conflicts rather than silently replacing the human's choices. Include agreed technical decisions only; label new suggestions as proposals.
 
-<spec-template>
+Recover agreed testing expectations. Prefer existing high-level behavioral seams, and propose new seams only where evidence requires them. Check with the human that any new or changed testing expectations match their intent. Material scope/decision gaps return to the Discovery owner; focused confirmation of a testing proposal is not a new discovery loop.
 
-## Problem Statement
+### 3. Produce the complete specification
 
-The problem that the user is facing, from the user's perspective.
+Use the outline below, scaled to the actual product, not an arbitrary story count. Cover all confirmed requirements without inventing features or quality targets to fill headings. Explicitly mark an inapplicable section with its reason. Keep unresolved nonblocking questions visible with owners and impact; unresolved decisions that prevent implementation block readiness.
 
-## Solution
+```markdown
+# <Product/feature>: Requirements specification
 
-The solution to the problem, from the user's perspective.
+## Source and alignment
+Discovery artifact location, owner, revision, human alignment evidence, and
+relevant supporting sources. State which revision this specification derives from.
 
-## User Stories
+## Purpose and outcomes
+Problem, intended outcome, and agreed success measures (unknown measures remain
+unknown, not invented targets).
 
-A LONG, numbered list of user stories. Each user story should be in the format of:
+## Users and scenarios
+Relevant users/actors, their goals, primary scenarios, and confirmed edge,
+failure, or recovery scenarios.
 
-1. As an <actor>, I want a <feature>, so that <benefit>
+## Functional requirements
+Required observable behavior, linked to scenarios and source decisions.
 
-<user-story-example>
-1. As a mobile bank customer, I want to see balance on my accounts, so that I can make better informed decisions about my spending
-</user-story-example>
+## Nonfunctional requirements
+Agreed performance, security/privacy, accessibility, reliability, operability,
+and other quality requirements that apply. Record unknowns and owners explicitly.
 
-This list of user stories should be extremely extensive and cover all aspects of the feature.
+## Constraints and agreed decisions
+Product, compatibility, platform, dependency, rollout, or technical constraints;
+agreed contracts/architecture and rationale. Distinguish proposals from decisions.
 
-## Implementation Decisions
+## Non-goals
+Explicit exclusions and boundaries from the aligned source.
 
-A list of implementation decisions that were made. This can include:
+## Acceptance criteria
+- [ ] AC-01: <observable criterion, with relevant requirement/source references>
+Use stable IDs where criteria will be referenced by tickets or tests. Preserve
+existing source IDs; allocate new spec IDs deliberately, not as tracker IDs.
 
-- The modules that will be built/modified
-- The interfaces of those modules that will be modified
-- Technical clarifications from the developer
-- Architectural decisions
-- Schema changes
-- API contracts
-- Specific interactions
+## Testing and verification expectations
+Agreed behavioral tests, relevant existing seams/prior art, manual checks where
+needed, evidence expected for acceptance, and any limitations.
 
-Do NOT include specific file paths or code snippets. They may end up being outdated very quickly.
+## Assumptions and unresolved decisions
+Clearly labeled assumptions, remaining questions, owners, impact, and whether
+each blocks implementation/readiness. Never present a hypothesis as agreed fact.
 
-Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it within the relevant decision and note briefly that it came from a prototype. Trim to the decision-rich parts, not a working demo, just the important bits.
+## Traceability
+Map requirements and acceptance criteria to source decisions/scenarios and
+agreed verification. Record meaningful source conflicts or coverage gaps.
+```
 
-## Testing Decisions
+Avoid an implementation walkthrough that will drift. Include a precise source path or a decision-rich prototype excerpt only when needed to identify evidence or preserve an agreed contract; label its provenance and revision. Do not replace the full requirements with a tiny dispatch summary.
 
-A list of testing decisions that were made. Include:
+Before publication, check the complete spec against the source: scope and decisions preserved, no invented requirements, acceptance coverage complete, references accessible, and testing expectations agreed. Surface human-owned gaps rather than marking them settled.
 
-- A description of what makes a good test (only test external behavior, not implementation details)
-- Which modules will be tested
-- Prior art for the tests (i.e. similar types of tests in the codebase)
+### 4. Publish within the configured scope
 
-## Out of Scope
+Publish the complete spec to the configured planning tracker using its provider/type/required-field conventions: [GitHub](../setup/issue-tracker-github.md), [Azure DevOps](../setup/issue-tracker-azure-devops.md), or [local Markdown](../setup/issue-tracker-local.md). Preserve the calling task's publication permissions; a review-only request stops at the proposal. Confirm the exact path and write for local files, or any replacement of an existing artifact. Do not fabricate required provider fields.
 
-A description of the things that are out of scope for this spec.
+If the complete spec exceeds a tracker limit, obtain approval for an accessible attachment/document destination and link that complete artifact from the item. Verify access and completeness; do not truncate, invent a mandatory summary/full-document split, or silently write repository files.
 
-## Further Notes
+Apply the configured `ready-for-agent` role only when requirements are complete and actionable, with no unresolved human-owned scope decisions. Otherwise report the blocker to the owner and withhold readiness; a requested draft remains explicitly incomplete. Preserve unrelated metadata and distinguish Azure DevOps tags from workflow states.
 
-Any further notes about the feature.
+For authorized local artifact changes use [Changelog](../changelog/SKILL.md) in the correct repository/component: curated notable `Unreleased` entries following Keep a Changelog 1.1.0, or no entry needed. Include any proposed entry within write approval. No writes for proposals/reviews, commit dumps, automatic versions/releases, or recursive changelog-only entries.
 
-</spec-template>
+Return the actual ID/URL/path, source revision, completeness/readiness, and any open decisions to the caller. Reconcile uncertain publication before retrying. When Joe-mode coordinates the work, return scope and planned breakdown to that owner; it reserves the specification delivery group before ticketing so a ready parent cannot race its children. Publishing a spec does not dispatch Ship, start Joe-mode, or approve [Breakdown Tickets](../breakdown-tickets/SKILL.md).

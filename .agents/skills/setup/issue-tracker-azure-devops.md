@@ -38,6 +38,8 @@ Joe-mode records the chosen delivery group's covered IDs. Use a configured share
 
 When a skill says to publish a spec or ticket, create the configured work-item type in the **planning** project. Resolve required fields from that type's metadata and suitable existing parent/sibling conventions, then obtain missing human decisions. Do not fabricate required product values to satisfy validation.
 
+Preserve the complete specification or ticket and its source/revision and acceptance references. If it exceeds provider limits, obtain approval for an accessible document/attachment and link it from the work item; never truncate or silently create a repository file. An unresolved human-owned requirement is not made ready merely by successfully creating a work item.
+
 Use the configured integration's create/update operations, or the documented [work-item APIs](https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/?view=azure-devops-rest-7.1). REST creation/update uses JSON Patch with `application/json-patch+json`; format description/acceptance fields as the project expects. Do not bypass process rules.
 
 Apply the mapped `ready-for-agent` tag when the calling skill authorizes it. For an existing item, read its current tags, change only the mapped role values, preserve unrelated tags, and use the supported revision check when updating. On a revision conflict, reread and reconcile rather than overwrite. Readiness tags are distinct from `System.State`.

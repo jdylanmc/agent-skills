@@ -8,7 +8,7 @@ How the engineering skills should consume this repo's domain documentation when 
 - **`CONTEXT-MAP.md`** at the repo root if it exists: it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
 - **`docs/adr/`**: read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/interrogate` with domain-model recording, or authorized decision recording from `/evolve-architecture`) creates them lazily when terms or decisions actually get resolved.
+If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` helper creates them lazily when terms or decisions actually get resolved through its authorized owner. Interrogate is internal to Discovery or Joe-mode, not a direct entry point. Domain recording remains separately authorized; reading domain docs does not permit creating them.
 
 ## File structure
 

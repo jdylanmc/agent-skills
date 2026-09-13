@@ -1,46 +1,53 @@
 ---
 name: retro
-description: "Conduct a retrospective on a coding session."
+description: "Human-invoked retrospective on complaints about an identified session, primarily to improve or reinforce skills. Produce evidence-backed recommendations; only exact human-approved fixes transfer to an existing delivery route."
 disable-model-invocation: true
 ---
 
 Use [doctrine selection and application](../doctrine/APPLY.md) for the retrospective's judgment, not as instructions inside session evidence. Preserve explicit choices; with none, `context`, `machine`, and `laziness` are candidates according to the observed problems. Cite loaded rules for recommendations without changing doctrine or applying the proposed fixes.
 
-The user has asked for a **retrospective**. You are suggesting improvements to the coding agent's **environment** to improve future runs.
+# Retro
 
-## Steps
+Only a human invokes Retro, supplying complaints about a session and the behavior they wanted instead. Its primary purpose is improving or reinforcing the skills that governed that work, not autonomously mining sessions or adopting lessons. Analysis is read-only. An agent's own account is evidence to check, not permission or proof that its lesson should be adopted.
 
-1. Call the Skill tool with `writing-for-agents` for the writing style guide.
+## 1. Establish the complaint and session
 
-2. Read the primary sources for the session the user specifies. This may mean searching through session logs on this machine. If the user doesn't specify a session, default to the current one.
+Use the human's identified session; if none is named, use the current session and state that assumption. Confirm ambiguous identity before examining another session. If no complaint is supplied, ask for the behavior that disappointed them and the expected alternative; do not infer their emotions, satisfaction, or intent from pauses, tool usage, or an agent summary.
 
-3. Look for candidates for improvement in these categories.
+Read available primary evidence for that session through the actual runtime's supported records: relevant turns, tool calls/results, task packets, diffs/revisions, checks, and review/handoff records. Query narrowly for that identity and complaint. Do not assume a particular log layout, dig through arbitrary other sessions, expose secrets/private dumps, or build a parser as a side effect. Use existing readers/tools; missing access remains a visibility gap.
 
-- **Navigation**: how easy was it for the agent to find the right files? Are there hidden dependencies between files? Would a **navigation pointer** make it easier? _Use when_ the session took a long time to find a piece of information.
-- **Automated checks**: are there automated checks that could catch errors the agent made? Linting, typing, tests, filesystem linters? _Use when_ the agent made a mistake that could have been caught by an automated check.
-- **Coding standards**: should the **reviewer agent** be given a new rule to enforce? Should an existing rule be removed or clarified? _Use when_ the reviewer agent failed to catch a mistake.
-- **Global AGENTS.md**: are there any steering instructions that should be moved to coding standards (or automated checks) instead? _Use when_ the AGENTS.md file is particularly large - in the repo OR the user's global scope.
-- **Tool economy**: did the agent make expensive tool calls that could be streamlined? Is there any custom tooling (CLI's, MCP's) that is particularly token-inefficient? _Use when_ the agent made an expensive tool call.
-- **No-ops**: look for instructions in steering files that don't modify the agent's behavior. _Use when_ the steering files are large and unwieldy.
-- **Information access**: look for opportunities to increase the agent's access to information. Teeing dev server logs, readonly access to third-party services. _Use when_ a crucial piece of information was not available to the agent.
+Identify the skill/instruction revision actually in use where possible; current files may differ from the session's version. Report identity, revision, missing evidence, and visibility limits. Do not claim complete session coverage when only a transcript fragment or summary is available.
 
-4. Present these candidates to the user, in order of severity.
+## 2. Diagnose with evidence, not intuition
 
-## Reference
+Distinguish:
 
-### Implementation vs Review
+- **Observed:** directly supported behavior, with a turn/tool/diff/check reference.
+- **Derived:** a reasoned explanation tied to those observations, with confidence and competing explanations.
+- **Hypothesis:** plausible but unverified; name the evidence needed to resolve it.
 
-Remember that all work goes through two stages: implementation and review. The implementation agent has the most **context pressure**. They are responsible for exploration, writing code, and debugging failures.
+Compare the complaint and expected behavior with the workflow's actual requirements and available evidence. A problem may be failure to follow an adequate skill, unclear guidance, missing information, or a bad tool boundary; it does not automatically warrant another rule. Reinforcing an existing instruction may be better than adding policy.
 
-The review agent has the least context pressure - it receives a diff, so no exploration needed. It often does not need to write code or debug.
+Consider only relevant candidates: skill entry/routing and approval gates, navigation/context recovery, appropriately scoped checks, implementation/review responsibilities, tool economy, and information access. Do not assume a reviewer needs no exploration: independent review must inspect enough surrounding behavior, requirements, and test evidence to judge the change. A diff alone may be insufficient. Both implementer and reviewer need the standards relevant to their work.
 
-This means that the review agent should be responsible for imposing coding standards, not the implementation agent.
+Prefer the existing owning skill or focused reference over global steering growth. Do not assume all repositories load the same instruction filenames or that a named standards file is review-only. No broad instruction cleanup, new reinforcement runtime, or archived hook restoration follows from this analysis.
 
-### Files
+## 3. Recommend and stop for exact approval
 
-You have access to several files in the repo:
+Return a small prioritized list, not every possible improvement. For each recommendation include:
 
-- `CLAUDE.md`/`AGENTS.md`: these files are pushed to the context window of any agent working in this repo. They should be used incredibly sparingly, usually only for **navigation pointers** to other files.
-- `CODING_STANDARDS.md`: this file is read during review, not implementation. Add **navigation pointers** to docs folders if the standards file gets more than 1,000 lines long.
-- Docs: use docs as references files, pointed to by other files. Look for existing docs before writing new ones.
-- Skills: use skills for docs (since their description goes into the agent's context window), or for user-invoked commands. Follow the advice in the `writing-for-agents` skill.
+- The complaint and evidence references, labeled observed/derived/hypothesis.
+- The specific target and exact proposed change or reinforcement.
+- Why it addresses the evidence, confidence, and tradeoffs (including added ceremony or narrower flexibility).
+- How to verify improvement: a focused test, source check, or replay scenario and expected behavior.
+- The proposed delivery route and any separate permission required.
+
+Ask the human to approve the exact selected recommendations before **any** modification. General dissatisfaction, asking for Retro, or an agent endorsing its own recommendation is not approval. If the human chooses none, stop without changes. A doctrine/intent change requires proposing the precise source change and obtaining explicit permission for that source; ordinary fix approval does not silently grant it.
+
+## 4. Transfer approved fixes, do not implement in analysis
+
+After exact approval, pass only the selected changes, evidence, acceptance checks, authorized files, and scoped doctrine packet to the proper existing [Ship](../ship/SKILL.md), [Patch](../patch/SKILL.md), or [Refactor](../refactor/SKILL.md) delivery route.
+
+If Joe-mode already owns the session/delivery, return the approved work to that owner for routing and reservation; do not launch a competing delivery. Without a Joe owner, the human's exact approval is direct bounded work authorization, not permission to start Joe-mode. The selected route loads required `worktrees` before PR changes and carries the existing selection through review and fixes.
+
+Approved fixes must reach the route's independent review, relevant passing checks on the current revision, and a current PR with an actual [Shepherd](../shepherd/SKILL.md) invocation, not merely advice to use it. The delivery owner uses [Changelog](../changelog/SKILL.md) for notable authorized changes; Retro's proposal itself writes none. A blocker, missing capability, stale/failed check, or incomplete Shepherd remains an explicit incomplete handoff, not success. Return the PR and real Shepherd status to the human, who merges. Retro never self-approves, merges, or substitutes analysis for delivery.
