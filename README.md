@@ -64,6 +64,8 @@ tracker labels, and cross-skill references.
   and hook-dependent `stats` skills are removed. Generic communication and
   engineering skills remain.
 - `caveman-help` is removed.
+- `safe-refactor` is now [`refactor`](./.agents/skills/refactor/SKILL.md);
+  behavior-preservation guidance is unchanged.
 - `caveman-compress` and `executing-plans` are removed, including their active
   references. [`synthesize/intent.md`](./.agents/skills/synthesize/intent.md)
   brings forward a rewritten synthesis intent: leave sources untouched and

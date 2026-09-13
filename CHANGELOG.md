@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Rename `safe-refactor` to `refactor`; preserve behavior and upstream provenance.
 - Remove `caveman-compress` and `executing-plans`, their lock records, and active
   references. Keep 37 active skills: 36 imported/adapted and local Shepherd.
 - Bring forward only the rewritten `synthesize` intent: preserve source
