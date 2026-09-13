@@ -121,6 +121,10 @@ tracker labels, and cross-skill references.
 - `skill-creator` is removed; its original license is retained in `licenses/`.
 - `safe-refactor` is now [`refactor`](./.agents/skills/refactor/SKILL.md);
   behavior-preservation guidance is unchanged.
+- `caveman-explore` is now [`scout`](./.agents/skills/scout/SKILL.md);
+  read-only repository localization and citation-only output are unchanged.
+  This skill locates code; the Scout doctrine guides Discovery's design-space
+  exploration and remains a separate source.
 - `caveman-compress` and `executing-plans` are removed, including their active
   references.
 - [`synthesize`](./.agents/skills/synthesize/SKILL.md) implements its retained

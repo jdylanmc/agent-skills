@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Rename `caveman-explore` to `scout`, updating package metadata and tests while
+  preserving read-only code localization and upstream provenance.
 - Fold Brainstorming's useful inquiry and comparison techniques into Discovery
   and remove its standalone package and browser runtime. Apply Scout doctrine
   to consequential design-space exploration with explicit criteria, evidence,

@@ -84,6 +84,11 @@ library default rather than a routable import. The Caveman MIT notice above
 continues to apply alongside the repository license for new material.
 Preserve applicable attribution and license when distributing a policy copy.
 
+`scout` renames Julius Brussee's `caveman-explore`, retaining its read-only
+repository-localization behavior, tests, and original import source/hash.
+The Caveman MIT notice above applies. This skill is distinct from the
+repository's human-authored Scout doctrine.
+
 `poc` adapts Matt Pocock's `prototype`, including its logic and UI references,
 and retains the original `skills/engineering/prototype/SKILL.md` import record.
 Its broader experiment workflow uses this repository's unchanged archived
