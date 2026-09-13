@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve an unchanged copy of the archived Ship intent in the active `ship`
+  package; document the gap between that delivery intent and the current workflow.
 - Merge `implement` and `lean-build` into `ship`: retain test-driven
   implementation, code review, and local commits with strict scope and the
   smallest complete end-to-end outcome. Update active callers and provenance;

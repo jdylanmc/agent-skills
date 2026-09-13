@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 Turn agreed requirements into tested, reviewed code without overbuilding. Finish with the work committed on the current branch; this skill does not publish a PR, shepherd it, or merge it.
 
+The human-authored [Ship intent](intent.md) is copied unchanged from the archive. Its broader delivery requirements remain gaps in this implementation, not permission to expand this workflow's scope.
+
 ## Establish the outcome
 
 Read repository guidance, the request or spec, relevant tickets, and existing code. Derive observable acceptance conditions and explicit non-goals. Reuse agreed decisions and test seams; ask when a material requirement, boundary, or tradeoff is unresolved.
