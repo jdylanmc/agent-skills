@@ -1,11 +1,13 @@
 ---
 name: poc
-description: Test a bounded idea with real, isolated code. Use for proof-of-concept work, library or framework feasibility, engine experiments, compatibility or performance questions, and logic or UI prototypes. Run it and return findings, not product changes.
+description: "Machine-first, human invocation also allowed. Run bounded isolated proof-of-concept experiments for feasibility, compatibility, performance, logic, or UI questions; return observed findings, not product promotion."
 disable-model-invocation: false
 user-invocable: true
 ---
 
 # Proof of Concept
+
+**Entry:** Machine-first, human invocation also allowed. Run bounded isolated proof-of-concept experiments for feasibility, compatibility, performance, logic, or UI questions; return observed findings, not product promotion. Follow the [invocation contract](../../INVOCATION.md).
 
 Use [doctrine selection and application](../doctrine/APPLY.md), preserving the inquiry's choices. With none, consider `scout` and `machine` for evidence-buying experiments; add testing guidance only where the agreed experiment warrants it. Apply loaded rules within scratch isolation: they do not turn throwaway work into production code or waive the human's learning budget.
 

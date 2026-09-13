@@ -1,10 +1,13 @@
 ---
 name: setup
-description: "Human-invoked repository setup for GitHub, Azure DevOps, or local Markdown tracking, readiness roles, domain docs, commit style, and doctrine guidance."
+description: "Human only. Configure repository-local workflow guidance for GitHub, Azure DevOps, or local Markdown. Preserve existing human configuration and confirmation gates."
 disable-model-invocation: true
+user-invocable: true
 ---
 
 # Setup
+
+**Entry:** Human only. Configure repository-local workflow guidance for GitHub, Azure DevOps, or local Markdown. Preserve existing human configuration and confirmation gates. Follow the [invocation contract](../../INVOCATION.md).
 
 Only a human invokes Setup. Missing configuration is not an automatic setup trigger: callers report what is missing and tell the human to invoke `/setup`, then wait. This invocation authorizes proposing configuration, not bypassing the write confirmation below.
 

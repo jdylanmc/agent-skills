@@ -1,7 +1,8 @@
 ---
 name: triage
-description: Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs.
-disable-model-invocation: true
+description: "Human or human-started Joe-mode only. Classify selected issues and external PRs, verify claims, and prepare agent-ready briefs while preserving tracker-change and human-decision gates."
+disable-model-invocation: false
+user-invocable: true
 ---
 
 # Triage

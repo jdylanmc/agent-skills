@@ -1,6 +1,6 @@
 ---
 name: patch
-description: Reproduce, diagnose, repair, and deliver a bug or regression through independent review and live Shepherd custody of one current-base green PR. Human or Joe-mode route; explicit diagnosis-only requests remain read-only.
+description: "Human kickoff or human-started Joe-mode only. Reproduce a bug or regression, establish cause, repair, review, and shepherd a green PR current with its target. Not planned behavior changes; explicit diagnosis-only stays read-only."
 disable-model-invocation: false
 user-invocable: true
 ---

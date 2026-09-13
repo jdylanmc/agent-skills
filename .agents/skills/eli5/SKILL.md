@@ -1,11 +1,13 @@
 ---
 name: eli5
-description: Explain one subject at three increasing depths: five-year-old, junior practitioner, and expert. Use /eli5 for a repository, file, system, document, or concept; ground in its actual evidence and return concise explanations without modifying it.
-disable-model-invocation: false
+description: "Human only. Ground a subject in actual evidence and explain it at five-year-old, junior-practitioner, and expert depths. Read-only."
+disable-model-invocation: true
 user-invocable: true
 ---
 
 # ELI5
+
+**Entry:** Human only. Ground a subject in actual evidence and explain it at five-year-old, junior-practitioner, and expert depths. Read-only. Follow the [invocation contract](../../INVOCATION.md).
 
 Explain one subject three ways and warm the session's context for later work. The original [intent](intent.md) is preserved unchanged. Stay read-only: understanding the subject is the entire job, not permission to act on it.
 

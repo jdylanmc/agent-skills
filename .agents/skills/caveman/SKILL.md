@@ -1,9 +1,8 @@
 ---
 name: caveman
-description: >
-  Ultra-compressed communication mode that cuts output tokens while keeping
-  technical accuracy. Levels: lite, full, ultra and the wenyan variants. Use for
-  /caveman, "caveman mode", "talk like caveman", "be brief" or "less tokens".
+description: "Human-only session communication mode. Use for /caveman, terse chat, or lite/full/ultra and wenyan variants; shared commit and worker-message styles do not activate it."
+disable-model-invocation: true
+user-invocable: true
 ---
 
 **Entry:** human-only session activation under the

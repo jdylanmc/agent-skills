@@ -1,6 +1,6 @@
 ---
 name: squadron
-description: Dispatch multiple independent agents with bounded assignments, isolated writes, and explicit return ownership. Human or scoped agent use; Joe-mode uses it aggressively for distinct Ship, Patch, Refactor, and Shepherd jobs. Never duplicate a delivery or controller.
+description: "Human or scoped agent use. Dispatch independent bounded agents with isolated writes and explicit owners; Joe-mode uses it aggressively for distinct Ship, Patch, Refactor, and Shepherd assignments."
 disable-model-invocation: false
 user-invocable: true
 ---

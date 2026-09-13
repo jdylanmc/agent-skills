@@ -1,6 +1,6 @@
 ---
 name: joe-mode
-description: Human-started, one-per-repository controller that loops backlog management, discovery, planning, and delivery until stopped. Aggressively use Squadron for independent Ship, Patch, Refactor, and Shepherd assignments; return reviewed, green PRs current with main and event-driven status snapshots.
+description: "Human-only activation, one controller per repository. Loop backlog, discovery, planning, and delivery until stopped; aggressively use Squadron for distinct delivery and Shepherd assignments, with event status snapshots."
 disable-model-invocation: true
 user-invocable: true
 ---

@@ -1,8 +1,9 @@
 ---
 name: handoff
-description: Transfer evidence and ownership for scoped work between agents. Cross-session or machine handoffs are human-directed; agents may hand authorized assignments among themselves without starting a new controller.
+description: "Human direction for cross-session or machine transfer; scoped agent-to-agent handoffs allowed. Transfer accessible evidence, permissions, doctrine, and explicit ownership without duplicating controllers."
 argument-hint: "What will the next session be used for?"
-disable-model-invocation: true
+disable-model-invocation: false
+user-invocable: true
 ---
 
 # Handoff

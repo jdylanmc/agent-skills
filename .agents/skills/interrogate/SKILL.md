@@ -1,6 +1,8 @@
 ---
 name: interrogate
-description: Internal interview helper for Discovery and Joe-mode only. Stress-test a plan, decision, or idea through real human answers; optionally record agreed domain terms when the parent authorizes recording. Not a direct human command or a general-purpose caller route.
+description: "Internal to Discovery or Joe-mode only. Ask dependency-aware questions and obtain actual human decisions; preserve the parent conversation and recording gates."
+disable-model-invocation: false
+user-invocable: false
 ---
 
 # Interrogate

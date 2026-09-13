@@ -1,9 +1,14 @@
 ---
 name: automate-this
-description: Human-invoked, bounded workflow-design interview that maintains workflow specs and context notes in this workspace; design only, not permission to execute automation.
-disable-model-invocation: true
+description: "Human only. Turn recurring activities into workflow specifications; do not implement or execute the automation."
 argument-hint: "A workflow to design, or nothing to go find one"
+disable-model-invocation: true
+user-invocable: true
 ---
+
+# Automate This
+
+**Entry:** Human only. Turn recurring activities into workflow specifications; do not implement or execute the automation. Follow the [invocation contract](../../INVOCATION.md).
 
 Use [doctrine selection and application](../doctrine/APPLY.md). Preserve explicit choices; with none, `machine` and `laziness` are candidates for automation design, not mandatory ingredients of every life workflow. Carry selections into any authorized delivery handoff. If a separately authorized PR will deliver the workflow documents, require `worktrees` before preparing those changes.
 

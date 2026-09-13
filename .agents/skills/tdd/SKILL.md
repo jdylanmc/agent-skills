@@ -1,9 +1,13 @@
 ---
 name: tdd
-description: Build features and fix bugs test-first through public interfaces. Use for test-driven development, red-green-refactor, regression tests, or integration tests; prove red, implement one behavior, then allow small behavior-preserving cleanup after green.
+description: "Internal test-first helper for any authorized task. Prove red then green through real behavior, allow small behavior-preserving cleanup after green, and rerun affected tests."
+disable-model-invocation: false
+user-invocable: false
 ---
 
 # Test-Driven Development
+
+**Entry:** Internal test-first helper for any authorized task. Prove red then green through real behavior, allow small behavior-preserving cleanup after green, and rerun affected tests. Follow the [invocation contract](../../INVOCATION.md).
 
 Follow [doctrine selection and application](../doctrine/APPLY.md), **requiring `testing`**. Preserve the work packet's selections. With no preselection, consider `test-seams` when choosing boundaries/doubles and `code` for implementation; load the selected full texts before applying them. Doctrine does not waive the observed red/green loop or grant unrelated refactoring authority.
 

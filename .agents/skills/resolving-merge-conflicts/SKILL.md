@@ -1,6 +1,8 @@
 ---
 name: resolving-merge-conflicts
-description: "Internal Shepherd helper for mechanical, unambiguous in-progress merge/rebase conflicts. Return semantic conflicts to the human with both sides intact; never choose product intent."
+description: "Internal to Shepherd or an authorized delivery owner. Resolve evidence-supported merge/rebase conflicts without guessing semantic decisions; humans invoke Shepherd for PR conflicts."
+disable-model-invocation: false
+user-invocable: false
 ---
 
 # Resolve merge conflicts

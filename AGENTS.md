@@ -62,8 +62,9 @@ Its old repository instructions are preserved as `AGENTS.original.md`.
 
 ## Validation and local files
 
-Run `node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs`
-to check preserved doctrine and the catalog/selection/load interface.
+Run `node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs`
+to check preserved doctrine, the catalog/selection/load interface, and Scout's
+package contract.
 The legacy composition graph, conformance suite, and runtime hooks are retired.
 Imported skills have not been made provider-independent merely by being copied.
 

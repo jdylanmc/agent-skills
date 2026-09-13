@@ -1,9 +1,13 @@
 ---
 name: migration
-description: Internal delivery helper for an evidenced production change that actually requires migration. Gate eligibility before scoped, reversible transitions with preservation proof; return to the owner without scaffolding when migration is not needed.
+description: "Internal helper only when established production use creates a real migration obligation. Plan safe transitions; normally skip ceremony for non-production prototypes, never infer data safety from version alone."
+disable-model-invocation: false
+user-invocable: false
 ---
 
 # Migration
+
+**Entry:** Internal helper only when established production use creates a real migration obligation. Plan safe transitions; normally skip ceremony for non-production prototypes, never infer data safety from version alone. Follow the [invocation contract](../../INVOCATION.md).
 
 Use [doctrine selection and application](../doctrine/APPLY.md). Preserve the task's selections; with none, consider `sequencing`, `idempotency`, and, for stored-data changes, `data` or `distributed-data`. Select only relevant guidance and load its text before applying it. No doctrine authorizes destructive contraction or expands the agreed stage.
 

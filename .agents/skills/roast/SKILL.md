@@ -1,11 +1,13 @@
 ---
 name: roast
-description: Review anything supplied and find consequential flaws against its purpose, requirements, and relevant doctrine. Use for PRs, code, specs, repositories, documents, diagrams, proposals, pasted text, or mixed material. Return one prioritized, evidence-backed findings list; do not repair or approve.
+description: "Human or scoped agent use. Independently review code, PRs, skills, specs, documents, or other supplied material against purpose and evidence; return consequential findings, not implicit fixes or approval."
 disable-model-invocation: false
 user-invocable: true
 ---
 
 # Roast
+
+**Entry:** Human or scoped agent use. Independently review code, PRs, skills, specs, documents, or other supplied material against purpose and evidence; return consequential findings, not implicit fixes or approval. Follow the [invocation contract](../../INVOCATION.md).
 
 Review this and find flaws. The original human-authored [intent](intent.md) is preserved unchanged. Subject, format, and authorship do not restrict eligibility. Critique the work, not the person.
 

@@ -59,9 +59,12 @@ alone do not prove the integrated branch; unavailable proof is not a pass.
 
 ## Publish or update the same PR
 
-Use configured provider tools (`gh`, `glab`, or the
-[Azure DevOps integration](../setup/issue-tracker-azure-devops.md)), permissions,
+Use configured GitHub tools (`gh`) or the
+[Azure DevOps integration](../setup/issue-tracker-azure-devops.md), permissions,
 and templates. Resolve code-project operations separately from planning items.
+A local Markdown backlog is not a PR host; establish the supported code-hosting
+destination before publication. Report unsupported configuration rather than
+silently choosing another provider.
 Use the [commit-message policy](../../COMMIT-STYLE.md) for authored messages.
 
 Before creation, inspect existing PRs for this delivery/branch. Reuse the matching

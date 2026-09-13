@@ -1,11 +1,13 @@
 ---
 name: doctrine
-description: List available engineering doctrines without loading their bodies, select relevant doctrines for a task or worker packet, or retrieve their verified full text. Use /doctrine, named doctrine IDs, or a request to choose standards for implementation or review.
+description: "Human or scoped agent use. List engineering doctrines, select scoped standards and worker metadata, or retrieve verified full texts. Selection is not application or approval."
 disable-model-invocation: false
 user-invocable: true
 ---
 
 # Doctrine
+
+**Entry:** Human or scoped agent use. List engineering doctrines, select scoped standards and worker metadata, or retrieve verified full texts. Selection is not application or approval. Follow the [invocation contract](../../INVOCATION.md).
 
 One read-only entry point for the human-curated sources in [doctrines/](doctrines/README.md). Selection is not application, and application is not approval. Do not edit sources, manifests, repository instructions, or the work being judged.
 

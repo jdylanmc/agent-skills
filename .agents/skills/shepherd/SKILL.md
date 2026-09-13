@@ -1,7 +1,8 @@
 ---
 name: shepherd
-description: "Human or machine custody of one published PR: rebase whenever its target advances, refresh review/check evidence, and return functional feedback to its Ship, Patch, or Refactor owner until merge, closure, stop, human decision, or runtime loss."
-disable-model-invocation: true
+description: "Human or scoped delivery-agent use. Maintain one existing PR with independent review, green checks, and rebase on target-base advancement; invoke conflict resolution internally and leave final sign-off/merge human-owned."
+disable-model-invocation: false
+user-invocable: true
 ---
 
 # Shepherd

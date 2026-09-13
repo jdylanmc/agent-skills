@@ -1,6 +1,6 @@
 ---
 name: status-report
-description: Give one concise read-only snapshot of the current objective, progress, objective timing, this agent's tool calls, and running descendants. Human-directed; Joe-mode may invoke only after a full cycle or a confirmed major-feature merge. No polling or task control.
+description: "Human-directed snapshot; Joe-mode may invoke after a full cycle or confirmed major-feature merge only. Report objective progress, elapsed time, own tool calls, and running descendants read-only, with explicit visibility limits."
 disable-model-invocation: false
 user-invocable: true
 ---

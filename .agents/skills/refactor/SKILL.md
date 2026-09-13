@@ -1,6 +1,8 @@
 ---
 name: refactor
-description: Internal behavior-preserving structural delivery route selected by Joe-mode, or a bounded structural worker within an existing delivery. Own independent review, current-base green PR delivery, and Shepherd custody without invoking Ship.
+description: "Internal behavior-preserving delivery route selected by Joe-mode, or scoped structural work under an existing delivery owner. Review and shepherd a green current PR without creating competing ownership."
+disable-model-invocation: false
+user-invocable: false
 ---
 
 # Refactor

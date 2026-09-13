@@ -1,10 +1,13 @@
 ---
 name: breakdown-tickets
-description: After Specify, turn a completed requirements specification into human-approved tracer-bullet tickets with acceptance traceability, dependencies, and delivery grouping. Humans or coordinating agents can publish the approved slices to GitHub, Azure DevOps, or local Markdown.
-disable-model-invocation: true
+description: "Human or scoped agent use after Specify. Break a full requirements specification into actionable tickets; obtain human approval before publication."
+disable-model-invocation: false
+user-invocable: true
 ---
 
 # Breakdown Tickets
+
+**Entry:** Human or scoped agent use after Specify. Break a full requirements specification into actionable tickets; obtain human approval before publication. Follow the [invocation contract](../../INVOCATION.md).
 
 Use [doctrine selection and application](../doctrine/APPLY.md), preserving the parent deliverable's choices. With none, consider `sequencing` and `documentation` for dependency-aware, durable work packets. Carry scoped selections and required IDs into implementation handoffs. A separately authorized PR for local ticket files requires `worktrees`; tracker publication alone does not.
 

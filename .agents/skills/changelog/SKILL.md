@@ -1,6 +1,6 @@
 ---
 name: changelog
-description: Internal helper for every modifying agent to curate notable human-facing changes consistently using Keep a Changelog. Update the authorized changelog or return entries to its integration owner; not a direct human command, commit dump, release, or versioning workflow.
+description: "Internal helper for every modifying agent. Curate notable human-facing changes using Keep a Changelog; respect write scope and one integration owner. No direct human command or automatic release."
 disable-model-invocation: false
 user-invocable: false
 ---

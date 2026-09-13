@@ -31,8 +31,10 @@ Modifications to Apache-licensed files must carry prominent change notices.
 - `automate-this` renames Matt Pocock's `loop-me`, retaining its workflow-design
   behavior and original import source/hash. The Matt Pocock MIT notice applies.
 - `squadron` renames Jesse Vincent's `dispatching-parallel-agents`, retaining
-  its workflow and original import source/hash. The Superpowers MIT notice
-  applies. It does not restore the archived Squadron implementations.
+  its independent-task and worker-packet foundations and original import
+  source/hash. Its workflow now covers bounded delivery and Shepherd
+  assignments, isolated writes, and explicit custody. The Superpowers MIT
+  notice applies. It does not restore the archived Squadron implementations.
 - `evolve-architecture` adapts Matt Pocock's `improve-codebase-architecture`
   around the operator-approved evolution workflow and newly requested intent.
   It retains evidenced hotspot analysis and useful visual comparisons, not
@@ -42,6 +44,8 @@ Modifications to Apache-licensed files must carry prominent change notices.
 - `setup`, `specify`, and `breakdown-tickets` rename Matt Pocock's
   `setup-matt-pocock-skills`, `to-spec`, and `to-tickets`. Original upstream
   source paths and hashes are retained; the Matt Pocock MIT notice applies.
+  Their local workflows now enforce supported-provider setup and the
+  Discovery-artifact to requirements to approved-ticket sequence.
 - `discovery` retains Matt Pocock's `wayfinder` provenance and absorbs useful
   inquiry, alternative-comparison, visual-question, and artifact-checking
   guidance from Jesse Vincent's `brainstorming`. The separate Superpowers
@@ -114,6 +118,17 @@ notice applies to that adapted material alongside the repository license.
 and adapted subject-grounding/explanation guidance. It uses the repository MIT
 license, has no upstream installer record, and does not restore the archived
 atomic framework, recording, or structural-checker machinery.
+
+`status-report` is restored locally from its unchanged archived intent, with
+a new single-snapshot workflow and Joe-mode's approved event callers. It uses
+the repository MIT license, has no upstream installer record, and does not
+restore archived recording or orchestration machinery.
+
+`changelog` is a new local integration workflow, not an installer import or
+a restoration of the archive's proposal-only changelog package. It references
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) by Olivier Lacan
+for its human-facing conventions; that project's sources are not vendored.
+The new workflow uses the repository MIT license.
 
 `poc` adapts Matt Pocock's `prototype`, including its logic and UI references,
 and retains the original `skills/engineering/prototype/SKILL.md` import record.

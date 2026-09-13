@@ -1,7 +1,8 @@
 ---
 name: ship
-description: Deliver one feature issue or specification and its ticket graph through implementation, independent review, current-base validation, one PR, and live Shepherd custody. Human or Joe-mode route; continue feedback on the same Ship-owned PR.
-disable-model-invocation: true
+description: "Human kickoff or human-started Joe-mode only. Deliver one issue or scoped specification graph through isolated implementation, independent review, a green current PR, and continuing Shepherd custody."
+disable-model-invocation: false
+user-invocable: true
 ---
 
 # Ship

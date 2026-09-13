@@ -1,123 +1,91 @@
 # Changelog
 
+Notable library changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+This collection does not currently declare a Semantic Versioning policy or
+have tagged releases. Current cleanup is tracked in
+[#250](https://github.com/jdylanmc/agent-skills/pull/250).
+
 ## Unreleased
 
-- Rename `loop-me` to `automate-this`, preserving workflow specification behavior
-  rather than adding automatic implementation or execution.
-- Rename `dispatching-parallel-agents` to `squadron`, preserving its bounded
-  parallel workflow and upstream provenance.
-- Restore `eli5` from its unchanged archived intent: grounded, concise
-  explanations at five-year-old, junior-practitioner, and expert depths.
-  Keep it read-only and omit retired atomic/runtime machinery. Keep 30 skills.
-- Add `/doctrine` with catalog-only browsing, scoped metadata-only worker
-  selections, required IDs, and verified full-text loading. Move all 22 existing
-  doctrine texts unchanged into the skill; add requested worktree doctrine and
-  retire the standalone worktree skill. Wire consumers, worker/handoff packets,
-  required SOLID for code Roast, setup, and integrity/selector CI checks.
-- Replace `improve-codebase-architecture` with `evolve-architecture` and its
-  requested intent: evidenced diagnosis, independent challenge, delegated
-  discovery, optional visuals, and a bounded proposal before authorized delivery.
-- Rename `setup-matt-pocock-skills` to `setup`, `to-spec` to `specify`, and
-  `to-tickets` to `breakdown-tickets`; preserve behavior and provenance. Keep
-  29 active skills: 26 imports/adaptations and three locally authored skills.
-- Rename `caveman-explore` to `scout`, updating package metadata and tests while
-  preserving read-only code localization and upstream provenance.
-- Fold Brainstorming's useful inquiry and comparison techniques into Discovery
-  and remove its standalone package and browser runtime. Apply Scout doctrine
-  to consequential design-space exploration with explicit criteria, evidence,
-  alternatives, and stopping reasons; retain human decisions and the ten-stage
-  evidence/alignment/persistence cycle. Keep 29 active skills.
-- Retire `subagent-driven-development` into Ship's bounded worker/report
-  contract and Roast's scoped fix review, without the alternate executor or
-  autonomous approval machinery.
-- Make Caveman-style commit messages the shared default throughout this
-  library and remove `caveman-commit` as a standalone skill. Wire commit
-  producers and repository-local setup; preserve consequential bodies,
-  project conventions, required trailers, and existing Git authority.
-  Global Copilot configuration is unchanged. Keep 30 active skills.
-- Consolidate `code-review`, `requesting-code-review`, and `caveman-review`
-  into `roast`, preserving its original intent unchanged: any-material review,
-  relevant intent/doctrine, one prioritized evidence-backed findings list,
-  optional terse output, no implicit fixes or approval. Route delivery reviews
-  through Roast.
-- Consolidate `debug` and `surgical-patch` into `patch`: evidence-led bounded
-  repair by invocation, explicit diagnosis-only preserved, behavior-change
-  acceptance proof, and unchanged supporting tools. Keep 32 active skills.
-- Remove `cavecrew`, its agent-preset/Claude setup guidance, and installer
-  provenance entry. Keep 35 active skills.
-- Merge `ask-matt` and `using-superpowers` into session-long `joe-mode`:
-  anchored GitHub/Azure DevOps backlog selection, configured readiness roles,
-  concurrent discovery/ADR/spec/ticketing/delivery, and reviewable PR handoff.
-  Preserve existing human gates and delivery ownership; add Copilot runtime
-  guidance and Azure DevOps provider setup. Keep 36 active skills.
-- Rename `prototype` to `poc` and broaden it to bounded, runnable feasibility
-  experiments, retaining adapted logic/UI demos. Restore the original discovery
-  and proof-of-concept intents unchanged. Rebuild discovery around research,
-  experiment findings, human alignment, domain modeling, and preserved context;
-  remove automatic tracker and product writes from this discovery path.
-  Keep `ask-matt` and `using-superpowers` separate for the next pass.
-  Inventory remains 37 active skills.
-- Implement `synthesize` from its unchanged intent: flexible source material
-  and custom altitudes, Caveman/full/micro/nano presets, grounded meaning,
-  separate non-overwriting output, and measured-only token-savings claims.
-  Remove `skill-creator` and retain its license outside the package.
-  Keep 37 active skills: 35 imports plus local Shepherd and Synthesize.
-- Rename `safe-refactor` to `refactor`; preserve behavior and upstream provenance.
-- Remove `caveman-compress` and `executing-plans`, their lock records, and active
-  references. Keep 37 active skills: 36 imported/adapted and local Shepherd.
-- Bring forward only the rewritten `synthesize` intent: preserve source
-  material, ask for altitude when unspecified, and support arbitrary targets
-  with Caveman, full, micro, and nano as presets. No runnable skill added.
-- Rebuild Ship as a delivery coordinator: an issue or spec ticket graph,
-  isolated concurrent workers, one PR, independent review, criterion evidence,
-  and mandatory Shepherd ownership. Absorb and remove `implement-spec`.
-- Rebuild `shepherd` from its retained intent for ongoing PR observation,
-  necessary branch maintenance, and same-PR feedback repair through Ship.
-  Keep 39 active skills: 38 imported/adapted records and one local rebuild.
-- Apply approved intent changes: remove the intake readiness gate and detailed
-  remote-continuation restrictions, preserve PR continuation and human merging,
-  and support a complete specification as one delivery. Archive unchanged.
-- Remove `caveman-help` and its lock record; keep 39 active skills.
-- Preserve an unchanged copy of the archived Ship intent in the active `ship`
-  package; document the gap between that delivery intent and the current workflow.
-- Merge `implement` and `lean-build` into `ship`: retain test-driven
-  implementation, code review, and local commits with strict scope and the
-  smallest complete end-to-end outcome. Update active callers and provenance;
-  keep 40 active skills without restoring the archived delivery orchestrator.
-- Merge `tdd` and `test-driven-development` into `tdd`; permit small,
-  behavior-preserving refactoring after green and rerun affected tests.
-  Consolidate supporting test guidance and update the Hermes invocation example.
-- Merge `verify-and-stop` and `verification-before-completion` into `verify`;
-  reuse evidence only for unchanged relevant state and inputs, otherwise rerun.
-  Connect TDD and debugging completion checks to the shared verifier.
-- Keep 41 active skills, with the approved defaults and updated provenance.
-- Collapse `grilling`, `grill-me`, and `grill-with-docs` into `interrogate`,
-  retaining optional domain-model recording and updating callers and ticket types.
-- Merge `diagnosing-bugs`, `systematic-debugging`, and `investigate-first` into
-  `debug`: distinguish diagnosis from authorized repairs, retain relevant
-  techniques and helper scripts, and update callers and evaluation prompts.
-- Remove `codebase-design` and its active dependencies. Use repository-local
-  architecture and terminology in surviving callers.
-- Remove Caveman product integrations: `caveman-setup`, `caveman-discover`,
-  `caveman-evidence-review`, `caveman-manage`, `caveman-optimize`, `caveman-learn`,
-  and `caveman-stats`. Update help for the standalone collection.
-- Keep 43 active skills after these consolidations and removals; preserve
-  source attribution, doctrine, and the historical archive.
-- Rename `wayfinder` to `discovery`, including invocation names, tracker labels,
-  and cross-skill references. Preserve the original upstream provenance.
-- Remove all `openai.yaml` agent metadata files from the active collection.
-- Remove 17 skills in the initial human curation passes: `wizard`, all six
-  `writing-*` skills, `to-questionnaire`, `teach`, `setup-ts-deep-modules`,
-  `setup-pre-commit`, `scaffold-exercises`, `migrate-to-shoehorn`,
-  `receiving-code-review`, `claude-handoff`, `finishing-a-development-branch`,
-  and `git-guardrails-claude-code`. Keep 55 skills without rewriting their workflow
-  text; archive and doctrine remain unchanged.
-- Archive the previous atomic skill framework, agents, coupled tooling, runtime
-  hooks, and documentation under `archive/atomic-v1/`.
-- Start an editable, repository-local collection from Matt Pocock's skills,
-  Caveman's skills, Superpowers, and Anthropic's `skill-creator`.
-- Preserve human-owned doctrine and root intent unchanged. Retain the standalone
-  doctrine integrity check without imposing the retired framework on imports.
+### Added
 
-Earlier history is preserved in
-[the archived changelog](./archive/atomic-v1/CHANGELOG.md).
+- An editable, repository-local Copilot library of 32 skills, adapted from
+  existing collections with preserved licenses and original import records.
+- `doctrine`: catalog browsing, scoped worker selections, and verified full
+  text loading. Move the 22 existing texts unchanged into the package; add
+  the requested worktree doctrine and shared isolation procedure.
+- `synthesize`: separate, grounded artifacts at full, Caveman, micro, nano,
+  or custom altitude; preserve sources and measure any claimed token savings.
+- `eli5`: evidence-grounded explanation at five-year-old, junior-practitioner,
+  and expert depths, using its unchanged archived intent.
+- Internal `changelog`: shared curation of notable changes, with serialized
+  integration and no automatic release/version decisions.
+- `status-report`: read-only objective snapshots with elapsed time, the owning
+  agent's tool calls, and running nested descendants. Joe-mode also requests
+  snapshots at completed-cycle and confirmed major-feature-merge boundaries.
+
+### Changed
+
+- Make invocation explicit across every skill: human-only modes, internal
+  helpers, scoped automatic selection, and named-caller exceptions. Treat
+  loading metadata as consumer-dependent, not as a permission boundary.
+- Make Joe-mode a human-started, one-per-repository controller that continuously
+  coordinates backlog management, discovery, planning, and delivery. Use
+  Squadron aggressively for independent assignments without duplicate owners.
+- Make Ship, bug/regression-only Patch, and behavior-preserving Refactor peer
+  delivery routes. Kickoff authorizes routine in-scope repair, review, commits,
+  publication, and shepherding; explicit diagnosis-only requests stay read-only.
+- Require a reviewed, green PR current with main or its explicit target for
+  final delivery handoff. Shepherd rebases on base advancement even without
+  conflicts, refreshes evidence, and keeps feedback on the same PR. Human
+  final sign-off and merging remain separate.
+- Route aligned Discovery artifacts into full Specify requirements, then
+  human-approved Breakdown Tickets. Preserve material unknowns rather than
+  inventing product decisions or requiring ceremony for already-clear work.
+- Apply Scout doctrine to meaningful Discovery alternatives, evidence,
+  criteria, human alignment, and explicit stopping reasons. Preserve the
+  ten-stage discovery cycle and its full foundation plus compact handoff.
+- Broaden `poc` from demos to bounded, runnable feasibility experiments;
+  Research returns cited findings and supports link batches without automatic
+  repository or tracker publication.
+- Make Retro human-directed: inspect actual complained-about session evidence,
+  recommend improvements, wait for approval, then deliver selected fixes.
+- Limit Setup to GitHub, Azure DevOps, and local Markdown. Restrict Migration
+  to actual production migration obligations, not speculative compatibility
+  work based only on version numbers.
+- Use shared terse Conventional Commit formatting independently of Caveman
+  chat mode. Prefer exact concise worker messages without dropping uncertainty,
+  constraints, technical identifiers, or required packet fields.
+- Consolidate code/general reviews into Roast, diagnostics and regression
+  repair into Patch, test-first work into TDD, and completion evidence into
+  Verify. Retain independent review, real red/green proof, and relevant-state
+  validation instead of self-approval.
+- Replace `improve-codebase-architecture` with proposal-first
+  `evolve-architecture`. Rename `wayfinder` to `discovery`, `prototype` to
+  `poc`, `safe-refactor` to `refactor`, `caveman-explore` to `scout`,
+  `dispatching-parallel-agents` to `squadron`, `loop-me` to `automate-this`,
+  `setup-matt-pocock-skills` to `setup`, `to-spec` to `specify`, and
+  `to-tickets` to `breakdown-tickets`. Original upstream records remain intact.
+
+### Removed
+
+- Retire the atomic framework, agents, coupled tooling, runtime hooks, and
+  documentation from active use; preserve them under `archive/atomic-v1/`.
+- Retire competing executors and redundant skill packages, including
+  `subagent-driven-development`, `brainstorming`, `using-git-worktrees`,
+  and standalone `caveman-commit`; retain useful behavior in the shared flows.
+- Remove Caveman product/runtime integrations, `cavecrew`, `caveman-help`,
+  `caveman-compress`, `executing-plans`, and the imported `skill-creator`.
+  Preserve applicable licenses and attribution.
+- Remove active `openai.yaml` metadata and unsupported GitLab setup.
+
+### Fixed
+
+- Remove Retro's dependency on the retired writing skill and reconcile
+  Interrogate callers with its Discovery/Joe-only contract.
+- Keep semantic merge conflicts human-owned rather than forcing a guessed
+  resolution, staging unrelated files, or blindly rewriting a shared branch.
+
+Earlier released/history material remains in
+[the archived changelog](archive/atomic-v1/CHANGELOG.md).
+Intermediate unreleased curation steps remain in Git history.

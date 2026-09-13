@@ -1,6 +1,6 @@
 ---
 name: synthesize
-description: Transform source material into a separate artifact at a chosen altitude. Use for complete rewrites, token-focused Caveman documents, micro or nano summaries, or custom levels of detail and style. Leave sources untouched and ask for the altitude when unspecified.
+description: "Human-directed transformation, or an agent sub-flow with supplied sources, output purpose, and altitude. Produce a separate candidate at full, Caveman, micro, nano, or custom depth; preserve sources."
 disable-model-invocation: false
 user-invocable: true
 ---
