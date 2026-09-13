@@ -23,12 +23,12 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | Source | Initial count | Remaining | Initial selection |
 | --- | --- | --- | --- |
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 21 | Complete collection |
-| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 11 | Complete skill collection; not its engine or gateway |
+| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 10 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 1 | `skill-creator` only |
 | [obra/superpowers](https://github.com/obra/superpowers) | 14 | 7 | Complete skill collection |
 
-Human keep/drop passes have removed 25 skills outright; two three-to-one and
-three two-to-one consolidations reduce the remaining entry points to **40**. All
+Human keep/drop passes have removed 26 skills outright; two three-to-one and
+three two-to-one consolidations reduce the remaining entry points to **39**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -54,6 +54,7 @@ tracker labels, and cross-skill references.
 - Caveman's `setup`, `discover`, `evidence-review`, `manage`, `optimize`, `learn`,
   and hook-dependent `stats` skills are removed. Generic communication and
   engineering skills remain.
+- `caveman-help` is removed.
 
 Further reworking and integration of doctrine are subsequent work.
 

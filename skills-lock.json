@@ -43,12 +43,6 @@
       "skillPath": "skills/caveman-explore/SKILL.md",
       "computedHash": "e22fc4edb9feb5046809c74d969b06092b8d7db851aa8502a53a185bba27c57a"
     },
-    "caveman-help": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/caveman-help/SKILL.md",
-      "computedHash": "845394fef650bb63b44e2e28391de704505f881c6f968ebfdfb0278343ecbd7c"
-    },
     "caveman-review": {
       "source": "juliusbrussee/caveman",
       "sourceType": "github",

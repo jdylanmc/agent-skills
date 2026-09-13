@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Remove `caveman-help` and its lock record; keep 39 active skills.
 - Preserve an unchanged copy of the archived Ship intent in the active `ship`
   package; document the gap between that delivery intent and the current workflow.
 - Merge `implement` and `lean-build` into `ship`: retain test-driven
