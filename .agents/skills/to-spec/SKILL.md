@@ -16,7 +16,9 @@ The issue tracker and triage label vocabulary should have been provided to you. 
 
 Check with the user that these seams match their expectations.
 
-3. Write the spec using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label - no need for additional triage.
+3. Write the spec using the template below, then publish it to the configured planning tracker using its provider/type/required-field conventions. Apply the configured mapping for the `ready-for-agent` role (a label, Azure DevOps tag, or local equivalent), preserving unrelated metadata; no additional triage is needed.
+
+When Joe-mode coordinates this work, return the spec's actual ID/URL, scope, and planned breakdown to that owner. It reserves the spec delivery group before ticketing so the ready parent cannot race its children. Publishing a spec does not dispatch Ship or approve a future ticket breakdown.
 
 <spec-template>
 

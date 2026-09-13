@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Merge `ask-matt` and `using-superpowers` into session-long `joe-mode`:
+  anchored GitHub/Azure DevOps backlog selection, configured readiness roles,
+  concurrent discovery/ADR/spec/ticketing/delivery, and reviewable PR handoff.
+  Preserve existing human gates and delivery ownership; add Copilot runtime
+  guidance and Azure DevOps provider setup. Keep 36 active skills.
 - Rename `prototype` to `poc` and broaden it to bounded, runnable feasibility
   experiments, retaining adapted logic/UI demos. Restore the original discovery
   and proof-of-concept intents unchanged. Rebuild discovery around research,

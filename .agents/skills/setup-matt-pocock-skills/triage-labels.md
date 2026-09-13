@@ -12,4 +12,6 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
+Joe-mode selects work using the mapped `ready-for-agent` role; it does not substitute a new readiness checklist. Dependency availability and ownership still govern dispatch. Record the provider representation: GitHub/GitLab labels, Azure DevOps tags (normally `System.Tags`), or the agreed local status value. Role changes preserve unrelated labels/tags and do not silently change provider workflow states.
+
 Edit the right-hand column to match whatever vocabulary you actually use.

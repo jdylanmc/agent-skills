@@ -13,6 +13,14 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Joe-mode backlog selection
+
+Resolve the configured GitHub host, then query its authenticated user with `gh api --hostname "$HOST" user --jq .login`. Record the anchored owner/repo and optional project/milestone/label selection. For assigned-to-me, add that verified login as the assignee filter; never use Git author identity as a substitute.
+
+Use `gh issue list` with explicit repository, open state, mapped readiness label, and selected filters, or the corresponding paginated API. The CLI's default limit is not the full backlog: obtain complete pages or report a partial selection. Hydrate requirements, comments, dependencies, and associated PRs only for relevant candidates. Preserve unrelated labels on updates; follow configured claim conventions rather than reassigning someone's work.
+
+Reserve one spec graph or intentionally separate child deliveries, never both. Inspect linked PRs before starting another Ship. An unmerged dependency is not available on another delivery's base merely because its checks pass.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

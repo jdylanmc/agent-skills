@@ -46,6 +46,7 @@ Present the proposed breakdown as a numbered list. For each ticket, show:
 - **Title**: short descriptive name
 - **Blocked by**: which other tickets (if any) must complete first
 - **What it delivers**: the end-to-end behaviour this ticket makes work
+- **Delivery grouping and assignment**: one specification-owned PR or intentionally separate deliveries; include the proposed assignee policy when Joe-mode is scoped to assigned-to-me work
 
 Ask the user:
 
@@ -60,7 +61,11 @@ Iterate until the user approves the breakdown.
 Publish the approved tickets. **How** depends on the tracker `/setup-matt-pocock-skills` configured; the tickets are the same either way, only the shape of the blocking edges changes:
 
 - **Local files** → write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Each file's "Blocked by" lists the numbers/titles it depends on. Use the per-ticket file template below: one ticket per file, never a single combined file.
-- **A real issue tracker (GitHub, Linear, …)** → publish one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Use the platform's native blocking / sub-issue relationship where it has one; otherwise set each ticket's "Blocked by" to the blocking issues. Apply the `ready-for-agent` triage label unless instructed otherwise; the tickets are agent-grabbable by construction.
+- **A real issue tracker (GitHub, Azure DevOps, Linear, …)** → publish one item per ticket in dependency order (blockers first) using the configured planning scope, work-item type, and required fields. Use native parent/dependency relationships where available; otherwise record "Blocked by" references. Apply the configured mapping for the `ready-for-agent` role unless instructed otherwise, preserving unrelated labels/tags; the tickets are agent-grabbable by construction. Use the approved assignee policy rather than silently reassigning work.
+
+For local files, substitute the configured role value in the status field below too. For Azure DevOps use the [provider reference](../setup-matt-pocock-skills/issue-tracker-azure-devops.md), not GitHub commands or assumed process fields.
+
+Return all created IDs/URLs, dependency edges, and grouping to the coordinating owner. In Joe-mode, reserve the parent specification before publication and reconcile the entire graph before dispatch: either one Ship owns the spec and its children or the parent is suppressed while intentionally independent child deliveries run. Do not launch both. After uncertain publication, reconcile actual tracker results before retrying; report partial graphs instead of duplicating tickets.
 
 Work the **frontier**: any ticket whose blockers are all done. For a purely linear chain that means top to bottom.
 
@@ -74,7 +79,7 @@ Do NOT close or modify any parent issue.
 
 **Blocked by:** the numbers/titles of the tickets that gate this one, or "None (can start immediately)".
 
-**Status:** ready-for-agent
+**Status:** <configured ready-for-agent value>
 
 - [ ] Acceptance criterion 1
 - [ ] Acceptance criterion 2

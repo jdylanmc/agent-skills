@@ -35,7 +35,9 @@ gh pr view "$PR" --repo "$REPO" --comments
 gh api --paginate "repos/$REPO/pulls/$PR/comments"
 ```
 
-Read check details/logs when a result needs diagnosis. A nonzero `gh pr checks` status can mean checks failed or remain pending; inspect its output rather than calling it a provider outage. For another host, use its configured integration and equivalent operations; report missing capabilities instead of guessing endpoints.
+Read check details/logs when a result needs diagnosis. A nonzero `gh pr checks` status can mean checks failed or remain pending; inspect its output rather than calling it a provider outage.
+
+For Azure DevOps, use the configured integration and the [provider reference](../setup-matt-pocock-skills/issue-tracker-azure-devops.md). Inspect the code-project PR's `status`, `isDraft`, `mergeStatus`, reviewer votes, threads, PR statuses, and applicable blocking policy evaluations. `active` is open, `completed` is merged, and `abandoned` is closed without merge. A successful merge calculation or an empty check list is not approval. Inspect live refs where the last merge-calculation commits lag, and distinguish missing policy evidence from success. Report pre-existing auto-completion rather than silently relying on human-only merging. For another host, use equivalent configured operations; report missing capabilities instead of guessing endpoints.
 
 Compare with the last observation. An unchanged check failure or previously handled comment is not new repair work. Reopen it only when new evidence warrants it; a failed remedy becomes an explicit blocker, not a fresh identical dispatch.
 

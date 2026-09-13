@@ -58,13 +58,15 @@ Report every acceptance condition as **met**, **unmet**, or **unverified**, with
 
 ## 4. Publish or update one PR
 
-Use the repository's provider tools: `gh` for GitHub, `glab` for GitLab, or its configured integration. Follow repository publishing permissions and templates. Missing access is a blocker, not a successful handoff.
+Use the repository's provider tools: `gh` for GitHub, `glab` for GitLab, or the configured Azure DevOps integration using its [provider reference](../setup-matt-pocock-skills/issue-tracker-azure-devops.md). Resolve code-project PR operations separately from planning-project work items. Follow repository publishing permissions and templates. Missing access is a blocker, not a successful handoff.
 
 Before creating a PR, look for one already associated with this deliverable and delivery branch. Reuse it; if the match is ambiguous, ask. If creation reports an uncertain result, query before retrying so a network failure does not create duplicates.
 
 Push the delivery branch and create a draft PR as soon as there is a meaningful diff. Include the issue/spec and ticket references, scope, implementation summary, acceptance evidence, outstanding work, and checks. Use closing references only for work this PR will fully satisfy. Do not close tracker items yourself.
 
 Once the complete candidate passes step 3, update the existing PR's description and mark it ready for review. Confirm publication from the provider and report the actual URL. If no changes or existing PR are needed, report the already-satisfied result rather than manufacturing a PR.
+
+On Azure DevOps, create the draft with `isDraft: true` and full source/target branch refs; promote by setting `isDraft: false`, not by setting PR status to completed. Link planning work items with the provider's supported relations. Never enable auto-completion or treat a successful merge calculation as passing review/policy checks.
 
 ## 5. Always shepherd
 

@@ -48,6 +48,13 @@ Modifications to Apache-licensed files must carry prominent change notices.
   Brussee's `lean-build`, adapted into a delivery coordinator.
   Its primary lock record retains `skills/engineering/implement/SKILL.md`.
   Both MIT notices apply.
+- `joe-mode` combines Matt Pocock's `ask-matt` routing and phase-boundary
+  guidance with Jesse Vincent's `using-superpowers` skill-selection discipline.
+  Its primary lock record retains `skills/engineering/ask-matt/SKILL.md`.
+  Both MIT notices apply. The agreed local intent drives a new concurrent,
+  anchored orchestration workflow; Copilot runtime guidance replaces the
+  upstream router's other-harness tool mappings. Setup, readiness publishing,
+  and delivery references are adapted for GitHub/Azure DevOps coordination.
 
 These workflows and their callers have been adapted locally. Original import
 records and contents remain recoverable from Git history.

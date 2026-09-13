@@ -25,11 +25,11 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 20 | Complete collection |
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 9 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 0 | `skill-creator` only; now removed |
-| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 6 | Complete skill collection |
+| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 5 | Complete skill collection |
 
 Human keep/drop passes have removed 29 skills outright; three three-to-one and
-two two-to-one consolidations leave **35 imported/adapted skills**.
-The locally built `shepherd` and `synthesize` bring the active total to **37**. All
+three two-to-one consolidations leave **34 imported/adapted skills**.
+The locally built `shepherd` and `synthesize` bring the active total to **36**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -45,8 +45,15 @@ tracker labels, and cross-skill references.
   isolated code, observed results, edge cases, and findings returned to discovery,
   not automatic product changes or publication. Research also returns findings
   without automatic repository writes.
-- Keep `ask-matt` and `using-superpowers` separate; their proposed `joe-mode`
-  merger is deferred.
+- [`joe-mode`](./.agents/skills/joe-mode/SKILL.md) merges `ask-matt` and
+  `using-superpowers` around the [agreed intent](./.agents/skills/joe-mode/intent.md):
+  stay active for the session, anchor on an idea/repo/issue/backlog, and
+  orchestrate toward pull requests for human review. Discovery and planning run
+  alongside delivery, using configured readiness labels and non-overlapping
+  delivery groups. GitHub and Azure DevOps setup support full selected backlogs
+  or assigned-to-me scopes. Automatic transitions preserve human decisions,
+  existing write gates, and Ship/Shepherd ownership. Copilot runtime guidance
+  replaces the retired router's other-harness assumptions.
 - [`interrogate`](./.agents/skills/interrogate/SKILL.md) combines `grilling`,
   `grill-me`, and `grill-with-docs`: one interview, with optional domain-model
   recording.
@@ -91,13 +98,13 @@ tracker labels, and cross-skill references.
 Further reworking and integration of doctrine are subsequent work.
 
 Lockfile keys follow local names for imported skills; source paths and hashes
-retain upstream provenance, not hashes of locally adapted content. Its 35
+retain upstream provenance, not hashes of locally adapted content. Its 34
 records exclude locally authored `shepherd` and `synthesize`, which have no
 upstream imports to record. Counts above assign imported skills to their primary source; additional
 sources are recorded in [NOTICE.md](./NOTICE.md).
 
 Overlapping concepts and provider-specific assumptions are expected. Some kept
-skills still reference removed skills: `ask-matt`, `retro`, and `brainstorming`
+skills still reference removed skills: `retro` and `brainstorming`
 contain routes or invocations. Resolve these during the rework pass before using
 the affected flows; the selection pass does not silently redesign them.
 
