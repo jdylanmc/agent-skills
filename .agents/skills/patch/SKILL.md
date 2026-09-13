@@ -1,16 +1,18 @@
 ---
-name: debug
-description: Diagnose bugs, test failures, unexpected behavior, and performance regressions using reproducible evidence and ranked hypotheses. Use for debugging or investigation; implement a root-cause fix only when the task authorizes it.
+name: patch
+description: Diagnose and repair bugs, test failures, unexpected behavior, performance regressions, and bounded behavior changes at the responsible layer. Invoking /patch authorizes a bounded repair after evidence-led diagnosis; explicit investigate/explain-only requests remain non-mutating.
+disable-model-invocation: false
+user-invocable: true
 ---
 
-# Debug
+# Patch
 
 Separate the observed symptom from the inferred cause. Establish a mechanism that explains the evidence before changing product behavior.
 
 ## Scope and safety
 
-- **Diagnose by default.** A request to explain or investigate does not authorize a fix. Stop when the evidence establishes the cause or an exact blocker.
-- **Fix when requested.** A task that asks for a repair authorizes a bounded implementation after diagnosis, not unrelated refactoring or cleanup.
+- **Repair when invoked for a patch.** `/patch` and explicit fix requests authorize a bounded implementation after diagnosis, not unrelated refactoring or cleanup.
+- **Diagnosis-only when requested.** A request only to explain, investigate, or diagnose does not authorize a fix, even when routed through this skill. Stop when the evidence establishes the cause or an exact blocker. Automatic skill selection does not convert a read-only request into repair permission.
 - Read repository guidance, relevant `CONTEXT.md`, and architectural decisions before exploring. Respect the agreed scope.
 - Redact secrets from commands, output, and captured artifacts. Use environment variables rather than embedding credentials. Capture only the evidence needed.
 - Use existing checks, read-only inspection, and isolated reproduction artifacts during diagnosis. Ask before changing product code for instrumentation, touching production, or running destructive probes. Inspect bundled scripts and their inputs before using them.
@@ -22,9 +24,11 @@ Read the complete relevant error and stack trace. Record expected behavior, actu
 
 Check recent code, dependency, configuration, and environment changes. Find a working example or known-good state to compare against. A nearby failure is not necessarily the reported bug.
 
+For an explicitly requested small behavior change rather than a defect, establish the current contract and agreed desired behavior. Do not invent a bug or a root cause. Use a discriminating acceptance example to show the missing behavior, then follow the same bounded implementation and proof discipline. Clarify requests too broad to be one patch instead of silently taking on a feature redesign.
+
 ## 2. Build and minimize a feedback loop
 
-Find one repeatable command that exercises the real failing path and can distinguish the user's symptom from success. Run it and observe the failure before proposing a repair.
+Find one repeatable command that exercises the real failing path and can distinguish the user's symptom from success. Run it and observe the failure before proposing a repair. For a requested behavior change, the signal is the agreed acceptance example failing under the current behavior, not evidence that the old behavior was itself defective.
 
 Choose the smallest useful mechanism:
 
@@ -46,6 +50,8 @@ If no usable loop is possible, report the attempts and exact blocker. Ask for th
 
 Trace inputs, state transitions, and ownership boundaries backward from the symptom. Compare the failing path with working code and list the relevant differences.
 
+For an agreed behavior change, identify the existing mechanism and the layer responsible for the new contract. Investigate genuine uncertainty, but do not manufacture defect hypotheses for behavior that previously met its requirements.
+
 Rank plausible hypotheses by evidence and the cost of falsifying them. State each prediction: "If X causes this, changing Y should produce Z." Do not manufacture alternatives when the evidence already distinguishes the mechanism.
 
 Test **one hypothesis and one variable at a time**. Prefer debugger inspection and targeted probes over broad logging. Tag temporary instrumentation so it can be found and removed. For performance regressions, use measurements and profiling rather than log volume.
@@ -56,23 +62,25 @@ Record what each experiment rules in or out. A failed hypothesis is new evidence
 
 ## 4. Repair only when authorized
 
-Use `tdd` to turn the minimized reproduction into a failing regression test at a boundary that exercises the real bug pattern. A shallow test that cannot reproduce the actual interaction gives false confidence.
+Use [tdd](../tdd/SKILL.md) to turn the minimized reproduction or agreed behavior-change example into a failing test at the real boundary. A shallow test that cannot reproduce the actual interaction gives false confidence.
 
 If no suitable test boundary exists, document that limitation and retain the reproduction as evidence. Discuss the missing boundary rather than adding unrelated architecture or pretending the bug is covered.
 
-Make the smallest change that addresses the demonstrated cause. Do not add retries, timeouts, validation layers, or refactors merely because they might suppress the symptom.
+Change the narrowest responsible layer that owns the incorrect behavior, or the agreed contract being changed. Preserve surrounding behavior, interfaces outside scope, and the user's changes. Do not add retries, timeouts, validation layers, renaming, cleanup, or abstractions merely because they might suppress the symptom or improve unrelated code.
 
 If the fix fails, return to the evidence and revise the hypothesis instead of layering on another fix. After three failed repair attempts, stop and discuss the assumptions and architecture with the user before attempting another. Repeated failure is a reason to reconsider the approach, not proof that the architecture is wrong.
 
 ## 5. Verify and close
 
-Use `verify` for evidence freshness and completion claims; it does not expand the repair's scope.
+Use [verify](../verify/SKILL.md) for evidence freshness and completion claims; it does not expand the repair's scope.
 
-- Rerun the original, unminimized reproduction and the regression test.
+- Rerun the original, unminimized reproduction and the regression test, or the agreed acceptance example and preservation checks for a behavior change.
 - Check the affected behavior and relevant surrounding tests. Use the same workload and acceptance threshold for performance or intermittent failures.
 - Remove only this investigation's temporary instrumentation and disposable artifacts; preserve evidence that still matters.
 - State the actual result. Distinguish a verified fix from an untested change, partial mitigation, unavailable check, or blocked investigation.
 - Report the cause and decisive proof, any authorized changes, and unresolved risk. Include the causal explanation in a commit or pull-request description when publication is part of the task.
+
+Stop when the bounded change is verified or an exact blocker requires human input. A patch request alone does not authorize a commit, PR, deployment, ticket update, or self-approval. When called by Ship, return the change and evidence to that delivery owner; do not start a competing delivery or review loop. If independent review is requested, use [roast](../roast/SKILL.md) without granting the reviewer repair authority.
 
 ## Supporting techniques
 

@@ -23,13 +23,13 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | Source | Initial count | Remaining | Initial selection |
 | --- | --- | --- | --- |
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 20 | Complete collection |
-| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 8 | Complete skill collection; not its engine or gateway |
+| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 6 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 0 | `skill-creator` only; now removed |
-| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 5 | Complete skill collection |
+| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 4 | Complete skill collection |
 
-Human keep/drop passes have removed 30 skills outright; three three-to-one and
-three two-to-one consolidations leave **33 imported/adapted skills**.
-The locally built `shepherd` and `synthesize` bring the active total to **35**. All
+Human keep/drop passes have removed 30 skills outright; four three-to-one and
+four two-to-one consolidations leave **30 imported/adapted skills**.
+The locally built `shepherd` and `synthesize` bring the active total to **32**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -57,9 +57,20 @@ tracker labels, and cross-skill references.
 - [`interrogate`](./.agents/skills/interrogate/SKILL.md) combines `grilling`,
   `grill-me`, and `grill-with-docs`: one interview, with optional domain-model
   recording.
-- [`debug`](./.agents/skills/debug/SKILL.md) combines `diagnosing-bugs`,
-  `systematic-debugging`, and `investigate-first`: evidence-led diagnosis,
-  followed by a bounded repair only when authorized.
+- [`patch`](./.agents/skills/patch/SKILL.md) combines `debug` and `surgical-patch`,
+  retaining the earlier `diagnosing-bugs`, `systematic-debugging`, and
+  `investigate-first` foundations. `/patch` authorizes bounded repair after
+  diagnosis; explicit investigate/explain-only requests remain non-mutating.
+  Small requested behavior changes use agreed acceptance examples rather than
+  invented defects. Supporting tools and evidence discipline are preserved.
+- [`roast`](./.agents/skills/roast/SKILL.md) combines `code-review`,
+  `requesting-code-review`, and `caveman-review` around the
+  [original intent](./.agents/skills/roast/intent.md), preserved unchanged.
+  Review any supplied material against relevant requirements, intent, and
+  doctrine; return one prioritized findings list with evidence, confidence,
+  a fix recommendation, and verification. Preserve requirements/standards
+  coverage and optional terse output without implicit repairs or approval.
+  Ship and Joe-mode route PR reviews through Roast.
 - [`tdd`](./.agents/skills/tdd/SKILL.md) combines both test-driven development
   skills: observed red and green, with small behavior-preserving refactoring
   allowed after green and followed by another test run.
@@ -100,7 +111,7 @@ tracker labels, and cross-skill references.
 Further reworking and integration of doctrine are subsequent work.
 
 Lockfile keys follow local names for imported skills; source paths and hashes
-retain upstream provenance, not hashes of locally adapted content. Its 33
+retain upstream provenance, not hashes of locally adapted content. Its 30
 records exclude locally authored `shepherd` and `synthesize`, which have no
 upstream imports to record. Counts above assign imported skills to their primary source; additional
 sources are recorded in [NOTICE.md](./NOTICE.md).

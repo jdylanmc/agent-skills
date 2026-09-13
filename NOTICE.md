@@ -31,12 +31,22 @@ Modifications to Apache-licensed files must carry prominent change notices.
 - `interrogate` combines `grilling`, `grill-me`, and `grill-with-docs` from
   Matt Pocock's collection. Its primary lock record retains the imported
   `skills/productivity/grilling/SKILL.md` source.
-- `debug` combines Matt Pocock's `diagnosing-bugs`, Jesse Vincent's
-  `systematic-debugging` from Superpowers, and Julius Brussee's `investigate-first`.
+- `patch` combines the previously consolidated `debug` with Julius Brussee's
+  `surgical-patch`: Matt Pocock's `diagnosing-bugs`, Jesse Vincent's
+  `systematic-debugging` from Superpowers, and Julius Brussee's `investigate-first`
+  remain part of its foundations.
   Its primary lock record retains `skills/engineering/diagnosing-bugs/SKILL.md`.
   The supporting tracing, waiting, validation, test-pollution, and evaluation
   material comes from Superpowers; the human-assisted loop template comes from
   Matt Pocock's collection. All three MIT notices above apply.
+- `roast` combines Matt Pocock's `code-review`, Jesse Vincent's
+  `requesting-code-review` and reviewer template, and Julius Brussee's
+  `caveman-review`. Its primary lock record retains
+  `skills/engineering/code-review/SKILL.md`. The new any-material workflow,
+  code heuristics, reviewer contract, and optional terse output implement this
+  repository's original Roast intent, copied unchanged from the archive.
+  All three MIT notices above apply alongside the repository license for new
+  material. The old atomic review machinery is not restored.
 - `tdd` combines Matt Pocock's `tdd` with Jesse Vincent's
   `test-driven-development` from Superpowers, including the adapted
   `writing-good-tests.md` reference. Its primary lock record retains

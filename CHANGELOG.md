@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Consolidate `code-review`, `requesting-code-review`, and `caveman-review`
+  into `roast`, preserving its original intent unchanged: any-material review,
+  relevant intent/doctrine, one prioritized evidence-backed findings list,
+  optional terse output, no implicit fixes or approval. Route delivery reviews
+  through Roast.
+- Consolidate `debug` and `surgical-patch` into `patch`: evidence-led bounded
+  repair by invocation, explicit diagnosis-only preserved, behavior-change
+  acceptance proof, and unchanged supporting tools. Keep 32 active skills.
 - Remove `cavecrew`, its agent-preset/Claude setup guidance, and installer
   provenance entry. Keep 35 active skills.
 - Merge `ask-matt` and `using-superpowers` into session-long `joe-mode`:

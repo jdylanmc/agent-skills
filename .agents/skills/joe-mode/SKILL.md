@@ -71,9 +71,9 @@ Fill available capacity with independent work. Do not stop all delivery while th
 | Enough is known to specify an outcome | [to-spec](../to-spec/SKILL.md): publish the scoped spec through its existing test-seam/human checks and configured tracker. Supply the aligned foundation and agreed decisions; do not invent missing requirements. |
 | An approved spec needs actionable slices | [to-tickets](../to-tickets/SKILL.md): human-approved vertical slices, blocking edges, and configured readiness labels. Reserve the delivery group before publication and reconcile the resulting IDs afterward. |
 | External requests need classification | [triage](../triage/SKILL.md): apply the configured workflow to incoming external work. Do not retriage generated, already-ready tickets. |
-| Ready, unowned delivery work can run | [ship](../ship/SKILL.md): isolated implementation, [tdd](../tdd/SKILL.md), independent [code-review](../code-review/SKILL.md), [verify](../verify/SKILL.md), one PR, and mandatory [shepherd](../shepherd/SKILL.md). |
+| Ready, unowned delivery work can run | [ship](../ship/SKILL.md): isolated implementation, [tdd](../tdd/SKILL.md), independent [roast](../roast/SKILL.md), [verify](../verify/SKILL.md), one PR, and mandatory [shepherd](../shepherd/SKILL.md). |
 | A published PR needs attention | Its existing Shepherd: observe checks/reviews/policies and route functional feedback to Ship on that same PR. Join the current owner rather than starting another monitor. |
-| A failure or new evidence invalidates a slice | [debug](../debug/SKILL.md) or discovery, according to whether the gap is a defect or an unsettled requirement. Respect diagnosis-only scope and return supported repairs to the delivery owner. |
+| A failure or new evidence invalidates a slice | [patch](../patch/SKILL.md) or discovery, according to whether the gap is a defect or an unsettled requirement. Pass diagnosis-only scope when no repair is authorized; a read-only investigation does not become permission to fix. Return authorized repairs to the delivery owner. |
 
 These are paths through the decision tree, not a mandatory global sequence. A small, understood issue need not create another spec, ADR, or discovery run. Research can lead to a POC; a failed POC can return to discovery; review feedback can return to Ship. Once a route yields its required output, automatically reevaluate and dispatch the next appropriate route within existing permissions.
 
@@ -104,6 +104,8 @@ Use completion notifications or the runtime's documented wait mechanism. Refresh
 
 For each delivery, surface the actual PR URL, covered issue/spec references, concise change summary, acceptance/check evidence, outstanding decisions, and confirmed Shepherd owner/status. Distinguish **draft/in progress**, **blocked**, and **ready for human review** using Ship's evidence and current provider state. "PR created" does not by itself mean review-ready.
 
+Every PR handed to the human must have a Roast covering its current candidate, whether produced by this run or supplied by a coworker. Reuse a still-applicable review; otherwise route to Roast without taking over the PR's delivery owner or silently authorizing edits. Review a draft's available candidate with its incomplete scope explicit. Missing review capability requires reporting the gap and seeking direction, not a clean-review or review-ready claim.
+
 Bring human feedback to the same owner and PR. A review-ready PR does not end Joe-mode or stop discovery. After merging/closure, reconcile the backlog and dependencies before dispatching more work; do not manufacture follow-up work or close unrelated tracker items.
 
 When no path can progress, explain what is awaited and remain active for the next event or user turn. Do not invent tickets to keep agents busy. When paused or stopped, stop new dispatch, coordinate an explicit pause/transfer for active owners, preserve their work and monitoring state, and report any owner still running. Never silently abandon a Shepherd or pretend it persists after runtime shutdown.
@@ -112,6 +114,6 @@ On re-anchoring, settle active ownership first. Do not silently expand the old s
 
 ## Other requests inside Joe-mode
 
-Select an existing relevant skill rather than forcing every turn through delivery: for example [refactor](../refactor/SKILL.md), [migration](../migration/SKILL.md), [surgical-patch](../surgical-patch/SKILL.md), [synthesize](../synthesize/SKILL.md), [wait-what](../wait-what/SKILL.md), or [handoff](../handoff/SKILL.md). Codebase-health findings can feed discovery only when within the anchor; ask before expanding scope. Communication preferences do not grant additional work authority.
+Select an existing relevant skill rather than forcing every turn through delivery: for example [roast](../roast/SKILL.md) for any supplied material, [patch](../patch/SKILL.md) for bounded repair or explicitly scoped diagnosis, [refactor](../refactor/SKILL.md), [migration](../migration/SKILL.md), [synthesize](../synthesize/SKILL.md), [wait-what](../wait-what/SKILL.md), or [handoff](../handoff/SKILL.md). Codebase-health findings can feed discovery only when within the anchor; ask before expanding scope. Communication preferences do not grant additional work authority.
 
 Read and use the current local skill for the route, not a remembered or upstream workflow. Prefer process guidance appropriate to the actual problem, but do not force brainstorming for already-ready work or call every loosely related skill. Missing skills or capabilities are explicit blockers for their route, not permission to invent tools or silently remove required review.

@@ -1,6 +1,6 @@
-# Academic Test: Debug Skill
+# Academic Test: Patch Skill
 
-You have access to `.agents/skills/debug/SKILL.md`. This is a read-only evaluation; do not execute the workflow.
+You have access to `.agents/skills/patch/SKILL.md`. This is a read-only evaluation; do not execute the workflow.
 
 Read the skill and answer these questions based SOLELY on what the skill says:
 
@@ -11,5 +11,7 @@ Read the skill and answer these questions based SOLELY on what the skill says:
 5. What should you do if you don't fully understand the issue?
 6. What should you report when a usable reproduction is blocked?
 7. What should happen after three failed repair attempts?
+8. How does invoking `/patch` differ from asking to investigate or explain only?
+9. How should a requested small behavior change be proved without inventing a defect?
 
 Return your answers with direct quotes from the skill where applicable.

@@ -46,9 +46,11 @@ Give each implementer this discipline:
 
 When a first meaningful candidate is integrated, push the delivery branch and open a draft PR using step 4. Do not manufacture an empty commit just to open one. Ship retains custody while building; do not run a competing Shepherd repair loop against active implementation.
 
+Before handing even a draft PR to the human, have Roast review the available candidate with its incomplete scope stated explicitly. This scoped review does not replace the whole-deliverable review below. If review is unavailable, report the gap and seek direction rather than present an unreviewed PR as having passed review.
+
 ## 3. Review and prove the whole deliverable
 
-Use [code-review](../code-review/SKILL.md) on the committed delivery branch, passing the review base and the issue/spec with all in-scope ticket requirements. Review the whole integrated result, not only the last worker's commit.
+Use [roast](../roast/SKILL.md) with an independent reviewer on the committed delivery branch, passing the review base and the issue/spec with all in-scope ticket requirements. Review the whole integrated result, not only the last worker's commit. Require both requirements and standards coverage; receive one prioritized findings list with evidence and limits, not a reviewer's approval.
 
 Reconcile findings against the requirements. Reapply the simplicity lens during remediation. Send supported in-scope fixes to one implementation worker, integrate its changes, rerun affected checks, and independently review the changed candidate. Escalate scope changes, contested requirements, or repeated attempts without progress; do not silently dismiss findings or loop indefinitely.
 

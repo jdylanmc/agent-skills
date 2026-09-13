@@ -25,24 +25,6 @@
       "skillPath": "skills/caveman-explore/SKILL.md",
       "computedHash": "e22fc4edb9feb5046809c74d969b06092b8d7db851aa8502a53a185bba27c57a"
     },
-    "caveman-review": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/caveman-review/SKILL.md",
-      "computedHash": "36a4007c5c0c6b90b5accfee1cd769a86e4963b651dece2ce5f17a223a0abb4b"
-    },
-    "code-review": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/code-review/SKILL.md",
-      "computedHash": "caa9a086baaf9e0f7cd71f64edfa83da6821c05e826b083221f3d02e3d6a1905"
-    },
-    "debug": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
-      "computedHash": "37b5e9c624513551da790b52864dc8c84bff996a6d03a380cc6facdcc0a88354"
-    },
     "discovery": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -97,6 +79,12 @@
       "skillPath": "skills/migration/SKILL.md",
       "computedHash": "7348b2d21ca05bdecc1e4ec2c8b63515ccb1700c8a261fdbd458b04b7383945b"
     },
+    "patch": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "computedHash": "37b5e9c624513551da790b52864dc8c84bff996a6d03a380cc6facdcc0a88354"
+    },
     "poc": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -108,12 +96,6 @@
       "sourceType": "github",
       "skillPath": "skills/safe-refactor/SKILL.md",
       "computedHash": "9df34a21a7a2c18ce13dbbe4a3f66b4e91df9e4bc33c1c9da8a80261583367ec"
-    },
-    "requesting-code-review": {
-      "source": "obra/superpowers",
-      "sourceType": "github",
-      "skillPath": "skills/requesting-code-review/SKILL.md",
-      "computedHash": "004f340ae65811095d6a9bb0a759c87d0a8085c5e705dbb019b011626293d2e9"
     },
     "research": {
       "source": "mattpocock/skills",
@@ -133,6 +115,12 @@
       "skillPath": "skills/in-progress/retro/SKILL.md",
       "computedHash": "b9bd2e5e0378214bf54d2a293df50490669b845a4c2a71c8f747ce8ab365f53a"
     },
+    "roast": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/code-review/SKILL.md",
+      "computedHash": "caa9a086baaf9e0f7cd71f64edfa83da6821c05e826b083221f3d02e3d6a1905"
+    },
     "setup-matt-pocock-skills": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -150,12 +138,6 @@
       "sourceType": "github",
       "skillPath": "skills/subagent-driven-development/SKILL.md",
       "computedHash": "367cc1d3216d6672b947c8c6583dbd6440ea407beb6da75a97d3a8ee1a23640a"
-    },
-    "surgical-patch": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/surgical-patch/SKILL.md",
-      "computedHash": "028b9c3574142d19639d9f8eb11fbb01c58479f8f441e957d598a7215e79f95d"
     },
     "tdd": {
       "source": "mattpocock/skills",
