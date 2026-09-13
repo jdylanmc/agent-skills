@@ -11,6 +11,7 @@ renaming, and adaptation. Installation does not run the imported workflows.
 
 ```text
 .agents/skills/       Imported and locally rebuilt skills: real files, not symlinks
+.agents/COMMIT-STYLE.md Shared default for library-generated commit messages
 doctrine/            Human-owned engineering philosophy and integrity manifest
 intent.md            Human-owned purpose of this repository
 skills-lock.json     Installer source and content records
@@ -23,13 +24,14 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | Source | Initial count | Remaining | Initial selection |
 | --- | --- | --- | --- |
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 20 | Complete collection |
-| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 6 | Complete skill collection; not its engine or gateway |
+| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 5 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 0 | `skill-creator` only; now removed |
-| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 4 | Complete skill collection |
+| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 3 | Complete skill collection |
 
 Human keep/drop passes have removed 30 skills outright; four three-to-one and
-four two-to-one consolidations leave **30 imported/adapted skills**.
-The locally built `shepherd` and `synthesize` bring the active total to **32**. All
+five two-to-one consolidations plus one formatter demotion leave
+**28 imported/adapted skills**.
+The locally built `shepherd` and `synthesize` bring the active total to **30**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -81,6 +83,17 @@ tracker labels, and cross-skill references.
   and `implement-spec`. It coordinates one issue or a spec's ticket graph,
   integrates isolated workers into one PR, reviews and verifies the result,
   and always hands off to `shepherd`. Feedback continues on the same PR.
+- Retire `subagent-driven-development`: retain its useful
+  [worker/report contract](./.agents/skills/ship/WORKER.md) in Ship and
+  [scoped fix-review guidance](./.agents/skills/roast/FIX-REVIEW.md) in Roast.
+  No separate executor, task-approval protocol, automatic accepted-risk rulings,
+  model-tier mandate, ledger scripts, or alternate finishing workflow remains.
+- Retire the standalone `caveman-commit` skill. Its terse Conventional Commits
+  style is now the [shared library default](./.agents/COMMIT-STYLE.md), independent
+  of chat mode. Consequential changes keep explanatory bodies; repository
+  conventions and required trailers take precedence. Keep the shared policy
+  with copied skill packages. Setup proposes a reviewed repository-local copy;
+  global Copilot configuration is not changed.
 - [`shepherd`](./.agents/skills/shepherd/SKILL.md) is rebuilt locally from its
   retained intent: ongoing observation, necessary branch maintenance, and
   functional repairs routed through Ship. A green snapshot does not end
@@ -111,7 +124,7 @@ tracker labels, and cross-skill references.
 Further reworking and integration of doctrine are subsequent work.
 
 Lockfile keys follow local names for imported skills; source paths and hashes
-retain upstream provenance, not hashes of locally adapted content. Its 30
+retain upstream provenance, not hashes of locally adapted content. Its 28
 records exclude locally authored `shepherd` and `synthesize`, which have no
 upstream imports to record. Counts above assign imported skills to their primary source; additional
 sources are recorded in [NOTICE.md](./NOTICE.md).

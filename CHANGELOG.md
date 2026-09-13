@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Retire `subagent-driven-development` into Ship's bounded worker/report
+  contract and Roast's scoped fix review, without the alternate executor or
+  autonomous approval machinery.
+- Make Caveman-style commit messages the shared default throughout this
+  library and remove `caveman-commit` as a standalone skill. Wire commit
+  producers and repository-local setup; preserve consequential bodies,
+  project conventions, required trailers, and existing Git authority.
+  Global Copilot configuration is unchanged. Keep 30 active skills.
 - Consolidate `code-review`, `requesting-code-review`, and `caveman-review`
   into `roast`, preserving its original intent unchanged: any-material review,
   relevant intent/doctrine, one prioritized evidence-backed findings list,

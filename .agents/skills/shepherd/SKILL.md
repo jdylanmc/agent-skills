@@ -64,6 +64,8 @@ Regenerate derived output from its source. Mechanical conflict resolution is all
 
 Run the repository's declared validation and [verify](../verify/SKILL.md) after maintenance. Push the updated delivery branch through the repository's normal authorized workflow and re-observe the PR. If pushing is rejected, inspect the cause and obtain direction rather than overwrite unrelated work. Functional failures return through Ship; do not turn maintenance into product implementation.
 
+Use the [shared commit-message policy](../../COMMIT-STYLE.md) for newly authored maintenance messages. Preserve existing messages during replay/rebase; this policy does not authorize history rewriting or additional commits.
+
 ### Feedback repair
 
 Call [ship](../ship/SKILL.md) with this PR, its requirements, the new findings, and the fact that this Shepherd retains monitoring ownership. Record the repair owner before waiting. Do not concurrently modify the branch or start another repair for the same findings.

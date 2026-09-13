@@ -57,7 +57,10 @@ Modifications to Apache-licensed files must carry prominent change notices.
 - `ship` combines Matt Pocock's `implement` and `implement-spec` with Julius
   Brussee's `lean-build`, adapted into a delivery coordinator.
   Its primary lock record retains `skills/engineering/implement/SKILL.md`.
-  Both MIT notices apply.
+  It also retains adapted worker/report guidance from Jesse Vincent's
+  `subagent-driven-development`; Roast retains that package's scoped
+  re-review guidance. The alternate executor and its runtime scripts are
+  retired. All three MIT notices apply.
 - `joe-mode` combines Matt Pocock's `ask-matt` routing and phase-boundary
   guidance with Jesse Vincent's `using-superpowers` skill-selection discipline.
   Its primary lock record retains `skills/engineering/ask-matt/SKILL.md`.
@@ -68,6 +71,12 @@ Modifications to Apache-licensed files must carry prominent change notices.
 
 These workflows and their callers have been adapted locally. Original import
 records and contents remain recoverable from Git history.
+
+The shared [commit-message policy](./.agents/COMMIT-STYLE.md) adapts Julius
+Brussee's `caveman-commit`. The standalone skill is retired; its policy is a
+library default rather than a routable import. The Caveman MIT notice above
+continues to apply alongside the repository license for new material.
+Preserve applicable attribution and license when distributing a policy copy.
 
 `poc` adapts Matt Pocock's `prototype`, including its logic and UI references,
 and retains the original `skills/engineering/prototype/SKILL.md` import record.

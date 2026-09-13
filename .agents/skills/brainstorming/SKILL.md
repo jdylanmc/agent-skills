@@ -3,6 +3,8 @@ name: brainstorming
 description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
 ---
 
+When this workflow authorizes a commit, use the [shared commit-message policy](../../COMMIT-STYLE.md). Formatting does not expand the workflow's write permissions or override repository conventions.
+
 # Brainstorming Ideas Into Designs
 
 Help turn ideas into fully formed designs and specs through natural collaborative dialogue.

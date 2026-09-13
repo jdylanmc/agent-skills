@@ -35,3 +35,5 @@ Read the repository's actual worktree guidance before creating any workspace. Do
 Do not create `.claude/`, `CLAUDE.md`, Claude hooks, or Claude permission configuration to make Joe-mode work. Honor any repository guidance already present, but do not privilege Claude files over the instructions the current Copilot harness actually supplies.
 
 Provider access uses the configured GitHub CLI or Azure DevOps integration and authenticated identity. A Copilot subscription, Git author email, or an available shell is not proof of tracker permissions.
+
+All commit-producing workers receive the [shared commit-message policy](../../COMMIT-STYLE.md). It applies independently of chat style, respects repository/operator requirements, and does not authorize additional Git actions. Keep it with the library; do not install it into global Copilot configuration as a side effect.

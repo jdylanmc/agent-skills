@@ -82,6 +82,8 @@ Use [verify](../verify/SKILL.md) for evidence freshness and completion claims; i
 
 Stop when the bounded change is verified or an exact blocker requires human input. A patch request alone does not authorize a commit, PR, deployment, ticket update, or self-approval. When called by Ship, return the change and evidence to that delivery owner; do not start a competing delivery or review loop. If independent review is requested, use [roast](../roast/SKILL.md) without granting the reviewer repair authority.
 
+When a separate authorization includes committing, use the [shared commit-message policy](../../COMMIT-STYLE.md). Do not drop consequential explanation merely to keep the message terse.
+
 ## Supporting techniques
 
 Load these only when relevant; examples do not expand the task's mutation authority or justify unrelated changes:

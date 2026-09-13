@@ -26,6 +26,8 @@ Ship owns scheduling, integration, review, and publication. Give implementation 
 
 Use artifact pointers for the spec, tickets, code, and prior findings instead of copying the conversation. A shared exploration worker is useful only when several tasks need the same substantial investigation; save its findings outside the repository and pass the path.
 
+Use the [worker contract](WORKER.md) for dispatch and return: complete bounded task, authorized workspace, actual start/result commits, acceptance evidence, and explicit blockers. Reuse a known worker for fixes when supported. Use configured runtime model preferences; do not revive a separate executor, mandatory model tiers, special ledger tooling, or an alternate finishing route.
+
 For a single issue, dispatch one implementation worker. For a specification:
 
 - Dispatch independent frontier tasks concurrently within the available, authorized capacity. Each worker has its own branch and worktree, created from the latest integrated delivery branch.
@@ -36,6 +38,8 @@ For a single issue, dispatch one implementation worker. For a specification:
 
 If unfinished tasks remain but none can run and no worker is active, report the blocking dependencies and request direction instead of waiting forever.
 
+Review completed worker scopes with Roast before dependent work relies on them. Batch disjoint completed scopes when the review still covers each task and clearly attributes findings; do not create another reviewer per checklist axis. For a single-task delivery, the whole-deliverable Roast below can serve this purpose without an identical duplicate review. Open acceptance gaps or missing evidence remain explicit blockers, not completed tasks parked behind an agent ruling.
+
 Give each implementer this discipline:
 
 - Trace the entry point through the layers owning the behavior and invariants. Build a complete end-to-end outcome, not an arbitrary one-file patch.
@@ -43,6 +47,8 @@ Give each implementer this discipline:
 - Omit speculative modes, providers, configuration, extensibility, and polish. Add infrastructure or dependencies only when acceptance or correct lifecycle handling requires them; explain material tradeoffs.
 - Use [tdd](../tdd/SKILL.md) at agreed seams, with small behavior-preserving refactoring after green. Run focused tests and typechecking regularly. Report agreed exceptions honestly.
 - Preserve unrelated behavior and user changes. Return commits, checks actually run, unmet criteria, and blockers.
+
+All authored commit messages use the [shared commit-message policy](../../COMMIT-STYLE.md), including worker and integration commits. Preserve target-repository conventions, required trailers, and existing Git authority; formatting is not permission to commit or rewrite history.
 
 When a first meaningful candidate is integrated, push the delivery branch and open a draft PR using step 4. Do not manufacture an empty commit just to open one. Ship retains custody while building; do not run a competing Shepherd repair loop against active implementation.
 
@@ -53,6 +59,8 @@ Before handing even a draft PR to the human, have Roast review the available can
 Use [roast](../roast/SKILL.md) with an independent reviewer on the committed delivery branch, passing the review base and the issue/spec with all in-scope ticket requirements. Review the whole integrated result, not only the last worker's commit. Require both requirements and standards coverage; receive one prioritized findings list with evidence and limits, not a reviewer's approval.
 
 Reconcile findings against the requirements. Reapply the simplicity lens during remediation. Send supported in-scope fixes to one implementation worker, integrate its changes, rerun affected checks, and independently review the changed candidate. Escalate scope changes, contested requirements, or repeated attempts without progress; do not silently dismiss findings or loop indefinitely.
+
+Use Roast's [scoped fix-review guidance](../roast/FIX-REVIEW.md) to verify each finding and inspect new breakage without needlessly repeating an unchanged full review. It does not replace whole-deliverable coverage. Unresolved human decisions stay with the human; there is no retry cap that automatically accepts defects or authorizes product risk.
 
 Discover the repository's declared validation from its configuration and workflow files. Run the required checks, including the full test suite when applicable, and exercise the actual end-to-end behavior. Use [verify](../verify/SKILL.md) for evidence freshness. A passing worker check alone does not prove the integrated branch.
 

@@ -71,8 +71,13 @@ Show the user a draft of:
 
 - The `## Agent skills` block for the actual repository instructions used by the harness (see step 4)
 - The contents of `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and `docs/agents/triage-labels.md` (the last when `triage` or `joe-mode` is installed)
+- A repository-local `docs/agents/commit-style.md` copy of the [shared commit-message policy](../../COMMIT-STYLE.md), retaining applicable attribution/license and the target repository's explicit overrides
 
 Let them edit before writing.
+
+Read the shared policy before proposing its copy. If the library was copied without that dependency, obtain its location rather than inventing an equivalent or reinstalling the retired formatter. Reuse or reconcile an existing repository policy; do not overwrite human customizations. This setup never edits global Copilot instructions.
+
+Make the proposed local copy self-contained: read the policy's attribution and applicable license sources, include the required notices in the copied document, and replace library-relative references that would not resolve in the target repository. Missing license sources block distributing the copy; ask for their location rather than dropping attribution.
 
 ### 4. Write
 
@@ -100,6 +105,10 @@ The block:
 ### Domain docs
 
 [one-line summary of layout: "single-context" or "multi-context"]. See `docs/agents/domain.md`.
+
+### Commit messages
+
+Use the library's terse Conventional Commits default in `docs/agents/commit-style.md`, subject to this repository's explicit conventions and required trailers. This formatting policy grants no staging, commit, or history-rewrite authority.
 ```
 
 Include the `### Triage labels` sub-block, and write `docs/agents/triage-labels.md`, when Section B ran for `triage` or `joe-mode`. Otherwise omit both.
@@ -112,6 +121,7 @@ Then write the docs files using the seed templates in this skill folder as a sta
 - [issue-tracker-local.md](./issue-tracker-local.md): local-markdown issue tracker
 - [triage-labels.md](./triage-labels.md): label mapping (when `triage` or `joe-mode` is installed)
 - [domain.md](./domain.md): domain doc consumer rules + layout
+- [shared commit-message policy](../../COMMIT-STYLE.md): reviewed local commit-style guidance; preserve its attribution/license and approved repository-specific differences
 
 For "other" issue trackers, write `docs/agents/issue-tracker.md` from scratch using the user's description.
 
