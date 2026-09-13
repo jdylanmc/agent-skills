@@ -28,6 +28,12 @@ Modifications to Apache-licensed files must carry prominent change notices.
 
 ## Consolidated skills
 
+- `discovery` retains Matt Pocock's `wayfinder` provenance and absorbs useful
+  inquiry, alternative-comparison, visual-question, and artifact-checking
+  guidance from Jesse Vincent's `brainstorming`. The separate Superpowers
+  workflow, reviewer template, and browser runtime are retired. Both MIT
+  notices apply alongside the repository license for new Scout integration.
+  The human-authored Discovery intent and Scout doctrine remain unchanged.
 - `interrogate` combines `grilling`, `grill-me`, and `grill-with-docs` from
   Matt Pocock's collection. Its primary lock record retains the imported
   `skills/productivity/grilling/SKILL.md` source.

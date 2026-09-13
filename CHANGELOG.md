@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fold Brainstorming's useful inquiry and comparison techniques into Discovery
+  and remove its standalone package and browser runtime. Apply Scout doctrine
+  to consequential design-space exploration with explicit criteria, evidence,
+  alternatives, and stopping reasons; retain human decisions and the ten-stage
+  evidence/alignment/persistence cycle. Keep 29 active skills.
 - Retire `subagent-driven-development` into Ship's bounded worker/report
   contract and Roast's scoped fix review, without the alternate executor or
   autonomous approval machinery.

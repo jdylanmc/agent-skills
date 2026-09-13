@@ -26,12 +26,12 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 20 | Complete collection |
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 5 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 0 | `skill-creator` only; now removed |
-| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 3 | Complete skill collection |
+| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 2 | Complete skill collection |
 
 Human keep/drop passes have removed 30 skills outright; four three-to-one and
-five two-to-one consolidations plus one formatter demotion leave
-**28 imported/adapted skills**.
-The locally built `shepherd` and `synthesize` bring the active total to **30**. All
+six two-to-one consolidations plus one formatter demotion leave
+**27 imported/adapted skills**.
+The locally built `shepherd` and `synthesize` bring the active total to **29**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -41,6 +41,14 @@ tracker labels, and cross-skill references.
   [`research`](./.agents/skills/research/SKILL.md) and bounded experiments,
   aligns with the human, models the domain, and preserves the full foundation
   plus compact handoff. Tracker maintenance is optional and approval-gated.
+- Fold `brainstorming` into Discovery: retain scaled inquiry, meaningful
+  alternatives, just-in-time visual comparisons, and artifact fidelity checks.
+  Apply the verified [Scout doctrine](./doctrine/scout.doctrine.md) to
+  consequential uncertainty: criteria before favorites, evidence across
+  meaningful routes, and explicit stopping reasons rather than an option quota.
+  Preserve the original Discovery intent and ten-stage cycle. Interactive
+  visuals use POC; remove the standalone browser runtime, spec-review template,
+  and obsolete planning route. Specification and delivery remain separate.
 - Rename `prototype` to [`poc`](./.agents/skills/poc/SKILL.md) and retain the
   original [proof-of-concept intent](./.agents/skills/poc/intent.md) unchanged.
   Broaden UI/logic demos to runnable technology-feasibility experiments:
@@ -124,15 +132,15 @@ tracker labels, and cross-skill references.
 Further reworking and integration of doctrine are subsequent work.
 
 Lockfile keys follow local names for imported skills; source paths and hashes
-retain upstream provenance, not hashes of locally adapted content. Its 28
+retain upstream provenance, not hashes of locally adapted content. Its 27
 records exclude locally authored `shepherd` and `synthesize`, which have no
 upstream imports to record. Counts above assign imported skills to their primary source; additional
 sources are recorded in [NOTICE.md](./NOTICE.md).
 
-Overlapping concepts and provider-specific assumptions are expected. Some kept
-skills still reference removed skills: `retro` and `brainstorming`
-contain routes or invocations. Resolve these during the rework pass before using
-the affected flows; the selection pass does not silently redesign them.
+Overlapping concepts and provider-specific assumptions are expected. `retro`
+still invokes a removed writing skill. Resolve that dependency during the
+rework pass before using the affected flow; the selection pass does not
+silently redesign it.
 
 The initial import uses CLI version `1.5.23`, project scope, Copilot's
 `.agents/skills/` directory, copy mode, and disabled telemetry:
