@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Rename `prototype` to `poc` and broaden it to bounded, runnable feasibility
+  experiments, retaining adapted logic/UI demos. Restore the original discovery
+  and proof-of-concept intents unchanged. Rebuild discovery around research,
+  experiment findings, human alignment, domain modeling, and preserved context;
+  remove automatic tracker and product writes from this discovery path.
+  Keep `ask-matt` and `using-superpowers` separate for the next pass.
+  Inventory remains 37 active skills.
 - Implement `synthesize` from its unchanged intent: flexible source material
   and custom altitudes, Caveman/full/micro/nano presets, grounded meaning,
   separate non-overwriting output, and measured-only token-savings claims.

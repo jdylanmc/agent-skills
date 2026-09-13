@@ -1,4 +1,6 @@
-# UI Prototype
+# UI Proof of Concept
+
+Use this presentation shape within the isolation, execution, and findings boundaries in [poc](SKILL.md). All page and route changes below happen only in the agreed scratch copy or isolated worktree, never the working product checkout. Use synthetic fixtures and fake authentication, not real data or secrets.
 
 Generate **several radically different UI variations** on a single route, switchable from a floating bottom bar. The user flips between variants in the browser, picks one (or steals bits from each), then throws the rest away.
 
@@ -13,11 +15,11 @@ If the question is about logic/state rather than what something looks like, this
 
 ## Two sub-shapes: strongly prefer sub-shape A
 
-A UI prototype is much easier to judge when it's **butting up against the rest of the app**: real header, real sidebar, real data, real density. A throwaway route on its own is a vacuum: every variant looks fine in isolation. Default to sub-shape A whenever there's a plausible existing page to host the variants. Only reach for sub-shape B if the prototype genuinely has no nearby home.
+A UI prototype is easier to judge with the app's surrounding layout: header, sidebar, and realistic density using synthetic data. Default to sub-shape A when an isolated copy of an existing page can safely host the variants. Use sub-shape B when that context is unavailable or unnecessary.
 
 ### Sub-shape A: adjustment to an existing page (preferred)
 
-The route already exists. Variants are rendered **on the same route**, gated by a `?variant=` URL search param. The existing data fetching, params, and auth all stay. Only the rendering swaps. This is the default; pick it unless there's a specific reason not to.
+The route already exists in the isolated copy. Variants render **on the same route**, gated by a `?variant=` URL search param. Preserve the page's layout and parameter shape, but replace live data fetching and authentication with local fixtures or stubs. Only the rendering swaps between variants.
 
 If the prototype is for something that doesn't yet have a page but *would naturally live inside one* (a new section of the dashboard, a new card on the settings screen, a new step in an existing flow), it's still sub-shape A. Mount the variants inside the host page.
 
@@ -70,7 +72,7 @@ return (
 );
 ```
 
-For sub-shape A (existing page): keep all the existing data fetching above the switcher; only the rendered subtree changes per variant.
+For sub-shape A (existing page): keep fixture loading above the switcher; only the rendered subtree changes per variant. Do not reconnect live data fetching.
 
 For sub-shape B (new page): the throwaway route under `/prototype/<name>` mounts the same switcher.
 
@@ -97,16 +99,13 @@ Surface the URL (and the `?variant=` keys). The user will flip through whenever 
 
 ### 6. Capture the answer and clean up
 
-Once a variant has won, capture the answer (which variant and why), then capture the prototype the way the [SKILL](SKILL.md) describes. Fold the winner into the real code and move the rest onto the throwaway branch, not into main:
+Run the variants, exercise the switcher, and record the observed behavior. Capture the human's preference and reasoning when supplied; otherwise mark that judgment pending. Return the full set of variants and findings as [poc](SKILL.md) describes, including the local run command and any remaining server.
 
-- **Sub-shape A**: fold the winner into the existing page; drop the losing variants and the switcher from main.
-- **Sub-shape B**: promote the winning variant to a real route; drop the throwaway route and the switcher from main.
-
-The full set of variants is the primary source, so it lands on the throwaway branch, not the bin, since variant components and the switcher left in the main branch rot fast and confuse the next reader.
+Keep the experiment in its scratch environment. Do not promote a winning variant, commit a branch, or alter the product page. A later, separately authorized implementation can use the findings without treating the experimental code as production-ready.
 
 ## Anti-patterns
 
 - **Variants that differ only in colour or copy.** That's a tweak, not a prototype. Real variants disagree about structure.
 - **Sharing too much code between variants.** A shared `<Header>` is fine; a shared `<Layout>` defeats the point. Each variant should be free to throw out the layout.
 - **Wiring variants to real mutations.** Read-only prototypes are fine. If a variant needs to mutate, point it at a stub: the question is "what should this look like", not "does the backend work".
-- **Promoting the prototype directly to production.** The variant code was written under prototype constraints (no tests, minimal error handling). Rewrite it properly when you fold it in.
+- **Promoting the prototype directly to production.** The variant code was written under experimental constraints. Return findings; product implementation is separate work.

@@ -18,13 +18,15 @@ Create a new file under `.scratch/<feature-slug>/` (creating the directory if ne
 
 Read the file at the referenced path. The user will normally pass the path or the issue number directly.
 
-## Discovery operations
+## Legacy discovery maps
 
-Used by `/discovery`. The **map** is a file with one **child** file per ticket.
+Older discovery maps use the layout below. Current `/discovery` reads these files as evidence; it does not automatically create, claim, or resolve tickets or build dependency graphs. Experimental questions route to `/poc`, including items with the old `prototype` type. Do not migrate existing types automatically.
+
+Local tracker files are repository writes. Any discovery-tracker maintenance requires an exact proposed change and explicit approval outside the read-only cycle. Delivery ticketing belongs to `/to-tickets`, not discovery.
 
 - **Map**: `.scratch/<effort>/map.md` (the Notes / Decisions-so-far / Fog body).
 - **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`interrogate`/`task`); a `Status:` line records `claimed`/`resolved`.
 - **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
 - **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
-- **Claim**: set `Status: claimed` and save before any work.
+- **Legacy claim**: `Status: claimed` records ownership. Changing it requires approval; it is not a discovery intake step.
 - **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.

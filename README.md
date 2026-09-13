@@ -34,6 +34,19 @@ The locally built `shepherd` and `synthesize` bring the active total to **37**. 
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
 
+- Restore the original [`discovery` intent](./.agents/skills/discovery/intent.md)
+  unchanged. Discovery now gathers evidence through
+  [`research`](./.agents/skills/research/SKILL.md) and bounded experiments,
+  aligns with the human, models the domain, and preserves the full foundation
+  plus compact handoff. Tracker maintenance is optional and approval-gated.
+- Rename `prototype` to [`poc`](./.agents/skills/poc/SKILL.md) and retain the
+  original [proof-of-concept intent](./.agents/skills/poc/intent.md) unchanged.
+  Broaden UI/logic demos to runnable technology-feasibility experiments:
+  isolated code, observed results, edge cases, and findings returned to discovery,
+  not automatic product changes or publication. Research also returns findings
+  without automatic repository writes.
+- Keep `ask-matt` and `using-superpowers` separate; their proposed `joe-mode`
+  merger is deferred.
 - [`interrogate`](./.agents/skills/interrogate/SKILL.md) combines `grilling`,
   `grill-me`, and `grill-with-docs`: one interview, with optional domain-model
   recording.

@@ -52,6 +52,16 @@ Modifications to Apache-licensed files must carry prominent change notices.
 These workflows and their callers have been adapted locally. Original import
 records and contents remain recoverable from Git history.
 
+`poc` adapts Matt Pocock's `prototype`, including its logic and UI references,
+and retains the original `skills/engineering/prototype/SKILL.md` import record.
+Its broader experiment workflow uses this repository's unchanged archived
+proof-of-concept intent. `discovery` retains the `wayfinder` import provenance
+while its workflow is rebuilt around this repository's unchanged discovery
+intent. The research workflow and affected routing/tracker references are
+adapted to return evidence without automatic repository or tracker writes.
+Matt Pocock's MIT notice applies alongside the repository MIT license for new
+material. No archived runtime or atomic composition is restored.
+
 `shepherd` is locally authored from this repository's retained human intent,
 not an upstream import. It uses the repository MIT license and has no installer
 lock record. The active Ship and Shepherd intents contain human-approved
