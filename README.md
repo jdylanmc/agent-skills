@@ -33,8 +33,15 @@ All entrypoints declare both invocation flags. Flags describe loading/menu
 behavior where supported; they are not permission boundaries or proof that a
 particular Copilot CLI version enforces them.
 
-Setup is human-only and supports **GitHub, Azure DevOps, and local Markdown**.
-Existing unsupported configuration is reported, never silently migrated.
+Setup is human-directed and supports **GitHub, Azure DevOps, and local Markdown**.
+Human-started Joe-mode checks actual setup content and automatically attempts
+local Setup for missing/incomplete configuration after establishing repository-wide
+ownership. It reuses complete setup or joins/resumes an active Setup owner.
+Provider/label choices and exact-file writes still require the human; unavailable
+or declined decisions and failed invocation leave an explicit wait/blocker, not
+a retry loop. Joe verifies outputs before resuming the same anchor and objective.
+Other skills cannot invoke Setup automatically. Existing unsupported or ambiguous
+configuration stays human-owned, never silently reset or migrated.
 Retro is also human-only: inspect actual session evidence, propose improvements,
 obtain approval, then deliver selected fixes.
 

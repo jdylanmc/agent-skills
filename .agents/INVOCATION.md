@@ -53,7 +53,7 @@ No mode grants authority beyond the request, and explicit narrower scope wins.
 | [retro](skills/retro/SKILL.md) | Human only; inspect actual session evidence, propose, obtain approval, then deliver selected fixes. |
 | [roast](skills/roast/SKILL.md) | Both; independent review, no implicit repair or approval. |
 | [scout](skills/scout/SKILL.md) | Internal; read-only code localization, distinct from Scout doctrine. |
-| [setup](skills/setup/SKILL.md) | Human only; GitHub, Azure DevOps, or local Markdown. |
+| [setup](skills/setup/SKILL.md) | Human-directed; Joe may bootstrap absent/incomplete repository setup under the existing controller, preserving human choices and exact-file approval. |
 | [shepherd](skills/shepherd/SKILL.md) | Both; one owner maintains the existing PR, reviewed, green, and rebased/current. |
 | [ship](skills/ship/SKILL.md) | Human + Joe; an issue or scoped graph through delivery. |
 | [specify](skills/specify/SKILL.md) | Both; aligned Discovery artifact to full requirements specification. |
@@ -66,6 +66,20 @@ No mode grants authority beyond the request, and explicit narrower scope wins.
 | [wait-what](skills/wait-what/SKILL.md) | Human only; re-explain, no automatic invocation. |
 
 ## Carry authority, not another controller
+
+Setup's model-loadable entry permits only a direct human request or the
+human-started Joe controller's missing/incomplete-configuration bootstrap.
+Establish repository-wide controller and Setup ownership before dispatch; join
+or resume active Setup rather than duplicating it. Reuse semantically complete
+configuration without rerunning. Unsupported/ambiguous existing choices remain
+human decisions, not automatic reset triggers. Use the registered harness
+invocation, or permitted direct loading of the current local package when
+unregistered; neither available means an explicit blocker, not an installation.
+Other callers still ask the human to run Setup. Human provider/label choices,
+exact-file approval, human-owned configuration, and no global changes remain
+binding. Unavailable/declined decisions or failed invocation wait without a retry
+loop. Joe verifies actual outputs and resumes the same anchor, readiness mapping,
+objective clock, and controller without widening scope or marking issues ready.
 
 The human's Ship/Patch kickoff, or Joe-mode's selected delivery, authorizes the
 ordinary in-scope implementation, review, commit, PR, and Shepherd sequence.

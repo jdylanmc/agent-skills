@@ -83,6 +83,10 @@ have tagged releases. Current cleanup is tracked in
 
 ### Fixed
 
+- Have human-started Joe-mode attempt local Setup for missing/incomplete
+  repository configuration under one controller/Setup owner, instead of only
+  asking the human to run it. Reuse complete setup, join active runs, and preserve
+  human choices and exact-file approval; blocked setup waits without retry loops.
 - Correct stale Patch history references and apply provider delivery guidance
   consistently to Ship, Patch, and Refactor.
 - Remove Retro's dependency on the retired writing skill and reconcile

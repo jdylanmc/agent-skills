@@ -28,7 +28,7 @@ Establish the backlog selection from the request and configuration:
 - An assigned-to-me request adds the authenticated provider user's assignee filter; Git commit identity is not proof of that identity.
 - A folder or idea may need a repository and backlog scope clarified. Ask the smallest material question rather than silently choosing full backlog.
 
-Resolve ambiguous remotes, planning scopes, and identities before dispatch. When configuration is missing, ask the human to run [setup](../setup/SKILL.md); never invoke that human-only workflow automatically. Its [GitHub](../setup/issue-tracker-github.md), [Azure DevOps](../setup/issue-tracker-azure-devops.md), and [local Markdown](../setup/issue-tracker-local.md) references describe the supported mechanisms. Report unsupported existing configurations and request a human choice; do not silently migrate them.
+Resolve ambiguous remotes, planning scopes, and identities before dispatch. Inspect actual configuration against [Setup's completeness criteria](../setup/SKILL.md#joe-mode-bootstrap-readiness), not file existence or a remembered setup run. Record absent/incomplete configuration for the bootstrap in step 2; do not invoke Setup before repository-wide ownership is established. Its [GitHub](../setup/issue-tracker-github.md), [Azure DevOps](../setup/issue-tracker-azure-devops.md), and [local Markdown](../setup/issue-tracker-local.md) references describe the supported mechanisms. Unsupported or ambiguous existing configuration needs a human choice, not an automatic reset or migration.
 
 If the anchor has no repository yet, discovery can start without one. Report backlog/provider discovery as unresolved and defer tracker publication and delivery until their destinations are agreed. An unavailable tracker is not an empty backlog.
 
@@ -39,6 +39,46 @@ Use harness session storage or a uniquely named session/OS-temporary artifact, n
 Reconcile any prior board with live agents and provider state before reusing it. Resolve the common Git directory and normalized repository/provider identity so another worktree or clone is not mistaken for a different repository. Do not duplicate another active Joe-mode owner even for disjoint scopes in that repository: join the current controller or arrange explicit transfer. If visibility or ownership is uncertain, resolve it before dispatch rather than racing another session. A local board is coordination state, not a cross-session lock. An idea without a repository may begin discovery; check repository-wide ownership when its repository is resolved.
 
 Read [runtime guidance](RUNTIME.md) before dispatch. Confirm the harness supports the requested agents and background work. Use a bounded capacity appropriate to available tools and resources; retain capacity for the human-facing discovery path and for completion/review work rather than filling every slot with new implementation.
+
+### Bootstrap missing setup under this owner
+
+Before any Setup invocation, reconcile active Setup ownership for this repository
+as well as the Joe controller, including other worktrees/sessions. Join or resume
+the existing Setup owner and route its questions through the controller; do not
+start a second run. Uncertain visibility or ownership is a blocker, not permission
+to dispatch. Record the Setup owner, workspace, actual configuration gaps, pending
+decisions, and outcome on the existing board. Provider/scope fields may remain
+unresolved while setup is pending; they are not permission to broaden the anchor.
+
+If setup is complete, reuse it without rerunning Setup. If required configuration
+is absent/incomplete and no Setup owner is active, automatically attempt the
+current local [Setup](../setup/SKILL.md) as this human-started controller's bounded
+bootstrap subflow. Use the actual harness skill invocation when registered; when
+not registered, directly read and follow its local `SKILL.md` and required
+references as the subflow if repository guidance permits. Do not merely recommend
+`/setup`. If neither route is available, report the missing package or
+invocation/read capability; do not
+install a package or substitute an upstream workflow.
+
+Carry the repository, original anchor/exclusions, objective-start evidence,
+controller/Setup ownership, configuration gaps, and existing human choices into
+Setup. Its provider/label decisions and exact-file write approval remain human
+gates, not routine delivery permissions. If the human is unavailable or declines,
+or invocation fails, record an explicit waiting/blocker state and the needed
+action. Reconcile any partial writes; do not retry unchanged failures in the
+loop or treat an invocation acknowledgement as success.
+
+After Setup returns complete, re-read the actual repository guidance and
+configuration using its completeness criteria. If its approved workspace differs,
+coordinate availability through its owner; do not copy unapproved files into this
+checkout or claim unseen configuration is usable. Resolve remaining gaps or
+conflicting/unsupported choices with the human and wait on affected paths.
+Resume the original anchor and step 3 only with usable configuration: refresh
+the provider scope, identity filter, and readiness-role mapping without widening
+the backlog, marking issues ready, restarting the controller, or resetting the
+objective clock. Independent work not needing setup may continue within scope.
+
+### Dispatch through the controller
 
 Joe-mode owns routing and the human conversation. Use [Squadron](../squadron/SKILL.md) aggressively to dispatch independent investigations, planning, and distinct Ship/Patch/Refactor deliveries or Shepherd assignments. Keep useful capacity occupied without splitting dependent work or manufacturing agents for trivial tasks. Each delivery route retains its own workers and integration; Shepherd retains its one PR monitor. Do not launch competing workers underneath those owners or delegate the Joe controller itself.
 
@@ -151,8 +191,10 @@ improvement; Migration requires actual production migration obligations.
 Synthesize requires supplied sources, output purpose, and altitude.
 Agent-to-agent Handoff preserves current scope; cross-session or machine
 transfer is human-directed. Do not automatically invoke human-only Automate-this,
-Caveman session mode, ELI5, Retro, Setup, or Wait-what. They run only when the
-human requests them. Codebase-health findings can feed Discovery only within
+Caveman session mode, ELI5, Retro, or Wait-what. They run only when the
+human requests them. Setup's only automatic entry is the owned missing/incomplete
+configuration bootstrap in step 2; it is not a general routing option.
+Codebase-health findings can feed Discovery only within
 the anchor; ask before expanding scope. Communication preferences grant no
 additional work authority.
 
