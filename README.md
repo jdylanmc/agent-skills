@@ -24,12 +24,12 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | --- | --- | --- | --- |
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 20 | Complete collection |
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 9 | Complete skill collection; not its engine or gateway |
-| [anthropics/skills](https://github.com/anthropics/skills) | 1 | 1 | `skill-creator` only |
+| [anthropics/skills](https://github.com/anthropics/skills) | 1 | 0 | `skill-creator` only; now removed |
 | [obra/superpowers](https://github.com/obra/superpowers) | 14 | 6 | Complete skill collection |
 
-Human keep/drop passes have removed 28 skills outright; three three-to-one and
-two two-to-one consolidations leave **36 imported/adapted skills**.
-The locally rebuilt `shepherd` brings the active total to **37**. All
+Human keep/drop passes have removed 29 skills outright; three three-to-one and
+two two-to-one consolidations leave **35 imported/adapted skills**.
+The locally built `shepherd` and `synthesize` bring the active total to **37**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -64,20 +64,23 @@ tracker labels, and cross-skill references.
   and hook-dependent `stats` skills are removed. Generic communication and
   engineering skills remain.
 - `caveman-help` is removed.
+- `skill-creator` is removed; its original license is retained in `licenses/`.
 - `safe-refactor` is now [`refactor`](./.agents/skills/refactor/SKILL.md);
   behavior-preservation guidance is unchanged.
 - `caveman-compress` and `executing-plans` are removed, including their active
-  references. [`synthesize/intent.md`](./.agents/skills/synthesize/intent.md)
-  brings forward a rewritten synthesis intent: leave sources untouched and
-  choose any altitude, with Caveman, full, micro, and nano as flexible presets.
-  Synthesize is intent-only, not a runnable skill or an inventory entry.
+  references.
+- [`synthesize`](./.agents/skills/synthesize/SKILL.md) implements its retained
+  intent: leave sources untouched, ask for altitude when unspecified, and
+  produce a separate candidate. Caveman, full, micro, and nano are flexible
+  presets; custom sources, formats, detail levels, and styles remain supported.
+  Token savings are claimed only when measured.
 
 Further reworking and integration of doctrine are subsequent work.
 
 Lockfile keys follow local names for imported skills; source paths and hashes
-retain upstream provenance, not hashes of locally adapted content. Its 36
-records exclude locally authored `shepherd`, which has no upstream import to
-record. Counts above assign imported skills to their primary source; additional
+retain upstream provenance, not hashes of locally adapted content. Its 35
+records exclude locally authored `shepherd` and `synthesize`, which have no
+upstream imports to record. Counts above assign imported skills to their primary source; additional
 sources are recorded in [NOTICE.md](./NOTICE.md).
 
 Overlapping concepts and provider-specific assumptions are expected. Some kept

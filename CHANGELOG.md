@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Implement `synthesize` from its unchanged intent: flexible source material
+  and custom altitudes, Caveman/full/micro/nano presets, grounded meaning,
+  separate non-overwriting output, and measured-only token-savings claims.
+  Remove `skill-creator` and retain its license outside the package.
+  Keep 37 active skills: 35 imports plus local Shepherd and Synthesize.
 - Rename `safe-refactor` to `refactor`; preserve behavior and upstream provenance.
 - Remove `caveman-compress` and `executing-plans`, their lock records, and active
   references. Keep 37 active skills: 36 imported/adapted and local Shepherd.

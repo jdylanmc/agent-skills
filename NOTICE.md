@@ -10,7 +10,7 @@ license does not replace those terms.
 | --- | --- | --- |
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 2026 Matt Pocock | [MIT](./licenses/mattpocock-skills.LICENSE) |
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 2026 Julius Brussee | [MIT for skills](./licenses/caveman.LICENSE) |
-| [anthropics/skills](https://github.com/anthropics/skills), `skill-creator` only | 2026 Anthropic, PBC. | [Apache-2.0](./.agents/skills/skill-creator/LICENSE.txt) |
+| [anthropics/skills](https://github.com/anthropics/skills), historical `skill-creator` import (removed) | 2026 Anthropic, PBC. | [Apache-2.0](./licenses/anthropic-skills.LICENSE) |
 | [obra/superpowers](https://github.com/obra/superpowers) | 2025 Jesse Vincent | [MIT](./licenses/superpowers.LICENSE) |
 
 `skills-lock.json` maps imported skills' local names to their primary upstream sources and
@@ -57,10 +57,12 @@ not an upstream import. It uses the repository MIT license and has no installer
 lock record. The active Ship and Shepherd intents contain human-approved
 updates; their historical originals remain in the archive.
 
-The rewritten `synthesize` intent also draws on Julius Brussee's
+The locally authored `synthesize` workflow and its intent also draw on Julius Brussee's
 `caveman-compress` for token-focused prose compression and exact technical
-content preservation. The Caveman MIT notice above applies. Only the intent
-is present; no synthesis implementation or compression runtime is restored.
+content preservation. The Caveman MIT notice above applies alongside the
+repository MIT license for new material. This is a new implementation of the
+retained intent, not an installer import; it has no lock record and does not
+restore Caveman's compression runtime.
 
 ## Archived collection
 
