@@ -7,13 +7,15 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const installSource = process.env.SKILLS_PACK_SOURCE ?? root;
 const expected = [
-  'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'conflicts',
+  'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts',
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
   'handoff', 'interrogate', 'joe-mode', 'migration', 'patch', 'poc', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'specify',
   'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what',
 ];
+const originalNames = expected.filter(name => name !== 'chart-a-course');
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
 // Changes require explicit human authorization, not automatic fixture regeneration.
@@ -27,17 +29,18 @@ function digestFiles(filenames, select = bytes => bytes) {
   return hash.digest('hex');
 }
 
-test('human intents and complete doctrine sources remain byte-preserved', () => {
+test('original human intents and complete doctrine sources remain byte-preserved', () => {
   const sources = files(path.join(root, '.agents/skills'))
     .map(filename => path.relative(root, filename).split(path.sep).join('/'))
-    .filter(filename => filename.endsWith('/intent.md') || filename.includes('/doctrines/'));
+    .filter(filename => filename.endsWith('/intent.md') || filename.includes('/doctrines/'))
+    .filter(filename => filename !== '.agents/skills/chart-a-course/intent.md');
   sources.push('intent.md');
   assert.equal(sources.length, 37);
   assert.equal(digestFiles(sources), 'ef01b4c94174de1888a03a21207e0053842c0c136a3d9cc5f5dbb82473b1767a');
 });
 
 test('all original entrypoint metadata, including invocation flags, is preserved', () => {
-  const sources = expected.map(name => `.agents/skills/${name}/SKILL.md`);
+  const sources = originalNames.map(name => `.agents/skills/${name}/SKILL.md`);
   assert.equal(digestFiles(sources, bytes => bytes.toString().split('---\n')[1]),
     '905838679a8cc014523fe647d1e2d25c39db8c3105a921ceca247bce48e77ed2');
 });
@@ -102,7 +105,19 @@ function assertPortable(directory) {
   }
 }
 
-test('released CLI copy-installs exactly the complete active pack', { timeout: 120_000 }, async t => {
+test('Chart-a-course is a portable, human- and model-invocable local package', () => {
+  const directory = path.join(root, '.agents/skills');
+  const skill = readFileSync(path.join(directory, 'chart-a-course/SKILL.md'), 'utf8');
+  const metadata = skill.split('---\n')[1];
+  assert.match(metadata, /^name: chart-a-course$/m);
+  assert.match(metadata, /^disable-model-invocation: false$/m);
+  assert.match(metadata, /^user-invocable: true$/m);
+  assert.ok(readFileSync(path.join(directory, 'chart-a-course/intent.md')).length > 0);
+  assertPortable(directory);
+});
+
+test('released CLI copy-installs exactly the complete active pack', { timeout: 180_000 }, async t => {
+  assert.ok(installSource.trim(), 'SKILLS_PACK_SOURCE must not be empty');
   const sandbox = path.join(root, '.test-sandbox');
   mkdirSync(sandbox, { recursive: true });
   const consumer = mkdtempSync(path.join(sandbox, 'pack-'));
@@ -110,7 +125,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     const home = path.join(consumer, '.test-home');
     mkdirSync(home);
     const install = () => execFileSync(process.execPath, [
-      path.join(root, 'node_modules/skills/bin/cli.mjs'), 'add', root,
+      path.join(root, 'node_modules/skills/bin/cli.mjs'), 'add', installSource,
       '--skill', '*', '--agent', 'github-copilot', '--copy', '-y',
     ], {
       cwd: consumer,
@@ -124,7 +139,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     install();
     const installed = path.join(consumer, '.agents/skills');
-    await t.test('all 32 active names, no archive', () => {
+    await t.test('all 33 active names, no archive', () => {
       assert.deepEqual(readdirSync(installed).sort(), expected);
     });
     await t.test('installation writes only project skill files and installer lock, not Setup outputs', () => {

@@ -36,6 +36,7 @@ No mode grants authority beyond the request, and explicit narrower scope wins.
 | [breakdown-tickets](../breakdown-tickets/SKILL.md) | Both; after Specify, with human approval before publishing the breakdown. |
 | [caveman](../caveman/SKILL.md) | Human-only session mode. Shared commit and worker-message styles do not activate it. |
 | [changelog](../changelog/SKILL.md) | Internal; every modifying agent consults the same curation helper. |
+| [chart-a-course](../chart-a-course/SKILL.md) | Both; read-only critical task paths, missing work, and research spikes. Recommends targeted Discovery; the caller owns execution. |
 | [discovery](../discovery/SKILL.md) | Both; material unknowns, with alignment and experiment/write gates. |
 | [doctrine](../doctrine/SKILL.md) | Both; catalog, selection, and verified loading, never approval. |
 | [domain-modeling](../domain-modeling/SKILL.md) | Internal; authorized domain work and separately agreed recording. |
