@@ -13,7 +13,7 @@ license does not replace those terms.
 | [anthropics/skills](https://github.com/anthropics/skills), `skill-creator` only | 2026 Anthropic, PBC. | [Apache-2.0](./.agents/skills/skill-creator/LICENSE.txt) |
 | [obra/superpowers](https://github.com/obra/superpowers) | 2025 Jesse Vincent | [MIT](./licenses/superpowers.LICENSE) |
 
-`skills-lock.json` maps local skill names to their primary upstream sources and
+`skills-lock.json` maps imported skills' local names to their primary upstream sources and
 imported content hashes, not hashes of local adaptations. Additional sources
 for consolidated skills are recorded below. Imported material is not relicensed
 as original work.
@@ -44,12 +44,18 @@ Modifications to Apache-licensed files must carry prominent change notices.
 - `verify` combines Julius Brussee's `verify-and-stop` with Jesse Vincent's
   `verification-before-completion` from Superpowers. Its primary lock record
   retains `skills/verify-and-stop/SKILL.md`. Both MIT notices apply.
-- `ship` combines Matt Pocock's `implement` with Julius Brussee's `lean-build`.
+- `ship` combines Matt Pocock's `implement` and `implement-spec` with Julius
+  Brussee's `lean-build`, adapted into a delivery coordinator.
   Its primary lock record retains `skills/engineering/implement/SKILL.md`.
   Both MIT notices apply.
 
 These workflows and their callers have been adapted locally. Original import
 records and contents remain recoverable from Git history.
+
+`shepherd` is locally authored from this repository's retained human intent,
+not an upstream import. It uses the repository MIT license and has no installer
+lock record. The active Ship and Shepherd intents contain human-approved
+updates; their historical originals remain in the archive.
 
 ## Archived collection
 

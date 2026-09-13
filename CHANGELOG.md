@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Rebuild Ship as a delivery coordinator: an issue or spec ticket graph,
+  isolated concurrent workers, one PR, independent review, criterion evidence,
+  and mandatory Shepherd ownership. Absorb and remove `implement-spec`.
+- Rebuild `shepherd` from its retained intent for ongoing PR observation,
+  necessary branch maintenance, and same-PR feedback repair through Ship.
+  Keep 39 active skills: 38 imported/adapted records and one local rebuild.
+- Apply approved intent changes: remove the intake readiness gate and detailed
+  remote-continuation restrictions, preserve PR continuation and human merging,
+  and support a complete specification as one delivery. Archive unchanged.
 - Remove `caveman-help` and its lock record; keep 39 active skills.
 - Preserve an unchanged copy of the archived Ship intent in the active `ship`
   package; document the gap between that delivery intent and the current workflow.

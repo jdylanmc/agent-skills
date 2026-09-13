@@ -10,7 +10,7 @@ renaming, and adaptation. Installation does not run the imported workflows.
 ## Layout
 
 ```text
-.agents/skills/       Installed skills: real files, not symlinks
+.agents/skills/       Imported and locally rebuilt skills: real files, not symlinks
 doctrine/            Human-owned engineering philosophy and integrity manifest
 intent.md            Human-owned purpose of this repository
 skills-lock.json     Installer source and content records
@@ -22,13 +22,14 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 
 | Source | Initial count | Remaining | Initial selection |
 | --- | --- | --- | --- |
-| [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 21 | Complete collection |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 20 | Complete collection |
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 10 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 1 | `skill-creator` only |
 | [obra/superpowers](https://github.com/obra/superpowers) | 14 | 7 | Complete skill collection |
 
-Human keep/drop passes have removed 26 skills outright; two three-to-one and
-three two-to-one consolidations reduce the remaining entry points to **39**. All
+Human keep/drop passes have removed 26 skills outright; three three-to-one and
+two two-to-one consolidations leave **38 imported/adapted skills**.
+The locally rebuilt `shepherd` brings the active total to **39**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -45,10 +46,18 @@ tracker labels, and cross-skill references.
 - [`verify`](./.agents/skills/verify/SKILL.md) combines `verify-and-stop` and
   `verification-before-completion`: reuse evidence only while relevant state
   and inputs remain unchanged; otherwise rerun.
-- [`ship`](./.agents/skills/ship/SKILL.md) combines `implement` and `lean-build`:
-  build the smallest complete change, test, review, verify, and commit locally.
-  It does not restore the archived Ship orchestrator or automatically publish,
-  shepherd, or merge a PR.
+- [`ship`](./.agents/skills/ship/SKILL.md) combines `implement`, `lean-build`,
+  and `implement-spec`. It coordinates one issue or a spec's ticket graph,
+  integrates isolated workers into one PR, reviews and verifies the result,
+  and always hands off to `shepherd`. Feedback continues on the same PR.
+- [`shepherd`](./.agents/skills/shepherd/SKILL.md) is rebuilt locally from its
+  retained intent: ongoing observation, necessary branch maintenance, and
+  functional repairs routed through Ship. A green snapshot does not end
+  monitoring. Neither workflow merges or approves the PR.
+- The active Ship and Shepherd intents retain their archived foundations with
+  explicitly approved changes: no intake readiness-label gate, no detailed
+  remote-continuation restrictions, and one-PR specification delivery. The
+  archived copies remain unchanged.
 - `codebase-design` is removed; its callers use the project's own interfaces
   and terminology.
 - Caveman's `setup`, `discover`, `evidence-review`, `manage`, `optimize`, `learn`,
@@ -58,10 +67,11 @@ tracker labels, and cross-skill references.
 
 Further reworking and integration of doctrine are subsequent work.
 
-Lockfile keys follow local skill names; source paths and hashes retain the
-original upstream provenance, not hashes of locally adapted content. Counts
-above assign each skill to its primary source; additional sources used in
-consolidated skills are recorded in [NOTICE.md](./NOTICE.md).
+Lockfile keys follow local names for imported skills; source paths and hashes
+retain upstream provenance, not hashes of locally adapted content. Its 38
+records exclude locally authored `shepherd`, which has no upstream import to
+record. Counts above assign imported skills to their primary source; additional
+sources are recorded in [NOTICE.md](./NOTICE.md).
 
 Overlapping concepts and provider-specific assumptions are expected. Some kept
 skills still reference removed skills: `ask-matt`, `retro`, and `brainstorming`
