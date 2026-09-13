@@ -28,9 +28,13 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | [obra/superpowers](https://github.com/obra/superpowers) | 14 | 10 | Complete skill collection |
 
 Human keep/drop passes have removed 17 skills; 55 remain. All `openai.yaml`
-agent metadata files have also been removed. Other kept skill files retain their
-upstream contents. Renaming, workflow changes, and integration of doctrine are
-subsequent work.
+agent metadata files have also been removed. `wayfinder` is now
+[`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
+tracker labels, and cross-skill references. Other workflow behavior remains
+unchanged; further reworking and integration of doctrine are subsequent work.
+
+Lockfile keys follow local skill names; source paths and hashes retain the
+original upstream provenance, including the original name of renamed skills.
 
 Overlapping concepts and provider-specific assumptions are expected. Some kept
 skills still reference removed skills: `ask-matt`, `retro`, and `brainstorming`

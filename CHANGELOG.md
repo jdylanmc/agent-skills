@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Rename `wayfinder` to `discovery`, including invocation names, tracker labels,
+  and cross-skill references. Preserve the original upstream provenance.
 - Remove all `openai.yaml` agent metadata files from the active collection.
 - Remove 17 skills in the initial human curation passes: `wizard`, all six
   `writing-*` skills, `to-questionnaire`, `teach`, `setup-ts-deep-modules`,

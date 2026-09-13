@@ -115,6 +115,12 @@
       "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
       "computedHash": "37b5e9c624513551da790b52864dc8c84bff996a6d03a380cc6facdcc0a88354"
     },
+    "discovery": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/wayfinder/SKILL.md",
+      "computedHash": "fa790eb4255b13d24d7e33ff4891ccd3d621558cc0ab87ae226777538ea16a8f"
+    },
     "dispatching-parallel-agents": {
       "source": "obra/superpowers",
       "sourceType": "github",
@@ -324,12 +330,6 @@
       "sourceType": "github",
       "skillPath": "skills/productivity/wait-what/SKILL.md",
       "computedHash": "71a9a1f1773d4b1ff70a9d496db63855ef83a7fe906c72b70cdebf4815a2c4c1"
-    },
-    "wayfinder": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/engineering/wayfinder/SKILL.md",
-      "computedHash": "fa790eb4255b13d24d7e33ff4891ccd3d621558cc0ab87ae226777538ea16a8f"
     }
   }
 }
