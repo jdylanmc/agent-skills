@@ -83,6 +83,8 @@ have tagged releases. Current cleanup is tracked in
 
 ### Fixed
 
+- Correct stale Patch history references and apply provider delivery guidance
+  consistently to Ship, Patch, and Refactor.
 - Remove Retro's dependency on the retired writing skill and reconcile
   Interrogate callers with its Discovery/Joe-only contract.
 - Keep semantic merge conflicts human-owned rather than forcing a guessed

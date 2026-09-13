@@ -55,13 +55,13 @@ PR operations use the **code** project and repository, not the planning project.
 Use the configured integration or [Git pull-request APIs](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-requests?view=azure-devops-rest-7.1):
 
 - Create on the repository's `pullrequests` collection with `sourceRefName` and `targetRefName` as full `refs/heads/...` references, a meaningful title/description, and `isDraft: true`.
-- Reuse the existing PR ID for updates and feedback. Mark ready by updating `isDraft` to `false` only after Ship's review and validation requirements are met. This is not PR completion.
+- Reuse the existing PR ID for updates and feedback. Mark ready by updating `isDraft` to `false` only after the selected delivery owner meets the [shared delivery contract's](../ship/DELIVERY.md) review and validation requirements. This is not PR completion.
 - Read PR `status`: `active` is open, `completed` is merged, and `abandoned` is closed without merging. Inspect `isDraft`, `mergeStatus`, reviewer votes, review threads, PR statuses, and required branch-policy evaluations. A successful merge calculation is not approval or passing checks.
 - Read current source/target refs as needed. `lastMergeSourceCommit` and `lastMergeTargetCommit` describe the last merge calculation and may lag live branch heads.
 - For policy evaluations use [the policy API](https://learn.microsoft.com/en-us/rest/api/azure/devops/policy/evaluations/list?view=azure-devops-rest-7.1), version `7.1-preview.1`, with the URL-encoded artifact ID `vstfs:///CodeReview/CodeReviewId/{codeProjectId}/{pullRequestId}`. Honor its `$top`/`$skip` pagination; inspect applicable blocking policies, running/failed results, and required review conditions rather than treating an empty list as success.
 - Read all relevant threads/comments and status pages through their documented endpoints or tools. Unavailable checks or policies are missing evidence, not green.
 
-Never set `status: completed`, enable `autoCompleteSetBy`, bypass policy, vote approval, or delete the source branch as part of Ship/Shepherd. If another actor enabled auto-completion, report it; do not assume human-only merging is still guaranteed. A human decision or missing capability follows Shepherd's existing stop/escalation rules.
+Never set `status: completed`, enable `autoCompleteSetBy`, bypass policy, vote approval, or delete the source branch as part of any delivery route or Shepherd. If another actor enabled auto-completion, report it; do not assume human-only merging is still guaranteed. A human decision or missing capability follows Shepherd's existing stop/escalation rules.
 
 ## Sources and setup boundaries
 
