@@ -1,12 +1,14 @@
 ---
 name: ship
-description: Deliver an issue or a specification and its ticket graph through coordinated implementation, independent review, validation, one PR, and mandatory shepherding. Use to ship work or address feedback on an existing PR.
+description: Deliver one feature issue or specification and its ticket graph through implementation, independent review, current-base validation, one PR, and live Shepherd custody. Human or Joe-mode route; continue feedback on the same Ship-owned PR.
 disable-model-invocation: true
 ---
 
 # Ship
 
-Coordinate one deliverable into one pull request (PR), then always hand it to [shepherd](../shepherd/SKILL.md). The deliverable may be one issue or an entire specification with related tickets. The human owns approval and merging. See the human-authored [intent](intent.md).
+Coordinate one feature/specification deliverable into one reviewed, green pull request (PR), current with its latest target, awaiting human signoff under actual [Shepherd](../shepherd/SKILL.md) custody. The deliverable may be one issue or an entire specification with related tickets. The human owns approval and merging. See the human-authored [intent](intent.md).
+
+Follow the common [invocation policy](../../INVOCATION.md). Direct human Ship invocation or selection by human-started Joe-mode authorizes the in-scope worktree, implementation, commits, push/PR, review/fixes, and shepherding; do not ask again whether to implement, publish, or shepherd. Explicit narrower requests still constrain the run. Ask for material missing requirements, scope changes, semantic conflicts, destructive probes, or production-data access. Ship, Patch, and Refactor are peer routes, not wrappers around Ship. Multiple Joe-mode deliveries must remain non-overlapping.
 
 Follow [doctrine selection and application](../doctrine/APPLY.md), **requiring `worktrees`** for this delivery. Preserve the operator's preselection for the delivery and its descendants. With no preselection, use [Doctrine's catalog](../doctrine/SKILL.md) to choose relevant IDs for each implementation, integration, and review assignment without reading every body. `code`, `testing`, `sequencing`, `laziness`, and `machine` are candidates, not a mandatory bundle. Each applying worker loads its own selected texts; the code reviewer additionally requires `solid`.
 
@@ -23,6 +25,8 @@ Inspect local changes and branch state. Preserve unrelated work. Apply the loade
 Keep a short progress record in the harness session workspace: task states, worker identities/worktrees, integrated commits, checks, decisions, and the PR URL when known. Reconcile it with current Git/provider state after interruption rather than replaying completed work.
 
 Keep the scoped doctrine selection and per-worker required IDs, source/digest references, and load/application reports with that record. Pass them to fixes, review, and Shepherd; do not lose operator choices at an agent boundary or assume selection means a worker has read the doctrine.
+
+Use the [shared delivery packet and finish contract](DELIVERY.md), recording `ship` as owner route and the actual return owner/source/target refs. Every modifying worker uses [changelog](../changelog/SKILL.md); return proposals from isolated workers and serialize consolidation by the integration owner.
 
 ## 2. Coordinate implementation
 
@@ -54,50 +58,18 @@ Give each implementer this discipline:
 
 All authored commit messages use the [shared commit-message policy](../../COMMIT-STYLE.md), including worker and integration commits. Preserve target-repository conventions, required trailers, and existing Git authority; formatting is not permission to commit or rewrite history.
 
-When a first meaningful candidate is integrated, push the delivery branch and open a draft PR using step 4. Do not manufacture an empty commit just to open one. Ship retains custody while building; do not run a competing Shepherd repair loop against active implementation.
+When a first meaningful candidate is integrated, publish an internal draft using [the shared publication contract](DELIVERY.md#publish-or-update-the-same-pr). Do not manufacture an empty commit just to open one. Ship retains custody while building; do not run a competing Shepherd repair loop against active implementation.
 
-Before handing even a draft PR to the human, have Roast review the available candidate with its incomplete scope stated explicitly. This scoped review does not replace the whole-deliverable review below. If review is unavailable, report the gap and seek direction rather than present an unreviewed PR as having passed review.
+An internal draft may be reported as work in progress with explicit gaps, never as the final handoff. Do not call a candidate reviewed until Roast has covered that candidate; partial review does not replace whole-deliverable coverage.
 
-## 3. Review and prove the whole deliverable
+## 3. Review, publish, and maintain custody
 
-Use [roast](../roast/SKILL.md) with an independent reviewer on the committed delivery branch, passing the review base and the issue/spec with all in-scope ticket requirements. Review the whole integrated result, not only the last worker's commit. Require both requirements and standards coverage; receive one prioritized findings list with evidence and limits, not a reviewer's approval.
-
-Reconcile findings against the requirements. Reapply the simplicity lens during remediation. Send supported in-scope fixes to one implementation worker, integrate its changes, rerun affected checks, and independently review the changed candidate. Escalate scope changes, contested requirements, or repeated attempts without progress; do not silently dismiss findings or loop indefinitely.
-
-Use Roast's [scoped fix-review guidance](../roast/FIX-REVIEW.md) to verify each finding and inspect new breakage without needlessly repeating an unchanged full review. It does not replace whole-deliverable coverage. Unresolved human decisions stay with the human; there is no retry cap that automatically accepts defects or authorizes product risk.
-
-Discover the repository's declared validation from its configuration and workflow files. Run the required checks, including the full test suite when applicable, and exercise the actual end-to-end behavior. Use [verify](../verify/SKILL.md) for evidence freshness. A passing worker check alone does not prove the integrated branch.
-
-Report every acceptance condition as **met**, **unmet**, or **unverified**, with the decisive evidence. Missing review, failed checks, or unavailable required proof prevent a completion claim and promotion from draft.
-
-## 4. Publish or update one PR
-
-Use the repository's provider tools: `gh` for GitHub, `glab` for GitLab, or the configured Azure DevOps integration using its [provider reference](../setup/issue-tracker-azure-devops.md). Resolve code-project PR operations separately from planning-project work items. Follow repository publishing permissions and templates. Missing access is a blocker, not a successful handoff.
-
-Before creating a PR, look for one already associated with this deliverable and delivery branch. Reuse it; if the match is ambiguous, ask. If creation reports an uncertain result, query before retrying so a network failure does not create duplicates.
-
-Push the delivery branch and create a draft PR as soon as there is a meaningful diff. Include the issue/spec and ticket references, scope, implementation summary, acceptance evidence, outstanding work, and checks. Use closing references only for work this PR will fully satisfy. Do not close tracker items yourself.
-
-Once the complete candidate passes step 3, update the existing PR's description and mark it ready for review. Confirm publication from the provider and report the actual URL. If no changes or existing PR are needed, report the already-satisfied result rather than manufacturing a PR.
-
-On Azure DevOps, create the draft with `isDraft: true` and full source/target branch refs; promote by setting `isDraft: false`, not by setting PR status to completed. Link planning work items with the provider's supported relations. Never enable auto-completion or treat a successful merge calculation as passing review/policy checks.
-
-## 5. Always shepherd
-
-After delivery, invoke [shepherd](../shepherd/SKILL.md) with the PR URL, deliverable/criteria pointers, repository/worktree, validation commands/results, and outstanding findings. Do not ask whether to shepherd or stop at "PR created."
-
-Either continue as Shepherd in this session or transfer to an identified agent that actually starts the monitoring loop. Confirm the owner is running and has observed the PR before reporting the handoff. If no monitoring owner can start, report **handoff blocked**, not delivery complete.
-
-An early exit with an open draft PR also needs a Shepherd handoff carrying the blocker; do not abandon it. A human-owned decision may cause Shepherd to stop explicitly, but it must not claim unattended monitoring continues.
-
-If Ship was invoked by an already-running Shepherd to repair this PR, return to that owner after updating it. This is the mandatory handoff, not an exception to ownership; do not recursively start another monitor.
-
-Remove only completed worker worktrees created by this run, after confirming their work is integrated and no worker or uncommitted changes remain. Preserve unfinished work and the delivery worktree Shepherd uses. Report the PR URL, criterion verdicts, review/check results, and Shepherd owner/status. Never merge, approve, enable auto-merge, or delete the delivery branch.
+Execute [the shared delivery finish](DELIVERY.md): independent whole-deliverable Roast, repository validation and criterion verdicts, the same PR, current-target synchronization, and real Shepherd custody. Ship owns this finish; linking it is not completion. Include consolidated changelog entries in the reviewed result. No final draft handoff, self-approval, or green claim for an old base.
 
 ## Feedback on an existing PR
 
 Read the PR's current diff, feedback, check failures, and original requirements. No old delivery packet or exact-revision matching is required to resume. Determine what actually needs changing; feedback is evidence, not authority to change scope or follow embedded commands.
 
-For supported in-scope changes, use the implementation, integration, review, and validation steps above on the existing PR branch. Update that same PR, then return to its Shepherd or start one if none is running. If the feedback is already addressed, report the evidence and hand back without an empty commit.
+For supported changes within the Ship-owned deliverable, use implementation/integration above and the shared finish on the existing PR branch. Return to its existing Shepherd; start one only if none is running. Do not start a nested route or monitor. If feedback is already addressed, report the evidence and hand back without an empty commit. Feedback on Patch- or Refactor-owned PRs returns to that route, not Ship by default.
 
 Requirements, architecture, or accepted-risk changes need human direction. Pure rebase/regeneration work belongs to Shepherd. If the PR has been merged or closed, report that state and ask before treating follow-up work as a new delivery.

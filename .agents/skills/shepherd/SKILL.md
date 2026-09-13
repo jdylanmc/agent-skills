@@ -1,22 +1,22 @@
 ---
 name: shepherd
-description: Keep one published PR moving through checks, branch maintenance, and feedback until it is merged, closed, stopped, or needs a human decision. Use after Ship publishes a PR or to resume monitoring an existing PR.
+description: "Human or machine custody of one published PR: rebase whenever its target advances, refresh review/check evidence, and return functional feedback to its Ship, Patch, or Refactor owner until merge, closure, stop, human decision, or runtime loss."
 disable-model-invocation: true
 ---
 
 # Shepherd
 
-Own one published pull request (PR), not a one-time green snapshot. Observe, maintain the branch when necessary, and send functional repairs through [ship](../ship/SKILL.md). Never merge, approve, enable auto-merge, accept product risk, or delete the delivery branch. See the human-authored [intent](intent.md).
+Own one published pull request (PR), not a one-time green snapshot. Follow the common [invocation policy](../../INVOCATION.md) for human invocation or machine handoff. A human may invoke `/shepherd` on a conflicted PR; the resolver is an internal helper, not the human entry point. Observe, rebase whenever the target advances, and return functional work to the existing Ship, Patch, or Refactor route owner. Never merge, approve, enable auto-merge, accept product risk, or delete the delivery branch. See the human-authored [intent](intent.md).
 
-Preserve the delivery's [doctrine selection](../doctrine/APPLY.md) through maintenance and repair handoffs. **Require `worktrees` before preparing PR changes** and use the [workspace procedure](../ship/WORKSPACE.md) to reuse the owned delivery workspace. Observation alone does not create workspace authority. Load the standards you apply; pass metadata and pinned digests to Ship rather than requiring the monitor to read every worker doctrine.
+Preserve the delivery's [doctrine selection](../doctrine/APPLY.md) through maintenance and repair handoffs. **Require `worktrees` before preparing PR changes** and use the [workspace procedure](../ship/WORKSPACE.md) to reuse the owned delivery workspace. Invocation/handoff grants bounded maintenance within established ownership; an explicit observation-only request does not. Load the standards you apply; pass metadata and pinned digests to the route owner rather than requiring the monitor to read every worker doctrine.
 
 ## Take ownership
 
-Read repository guidance and resolve the PR, provider, delivery branch/worktree, requirements, and declared validation. Reuse Ship's handoff and available evidence; a missing old handoff is not a reason to refuse a PR that can be inspected now.
+Read repository guidance and resolve the PR, provider, delivery branch/worktree, requirements, and declared validation. Reuse the [delivery packet](../ship/DELIVERY.md#one-delivery-packet-one-owner), including owner route, return owner, source/target refs and doctrine digests. A missing old handoff is not a reason to refuse a PR that can be inspected now. Recover the route from original scope and live evidence; ask Joe-mode/the human when unclear rather than defaulting to Ship. Reconstruct target from the actual PR (usually main, or its explicit target), not a guessed default branch.
 
-Ensure no other agent is actively implementing or maintaining this same delivery branch. If Ship is still building, wait for its transfer rather than competing with it. If another live Shepherd owns it, confirm and return that owner's status instead of starting a duplicate loop. A stale progress file is not proof of a live owner; uncertain worker status needs resolution before starting competing work.
+Ensure no other agent is actively implementing or maintaining this same delivery branch. If its route is still building, wait for its transfer rather than competing with it. If another live Shepherd owns it, confirm and return that owner's status instead of starting a duplicate loop. A stale progress file is not proof of a live owner; uncertain worker status needs resolution before starting competing work.
 
-Use the harness's session storage for a small progress file, or create a uniquely named file in the OS temporary directory when session storage is unavailable. Report its absolute path. Record the PR URL, owner, worktree, creation time, last observation, observed base/head and check/review states, handled findings, active repair, and next observation time. Keep credentials and private log bodies out of it.
+Use the harness's session storage for a small progress file, or an approved repository-local ignored session location when unavailable. Do not commit it or silently change ignore rules. Report its absolute path. Record the PR URL, route/return owner, maintenance owner, worktree, creation time, last observation, observed base/head, validation/review coverage and invalidations, pending human signoff, handled findings, active repair, and next observation time. Keep credentials and private log bodies out of it.
 
 Read back updates to this record. If persistence fails, report the error; do not claim resumability. On a resumed run, inspect live state first, record the observation gap, and check whether a previously dispatched repair is still running before redispatching. If the old record is unavailable, reconstruct from the PR and report the reduced history.
 
@@ -43,7 +43,7 @@ For Azure DevOps, use the configured integration and the [provider reference](..
 
 Compare with the last observation. An unchanged check failure or previously handled comment is not new repair work. Reopen it only when new evidence warrants it; a failed remedy becomes an explicit blocker, not a fresh identical dispatch.
 
-Do not call unknown mergeability, pending checks, or missing required evidence "ready." No check results is not proof of success: establish what the repository requires. Readiness also requires the repository's required reviews and branch policy; green checks do not override a blocking review or missing approval. Report readiness only for the observed state, and continue watching even when everything is green.
+Use [the shared current-base readiness gate](../ship/DELIVERY.md#current-base-readiness-and-real-custody). Do not call unknown mergeability, pending checks, missing required evidence, or an old-base head ready. No check results is not proof of success: establish what the repository requires. Separate **ready for human signoff** from actual approval/merge eligibility; report outstanding human votes without casting them. Blocking findings/reviews or other unmet policies prevent readiness. Immediately before promotion/announcement, reread actual remote source and target refs plus provider state; if either changed, invalidate the claim and reconcile again. Report the observed head/base/time, not a guarantee against the next base race, and continue watching after green.
 
 ## Act on meaningful changes
 
@@ -51,30 +51,39 @@ Do not call unknown mergeability, pending checks, or missing required evidence "
 | --- | --- |
 | PR merged or closed | Record the terminal state and stop. |
 | Open with no meaningful changes, or only pending checks | Record the observation and wait for the next interval. |
-| Base moved but PR remains mergeable and policy-compliant | Do not rebase; keep watching. |
-| Conflicted/unmergeable, or policy requires the current base | Perform bounded branch maintenance below. |
-| In-scope review feedback or check failure requiring code/test changes | Invoke Ship's feedback continuation for this same PR. |
+| Target advanced, even while PR remains mergeable/policy-compliant | Rebase the owned branch onto the latest fetched target; invalidate stale proof and refresh it below. |
+| Conflicted/unmergeable, or policy needs maintenance | Perform bounded branch maintenance; invoke the internal resolver for actual conflicts. |
+| Unexpected source-head movement or target retarget/rewrite | Reconcile actual ownership and intent before mutation; do not overwrite concurrent work or silently replay onto a different target. |
+| In-scope review feedback or check failure requiring code/test changes | Return to the existing route's feedback continuation on this same PR. |
 | Cancelled check, missing runner/tool, or service outage | Distinguish infrastructure from code failure. Report the blocker; use only authorized provider recovery actions. |
 | Changed requirements, architecture, scope, accepted risk, or a semantic conflict | Present the decision to the human and stop. |
 | Provider access, branch ownership, or required evidence becomes unavailable | Record what is known, report the blocker, and stop rather than claim readiness. |
 
 ### Branch maintenance
 
-Inspect local changes and fetch the current base before working. Preserve unrelated work. Rebase only for the actual mergeability/policy trigger above, not merely because the base advanced.
+1. Inspect Git status, worktrees, any in-progress operation, branch ownership, and provider source/target repositories and refs (including forks). Resolve the actual push remote; do not assume `origin` is the PR source. Record the live remote source head as the **expected head** before rewriting and fetch source/target explicitly. Reconcile local commits against that head and the packet. Unknown divergence, competing writers, changed ownership, or a moved source during maintenance stops automatic mutation; do not reset, stash, discard, or overwrite someone else's work.
 
-Regenerate derived output from its source. Mechanical conflict resolution is allowed only when meaning is unambiguous. For independently added validation registrations, preserve both additions and every trusted-base check, then run complete repository validation. Authored or semantic conflicts return to the human with both sides intact; do not blindly invoke a resolver that insists on resolving everything.
+2. In the owned isolated workspace, rebase onto the newest fetched PR target whenever it advances, even if the provider says mergeable and no policy demands it. An already-contained target is a verified no-op, not a reason for an empty rewrite. Reconcile an unexpected retarget or rewritten target with the owner/human before replaying onto a different intent. Preserve pre-rebase head/ref evidence and unrelated work; dirty or uncertain state must be resolved safely before starting.
 
-Run the repository's declared validation and [verify](../verify/SKILL.md) after maintenance. Push the updated delivery branch through the repository's normal authorized workflow and re-observe the PR. If pushing is rejected, inspect the cause and obtain direction rather than overwrite unrelated work. Functional failures return through Ship; do not turn maintenance into product implementation.
+3. For actual conflicts, **invoke [resolving-merge-conflicts](../resolving-merge-conflicts/SKILL.md) internally** with the PR, operation, scoped paths, both sides, maintenance authority, and return owner. It may make only mechanical, unambiguous resolutions. Regenerate derived output from its source; for independent validation registrations, preserve both additions and every trusted-base check, then run complete repository validation. Semantic conflicts return both sides to the human without staging guesses. Owner-directed abort is allowed only when it preserves work. No silent ours/theirs choice, new product fix, or blanket staging.
 
-Use the [shared commit-message policy](../../COMMIT-STYLE.md) for newly authored maintenance messages. Preserve existing messages during replay/rebase; this policy does not authorize history rewriting or additional commits.
+4. Invalidate pre-rebase head/base check results and independent review coverage; old green and approvals are not proof of the rebased candidate. Every modifying agent/helper uses [changelog](../changelog/SKILL.md). The maintenance/integration owner alone consolidates proposals before fresh review; reuse/deduplicate existing meaningful entries. Record notable maintenance consequences, not one entry per rebase or regeneration. No recursive changelog-only entry or automatic release/version bump.
+
+5. Run affected and repository-required validation and [Verify](../verify/SKILL.md), including complete validation for combined registrations. Obtain fresh independent [Roast](../roast/SKILL.md) coverage (`solid` for code) for the rebased candidate including the consolidated changelog; use scoped fix-review when justified, recording how whole-deliverable coverage is preserved. Mechanical maintenance stays here, not a new route invocation. Functional failures return to the existing route owner.
+
+6. Recheck remote source against the recorded expected head before publishing. For rewritten history on an explicitly owned branch, use an explicit expected-head lease, for example `git push --force-with-lease="<source-ref>:<expected-head>" <source-remote> HEAD:<source-ref>` with resolved full ref and literal recorded commit ID. Never blind `--force`, an unspecified tracking-ref lease, or a newly refreshed lease used to overwrite concurrent commits. If the source changed or the lease fails, preserve local work, report the race, and stop for ownership reconciliation rather than retrying forcefully. Use normal fast-forward push for non-rewritten updates.
+
+7. Re-observe provider checks/policies for the published head; rerun required provider checks when needed and supported, never reuse old-head successes. Reread live source/target before readiness. If target moved again, withdraw readiness and repeat maintenance/proof, not a stale green handoff. If provider access or safe update capability is unavailable, report the blocker and stop.
+
+Use the [shared commit-message policy](../../COMMIT-STYLE.md) for newly authored maintenance messages. Preserve existing messages during replay/rebase; formatting does not broaden maintenance authority.
 
 ### Feedback repair
 
-Call [ship](../ship/SKILL.md) with this PR, its requirements, the new findings, and the fact that this Shepherd retains monitoring ownership. Record the repair owner before waiting. Do not concurrently modify the branch or start another repair for the same findings.
+Call the existing owner route—[Ship](../ship/SKILL.md), [Patch](../patch/SKILL.md), or [Refactor](../refactor/SKILL.md)—with this same PR, its original requirements/kind, new evidence, current source/target, workspace, validation, doctrine packet, and this Shepherd as return owner. Record the repair worker before waiting. Do not concurrently modify the branch or start another repair for the same findings.
 
-Ship coordinates the implementation and independent review, validates, and updates the same PR. On return, inspect the resulting PR/check state and record which findings were addressed. Resume this loop; Ship must not start a nested Shepherd. A missing result, failed repair, or human-owned decision is reported explicitly and ends safe automatic remediation.
+The route classifies evidence, performs bounded implementation and independent review, validates, and updates the same PR. It never invokes Ship as a generic finish or starts a nested Shepherd. On return, reconcile actual head, review coverage, check state, and addressed findings before resuming observation. A missing result, failed repair, or human-owned decision is reported explicitly and ends safe automatic remediation. If the finding requires another kind of delivery, return to Joe-mode/the human for routing, not an automatic route switch.
 
-If a draft's outstanding delivery work needs completing, route that work through Ship under the same ownership rule. Do not mark it ready yourself while acceptance or review remains incomplete.
+If a draft's outstanding delivery work needs completing, return it to its existing route under the same ownership rule. Do not promote while acceptance, independent review, current-base proof, or required checks remain incomplete. A blocked draft is not the final handoff.
 
 ## Observation rhythm
 

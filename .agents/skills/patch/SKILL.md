@@ -1,24 +1,27 @@
 ---
 name: patch
-description: Diagnose and repair bugs, test failures, unexpected behavior, performance regressions, and bounded behavior changes at the responsible layer. Invoking /patch authorizes a bounded repair after evidence-led diagnosis; explicit investigate/explain-only requests remain non-mutating.
+description: Reproduce, diagnose, repair, and deliver a bug or regression through independent review and live Shepherd custody of one current-base green PR. Human or Joe-mode route; explicit diagnosis-only requests remain read-only.
 disable-model-invocation: false
 user-invocable: true
 ---
 
-Use [doctrine selection and application](../doctrine/APPLY.md). For defect diagnosis, require `debugging`; a requested behavior change without a defect does not require inventing one. Preserve inherited selections; with none, consider `code` and `testing` for the actual repair. Load selected texts before applying them, without expanding diagnosis-only or mutation boundaries.
+Use [doctrine selection and application](../doctrine/APPLY.md), requiring `debugging` for diagnosis and `worktrees` before preparing PR changes. Preserve inherited selections; with none, consider `code` and `testing` for the actual repair. Load selected texts before applying them, without expanding diagnosis-only or mutation boundaries. Code Roast additionally requires `solid`.
 
 # Patch
 
-Separate the observed symptom from the inferred cause. Establish a mechanism that explains the evidence before changing product behavior.
+Separate the observed symptom from the inferred cause. Establish a mechanism that explains the evidence before changing product behavior. See the human-approved [intent](intent.md) and common [invocation policy](../../INVOCATION.md).
 
 ## Scope and safety
 
-- **Repair when invoked for a patch.** `/patch` and explicit fix requests authorize a bounded implementation after diagnosis, not unrelated refactoring or cleanup.
+- **Human or human-started Joe-mode selects this root route.** Direct Patch invocation or Joe-mode selection authorizes in-scope isolation, repair, commits, push/PR, review/fixes, and Shepherd custody without repeated implementation/publication questions. Patch owns bug/regression delivery, not planned behavior changes; return those to Joe-mode/the human for routing.
 - **Diagnosis-only when requested.** A request only to explain, investigate, or diagnose does not authorize a fix, even when routed through this skill. Stop when the evidence establishes the cause or an exact blocker. Automatic skill selection does not convert a read-only request into repair permission.
+- **Continue, do not duplicate.** An existing Patch-owned PR may return from Shepherd for bounded repair. A scoped diagnostic assignment within another delivery returns evidence to that owner, not a second route, PR, or monitor. Other skills must not autonomously select Patch as a new root delivery.
 - Read repository guidance, relevant `CONTEXT.md`, and architectural decisions before exploring. Respect the agreed scope.
 - Redact secrets from commands, output, and captured artifacts. Use environment variables rather than embedding credentials. Capture only the evidence needed.
 - Use existing checks, read-only inspection, and isolated reproduction artifacts during diagnosis. Ask before changing product code for instrumentation, touching production, or running destructive probes. Inspect bundled scripts and their inputs before using them.
 - Preserve other people's changes and evidence. Clean up only artifacts this investigation created and is authorized to remove.
+
+For authorized repair, establish an owned isolated workspace using [the workspace procedure](../ship/WORKSPACE.md) before preparing PR changes. Record `patch` as owner route in [the shared delivery packet](../ship/DELIVERY.md#one-delivery-packet-one-owner), including return owner, source/target refs, requirements, validation, and doctrine sources/digests. This shared finish does not invoke Ship. Clarify material missing requirements, semantic conflicts, and scope changes; invocation does not authorize destructive probes or production-data access.
 
 ## 1. Establish the failure
 
@@ -26,11 +29,11 @@ Read the complete relevant error and stack trace. Record expected behavior, actu
 
 Check recent code, dependency, configuration, and environment changes. Find a working example or known-good state to compare against. A nearby failure is not necessarily the reported bug.
 
-For an explicitly requested small behavior change rather than a defect, establish the current contract and agreed desired behavior. Do not invent a bug or a root cause. Use a discriminating acceptance example to show the missing behavior, then follow the same bounded implementation and proof discipline. Clarify requests too broad to be one patch instead of silently taking on a feature redesign.
+Establish why the expected behavior is the existing contract or a previously working behavior. If the request actually adds planned behavior rather than fixes a bug/regression, return it for routing; do not manufacture a defect to keep it in Patch.
 
 ## 2. Build and minimize a feedback loop
 
-Find one repeatable command that exercises the real failing path and can distinguish the user's symptom from success. Run it and observe the failure before proposing a repair. For a requested behavior change, the signal is the agreed acceptance example failing under the current behavior, not evidence that the old behavior was itself defective.
+Find one repeatable command that exercises the real failing path and can distinguish the user's symptom from success. Run it and observe the failure before proposing a repair.
 
 Choose the smallest useful mechanism:
 
@@ -52,8 +55,6 @@ If no usable loop is possible, report the attempts and exact blocker. Ask for th
 
 Trace inputs, state transitions, and ownership boundaries backward from the symptom. Compare the failing path with working code and list the relevant differences.
 
-For an agreed behavior change, identify the existing mechanism and the layer responsible for the new contract. Investigate genuine uncertainty, but do not manufacture defect hypotheses for behavior that previously met its requirements.
-
 Rank plausible hypotheses by evidence and the cost of falsifying them. State each prediction: "If X causes this, changing Y should produce Z." Do not manufacture alternatives when the evidence already distinguishes the mechanism.
 
 Test **one hypothesis and one variable at a time**. Prefer debugger inspection and targeted probes over broad logging. Tag temporary instrumentation so it can be found and removed. For performance regressions, use measurements and profiling rather than log volume.
@@ -64,27 +65,31 @@ Record what each experiment rules in or out. A failed hypothesis is new evidence
 
 ## 4. Repair only when authorized
 
-Use [tdd](../tdd/SKILL.md) to turn the minimized reproduction or agreed behavior-change example into a failing test at the real boundary. A shallow test that cannot reproduce the actual interaction gives false confidence.
+Use [tdd](../tdd/SKILL.md) to turn the minimized reproduction into a failing test at the real boundary. A shallow test that cannot reproduce the actual interaction gives false confidence. Pass the established diagnosis and Patch return owner; TDD must not restart Patch or create another delivery.
 
 If no suitable test boundary exists, document that limitation and retain the reproduction as evidence. Discuss the missing boundary rather than adding unrelated architecture or pretending the bug is covered.
 
-Change the narrowest responsible layer that owns the incorrect behavior, or the agreed contract being changed. Preserve surrounding behavior, interfaces outside scope, and the user's changes. Do not add retries, timeouts, validation layers, renaming, cleanup, or abstractions merely because they might suppress the symptom or improve unrelated code.
+Change the narrowest responsible layer that owns the incorrect behavior. Preserve surrounding behavior, interfaces outside scope, and the user's changes. Do not add retries, timeouts, validation layers, renaming, cleanup, or abstractions merely because they might suppress the symptom or improve unrelated code.
 
 If the fix fails, return to the evidence and revise the hypothesis instead of layering on another fix. After three failed repair attempts, stop and discuss the assumptions and architecture with the user before attempting another. Repeated failure is a reason to reconsider the approach, not proof that the architecture is wrong.
 
-## 5. Verify and close
+## 5. Verify the repair
 
 Use [verify](../verify/SKILL.md) for evidence freshness and completion claims; it does not expand the repair's scope.
 
-- Rerun the original, unminimized reproduction and the regression test, or the agreed acceptance example and preservation checks for a behavior change.
+- Rerun the original, unminimized reproduction and the regression test.
 - Check the affected behavior and relevant surrounding tests. Use the same workload and acceptance threshold for performance or intermittent failures.
 - Remove only this investigation's temporary instrumentation and disposable artifacts; preserve evidence that still matters.
 - State the actual result. Distinguish a verified fix from an untested change, partial mitigation, unavailable check, or blocked investigation.
-- Report the cause and decisive proof, any authorized changes, and unresolved risk. Include the causal explanation in a commit or pull-request description when publication is part of the task.
+- Report the cause and decisive proof, any authorized changes, and unresolved risk. Preserve the causal explanation in the delivery's commit or PR description.
 
-Stop when the bounded change is verified or an exact blocker requires human input. A patch request alone does not authorize a commit, PR, deployment, ticket update, or self-approval. When called by Ship, return the change and evidence to that delivery owner; do not start a competing delivery or review loop. If independent review is requested, use [roast](../roast/SKILL.md) without granting the reviewer repair authority.
+## 6. Deliver under Patch ownership
 
-When a separate authorization includes committing, use the [shared commit-message policy](../../COMMIT-STYLE.md). Do not drop consequential explanation merely to keep the message terse.
+For a repair delivery, execute [the shared finish and maintenance contract](../ship/DELIVERY.md): independent Roast, required integrated validation, criterion verdicts, one PR, current-target readiness, and actual Shepherd custody until a terminal state or explicit blocker. A local verified diff or internal draft is not the final handoff. Patch performs its own delivery; do not invoke Ship to finish it.
+
+Every modifying agent uses [changelog](../changelog/SKILL.md); isolated workers return proposals and the integration owner consolidates/deduplicates the notable entry before review. Use the [shared commit-message policy](../../COMMIT-STYLE.md), keeping the causal explanation when consequential.
+
+On functional feedback, recover the current PR and original bug evidence, classify the finding within Patch's bug/regression scope, and repeat the affected diagnosis/repair/proof and independent review on that same branch/PR. Return head/results to its existing Shepherd rather than starting a second monitor. Different-kind or scope-changing work returns to Joe-mode/the human. Explicit diagnosis-only or scoped worker requests return their evidence without publication; never treat them as repair authority. No deployment, self-approval, merge, or automatic merge.
 
 ## Supporting techniques
 

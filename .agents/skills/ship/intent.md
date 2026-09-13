@@ -2,8 +2,9 @@
 
 ## What this is for
 
-Taking one issue, or one specification and its related tickets, to a delivered
-change request.
+Taking one feature issue, or one specification and its related tickets, to a
+reviewed, green change request current with its latest target and awaiting human
+final signoff.
 
 Most delivery is not a fleet working a backlog. It is one person, one ticket,
 and the ordinary sequence of understanding it, building it, proving it, and
@@ -67,9 +68,13 @@ easy to justify and expensive to remove later.
 ## Handover, not merge
 
 Ship publishes a change request rather than stopping at a local commit.
-Driving that change request to mergeable belongs to shepherd, and merging
-belongs to a person.
+Keeping that change request reviewed, green, and current with the latest main
+(or its explicit target) belongs to shepherd, and merging belongs to a person.
 Top-level Ship always hands the change request to Shepherd before completing. It does not ask whether to shepherd. When Ship runs inside another orchestration, the caller may have Ship invoke Shepherd or explicitly transfer that responsibility to another agent. A delegated handoff must have an identified owner; it is not permission to leave the change request unattended. Merging remains a human action.
+
+Custody is real and continues after green until merge, closure, an explicit stop,
+a human decision, or loss of the runtime. An internal draft may show progress,
+but is not the final handoff. A stopped session cannot promise continued watching.
 
 ## Boundaries
 
@@ -80,6 +85,12 @@ Top-level Ship always hands the change request to Shepherd before completing. It
 - Not a multi-change-request fleet. The tickets of a specification converge on
   one change request rather than becoming independently shepherded deliveries.
 - Merge authority stays with a person, and no part of this may claim it.
+- A human or human-started Joe-mode selects Ship for feature/specification
+  delivery. That selection authorizes in-scope implementation and publication,
+  review and repair, and shepherding without repeated permission questions.
+  Explicit narrower requests and material missing decisions remain boundaries.
+  Patch and Refactor are peer routes for their own kinds of work, not indirect
+  invocations of Ship.
 
 ## Continuing an existing change request
 
@@ -98,9 +109,10 @@ criterion verdicts, and an update to the existing change request. A request that
 changes requirements, architecture, accepted risk, or the confirmed scope
 returns to the human instead of being smuggled into remediation.
 
-Shepherd may invoke this continuation mode when its observation loop finds
-review feedback or a validation failure that requires functional code or test
-changes. A pure rebase, configured mechanical conflict resolution, or
+Shepherd may invoke this continuation mode for a Ship-owned delivery when its
+observation loop finds review feedback or a validation failure that requires
+in-scope functional code or test changes. Other deliveries return to their own
+route owner. A pure rebase, configured mechanical conflict resolution, or
 regeneration of derived output remains Shepherd work and does not restart the
 Ship cycle.
 
