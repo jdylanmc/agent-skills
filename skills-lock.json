@@ -205,12 +205,6 @@
       "skillPath": "skills/engineering/tdd/SKILL.md",
       "computedHash": "e753a5da75292bbe59d302d89566bc2c53d0e73944da2f0e944a7578883c07d0"
     },
-    "test-driven-development": {
-      "source": "obra/superpowers",
-      "sourceType": "github",
-      "skillPath": "skills/test-driven-development/SKILL.md",
-      "computedHash": "a4126a9c5f17be3c228aa9e5755898ade283448b86099f56f40852e8c14532be"
-    },
     "to-spec": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -241,13 +235,7 @@
       "skillPath": "skills/using-superpowers/SKILL.md",
       "computedHash": "c7abe8bdc2099bbe4f245454d32c7563ccd2bb41dcc218b02b461c2acc3c6ae6"
     },
-    "verification-before-completion": {
-      "source": "obra/superpowers",
-      "sourceType": "github",
-      "skillPath": "skills/verification-before-completion/SKILL.md",
-      "computedHash": "b529822bdac4b197b180fe12225cff86b930b65910435103c10622df7f041651"
-    },
-    "verify-and-stop": {
+    "verify": {
       "source": "juliusbrussee/caveman",
       "sourceType": "github",
       "skillPath": "skills/verify-and-stop/SKILL.md",

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Merge `tdd` and `test-driven-development` into `tdd`; permit small,
+  behavior-preserving refactoring after green and rerun affected tests.
+  Consolidate supporting test guidance and update the Hermes invocation example.
+- Merge `verify-and-stop` and `verification-before-completion` into `verify`;
+  reuse evidence only for unchanged relevant state and inputs, otherwise rerun.
+  Connect TDD and debugging completion checks to the shared verifier.
+- Keep 41 active skills, with the approved defaults and updated provenance.
 - Collapse `grilling`, `grill-me`, and `grill-with-docs` into `interrogate`,
   retaining optional domain-model recording and updating callers and ticket types.
 - Merge `diagnosing-bugs`, `systematic-debugging`, and `investigate-first` into

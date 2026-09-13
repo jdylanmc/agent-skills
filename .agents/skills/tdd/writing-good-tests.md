@@ -44,12 +44,17 @@ on redesign and sleeps through bugs. Test the behavior that depends on
 the decision: not `expect(MAX_RETRIES).toBe(5)` but "a failing call is
 retried 5 times and the 6th attempt never happens."
 
+Exact values or wording can be part of a public contract, such as a protocol
+field or an error code. Assert those through the public boundary; avoid tests
+that merely freeze an internal implementation choice.
+
 **Behavior, not text.** Asserting that a script, skill, or config
 contains an exact line proves only that the source is the source. Run
 scripts against controlled inputs and assert outputs, side effects, or
-exit codes. Documents that instruct agents are tested by the consuming
-agent's behavior (superpowers:writing-skills); prose for humans earns no
-test at all.
+exit codes. Evaluate documents that instruct agents with bounded, isolated
+consumer scenarios, not real deployments or external mutations. Machine-readable
+metadata and links can have structural checks, but those do not prove workflow
+behavior. Human-facing prose needs content review rather than token-matching tests.
 
 **Your code, not the framework.** Test the contract your code makes at
 its boundaries — the route you register, the query you emit, the payload
@@ -80,10 +85,10 @@ BEFORE writing the test body:
 
 ## Principle 2: Exercise the Real Thing
 
-**The mock earns no assertions.** A mock assertion passes when the mock
-is present and fails when it is absent — it says nothing about the
-component. Assert the real component's behavior; if the mock is what you
-are checking, unmock it or delete the assertion.
+**The mock's presence earns no assertions.** An assertion that passes merely
+because a mock exists says nothing about the component. Assert the real
+component's behavior. Boundary interactions may be asserted when their
+arguments, count, or ordering are themselves part of the agreed contract.
 
 ```typescript
 // ✅ Real behavior
@@ -143,8 +148,10 @@ BEFORE adding a mock or test helper:
 
   A method only tests call lives in test utilities, not production.
 
-  About to assert on the mock itself?
-    Unmock it or delete the assertion.
+  About to assert only that the mock exists or an internal helper was called?
+    Assert real public behavior instead.
+  Arguments, counts, or order define the agreed system-boundary contract?
+    Assert those interactions with a specific double.
 ```
 
 ## Tests Ship With the Implementation

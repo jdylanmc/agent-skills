@@ -20,7 +20,7 @@ Characteristics:
 - Uses public API only
 - Survives internal refactors
 - Describes WHAT, not HOW
-- One logical assertion per test
+- One behavior per test; multiple assertions may jointly establish its contract
 
 ## Bad Tests
 
@@ -39,7 +39,7 @@ Red flags:
 
 - Mocking internal collaborators
 - Testing private methods
-- Asserting on call counts/order
+- Asserting on internal call counts/order instead of the public contract
 - Test breaks when refactoring without behavior change
 - Test name describes HOW not WHAT
 - Verifying through external means instead of interface

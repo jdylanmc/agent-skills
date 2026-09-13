@@ -7,11 +7,15 @@ Mock at **system boundaries** only:
 - Time/randomness
 - File system (sometimes)
 
-Don't mock:
+Don't replace behavior inside the seam under test:
 
-- Your own classes/modules
-- Internal collaborators
-- Anything you control
+- The component whose real behavior the test should exercise
+- Internal collaborators merely to assert their calls or structure
+- Side effects needed to exercise the agreed contract
+
+An adapter owned by your project may still represent a system boundary. A
+controlled double is appropriate there when it preserves the relevant contract;
+ownership of the adapter alone does not make it an internal implementation detail.
 
 ## Designing for Mockability
 

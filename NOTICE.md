@@ -37,6 +37,13 @@ Modifications to Apache-licensed files must carry prominent change notices.
   The supporting tracing, waiting, validation, test-pollution, and evaluation
   material comes from Superpowers; the human-assisted loop template comes from
   Matt Pocock's collection. All three MIT notices above apply.
+- `tdd` combines Matt Pocock's `tdd` with Jesse Vincent's
+  `test-driven-development` from Superpowers, including the adapted
+  `writing-good-tests.md` reference. Its primary lock record retains
+  `skills/engineering/tdd/SKILL.md`. Both MIT notices apply.
+- `verify` combines Julius Brussee's `verify-and-stop` with Jesse Vincent's
+  `verification-before-completion` from Superpowers. Its primary lock record
+  retains `skills/verify-and-stop/SKILL.md`. Both MIT notices apply.
 
 These workflows and their callers have been adapted locally. Original import
 records and contents remain recoverable from Git history.

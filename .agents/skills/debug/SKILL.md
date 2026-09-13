@@ -66,6 +66,8 @@ If the fix fails, return to the evidence and revise the hypothesis instead of la
 
 ## 5. Verify and close
 
+Use `verify` for evidence freshness and completion claims; it does not expand the repair's scope.
+
 - Rerun the original, unminimized reproduction and the regression test.
 - Check the affected behavior and relevant surrounding tests. Use the same workload and acceptance threshold for performance or intermittent failures.
 - Remove only this investigation's temporary instrumentation and disposable artifacts; preserve evidence that still matters.

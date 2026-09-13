@@ -25,11 +25,11 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 21 | Complete collection |
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 12 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 1 | `skill-creator` only |
-| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 9 | Complete skill collection |
+| [obra/superpowers](https://github.com/obra/superpowers) | 14 | 7 | Complete skill collection |
 
-Human keep/drop passes have removed 25 skills outright; two three-to-one
-consolidations reduce the remaining entry points to **43**. All `openai.yaml`
-agent metadata files have also been removed. `wayfinder` is now
+Human keep/drop passes have removed 25 skills outright; two three-to-one and
+two two-to-one consolidations reduce the remaining entry points to **41**. All
+`openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
 
@@ -39,6 +39,12 @@ tracker labels, and cross-skill references.
 - [`debug`](./.agents/skills/debug/SKILL.md) combines `diagnosing-bugs`,
   `systematic-debugging`, and `investigate-first`: evidence-led diagnosis,
   followed by a bounded repair only when authorized.
+- [`tdd`](./.agents/skills/tdd/SKILL.md) combines both test-driven development
+  skills: observed red and green, with small behavior-preserving refactoring
+  allowed after green and followed by another test run.
+- [`verify`](./.agents/skills/verify/SKILL.md) combines `verify-and-stop` and
+  `verification-before-completion`: reuse evidence only while relevant state
+  and inputs remain unchanged; otherwise rerun.
 - `codebase-design` is removed; its callers use the project's own interfaces
   and terminology.
 - Caveman's `setup`, `discover`, `evidence-review`, `manage`, `optimize`, `learn`,
@@ -54,9 +60,8 @@ consolidated skills are recorded in [NOTICE.md](./NOTICE.md).
 
 Overlapping concepts and provider-specific assumptions are expected. Some kept
 skills still reference removed skills: `ask-matt`, `retro`, and `brainstorming`
-contain routes or invocations, and `test-driven-development` has a supporting
-reference. Resolve these during the rework pass before using the affected flows;
-the selection pass does not silently redesign them.
+contain routes or invocations. Resolve these during the rework pass before using
+the affected flows; the selection pass does not silently redesign them.
 
 The initial import uses CLI version `1.5.23`, project scope, Copilot's
 `.agents/skills/` directory, copy mode, and disabled telemetry:
