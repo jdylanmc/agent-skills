@@ -2,11 +2,13 @@
 
 ## Unreleased
 
-- Remove 15 skills in the first human curation pass: `wizard`, all six
+- Remove all `openai.yaml` agent metadata files from the active collection.
+- Remove 16 skills in the initial human curation passes: `wizard`, all six
   `writing-*` skills, `to-questionnaire`, `teach`, `setup-ts-deep-modules`,
   `setup-pre-commit`, `scaffold-exercises`, `migrate-to-shoehorn`,
-  `receiving-code-review`, and `claude-handoff`. Keep 57 skills without rewriting
-  their upstream contents; archive and doctrine remain unchanged.
+  `receiving-code-review`, `claude-handoff`, and `finishing-a-development-branch`.
+  Keep 56 skills without rewriting their workflow text; archive and doctrine
+  remain unchanged.
 - Archive the previous atomic skill framework, agents, coupled tooling, runtime
   hooks, and documentation under `archive/atomic-v1/`.
 - Start an editable, repository-local collection from Matt Pocock's skills,
