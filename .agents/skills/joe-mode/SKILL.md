@@ -109,6 +109,7 @@ Fill available capacity with independent work. Do not stop all delivery while th
 
 | Situation | Route and return contract |
 | --- | --- |
+| A named goal needs its critical task path, missing work, or research spikes identified | [chart-a-course](../chart-a-course/SKILL.md): read-only goal-centered path, proposed tasks, evidence gaps, and one next planning recommendation. Joe owns acting on the result; the map is not tracker publication or delivery authorization. |
 | Unsettled question; no defined backlog yet | [discovery](../discovery/SKILL.md): aligned findings, domain understanding, frontier, full foundation and compact handoff. It can request [research](../research/SKILL.md) or [poc](../poc/SKILL.md); those return evidence, not product changes. |
 | A focused human question | [interrogate](../interrogate/SKILL.md): actual human answers. During discovery, use its conversation-only intake and let discovery own the alignment gate. |
 | Aligned terminology or a consequential architectural choice needs a record | [domain-modeling](../domain-modeling/SKILL.md): glossary and Architecture Decision Records (ADRs) when its criteria warrant one. Distinguish proposals from human decisions; do not generate ceremonial ADRs for every ticket. |
@@ -122,6 +123,18 @@ Fill available capacity with independent work. Do not stop all delivery while th
 | New evidence invalidates a slice | Return to its owner: defect diagnosis within the current delivery, or Discovery for unsettled requirements. Explicit diagnosis-only scope stays read-only; do not spawn another Patch PR for the same work. |
 
 These are paths through the decision tree, not a mandatory global sequence. When specifications are needed, the order is Discovery artifact, Specify requirements, then Breakdown Tickets. A small, understood issue need not create another spec, ADR, or discovery run. Choose the delivery route by kind, scope, and size; Patch and Refactor are peer routes, not mandatory wrappers around Ship. All share [reviewed delivery completion](../ship/DELIVERY.md), independent [Roast](../roast/SKILL.md), [Verify](../verify/SKILL.md), and mandatory Shepherd. Once a route yields its required output, automatically reevaluate within existing permissions.
+
+When Chart-a-course recommends Discovery against a particular issue or epic,
+invoke Discovery within the existing anchor and authority; do not merely tell
+the human to invoke it. Pass the target, unresolved question, evidence, affected
+tasks, and learning exit condition. Reuse any existing investigation owner.
+Preserve Discovery's human-alignment, experiment, and write gates. An unpublished
+issue proposal may anchor an inquiry without a tracker ID; creating that issue
+still needs the applicable publication approval. Resolve scope expansion or
+missing authority with the human instead of interpreting a recommendation as
+permission. Feed returned findings and approved task identities back into
+Chart-a-course when they change the path. Do not rerun it on unchanged evidence
+or treat a provisional path as delivery readiness.
 
 Keep one human-facing discovery/planning conversation moving while delivery agents work. A discovery worker returns its real questions and waits; Joe-mode presents them to the human and sends the actual answers back. Do not let an agent simulate the human's side or let several workers ask competing questions simultaneously.
 

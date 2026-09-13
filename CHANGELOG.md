@@ -9,6 +9,13 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `chart-a-course`: find a critical task path to a named goal, exposing missing
+  tasks and research spikes without tracker writes. Joe-mode acts on targeted
+  Discovery recommendations within its existing authority and preserves human
+  gates. Move its intent into the active package with the agreed expanded scope.
+- Post-merge CI verifies remote GitHub installation of the complete pack against
+  the checked-out revision, with telemetry disabled and no skills.sh registry
+  upload or listing claim.
 - Full-pack installation through the standard skills CLI for project-local
   GitHub Copilot use. All 32 skills now carry their shared policies, complete
   Doctrine support, licenses, and import provenance without a source checkout.

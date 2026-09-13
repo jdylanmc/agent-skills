@@ -1,6 +1,6 @@
 # Agent Skills
 
-Dylan's editable library of **32 skills** and human-owned engineering doctrine,
+Dylan's editable library of **33 skills** and human-owned engineering doctrine,
 designed for GitHub Copilot. The retired atomic framework remains historical
 material under `archive/atomic-v1/`; it does not govern the active library.
 
@@ -26,7 +26,7 @@ DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill '*
 The environment prefix above is POSIX shell syntax; in PowerShell, set
 `$env:DISABLE_TELEMETRY='1'` before running the `npx` command.
 
-Install **all 32** together. Individual installs are unsupported: workflows
+Install **all 33** together. Individual installs are unsupported: workflows
 reference sibling skills, and Setup carries the shared policies, attribution,
 licenses, and historical provenance. The quoted `'*'` selects every active
 skill without shell expansion. The default route does not install the archive;
@@ -72,6 +72,10 @@ Validation keeps telemetry disabled and does not claim directory registration.
 - **Planning:** Discovery preserves the full aligned evidence artifact;
   Specify turns it into complete requirements; Breakdown Tickets produces
   human-approved slices. Already-clear small deliveries need no new ceremony.
+- **Chart a Course:** find the critical task path to a goal, including missing
+  tasks and research spikes. Recommend Discovery for a particular issue or
+  epic; Joe-mode invokes it within its existing authority and feeds findings
+  back into the path. Chart-a-course itself stays read-only.
 - **Delivery:** Ship handles features/specs, Patch handles bugs/regressions,
   and internal Refactor handles behavior-preserving restructuring. Each
   reaches an independently reviewed, green PR current with its target.
@@ -145,13 +149,16 @@ instructions. They cannot authorize edits, invent decisions, or approve work.
 Human sources change only when explicitly requested. The active Joe-mode,
 Ship, and Shepherd intents contain approved workflow changes; Patch has its
 approved bug-to-delivery intent. Restored Discovery, POC, Roast, ELI5, and
-Status Report intents preserve their archived text. Archived sources and
-the root intent remain unchanged.
+Status Report intents preserve their archived text. Chart-a-course's intent
+moved from the archive into its active package and includes the human-confirmed
+missing-task, research-spike, and caller-owned Discovery scope. Other archived
+sources and the root intent remain unchanged.
 
 ## Provenance and licenses
 
-There are **26 imported/adapted packages** plus six local/restored packages:
-`shepherd`, `synthesize`, `doctrine`, `eli5`, `changelog`, and `status-report`.
+There are **26 imported/adapted packages** plus seven local/restored packages:
+`shepherd`, `synthesize`, `doctrine`, `eli5`, `changelog`, `status-report`, and
+`chart-a-course`.
 
 | Primary upstream source | Initially imported | Retained |
 | --- | ---: | ---: |
@@ -199,6 +206,24 @@ CLI copy install from the local candidate into an owned `.test-sandbox/`
 consumer. Pack tests check exact membership, complete copied support, portable
 Markdown links, bundled resources, installed Doctrine loading, protected
 source bytes/metadata, repeat installation, and unrelated-file preservation.
+After successful validation on a push to `main` (or a manual run on `main`),
+CI repeats those checks against a remote GitHub install, comparing the installed
+pack byte-for-byte with the checked-out revision. Pull requests only test the
+local candidate. Both routes disable telemetry and install into disposable
+consumers, never globally. This verifies GitHub distribution, not skills.sh
+listing or ranking; there is no registry upload step. If `main` advances during
+the remote check, a content mismatch fails rather than validating the wrong
+revision; use the newer run.
+
+To run the remote check locally against a clean checkout matching published
+`main`:
+
+```sh
+SKILLS_PACK_SOURCE=https://github.com/jdylanmc/agent-skills/tree/main npm run test:pack
+```
+
+In PowerShell, set `$env:SKILLS_PACK_SOURCE` before running the npm command.
+Omit that variable for local-candidate validation.
 Scratch consumers are removed afterward. The dev-only CLI pin and lock are
 validation tooling, not a production dependency or custom npm installer.
 Source/metadata/link checks do not prove that a consuming model follows the
