@@ -29,7 +29,7 @@ per-rule revision metadata, and none should be added.
 ## Integrity
 
 `manifest.md` defines the canonical file identities and integrity hashes. After
-editing a doctrine file, run `shasum -a 256 doctrine/<id>.doctrine.md` from the
+editing a doctrine file, run `shasum -a 256 .agents/skills/doctrine/doctrines/<id>.doctrine.md` from the
 repository root and replace the matching digest in `manifest.md`.
 
 The digest is a tamper boundary, not a review. It proves a file is the one the
@@ -38,6 +38,11 @@ nothing about whether the change was a good idea. Re-hashing an edit is not
 approval of it.
 
 ## Applying doctrine
+
+Use the [Doctrine skill](../SKILL.md) to list, select, and load sources through
+one common interface. Catalog and worker-selection responses contain metadata
+only; the applying agent retrieves verified full text. See the shared
+[application contract](../APPLY.md) for required selections and work packets.
 
 - use only rules relevant to the current task and reviewer lens;
 - treat repository evidence and requirements as authoritative;
