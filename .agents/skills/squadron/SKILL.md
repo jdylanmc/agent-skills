@@ -1,9 +1,9 @@
 ---
-name: dispatching-parallel-agents
+name: squadron
 description: Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies
 ---
 
-# Dispatching Parallel Agents
+# Squadron
 
 Use [Doctrine](../doctrine/SKILL.md) under the [shared packet contract](../doctrine/APPLY.md). Preserve scoped operator selections and required IDs; without a preselection, choose appropriate doctrines per task from catalog metadata. Each worker receives its work plus canonical IDs, required flags, reasons, source/selector location, and pinned digests, then loads the actual texts before applying them. The coordinator need not read those bodies to delegate.
 

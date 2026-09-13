@@ -31,7 +31,8 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 Human keep/drop passes have removed 30 skills outright; four three-to-one and
 six two-to-one consolidations plus two policy demotions leave
 **26 imported/adapted skills**.
-The locally built `shepherd`, `synthesize`, and `doctrine` bring the active total to **29**. All
+The locally built `shepherd`, `synthesize`, `doctrine`, and restored `eli5` bring
+the active total to **30**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -125,6 +126,17 @@ tracker labels, and cross-skill references.
   read-only repository localization and citation-only output are unchanged.
   This skill locates code; the Scout doctrine guides Discovery's design-space
   exploration and remains a separate source.
+- `dispatching-parallel-agents` is now
+  [`squadron`](./.agents/skills/squadron/SKILL.md), preserving bounded parallel
+  assignments and doctrine packets without restoring the archived fleet runtime.
+- `loop-me` is now [`automate-this`](./.agents/skills/automate-this/SKILL.md).
+  It still turns recurring activities into workflow specifications; the rename
+  does not authorize building or running the automation.
+- Restore [`eli5`](./.agents/skills/eli5/SKILL.md) from its unchanged archived
+  [intent](./.agents/skills/eli5/intent.md): read the subject's actual evidence,
+  then explain it briefly for a five-year-old, a junior in its field, and an
+  expert. Each level adds depth. No source edits, atomic composition, recording
+  hooks, or archived checker machinery.
 - [`evolve-architecture`](./.agents/skills/evolve-architecture/SKILL.md) replaces
   `improve-codebase-architecture` with an explicitly requested
   [intent](./.agents/skills/evolve-architecture/intent.md): diagnose evidenced
@@ -147,7 +159,7 @@ Further workflow curation remains human-directed.
 
 Lockfile keys follow local names for imported skills; source paths and hashes
 retain upstream provenance, not hashes of locally adapted content. Its 26
-records exclude locally authored `shepherd`, `synthesize`, and `doctrine`, which have no
+records exclude locally authored `shepherd`, `synthesize`, `doctrine`, and `eli5`, which have no
 upstream imports to record. Counts above assign imported skills to their primary source; additional
 sources are recorded in [NOTICE.md](./NOTICE.md).
 

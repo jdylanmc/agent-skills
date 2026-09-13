@@ -28,6 +28,11 @@ Modifications to Apache-licensed files must carry prominent change notices.
 
 ## Consolidated skills
 
+- `automate-this` renames Matt Pocock's `loop-me`, retaining its workflow-design
+  behavior and original import source/hash. The Matt Pocock MIT notice applies.
+- `squadron` renames Jesse Vincent's `dispatching-parallel-agents`, retaining
+  its workflow and original import source/hash. The Superpowers MIT notice
+  applies. It does not restore the archived Squadron implementations.
 - `evolve-architecture` adapts Matt Pocock's `improve-codebase-architecture`
   around the operator-approved evolution workflow and newly requested intent.
   It retains evidenced hotspot analysis and useful visual comparisons, not
@@ -104,6 +109,11 @@ doctrine sources and uses the repository MIT license. The newly requested
 `worktrees` doctrine and Ship's workspace procedure adapt Jesse Vincent's
 `using-git-worktrees`, whose standalone skill is retired. The Superpowers MIT
 notice applies to that adapted material alongside the repository license.
+
+`eli5` is restored locally from this repository's unchanged archived intent
+and adapted subject-grounding/explanation guidance. It uses the repository MIT
+license, has no upstream installer record, and does not restore the archived
+atomic framework, recording, or structural-checker machinery.
 
 `poc` adapts Matt Pocock's `prototype`, including its logic and UI references,
 and retains the original `skills/engineering/prototype/SKILL.md` import record.

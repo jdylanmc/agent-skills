@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Rename `loop-me` to `automate-this`, preserving workflow specification behavior
+  rather than adding automatic implementation or execution.
+- Rename `dispatching-parallel-agents` to `squadron`, preserving its bounded
+  parallel workflow and upstream provenance.
+- Restore `eli5` from its unchanged archived intent: grounded, concise
+  explanations at five-year-old, junior-practitioner, and expert depths.
+  Keep it read-only and omit retired atomic/runtime machinery. Keep 30 skills.
 - Add `/doctrine` with catalog-only browsing, scoped metadata-only worker
   selections, required IDs, and verified full-text loading. Move all 22 existing
   doctrine texts unchanged into the skill; add requested worktree doctrine and

@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "automate-this": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/in-progress/loop-me/SKILL.md",
+      "computedHash": "72e01a16929dbf6583afc469a49d64b28b1be4a6034c900decd94cd5a69ba6e6"
+    },
     "breakdown-tickets": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -18,12 +24,6 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/wayfinder/SKILL.md",
       "computedHash": "fa790eb4255b13d24d7e33ff4891ccd3d621558cc0ab87ae226777538ea16a8f"
-    },
-    "dispatching-parallel-agents": {
-      "source": "obra/superpowers",
-      "sourceType": "github",
-      "skillPath": "skills/dispatching-parallel-agents/SKILL.md",
-      "computedHash": "b011107f17188e0b2898bb1856b5bac8b49537cc86e737c82126558a235bd62a"
     },
     "domain-modeling": {
       "source": "mattpocock/skills",
@@ -54,12 +54,6 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/ask-matt/SKILL.md",
       "computedHash": "0cd14026efa0330083cbc7adf590976c162b60e02f696a8dcce96f0b4dab8a72"
-    },
-    "loop-me": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "skillPath": "skills/in-progress/loop-me/SKILL.md",
-      "computedHash": "72e01a16929dbf6583afc469a49d64b28b1be4a6034c900decd94cd5a69ba6e6"
     },
     "migration": {
       "source": "juliusbrussee/caveman",
@@ -132,6 +126,12 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/to-spec/SKILL.md",
       "computedHash": "3fa1a0695d4ea242fae9e569e4d22aa1788623197abb33bfadafae7315789bbf"
+    },
+    "squadron": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/dispatching-parallel-agents/SKILL.md",
+      "computedHash": "b011107f17188e0b2898bb1856b5bac8b49537cc86e737c82126558a235bd62a"
     },
     "tdd": {
       "source": "mattpocock/skills",
