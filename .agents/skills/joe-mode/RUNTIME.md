@@ -15,7 +15,7 @@ If required delegation, independent review, or monitoring is unavailable, name t
 
 ## Lifecycle
 
-A background launch is not proof the worker started successfully. Confirm the actual agent ID/state and reconcile its first result or observation before claiming ownership transferred. In particular, Ship's Shepherd handoff requires a real monitor that has observed the PR.
+A background launch is not proof the worker started successfully. Confirm the actual agent ID/state and reconcile its first result or observation before claiming ownership transferred. Every delivery route's Shepherd handoff requires a real monitor that has observed the PR.
 
 The controller's human-facing conversation remains available while workers run. Questions from workers are queued with their owner and affected scope. Only actual human responses can clear human-decision gates.
 
@@ -27,7 +27,7 @@ Joe-mode is session-long, not an installed service. A board on disk does not sch
 
 Give each independent writing worker its own authorized workspace. Discovery/research sources remain read-only; POC writes stay in its agreed scratch environment. Domain/ADR writers do not edit the checkout an implementer is currently using.
 
-Ship owns its delivery branch, integration queue, and nested workers. Joe-mode owns non-overlapping delivery groups and planning outputs, not cherry-picks into those branches. Transfer artifacts and permissions through the owner, with one writer/integrator per shared mutable target.
+The selected Ship, Patch, or Refactor owner owns its delivery branch, integration queue, and nested workers. Joe-mode uses Squadron for distinct assignments and owns their non-overlapping coverage, not cherry-picks into their branches. Transfer artifacts and permissions through the owner, with one writer/integrator per shared mutable target. Serialize Changelog updates through that integrator.
 
 Read the repository's actual worktree guidance before creating any workspace. Do not infer that being in an existing linked worktree makes it safe for several writers. Never clean up a worker's branch, worktree, or process merely because its last message said "done."
 
@@ -40,3 +40,12 @@ Do not create `.claude/`, `CLAUDE.md`, Claude hooks, or Claude permission config
 Provider access uses the configured GitHub CLI or Azure DevOps integration and authenticated identity. A Copilot subscription, Git author email, or an available shell is not proof of tracker permissions.
 
 All commit-producing workers receive the [shared commit-message policy](../../COMMIT-STYLE.md). It applies independently of chat style, respects repository/operator requirements, and does not authorize additional Git actions. Keep it with the library; do not install it into global Copilot configuration as a side effect.
+
+Follow [invocation and communication contracts](../../INVOCATION.md). Prefer
+terse exact worker messages without changing the human's chat mode. Caller
+restrictions still apply when the runtime ignores invocation metadata.
+
+Preserve objective-start evidence, parent/descendant ownership, cycle state,
+and deduplicated report events in existing session storage. Status Report uses
+available runtime events; missing objective timing/tool counts stay unavailable.
+Do not install a recorder or infer a complete fleet from a partial tool view.

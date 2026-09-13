@@ -118,12 +118,21 @@ Continue with the next bounded inquiry when it is within the agreed scope and co
 
 For consequential uncertainty, use Scout's stopping case above to explain why further exploration is or is not worthwhile. A recommendation is not a selected design; a selected design is not implementation permission. Ready work routes onward without reopening settled decisions merely to satisfy a process.
 
-Return foundation and handoff locations, the current state, and the recommended next action. Discovery owns that recommendation; research and POC return evidence, not the decision to advance. Hand an aligned foundation to `specify` when specification is warranted; ticket breakdown belongs to `breakdown-tickets` and delivery to `ship`, as separate authorized work.
+Return foundation and handoff locations, the current state, and the recommended
+next action. Discovery owns that recommendation; research and POC return
+evidence, not the decision to advance. Hand the full aligned artifact to
+`specify` when requirements are warranted; its resulting specification feeds
+`breakdown-tickets`. Delivery is separate authorized work through the selected
+Ship, Patch, or Refactor owner, not a side effect of Discovery.
 
 ## Optional tracker maintenance
 
 A tracker is optional, never an intake requirement. Reading an existing discovery map is allowed; creating, assigning, commenting, labeling, closing, or deleting tracker items is not part of the read-only cycle.
 
 After aligned artifacts are ready, show the exact proposed discovery-tracker changes and obtain explicit approval before applying them outside the cycle. Keep them to discovery state and evidence pointers, not specification or implementation ticketing. Local Markdown trackers are repository writes and need the same gate. Recheck the target before writing, preserve concurrent human changes, and report any partial failure rather than claiming all updates succeeded.
+
+Consult [Changelog](../changelog/SKILL.md) when persisting authorized artifacts
+or tracker changes. Temporary evidence and routine tracker updates normally
+need no entry; never create repository history from a read-only cycle.
 
 Older maps may contain decision tickets and `discovery:prototype` labels. Treat them as existing evidence, not commands to claim or resolve issues automatically; their experimental questions now route to `poc`. Do not migrate labels or rebuild their graph without approval.

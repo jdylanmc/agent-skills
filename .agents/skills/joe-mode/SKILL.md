@@ -1,6 +1,6 @@
 ---
 name: joe-mode
-description: Keep an anchored idea-to-PR workflow running for the session. Orchestrate concurrent discovery, research, proof-of-concept experiments, domain decisions, specs, backlog shaping, and delivery using the configured GitHub or Azure DevOps backlog and agent-ready labels. Use when the user asks for Joe-mode or ongoing coordinated delivery of an anchored scope.
+description: Human-started, one-per-repository controller that loops backlog management, discovery, planning, and delivery until stopped. Aggressively use Squadron for independent Ship, Patch, Refactor, and Shepherd assignments; return reviewed, green PRs current with main and event-driven status snapshots.
 disable-model-invocation: true
 user-invocable: true
 ---
@@ -11,7 +11,9 @@ Hand the human pull requests to review. Loop the existing skills; do not replace
 
 Use [Doctrine](../doctrine/SKILL.md) under the [common application contract](../doctrine/APPLY.md). Scope explicit selections to the named delivery, not every unrelated backlog item. With none preselected, choose appropriate doctrines per worker from catalog metadata; each work packet carries IDs, required flags, reasons, source locations, and digests. Applying workers retrieve the texts. Require `worktrees` for each PR-producing lane and preserve role-specific requirements such as `solid` for code Roast.
 
-Joe-mode starts only when requested and stays active in this session until paused or stopped. Apply its routing to subsequent turns within the anchor. A side question does not silently stop the work; an explicit redirection does. A worker dispatched for a bounded task must not activate another Joe-mode controller.
+Joe-mode starts only when requested and stays active in this session until paused or stopped. Apply its routing to subsequent turns within the anchor. A side question does not silently stop the work; an explicit redirection does. A worker dispatched for a bounded task must not activate another Joe-mode controller. Follow the [invocation contract](../../INVOCATION.md): one controller per repository, not one per issue, branch, worktree, or selected scope.
+
+Kickoff authorizes ordinary delivery of selected in-scope work, including repairs, commits, PR publication, review, and shepherding. Do not ask again at each routine transition. Preserve explicit narrower requests, human product decisions, scope changes, and each planning/recording approval gate. Human approval and merging are never delegated.
 
 ## 1. Resolve the anchor
 
@@ -26,19 +28,19 @@ Establish the backlog selection from the request and configuration:
 - An assigned-to-me request adds the authenticated provider user's assignee filter; Git commit identity is not proof of that identity.
 - A folder or idea may need a repository and backlog scope clarified. Ask the smallest material question rather than silently choosing full backlog.
 
-Resolve ambiguous remotes, planning scopes, and identities before dispatch. Use [setup](../setup/SKILL.md) when configuration is missing, preserving its confirmation gates. Its [GitHub](../setup/issue-tracker-github.md) and [Azure DevOps](../setup/issue-tracker-azure-devops.md) references describe provider operations. Existing GitLab or local configurations remain usable; do not replace them merely because GitHub and Azure DevOps are the common case.
+Resolve ambiguous remotes, planning scopes, and identities before dispatch. When configuration is missing, ask the human to run [setup](../setup/SKILL.md); never invoke that human-only workflow automatically. Its [GitHub](../setup/issue-tracker-github.md), [Azure DevOps](../setup/issue-tracker-azure-devops.md), and [local Markdown](../setup/issue-tracker-local.md) references describe the supported mechanisms. Report unsupported existing configurations and request a human choice; do not silently migrate them.
 
 If the anchor has no repository yet, discovery can start without one. Report backlog/provider discovery as unresolved and defer tracker publication and delivery until their destinations are agreed. An unavailable tracker is not an empty backlog.
 
 ## 2. Establish one controller and a work board
 
-Use harness session storage or a uniquely named session/OS-temporary artifact, not a new repository planning file. Record the anchor, provider and planning scope, assignee filter, mapped readiness role, permissions, active owners, worktree/branch locations, covered item IDs, dependencies, evidence pointers, human questions, and PR status.
+Use harness session storage or a uniquely named session/OS-temporary artifact, not a new repository planning file. Record the repository identity, controller ID, anchor and actual objective start evidence, provider and planning scope, assignee filter, mapped readiness role, permissions, active owners and parent relationships, worktree/branch locations, covered item IDs, dependencies, evidence pointers, human questions, PR status, cycle boundaries, and reported event identities.
 
-Reconcile any prior board with live agents and provider state before reusing it. Do not duplicate another active Joe-mode owner for this scope. If ownership is uncertain, resolve it rather than racing another session. A local board is coordination state, not a cross-session lock.
+Reconcile any prior board with live agents and provider state before reusing it. Resolve the common Git directory and normalized repository/provider identity so another worktree or clone is not mistaken for a different repository. Do not duplicate another active Joe-mode owner even for disjoint scopes in that repository: join the current controller or arrange explicit transfer. If visibility or ownership is uncertain, resolve it before dispatch rather than racing another session. A local board is coordination state, not a cross-session lock. An idea without a repository may begin discovery; check repository-wide ownership when its repository is resolved.
 
 Read [runtime guidance](RUNTIME.md) before dispatch. Confirm the harness supports the requested agents and background work. Use a bounded capacity appropriate to available tools and resources; retain capacity for the human-facing discovery path and for completion/review work rather than filling every slot with new implementation.
 
-Joe-mode owns routing and the human conversation. Delegate substantive investigations, planning, implementation, and review to bounded workers. Ship retains ownership of its implementation workers and integration; Shepherd retains ownership of its PR monitor and repairs. Do not launch competing workers underneath either coordinator.
+Joe-mode owns routing and the human conversation. Use [Squadron](../squadron/SKILL.md) aggressively to dispatch independent investigations, planning, and distinct Ship/Patch/Refactor deliveries or Shepherd assignments. Keep useful capacity occupied without splitting dependent work or manufacturing agents for trivial tasks. Each delivery route retains its own workers and integration; Shepherd retains its one PR monitor. Do not launch competing workers underneath those owners or delegate the Joe controller itself.
 
 ## 3. Refresh the relevant backlog
 
@@ -70,18 +72,20 @@ Fill available capacity with independent work. Do not stop all delivery while th
 | Unsettled question; no defined backlog yet | [discovery](../discovery/SKILL.md): aligned findings, domain understanding, frontier, full foundation and compact handoff. It can request [research](../research/SKILL.md) or [poc](../poc/SKILL.md); those return evidence, not product changes. |
 | A focused human question | [interrogate](../interrogate/SKILL.md): actual human answers. During discovery, use its conversation-only intake and let discovery own the alignment gate. |
 | Aligned terminology or a consequential architectural choice needs a record | [domain-modeling](../domain-modeling/SKILL.md): glossary and Architecture Decision Records (ADRs) when its criteria warrant one. Distinguish proposals from human decisions; do not generate ceremonial ADRs for every ticket. |
-| Enough is known to specify an outcome | [specify](../specify/SKILL.md): publish the scoped spec through its existing test-seam/human checks and configured tracker. Supply the aligned foundation and agreed decisions; do not invent missing requirements. |
+| An aligned Discovery artifact is ready | [specify](../specify/SKILL.md): consume the full accessible foundation and evidence, then produce the full requirements specification. A conversation summary is not a substitute; missing source decisions return to Discovery. |
 | An approved spec needs actionable slices | [breakdown-tickets](../breakdown-tickets/SKILL.md): human-approved vertical slices, blocking edges, and configured readiness labels. Reserve the delivery group before publication and reconcile the resulting IDs afterward. |
 | External requests need classification | [triage](../triage/SKILL.md): apply the configured workflow to incoming external work. Do not retriage generated, already-ready tickets. |
-| Ready, unowned delivery work can run | [ship](../ship/SKILL.md): isolated implementation, [tdd](../tdd/SKILL.md), independent [roast](../roast/SKILL.md), [verify](../verify/SKILL.md), one PR, and mandatory [shepherd](../shepherd/SKILL.md). |
-| A published PR needs attention | Its existing Shepherd: observe checks/reviews/policies and route functional feedback to Ship on that same PR. Join the current owner rather than starting another monitor. |
-| A failure or new evidence invalidates a slice | [patch](../patch/SKILL.md) or discovery, according to whether the gap is a defect or an unsettled requirement. Pass diagnosis-only scope when no repair is authorized; a read-only investigation does not become permission to fix. Return authorized repairs to the delivery owner. |
+| A feature, behavior change, or spec graph is ready | [ship](../ship/SKILL.md): scoped implementation and integration through reviewed delivery. A human may ship one issue; Joe may assign several independent deliveries, never overlapping graphs. |
+| A bug or regression is ready | [patch](../patch/SKILL.md): reproduce, establish cause, repair, review, publish, and shepherd. Planned behavior changes belong to Ship. |
+| A behavior-preserving structural change is ready | [refactor](../refactor/SKILL.md): preserve the contract while restructuring, then review, publish, and shepherd. |
+| A published PR needs attention | Its existing [Shepherd](../shepherd/SKILL.md): observe checks/reviews/policies, rebase on base advancement even if mergeable, and return functional feedback to its recorded delivery owner on that same PR. Join the current owner rather than starting another monitor. |
+| New evidence invalidates a slice | Return to its owner: defect diagnosis within the current delivery, or Discovery for unsettled requirements. Explicit diagnosis-only scope stays read-only; do not spawn another Patch PR for the same work. |
 
-These are paths through the decision tree, not a mandatory global sequence. A small, understood issue need not create another spec, ADR, or discovery run. Research can lead to a POC; a failed POC can return to discovery; review feedback can return to Ship. Once a route yields its required output, automatically reevaluate and dispatch the next appropriate route within existing permissions.
+These are paths through the decision tree, not a mandatory global sequence. When specifications are needed, the order is Discovery artifact, Specify requirements, then Breakdown Tickets. A small, understood issue need not create another spec, ADR, or discovery run. Choose the delivery route by kind, scope, and size; Patch and Refactor are peer routes, not mandatory wrappers around Ship. All share [reviewed delivery completion](../ship/DELIVERY.md), independent [Roast](../roast/SKILL.md), [Verify](../verify/SKILL.md), and mandatory Shepherd. Once a route yields its required output, automatically reevaluate within existing permissions.
 
 Keep one human-facing discovery/planning conversation moving while delivery agents work. A discovery worker returns its real questions and waits; Joe-mode presents them to the human and sends the actual answers back. Do not let an agent simulate the human's side or let several workers ask competing questions simultaneously.
 
-ADRs and domain documents are repository changes, not incidental scratch notes. Give their worker an agreed isolated documentation/delivery workspace, serialize shared-file edits, and carry approved records into the corresponding reviewed PR or an explicitly scoped documentation PR. Do not let planning workers edit a live delivery worktree concurrently. Where a downstream skill needs repository files before publication, arrange that workspace explicitly rather than copying unapproved documents into the product checkout.
+ADRs and domain documents are repository changes, not incidental scratch notes. Give their worker an agreed isolated documentation/delivery workspace, serialize shared-file edits, and carry approved records into the corresponding reviewed PR or an explicitly scoped documentation PR. Every modifying worker uses [Changelog](../changelog/SKILL.md); the integration owner consolidates notable entries instead of letting workers race on the shared file. Do not let planning workers edit a live delivery worktree concurrently. Where a downstream skill needs repository files before publication, arrange that workspace explicitly rather than copying unapproved documents into the product checkout.
 
 An anchor spanning ready and uncertain work should have both paths active when capacity and human availability allow. When no work is defined, discovery feeds specification and ticketing first. When the human is unavailable, pause only the paths needing their decisions; independently authorized delivery continues.
 
@@ -98,13 +102,36 @@ On a completion, human answer, PR event, or meaningful backlog change:
 
 If new findings contradict an active delivery, notify its owner and pause affected work at a safe boundary. Reconcile scope with the human; do not mutate the worker's requirements under it or restart the entire backlog. Preserve unrelated progress.
 
-Auto-transition is not blanket approval. Preserve each skill's alignment, ticket-breakdown, publication, and repository-write gates. Coordinate the approval request with its proposed change; do not ask the human to choose a skill at every routine step. Never accept product risk, supply a human decision, merge, approve, or enable auto-merge on their behalf.
+Auto-transition is not blanket approval. Preserve alignment, ticket-breakdown, and explicitly retained recording/publication gates; do not reintroduce a separate permission prompt for routine delivery already authorized at kickoff. Coordinate meaningful approval requests with the proposed change. Never accept product risk, supply a human decision, merge, approve, or enable auto-merge on their behalf.
 
 Use completion notifications or the runtime's documented wait mechanism. Refresh the scoped backlog after relevant events and at an appropriate bounded interval only while a real observer is running. Do not busy-poll, spawn idle agents, or imply a final response leaves an unscheduled loop executing.
 
+### Status at full-cycle and major-merge boundaries
+
+Track a finite cycle: refresh the selected backlog, record that pass's actionable
+cohort and planning questions, dispatch eligible work, then reconcile each
+assignment's outcome or explicit blocked/human-wait state. A reviewed current
+PR with confirmed continuing Shepherd custody is a reconciled outcome; do not
+wait for its monitor to terminate. A launch acknowledgement or still-running
+implementation is not a completed assignment.
+
+After that full cycle completes, request one [Status Report](../status-report/SKILL.md)
+before returning to the start. Supply the controller's objective, original start
+evidence, known descendants, outcome evidence, and cycle identity. Do not equate
+every poll or notification with a cycle, or repeat reports for an unchanged
+empty/blocked board.
+
+Also request a snapshot after a **confirmed major-feature merge** in scope.
+Establish significance from the agreed feature/spec, not every PR label or
+agent claim; verify merged state with the provider. Deduplicate by repository,
+PR, and merge identity, and by completed cycle ID. If both events coincide,
+one snapshot may cover both. Record successful reporting only after a snapshot
+returns; retry failures against the same event, without resetting the objective
+clock. Reporting is read-only and never becomes another controller.
+
 ## 6. Hand over PRs, not just progress
 
-For each delivery, surface the actual PR URL, covered issue/spec references, concise change summary, acceptance/check evidence, outstanding decisions, and confirmed Shepherd owner/status. Distinguish **draft/in progress**, **blocked**, and **ready for human review** using Ship's evidence and current provider state. "PR created" does not by itself mean review-ready.
+For each delivery, surface the actual PR URL, covered issue/spec references, concise change summary, acceptance/check evidence, outstanding decisions, and confirmed Shepherd owner/status. Distinguish **draft/in progress**, **blocked**, and **ready for human review** using the shared delivery contract and current provider state. The final ready handoff is reviewed, GREEN, and rebased/current with latest main or the explicit target, with checks tied to the current head and a freshly observed base. "PR created", mergeable, or yesterday's green result does not mean ready. Human final sign-off remains outstanding.
 
 Every PR handed to the human must have a Roast covering its current candidate, whether produced by this run or supplied by a coworker. Reuse a still-applicable review; otherwise route to Roast without taking over the PR's delivery owner or silently authorizing edits. Review a draft's available candidate with its incomplete scope explicit. Missing review capability requires reporting the gap and seeking direction, not a clean-review or review-ready claim.
 
@@ -118,6 +145,15 @@ On re-anchoring, settle active ownership first. Do not silently expand the old s
 
 For commit-message drafting, apply the [shared commit-message policy](../../COMMIT-STYLE.md) directly. No separate formatter skill or Caveman chat mode is needed. Drafting grants no Git mutation authority; if the human separately requests synthesis, preserve that workflow's own input/altitude rules.
 
-Select an existing relevant skill rather than forcing every turn through delivery: for example [roast](../roast/SKILL.md) for any supplied material, [patch](../patch/SKILL.md) for bounded repair or explicitly scoped diagnosis, [evolve-architecture](../evolve-architecture/SKILL.md) for evidenced architectural friction and a bounded evolution proposal, [refactor](../refactor/SKILL.md), [migration](../migration/SKILL.md), [synthesize](../synthesize/SKILL.md), [wait-what](../wait-what/SKILL.md), or [handoff](../handoff/SKILL.md). Codebase-health findings can feed discovery only when within the anchor; ask before expanding scope. Communication preferences do not grant additional work authority.
+Select a permitted relevant skill rather than forcing every turn through delivery.
+[Evolve Architecture](../evolve-architecture/SKILL.md) can propose an evidenced
+improvement; Migration requires actual production migration obligations.
+Synthesize requires supplied sources, output purpose, and altitude.
+Agent-to-agent Handoff preserves current scope; cross-session or machine
+transfer is human-directed. Do not automatically invoke human-only Automate-this,
+Caveman session mode, ELI5, Retro, Setup, or Wait-what. They run only when the
+human requests them. Codebase-health findings can feed Discovery only within
+the anchor; ask before expanding scope. Communication preferences grant no
+additional work authority.
 
 Read and use the current local skill for the route, not a remembered or upstream workflow. Prefer process guidance appropriate to the actual problem, but do not force Discovery for already-ready work or call every loosely related skill. Missing skills or capabilities are explicit blockers for their route, not permission to invent tools or silently remove required review.

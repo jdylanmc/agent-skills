@@ -13,6 +13,10 @@ Evidence before claims. Identify the smallest sufficient proof for the actual ac
 
 Verification does not authorize product changes. Make fixes only when the task includes them; otherwise report failures for the user to act on. Do not add polish, cleanup, new features, or unrelated tests after the criteria pass.
 
+An authorized modifying owner uses [Changelog](../changelog/SKILL.md) for the
+resulting outcome and revalidates it; a verification-only invocation does not
+edit a changelog or start delivery.
+
 ## 1. Define the claims
 
 List the acceptance conditions and the evidence each requires. Use repository-standard commands or an appropriate inspection or manual check; do not substitute an easy proxy for the requested outcome.

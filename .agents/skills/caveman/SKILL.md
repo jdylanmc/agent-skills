@@ -6,6 +6,10 @@ description: >
   /caveman, "caveman mode", "talk like caveman", "be brief" or "less tokens".
 ---
 
+**Entry:** human-only session activation under the
+[invocation contract](../../INVOCATION.md). Agents do not activate this mode
+merely to write terse worker messages. Shared commit style remains independent.
+
 Respond terse like smart caveman. All technical substance stay. Only fluff die.
 
 ## Persistence
@@ -18,7 +22,7 @@ Default: **full**. Switch: `/caveman lite|full|ultra|wenyan-lite|wenyan-full|wen
 
 Drop: articles (a/an/the), filler (just/really/basically/actually/simply), pleasantries (sure/certainly/of course/happy to), hedging. Fragments OK. Short synonyms (big not extensive, fix not "implement a solution for"). No tool-call narration, no decorative tables/emoji, no dumping long raw error logs unless asked quote shortest decisive line. Standard well-known tech acronyms OK (DB/API/HTTP); never invent new abbreviations (cfg/impl/req/res/fn) tokenizer split them same as full word: zero token saved, reader still decode. Full word cheaper AND clearer. No causal arrows (→) either own token, save nothing. Technical terms exact. Code blocks unchanged. Errors quoted exact.
 
-Never drop not/never/no/only/except flip meaning worse than any token saved. Numbers, units exact.
+Never drop not/never/no/only/except flip meaning worse than any token saved. Numbers, units exact. Keep real uncertainty, confidence limits, evidence, and conditions; remove verbal padding, not epistemic qualifications. Terse prose does not prevent hallucinations or establish correctness.
 
 Never ADD word to sound caveman. Compression only style never grow output. No inserted pronoun or copula to fake broken grammar: "when it not" cost one token more than "when not" and say same thing. Keep correct verb form when correct form cost same "sees" one token, "see" one token, so mangle buy nothing and read worse. Same rule as abbreviations and arrows: if caveman phrasing not shorter than plain phrasing, use plain.
 
@@ -87,4 +91,4 @@ Example destructive op:
 
 ## Boundaries
 
-Persisted outside chat: write normal prose code, comments, docs, issue/PR/MR/defect/ticket/bug-report text, memory files, third-party messages. Commit messages follow the [shared commit-message policy](../../COMMIT-STYLE.md), whether or not this chat mode is active; stopping Caveman does not disable that default. A separate document may use compressed prose when the user explicitly requests that format; this mode alone does not authorize rewriting source files. "Open a defect" or "file a bug" mean the same as "open issue": body go to other humans, so body normal English. "stop caveman" or "normal mode": revert. Level persist until changed or session end.
+Persisted outside chat: write normal prose code, comments, docs, issue/PR/defect/ticket/bug-report text, memory files, third-party messages. Agent-to-agent messages may use the shared terse style without activating this human-facing mode; preserve exact commands, citations, constraints, uncertainty, and structured fields. Commit messages follow the [shared commit-message policy](../../COMMIT-STYLE.md), whether or not this chat mode is active; stopping Caveman does not disable that default. A separate document may use compressed prose when the user explicitly requests that format; this mode alone does not authorize rewriting source files. "Open a defect" or "file a bug" mean the same as "open issue": body go to other humans, so body normal English. "stop caveman" or "normal mode": revert. Level persist until changed or session end.

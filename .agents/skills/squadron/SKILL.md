@@ -1,170 +1,104 @@
 ---
 name: squadron
-description: Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies
+description: Dispatch multiple independent agents with bounded assignments, isolated writes, and explicit return ownership. Human or scoped agent use; Joe-mode uses it aggressively for distinct Ship, Patch, Refactor, and Shepherd jobs. Never duplicate a delivery or controller.
+disable-model-invocation: false
+user-invocable: true
 ---
 
 # Squadron
 
-Use [Doctrine](../doctrine/SKILL.md) under the [shared packet contract](../doctrine/APPLY.md). Preserve scoped operator selections and required IDs; without a preselection, choose appropriate doctrines per task from catalog metadata. Each worker receives its work plus canonical IDs, required flags, reasons, source/selector location, and pinned digests, then loads the actual texts before applying them. The coordinator need not read those bodies to delegate.
+**Entry:** human request or agent selection within authorized work, under the
+[invocation contract](../../INVOCATION.md). Dispatch bounded workers, not a
+replacement Joe-mode or delivery controller.
 
-## Overview
+Use [Doctrine](../doctrine/SKILL.md) and its [packet contract](../doctrine/APPLY.md).
+Preserve scoped operator choices and required IDs. Without a preselection,
+choose relevant standards from catalog metadata. Send IDs, reasons, required
+flags, source paths, and digests; each applying worker loads the actual texts.
+Every PR-producing worker requires `worktrees`; code reviewers require `solid`.
 
-You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
+## 1. Find truly independent work
 
-When you have multiple unrelated failures (different test files, different subsystems, different bugs), investigating them sequentially wastes time. Each investigation is independent and can happen in parallel.
+Separate work by outcome and ownership, not file count. Useful assignments
+include independent investigations, a ready feature shipped by one worker, a
+bug repaired by another, and maintenance of a different existing PR.
 
-**Core principle:** Dispatch one agent per independent problem domain. Let them work concurrently.
+Joe-mode should use this aggressively where capacity and dependencies permit:
+keep several distinct deliveries or Shepherds moving rather than personally
+performing every job in sequence. A small lookup does not need an agent.
+Related failures or one continuous causal trace usually belong together.
 
-## When to Use
+Before dispatch, reconcile existing issue/PR owners and dependency state.
+A prerequisite in another PR must be on the consumer's agreed base; green but
+unmerged is not enough. One specification graph with one PR has one delivery
+owner, which schedules its own workers. Do not also dispatch its child tickets
+as competing root deliveries.
 
-```dot
-digraph when_to_use {
-    "Multiple failures?" [shape=diamond];
-    "Are they independent?" [shape=diamond];
-    "Single agent investigates all" [shape=box];
-    "One agent per problem domain" [shape=box];
-    "Can they work in parallel?" [shape=diamond];
-    "Sequential agents" [shape=box];
-    "Parallel dispatch" [shape=box];
+Do not turn an ordinary Squadron invocation into authority to start Ship,
+Patch, or Joe-mode. Each selected skill must be eligible under the actual
+human/parent request. Human-started Joe-mode may select Refactor as an internal
+delivery route; scoped restructuring within another delivery returns to it.
 
-    "Multiple failures?" -> "Are they independent?" [label="yes"];
-    "Are they independent?" -> "Single agent investigates all" [label="no - related"];
-    "Are they independent?" -> "Can they work in parallel?" [label="yes"];
-    "Can they work in parallel?" -> "Parallel dispatch" [label="yes"];
-    "Can they work in parallel?" -> "Sequential agents" [label="no - shared state"];
-}
-```
+## 2. Give each worker a complete bounded packet
 
-**Use when:**
-- 3+ test files failing with different root causes
-- Multiple subsystems broken independently
-- Each problem can be understood without context from others
-- No shared state between investigations
+Supply the actual source evidence, not an assumption that the worker inherited
+the conversation. Include:
 
-**Don't use when:**
-- Failures are related (fix one might fix others)
-- Need to understand full system state
-- Agents would interfere with each other
+- Outcome, scope, exclusions, requirements, dependencies, and acceptance proof.
+- Selected skill and actual human/parent authority; decisions still pending.
+- Owner/controller and objective identity, original timing evidence when known,
+  issue numbers **and titles**, PR coverage, and parent/return relationships.
+- Authorized workspace, branch/base, owned files/resources, and integration owner.
+- Doctrine packet, [commit style](../../COMMIT-STYLE.md), stop conditions,
+  expected return, and follow-up/monitor custody.
 
-## The Pattern
+Writing workers need distinct isolated workspaces, not merely disjoint files
+in one checkout with a shared Git index. Use the existing delivery's
+[workspace procedure](../ship/WORKSPACE.md). Read-only workers may share sources.
+Coordinate other shared resources too: ports, databases, fixtures, and services.
 
-### 1. Identify Independent Domains
+Every modifying worker uses [Changelog](../changelog/SKILL.md). Assign one owner
+for the integrated changelog; other workers return categorized entry proposals
+instead of racing to edit it. Prefer terse exact messages without changing
+the human's Caveman mode or dropping required packet fields.
 
-Group failures by what's broken:
-- File A tests: Tool approval flow
-- File B tests: Batch completion behavior
-- File C tests: Abort functionality
+## 3. Dispatch concurrently within real capacity
 
-Each domain is independent - fixing tool approval doesn't affect abort tests.
+Use the harness's actual concurrent/background dispatch tools and current
+schemas. Issue independent launches together where supported. Multiple calls
+are not proof of parallel execution; confirm returned IDs and runtime states.
+Use configured model preferences and defaults, never invented model names.
 
-### 2. Create Focused Agent Tasks
+Keep bounded capacity for integration, independent review, human questions,
+and existing monitors. Do not launch a second monitor for an already-owned PR
+or a nested Joe-mode. Missing concurrency is an explicit capability limit;
+do not pretend serial work was parallel or install a runtime without permission.
 
-Each agent gets:
-- **Specific scope:** One test file or subsystem
-- **Clear goal:** Make these tests pass
-- **Constraints:** Don't change other code
-- **Expected output:** Summary of what you found and fixed
-- **Doctrine packet:** Scoped selections and required standards; return actual load/application coverage and evidence-backed recommendations alongside the work result.
+Continue independent work while agents run. Consume completion notifications
+or the supported wait mechanism; do not repeatedly poll known workers.
+Reuse the existing agent for follow-up where supported. Queue human questions
+through the parent instead of letting workers manufacture answers.
 
-### 3. Dispatch in Parallel
+## 4. Reconcile and return ownership
 
-Issue all three subagent dispatches in the same response — they run in parallel:
+A worker returns its concrete result, changed artifacts/commits/PR IDs,
+acceptance evidence tied to state, actual doctrine coverage, unresolved
+decisions, changelog proposal/status, and any running descendants/monitors.
+For failures, preserve the partial work and exact blocker; do not hide errors
+behind an empty success-shaped report.
 
-```text
-Subagent (general-purpose): "Fix agent-tool-abort.test.ts failures"
-Subagent (general-purpose): "Fix batch-completion-behavior.test.ts failures"
-Subagent (general-purpose): "Fix tool-approval-race-conditions.test.ts failures"
-# All three run concurrently.
-```
+Verify the decisive result and integrate through the one designated owner.
+Inspect overlap and run the smallest combined checks covering interactions,
+escalating only when impact or repository guidance requires it. A worker's
+passing local tests do not prove the integrated result.
 
-Multiple dispatch calls in one response = parallel execution. One per response = sequential.
+Do not cherry-pick into another delivery's live branch, take over its review,
+or declare its PR ready from a dispatch summary. Ship/Patch/Refactor own
+reviewed delivery, Shepherd owns ongoing PR maintenance, and Joe owns routing.
+Keep custody until the receiver confirms acceptance. Never approve or merge
+on the human's behalf.
 
-### 4. Review and Integrate
-
-When agents return:
-- Read each summary
-- Verify fixes don't conflict
-- Run full test suite
-- Integrate all changes
-
-## Agent Prompt Structure
-
-Good agent prompts are:
-1. **Focused** - One clear problem domain
-2. **Self-contained** - All context needed to understand the problem
-3. **Specific about output** - What should the agent return?
-
-```markdown
-Fix the 3 failing tests in src/agents/agent-tool-abort.test.ts:
-
-1. "should abort tool with partial output capture" - expects 'interrupted at' in message
-2. "should handle mixed completed and aborted tools" - fast tool aborted instead of completed
-3. "should properly track pendingToolCount" - expects 3 results but gets 0
-
-These are timing/race condition issues. Your task:
-
-1. Read the test file and understand what each test verifies
-2. Identify root cause - timing issues or actual bugs?
-3. Fix by:
-   - Replacing arbitrary timeouts with event-based waiting
-   - Fixing bugs in abort implementation if found
-   - Adjusting test expectations if testing changed behavior
-
-Do NOT just increase timeouts - find the real issue.
-
-Return: Summary of what you found and what you fixed.
-```
-
-## Common Mistakes
-
-**❌ Too broad:** "Fix all the tests" - agent gets lost
-**✅ Specific:** "Fix agent-tool-abort.test.ts" - focused scope
-
-**❌ No context:** "Fix the race condition" - agent doesn't know where
-**✅ Context:** Paste the error messages and test names
-
-**❌ No constraints:** Agent might refactor everything
-**✅ Constraints:** "Do NOT change production code" or "Fix tests only"
-
-**❌ Vague output:** "Fix it" - you don't know what changed
-**✅ Specific:** "Return summary of root cause and changes"
-
-## When NOT to Use
-
-**Related failures:** Fixing one might fix others - investigate together first
-**Need full context:** Understanding requires seeing entire system
-**Exploratory debugging:** You don't know what's broken yet
-**Shared state:** Agents would interfere (editing same files, using same resources)
-
-## Real Example from Session
-
-**Scenario:** 6 test failures across 3 files after major refactoring
-
-**Failures:**
-- agent-tool-abort.test.ts: 3 failures (timing issues)
-- batch-completion-behavior.test.ts: 2 failures (tools not executing)
-- tool-approval-race-conditions.test.ts: 1 failure (execution count = 0)
-
-**Decision:** Independent domains - abort logic separate from batch completion separate from race conditions
-
-**Dispatch:**
-```
-Agent 1 → Fix agent-tool-abort.test.ts
-Agent 2 → Fix batch-completion-behavior.test.ts
-Agent 3 → Fix tool-approval-race-conditions.test.ts
-```
-
-**Results:**
-- Agent 1: Replaced timeouts with event-based waiting
-- Agent 2: Fixed event structure bug (threadId in wrong place)
-- Agent 3: Added wait for async tool execution to complete
-
-**Integration:** All fixes independent, no conflicts, full suite green
-
-## Verification
-
-After agents return:
-1. **Review each summary** - Understand what changed
-2. **Check for conflicts** - Did agents edit same code?
-3. **Run full suite** - Verify all fixes work together
-4. **Spot check** - Agents can make systematic errors
+Clean up only confirmed run-owned finished work after integration and
+preservation checks. A return message does not prove its worktree or monitor
+is disposable. If the runtime stops, disclose lost observation/ownership and
+reconcile before resuming.

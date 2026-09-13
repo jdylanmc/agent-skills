@@ -7,6 +7,12 @@ user-invocable: true
 
 # Synthesize
 
+**Entry:** human-directed, or a parent explicitly supplies **sources, output
+purpose, and altitude**, under the [invocation contract](../../INVOCATION.md).
+Without all three, return the missing inputs to that parent instead of
+automatically beginning a synthesis interview. A direct human request may
+resolve missing altitude through the question below.
+
 Use [doctrine selection and application](../doctrine/APPLY.md), preserving explicit choices. With none, consider `documentation` and `context` only where relevant to the target artifact. Load selected text before applying it; doctrine does not change the human's chosen altitude, authorize source edits, or add unsupported claims to the synthesis.
 
 Make source material useful at the altitude the human chose. Produce a separate candidate, not a replacement source or a self-approved authority. The human-authored [intent](intent.md) defines the purpose.
@@ -80,3 +86,8 @@ Accompany the candidate with:
 - Any requested size result and the status of token measurement when relevant.
 
 The candidate remains subject to human judgment. Do not edit the sources, implement their proposals, publish to a tracker, commit the artifact, or promote it to authoritative status as a side effect of synthesis.
+
+For an explicitly authorized new repository artifact, consult
+[Changelog](../changelog/SKILL.md) within that destination scope and return entry
+proposals if another owner controls the changelog. Temporary candidates normally
+need no entry. This does not authorize changing sources or publishing the candidate.

@@ -13,6 +13,12 @@ Read [intent.md](./intent.md) before making structural decisions.
   external integrations, or bundled scripts.
 - Keep each skill focused on one useful job. Use supporting files when they
   earn their place; no atom/molecule hierarchy or composition metadata is required.
+- Follow [.agents/INVOCATION.md](.agents/INVOCATION.md) for human/internal entry
+  contracts and caller restrictions. Every entrypoint declares both invocation
+  flags; metadata is not a permission boundary or proof of runtime enforcement.
+- Every modifying agent uses the shared
+  [Changelog helper](.agents/skills/changelog/SKILL.md). Curate notable outcomes,
+  serialize shared-file updates, and preserve read-only/approval boundaries.
 - Preserve upstream licenses and attribution when modifying or renaming imports.
   Apache-licensed files also require notices identifying modifications.
 - `skills-lock.json` records installer provenance, not an instruction to update.

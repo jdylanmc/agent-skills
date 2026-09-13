@@ -1,9 +1,14 @@
 ---
 name: interrogate
-description: Stress-test a plan, decision, or idea through a dependency-aware interview. Use when the user wants to interrogate assumptions, sharpen an idea, or be grilled; optionally record agreed domain terms and decisions.
+description: Internal interview helper for Discovery and Joe-mode only. Stress-test a plan, decision, or idea through real human answers; optionally record agreed domain terms when the parent authorizes recording. Not a direct human command or a general-purpose caller route.
 ---
 
 # Interrogate
+
+**Entry:** only inside an authorized Discovery or Joe-mode context, under the
+[invocation contract](../../INVOCATION.md). If another workflow needs one
+clarification, it asks normally; material discovery goes through Discovery.
+Return questions to the parent for the human, never simulate human answers.
 
 Preserve the caller's [doctrine selection](../doctrine/APPLY.md). With none, use catalog metadata to choose relevant guidance only when it informs this decision; do not impose engineering doctrine on an unrelated conversation. Pass the scoped packet to any exploration or domain-recording worker. Loading doctrine does not select requirements for the human or enable recording.
 
@@ -35,6 +40,6 @@ Format a round like so:
 
 Each round the user answers reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.
 
-Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent to find it; don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.
+Finding _facts_ is your job, never the user's. Read accessible evidence directly for small lookups; delegate substantial independent investigation when useful and supported. Don't ask the user for facts you could inspect. A running exploration is an unsettled prerequisite, so only downstream questions wait; ask the rest of the frontier now. The _decisions_ are the user's: put each to them through the parent and wait.
 
 The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on it until the user confirms you have reached a shared understanding.

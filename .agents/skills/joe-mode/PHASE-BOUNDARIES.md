@@ -1,6 +1,6 @@
 # Phase boundaries
 
-Use the current harness's supported context-management operations, not literal slash commands from another product. While Joe-mode is active, preserve its work board, human decisions, pending questions, and active Ship/Shepherd ownership before changing context. Never clear the only controller of live work without an explicit pause or verified handoff.
+Use the current harness's supported context-management operations, not literal slash commands from another product. While Joe-mode is active, preserve its repository-controller identity, work board, objective start, report-event identities, human decisions, pending questions, and active Ship/Patch/Refactor/Shepherd ownership before changing context. Never clear the only controller of live work without an explicit pause or verified handoff.
 
 This tree governs the controller's context after routing and dispatch decisions. Continuing here does not mean implementing every task inline or serializing Joe-mode's concurrent paths.
 
@@ -35,7 +35,10 @@ The cost of getting this wrong is one-way. Clear a *relevant* context and you lo
 - sending the work to a **colleague**,
 - or forking a side task you found **mid-phase** without derailing what you're doing.
 
-That list is the whole clause. What `/handoff` buys is **portability**: a file that travels. If nothing is travelling, you don't need it.
+Cross-session or machine transfer requires human direction. Within the current
+authorized work, agents may hand bounded assignments to each other without
+activating a new controller. Preserve the existing owner until acceptance is
+confirmed; a portable document alone is not a transfer.
 
 **4. Can a bounded worker own this phase?** Then send it to a **subagent** and leave this session available for other work. A human-facing discovery worker can return questions through Joe-mode; an independent reviewer usually needs no human steering. Delegation does not require clearing the controller's context.
 

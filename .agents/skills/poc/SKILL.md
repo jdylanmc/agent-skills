@@ -38,6 +38,10 @@ Read only the reference needed for the chosen form. Its presentation guidance do
 
 Keep the code clearly marked as experimental. Use existing tools where practical; explain necessary dependencies and install them only inside the agreed scratch environment. Ask before external services, paid resources, or broader environment changes.
 
+Consult [Changelog](../changelog/SKILL.md) for the modifying work. A temporary
+experiment normally has no product changelog entry; return that reason rather
+than writing release history or promoting the experiment.
+
 Skip production polish, general-purpose abstractions, and unrelated infrastructure. Include the assertions, diagnostics, error handling, or small tests needed to trust the experiment. A demo that merely builds has not answered a runtime question.
 
 Run the experiment. Record the exact invocation, relevant versions and environment, inputs, expected observations, and actual outputs. Exercise the main case and the edge or failure cases that could overturn the conclusion. For a performance or compatibility claim, measure the agreed threshold on the relevant environment; report limitations rather than generalizing from a different one.

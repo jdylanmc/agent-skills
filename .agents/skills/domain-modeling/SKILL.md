@@ -5,6 +5,13 @@ description: Build and sharpen a project's domain model. Use when discussing cod
 
 # Domain Modeling
 
+**Entry:** internal to an authorized task under the
+[invocation contract](../../INVOCATION.md), not a direct human command.
+Before recording, establish explicit authority for the selected glossary or
+decision-record destination and its writing owner. Conversation modeling alone
+does not authorize files. Reuse confirmed recording scope; ask only when it
+is missing or changes. Keep human decisions distinct from proposals.
+
 Use [doctrine selection and application](../doctrine/APPLY.md), preserving caller/operator selections. With none, consider `domain`, `boundaries`, and `documentation` according to whether this work concerns executable concepts, context boundaries, or durable records. If these changes will be delivered as a PR, require `worktrees` before writing them; the existing recording gates still apply.
 
 Actively build and sharpen the project's domain model as you design. This is the *active* discipline: challenging terms, inventing edge-case scenarios, and writing the glossary and decisions down the moment they crystallise. (Merely *reading* `CONTEXT.md` for vocabulary is not this skill: that's a one-line habit any skill can do. This skill is for when you're changing the model, not just consuming it.)
@@ -74,3 +81,7 @@ Only offer to create an ADR when all three are true:
 3. **The result of a real trade-off**: there were genuine alternatives and you picked one for specific reasons
 
 If any of the three is missing, skip the ADR. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
+
+For authorized records, use [Changelog](../changelog/SKILL.md) and return notable
+entry proposals to the existing delivery owner. Serialize shared glossary,
+decision, and changelog edits; do not write into an active implementer's worktree.

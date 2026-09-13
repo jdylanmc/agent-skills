@@ -48,7 +48,10 @@ State transitions: an unlabeled issue normally goes to `needs-triage` first; fro
 
 ## Invocation
 
-The maintainer invokes `/triage` and describes what they want in natural language. Interpret the request and act. Examples:
+The maintainer invokes `/triage`, or human-started Joe-mode supplies a selected
+backlog scope and current owner. Follow the [invocation contract](../../INVOCATION.md);
+Joe's authority does not waive the explicit tracker/decision gates below.
+Interpret the scoped request. Examples:
 
 - "Show me anything that needs my attention"
 - "Let's look at #42" (issue or PR)
@@ -75,7 +78,13 @@ Show counts and a one-line summary per item. Let the maintainer pick.
 
 3. **Verify the claim.** Before any interrogation, check that the claim holds up. For a bug, reproduce it from the reporter's steps. For a PR, confirm the diff does what it claims: check it out, run the relevant tests or commands. Report what happened: confirmed (with code path), failed, or insufficient detail (a strong `needs-info` signal). A confirmed verification makes a much stronger agent brief.
 
-4. **Interrogate (if needed).** If the request needs fleshing out, call the Skill tool with "interrogate" and request domain-model recording. Sharpen it a round of questions at a time, updating domain terms and `CONTEXT.md`/ADRs inline as decisions land.
+4. **Clarify (if needed).** Ask a focused missing-detail question directly.
+   For material unknowns, give [Discovery](../discovery/SKILL.md) a bounded
+   question and evidence; it may use Interrogate internally. Under Joe-mode,
+   return the question to that controller rather than starting a competing
+   interview. Do not call Interrogate independently or write domain records
+   as an interview side effect. Any later [domain recording](../domain-modeling/SKILL.md)
+   needs confirmed decisions and explicitly agreed destinations.
 
 5. **Apply the outcome:**
    - `ready-for-agent`: post an agent brief comment ([AGENT-BRIEF.md](AGENT-BRIEF.md)).
@@ -86,6 +95,12 @@ Show counts and a one-line summary per item. Let the maintainer pick.
      - **Rejected (bug)**: give a polite explanation, then close.
      - **Rejected (enhancement)**: write to `.out-of-scope/`, link to it from a comment, then close ([OUT-OF-SCOPE.md](OUT-OF-SCOPE.md)).
    - `needs-triage`: apply the role. Optional comment if there's partial progress.
+
+Before applying tracker or repository changes, confirm the exact proposed
+outcome with the human; reuse their explicit direction without asking them to
+choose again. Use [Changelog](../changelog/SKILL.md) for authorized file changes
+and noteworthy outcomes, not an entry for every triage comment. Local
+knowledge-base writes retain their destination/ownership gates.
 
 ## Quick state override
 

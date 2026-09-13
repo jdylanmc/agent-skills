@@ -60,8 +60,22 @@ Ask the human to confirm the direction or identify changes. A decision worth pre
 
 Default to returning the proposal, evidence pointers, decision state, and next action. No supported improvement, missing evidence, or an unresolved human choice is a legitimate stopping result. Do not manufacture tickets or code.
 
-When execution is already or separately authorized, give the existing owner the bounded scope, preservation contract, verification, transition plan, and doctrine packet. [Refactor](../refactor/SKILL.md) performs behavior-preserving restructuring; compatibility transitions may use [Migration](../migration/SKILL.md). New product behavior needs explicit requirements rather than being disguised as cleanup.
+When execution is already or separately authorized, give the existing owner the
+bounded scope, preservation contract, verification, transition plan, and doctrine
+packet. Under Joe-mode, return it for selection of the appropriate delivery
+route. [Refactor](../refactor/SKILL.md) owns behavior-preserving structural
+delivery, or works within an existing owner's scope; a standalone human
+proposal can be delivered by a human-directed [Ship](../ship/SKILL.md).
+Use [Migration](../migration/SKILL.md) only for established production use with
+a real migration obligation, not automatically for pre-1.0 prototypes.
+New product behavior requires explicit requirements, never disguised cleanup.
 
-For a delivery/PR, [Ship](../ship/SKILL.md) owns execution coordination, integration, review, publication, and Shepherd handoff. Do not start a competing delivery loop or mutate its workspace. Any separately authorized documentation PR also requires `worktrees` before its changes. If further planning is needed, use [Specify](../specify/SKILL.md) or [Breakdown Tickets](../breakdown-tickets/SKILL.md) under their own gates, not an invented planning route.
+The selected delivery owner retains integration, independent review, publication,
+and Shepherd custody on one PR. Do not start a competing loop or mutate its
+workspace. Any authorized documentation PR also requires `worktrees` and
+[Changelog](../changelog/SKILL.md). If further planning is needed, pass the
+aligned Discovery artifact to Specify, then the full requirements specification
+to Breakdown Tickets under its approval gate; a proposal alone is not either
+input.
 
 Under Joe-mode, return to that orchestrator with the decision-ready work so it can advance the existing delivery lane within current authority. Do not claim an agent was dispatched or a handoff accepted unless it actually happened.
