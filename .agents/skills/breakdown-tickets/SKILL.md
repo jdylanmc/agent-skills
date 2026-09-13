@@ -7,7 +7,7 @@ user-invocable: true
 
 # Breakdown Tickets
 
-**Entry:** Human or scoped agent use after Specify. Break a full requirements specification into actionable tickets; obtain human approval before publication. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Human or scoped agent use after Specify. Break a full requirements specification into actionable tickets; obtain human approval before publication. Follow the [invocation contract](../setup/INVOCATION.md).
 
 Use [doctrine selection and application](../doctrine/APPLY.md), preserving the parent deliverable's choices. With none, consider `sequencing` and `documentation` for dependency-aware, durable work packets. Carry scoped selections and required IDs into implementation handoffs. A separately authorized PR for local ticket files requires `worktrees`; tracker publication alone does not.
 

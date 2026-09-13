@@ -34,7 +34,7 @@ This default applies whether or not Caveman chat mode is active. Stopping that c
 
 When asked only to draft a message, return a paste-ready code block. Do not stage or commit as a side effect.
 
-This repository-local copy preserves the policy from `.agents/COMMIT-STYLE.md`.
+This repository-local copy preserves the policy from `.agents/skills/setup/COMMIT-STYLE.md`.
 It is self-contained and must not be installed into global Copilot configuration.
 Reconcile future policy changes explicitly; do not overwrite human overrides.
 

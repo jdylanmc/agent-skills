@@ -7,7 +7,7 @@ user-invocable: true
 
 # Doctrine
 
-**Entry:** Human or scoped agent use. List engineering doctrines, select scoped standards and worker metadata, or retrieve verified full texts. Selection is not application or approval. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Human or scoped agent use. List engineering doctrines, select scoped standards and worker metadata, or retrieve verified full texts. Selection is not application or approval. Follow the [invocation contract](../setup/INVOCATION.md).
 
 One read-only entry point for the human-curated sources in [doctrines/](doctrines/README.md). Selection is not application, and application is not approval. Do not edit sources, manifests, repository instructions, or the work being judged.
 

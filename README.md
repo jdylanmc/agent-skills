@@ -4,8 +4,65 @@ Dylan's editable library of **32 skills** and human-owned engineering doctrine,
 designed for GitHub Copilot. The retired atomic framework remains historical
 material under `archive/atomic-v1/`; it does not govern the active library.
 
-**[Full skill list and invocation policy](.agents/INVOCATION.md#full-catalog)**
+**[Full skill list and invocation policy](.agents/skills/setup/INVOCATION.md#full-catalog)**
 · **[Browse skill packages](.agents/skills/)**
+
+## Install the full pack
+
+From the repository where you want to use the skills, run:
+
+```sh
+npx skills add jdylanmc/agent-skills --skill '*' --agent github-copilot --copy -y
+```
+
+Requires Git, npm, and a Node version supported by the skills CLI. The tested
+release is **skills 1.5.23**, requiring **Node 22.20.0 or newer**. To use that
+release and disable install telemetry:
+
+```sh
+DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill '*' --agent github-copilot --copy -y
+```
+
+The environment prefix above is POSIX shell syntax; in PowerShell, set
+`$env:DISABLE_TELEMETRY='1'` before running the `npx` command.
+
+Install **all 32** together. Individual installs are unsupported: workflows
+reference sibling skills, and Setup carries the shared policies, attribution,
+licenses, and historical provenance. The quoted `'*'` selects every active
+skill without shell expansion. The default route does not install the archive;
+do not point the installer at `archive/` or use full-depth discovery.
+
+This is a **project-local GitHub Copilot copy install**, not a global install
+or a symlink to this checkout. Packages land in `.agents/skills/<name>/`;
+the CLI manages its own consumer `skills-lock.json`. No source checkout is
+needed afterward. Do not confuse that consumer lock with this library's
+historical import records in `provenance/skills-lock.json`.
+
+**Back up or commit local skill customizations before reinstalling.** The same
+command refreshes matching package directories from the selected source and
+can overwrite edits or remove extra files inside them. It is not a merge or
+a safe unattended upstream-update procedure. Unrelated consumer files and
+other skill directories are left alone. Review the resulting diff.
+
+Installation copies files only: it does not run Setup, write `AGENTS.md` or
+global configuration, configure a tracker, start services/hooks, or authorize
+any workflow. Invoke `/setup` separately when you want repository configuration;
+its existing human-choice and exact-file approval gates still apply, including
+the named Joe-mode bootstrap.
+
+The [catalog and caller contracts](.agents/skills/setup/INVOCATION.md#full-catalog)
+remain binding: internal helpers are not direct human commands; human-only
+modes do not start themselves. Invocation flags, model hints, and tool metadata
+are consumer-dependent descriptions, **not enforced permissions** or proof of
+agent behavior. Real GitHub/Azure DevOps access, execution tools, parallel-agent
+support, and long-lived Shepherd custody depend on the receiving harness.
+Report missing capabilities rather than promising them through installation.
+
+[skills.sh](https://skills.sh) discovers public GitHub source through its CLI;
+its directory/leaderboard is populated by install telemetry. Source availability
+does not guarantee an immediate listing. There is no separate publish command,
+npm library release, custom installer, or telemetry opt-in step required here.
+Validation keeps telemetry disabled and does not claim directory registration.
 
 ## The workflow
 
@@ -27,7 +84,7 @@ material under `archive/atomic-v1/`; it does not govern the active library.
   a full cycle or confirmed major-feature merge. Objective timing, own tool
   calls, and running descendants come from real evidence, with explicit limits.
 
-The [invocation contract](.agents/INVOCATION.md) distinguishes human-only modes,
+The [invocation contract](.agents/skills/setup/INVOCATION.md) distinguishes human-only modes,
 internal helpers, general scoped selection, and named-caller exceptions.
 All entrypoints declare both invocation flags. Flags describe loading/menu
 behavior where supported; they are not permission boundaries or proof that a
@@ -47,24 +104,25 @@ obtain approval, then deliver selected fixes.
 
 Every modifying agent uses [Changelog](.agents/skills/changelog/SKILL.md), with
 one integration owner consolidating notable entries. The
-[shared commit style](.agents/COMMIT-STYLE.md) and terse exact worker messages
+[shared commit style](.agents/skills/setup/COMMIT-STYLE.md) and terse exact worker messages
 do not activate Caveman for the human or discard evidence and uncertainty.
 
 ## Layout
 
 ```text
 .agents/skills/       Active skill packages: regular files, not symlinks
-.agents/INVOCATION.md Caller, authority, and worker-communication contracts
-.agents/COMMIT-STYLE.md Shared default for generated commit messages
+.agents/skills/setup/INVOCATION.md Caller, authority, and communication contracts
+.agents/skills/setup/COMMIT-STYLE.md Shared default for generated commit messages
+.agents/skills/setup/{NOTICE.md,LICENSE,licenses/,provenance/} Bundled resources
 .agents/skills/doctrine/doctrines/ Human-owned doctrine and integrity manifest
 intent.md            Human-owned purpose of this collection
-skills-lock.json     Original installer provenance, not local content hashes
+provenance/skills-lock.json Original import provenance, not an active installer lock
 licenses/            Upstream licenses and notices
 archive/atomic-v1/    Retired skills, agents, tooling, hooks, and documentation
 ```
 
-Keep the shared policies, required sibling packages, and complete Doctrine
-package available when copying skills. No atoms/molecules, mandatory recorder,
+Keep the full pack, including Setup's shared resources and the complete Doctrine
+package. No atoms/molecules, mandatory recorder,
 composition graph, special agent fleet, or global configuration installation
 is required.
 
@@ -90,7 +148,7 @@ approved bug-to-delivery intent. Restored Discovery, POC, Roast, ELI5, and
 Status Report intents preserve their archived text. Archived sources and
 the root intent remain unchanged.
 
-## Provenance and installation
+## Provenance and licenses
 
 There are **26 imported/adapted packages** plus six local/restored packages:
 `shepherd`, `synthesize`, `doctrine`, `eli5`, `changelog`, and `status-report`.
@@ -107,28 +165,42 @@ source paths and imported hashes, not hashes of local adaptations.
 [NOTICE.md](NOTICE.md) records additional sources for consolidated packages
 and the licenses that continue to apply.
 
-The initial import used the [skills CLI](https://github.com/vercel-labs/skills)
-at version `1.5.23`, project-local Copilot scope, copy mode, and disabled telemetry:
+The initial import used [skills CLI](https://github.com/vercel-labs/skills)
+`1.5.23`, project-local Copilot scope, copy mode, and disabled telemetry.
+Its unchanged lock is retained at
+[provenance/skills-lock.json](provenance/skills-lock.json), outside active
+installer state so authored/adapted packages remain discoverable. Do not
+reimport the upstream collections to update this curated pack.
 
-```sh
-DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add https://github.com/mattpocock/skills --skill '*' --agent github-copilot --copy --yes
-DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add https://github.com/juliusbrussee/caveman --skill '*' --agent github-copilot --copy --yes
-DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add https://github.com/anthropics/skills --skill skill-creator --agent github-copilot --copy --yes
-DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add https://github.com/obra/superpowers --skill '*' --agent github-copilot --copy --yes
-```
+Setup bundles the complete notices, licenses, and an identical provenance copy
+so they travel with the pack. Root `NOTICE.md`, `LICENSE`, `licenses/`, and
+`provenance/` remain the canonical attribution sources; the bundled notice
+adjusts only source-checkout link destinations. After authorized attribution
+changes, run `node scripts/sync-pack-resources.mjs --write` and review the diff.
+CI checks these copies for drift. The shared invocation and commit policies
+live only in Setup; repository-specific, human-owned policy copies remain
+explicit overrides, not automatically synchronized authorities.
 
-These commands document the import, not an update procedure. Reinstalling
-would overwrite local adaptations and restore deliberately removed skills.
-Review upstream changes deliberately. Installation does not authorize running
-the imported workflows, hooks, scripts, services, or integrations.
+Source-only documentation and validation tooling are not install dependencies.
+Doctrine resolves its manifest and texts relative to its installed helper, not
+the consumer's root. Patch's shell/template and TypeScript examples are support
+material for separately authorized debugging, not install-time hooks.
 
 ## Validation
 
 ```sh
 node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs
+npm ci --ignore-scripts
+npm run test:pack
 ```
 
-CI checks doctrine integrity, selector behavior, and Scout's package contract.
+CI retains the 80 doctrine/selector/Scout checks and adds an actual released
+CLI copy install from the local candidate into an owned `.test-sandbox/`
+consumer. Pack tests check exact membership, complete copied support, portable
+Markdown links, bundled resources, installed Doctrine loading, protected
+source bytes/metadata, repeat installation, and unrelated-file preservation.
+Scratch consumers are removed afterward. The dev-only CLI pin and lock are
+validation tooling, not a production dependency or custom npm installer.
 Source/metadata/link checks do not prove that a consuming model follows the
 workflows or that its runtime enforces invocation flags. The old graph
 validators, conformance framework, and coupled scanner are archived and inactive.

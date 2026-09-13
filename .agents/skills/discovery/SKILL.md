@@ -7,7 +7,7 @@ user-invocable: true
 
 # Discovery
 
-**Entry:** Human or scoped agent use for material unknowns. Explore evidence and meaningful alternatives, run bounded approved experiments, align with the human, and preserve the full Discovery artifact. No automatic product changes. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Human or scoped agent use for material unknowns. Explore evidence and meaningful alternatives, run bounded approved experiments, align with the human, and preserve the full Discovery artifact. No automatic product changes. Follow the [invocation contract](../setup/INVOCATION.md).
 
 Find out enough to justify the next action, not to manufacture certainty or start building. The retained [intent](intent.md) defines the purpose and cycle order. Discovery can be useful at any scale when the question is unsettled; a huge ticket map is not a prerequisite.
 

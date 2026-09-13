@@ -7,7 +7,7 @@ user-invocable: true
 
 # Evolve Architecture
 
-**Entry:** Human or human-started Joe-mode only. Diagnose evidenced architectural friction, challenge it, explore consequential alternatives, and propose a bounded evolution before authorized delivery. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Human or human-started Joe-mode only. Diagnose evidenced architectural friction, challenge it, explore consequential alternatives, and propose a bounded evolution before authorized delivery. Follow the [invocation contract](../setup/INVOCATION.md).
 
 Own the architectural diagnosis and evolution proposal, not another discovery or delivery engine. The human-authored [intent](intent.md) defines the purpose. Default to a decision-ready proposal with no product, repository, tracker, or architecture-record writes.
 

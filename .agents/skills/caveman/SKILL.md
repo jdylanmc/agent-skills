@@ -6,7 +6,7 @@ user-invocable: true
 ---
 
 **Entry:** human-only session activation under the
-[invocation contract](../../INVOCATION.md). Agents do not activate this mode
+[invocation contract](../setup/INVOCATION.md). Agents do not activate this mode
 merely to write terse worker messages. Shared commit style remains independent.
 
 Respond terse like smart caveman. All technical substance stay. Only fluff die.
@@ -90,4 +90,4 @@ Example destructive op:
 
 ## Boundaries
 
-Persisted outside chat: write normal prose code, comments, docs, issue/PR/defect/ticket/bug-report text, memory files, third-party messages. Agent-to-agent messages may use the shared terse style without activating this human-facing mode; preserve exact commands, citations, constraints, uncertainty, and structured fields. Commit messages follow the [shared commit-message policy](../../COMMIT-STYLE.md), whether or not this chat mode is active; stopping Caveman does not disable that default. A separate document may use compressed prose when the user explicitly requests that format; this mode alone does not authorize rewriting source files. "Open a defect" or "file a bug" mean the same as "open issue": body go to other humans, so body normal English. "stop caveman" or "normal mode": revert. Level persist until changed or session end.
+Persisted outside chat: write normal prose code, comments, docs, issue/PR/defect/ticket/bug-report text, memory files, third-party messages. Agent-to-agent messages may use the shared terse style without activating this human-facing mode; preserve exact commands, citations, constraints, uncertainty, and structured fields. Commit messages follow the [shared commit-message policy](../setup/COMMIT-STYLE.md), whether or not this chat mode is active; stopping Caveman does not disable that default. A separate document may use compressed prose when the user explicitly requests that format; this mode alone does not authorize rewriting source files. "Open a defect" or "file a bug" mean the same as "open issue": body go to other humans, so body normal English. "stop caveman" or "normal mode": revert. Level persist until changed or session end.

@@ -7,7 +7,7 @@ user-invocable: true
 
 # Setup
 
-**Entry:** Human-directed, with one named automatic caller: the human-started Joe-mode controller bootstrapping absent/incomplete repository setup after establishing repository-wide ownership. Follow the [invocation contract](../../INVOCATION.md). Model-loadable metadata permits that subflow, not unrelated autonomous callers.
+**Entry:** Human-directed, with one named automatic caller: the human-started Joe-mode controller bootstrapping absent/incomplete repository setup after establishing repository-wide ownership. Follow the [invocation contract](INVOCATION.md). Model-loadable metadata permits that subflow, not unrelated autonomous callers.
 
 Accept a direct human request or that bounded Joe-mode bootstrap only. Other
 callers report what is missing and tell the human to invoke `/setup`, then wait.
@@ -29,6 +29,12 @@ Scaffold the per-repo configuration that the engineering skills assume:
 - **Domain docs**: where `CONTEXT.md` and ADRs live, and the consumer rules for reading them
 
 This is a prompt-driven skill, not a deterministic script. Explore, present what you found, confirm with the user, then write.
+
+The full skill pack also carries its shared [invocation policy](INVOCATION.md),
+[commit policy](COMMIT-STYLE.md), [notices and licenses](NOTICE.md), and
+[original import provenance](provenance/skills-lock.json) in this package.
+Installing those resources does not run this workflow or authorize configuration
+writes. Keep all sibling packages together; this support is not a separate skill.
 
 ## Joe-mode bootstrap readiness
 
@@ -121,7 +127,7 @@ Show the user a draft of:
 
 - The `## Agent skills` block for the actual repository instructions used by the harness (see step 4)
 - The contents of `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and `docs/agents/triage-labels.md` (the last when `triage` or `joe-mode` is installed)
-- A repository-local `docs/agents/commit-style.md` copy of the [shared commit-message policy](../../COMMIT-STYLE.md), retaining applicable attribution/license and the target repository's explicit overrides
+- A repository-local `docs/agents/commit-style.md` copy of the [shared commit-message policy](COMMIT-STYLE.md), retaining applicable attribution/license and the target repository's explicit overrides
 - A doctrine guidance subsection pointing to the actual installed package, listing any operator-confirmed repository-required IDs, and explaining scoped worker selections. Do not copy/rewrite doctrine sources or install a missing package as a setup side effect.
 
 Let them edit, then obtain explicit approval of the exact proposed files and changes before writing. Existing configuration is human-owned; never overwrite it merely to match a seed.
@@ -177,7 +183,7 @@ Then write the docs files using the seed templates in this skill folder as a sta
 - [issue-tracker-local.md](./issue-tracker-local.md): local-markdown issue tracker
 - [triage-labels.md](./triage-labels.md): label mapping (when `triage` or `joe-mode` is installed)
 - [domain.md](./domain.md): domain doc consumer rules + layout
-- [shared commit-message policy](../../COMMIT-STYLE.md): reviewed local commit-style guidance; preserve its attribution/license and approved repository-specific differences
+- [shared commit-message policy](COMMIT-STYLE.md): reviewed local commit-style guidance; preserve its attribution/license and approved repository-specific differences
 
 For the authorized repository changes, use [Changelog](../changelog/SKILL.md) for the correct repository/component: curate notable `Unreleased` entries in Keep a Changelog 1.1.0 format, not a commit dump, version bump, or release. Include any proposed entry in the write approval; no notable change may mean no entry needed. A changelog-only edit does not generate another entry. Do not write a changelog during read-only setup exploration.
 

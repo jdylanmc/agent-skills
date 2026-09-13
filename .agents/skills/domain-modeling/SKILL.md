@@ -8,7 +8,7 @@ user-invocable: false
 # Domain Modeling
 
 **Entry:** internal to an authorized task under the
-[invocation contract](../../INVOCATION.md), not a direct human command.
+[invocation contract](../setup/INVOCATION.md), not a direct human command.
 Before recording, establish explicit authority for the selected glossary or
 decision-record destination and its writing owner. Conversation modeling alone
 does not authorize files. Reuse confirmed recording scope; ask only when it

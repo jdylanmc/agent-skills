@@ -9,6 +9,13 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- Full-pack installation through the standard skills CLI for project-local
+  GitHub Copilot use. All 32 skills now carry their shared policies, complete
+  Doctrine support, licenses, and import provenance without a source checkout.
+  Move historical installer state out of the discovery path; preserve existing
+  names, invocation contracts, and human sources. See
+  [#251](https://github.com/jdylanmc/agent-skills/issues/251) and the
+  [installation and overwrite guidance](README.md#install-the-full-pack).
 - Repository-local workflow configuration for GitHub Issues, canonical triage
   labels, single-context domain guidance, and an attributed commit-policy copy.
   Keep Joe-mode scoped to the human's anchor and preserve tracker write gates.

@@ -9,7 +9,7 @@ Use [doctrine selection and application](../doctrine/APPLY.md), requiring `debug
 
 # Patch
 
-Separate the observed symptom from the inferred cause. Establish a mechanism that explains the evidence before changing product behavior. See the human-approved [intent](intent.md) and common [invocation policy](../../INVOCATION.md).
+Separate the observed symptom from the inferred cause. Establish a mechanism that explains the evidence before changing product behavior. See the human-approved [intent](intent.md) and common [invocation policy](../setup/INVOCATION.md).
 
 ## Scope and safety
 
@@ -87,7 +87,7 @@ Use [verify](../verify/SKILL.md) for evidence freshness and completion claims; i
 
 For a repair delivery, execute [the shared finish and maintenance contract](../ship/DELIVERY.md): independent Roast, required integrated validation, criterion verdicts, one PR, current-target readiness, and actual Shepherd custody until a terminal state or explicit blocker. A local verified diff or internal draft is not the final handoff. Patch performs its own delivery; do not invoke Ship to finish it.
 
-Every modifying agent uses [changelog](../changelog/SKILL.md); isolated workers return proposals and the integration owner consolidates/deduplicates the notable entry before review. Use the [shared commit-message policy](../../COMMIT-STYLE.md), keeping the causal explanation when consequential.
+Every modifying agent uses [changelog](../changelog/SKILL.md); isolated workers return proposals and the integration owner consolidates/deduplicates the notable entry before review. Use the [shared commit-message policy](../setup/COMMIT-STYLE.md), keeping the causal explanation when consequential.
 
 On functional feedback, recover the current PR and original bug evidence, classify the finding within Patch's bug/regression scope, and repeat the affected diagnosis/repair/proof and independent review on that same branch/PR. Return head/results to its existing Shepherd rather than starting a second monitor. Different-kind or scope-changing work returns to Joe-mode/the human. Explicit diagnosis-only or scoped worker requests return their evidence without publication; never treat them as repair authority. No deployment, self-approval, merge, or automatic merge.
 

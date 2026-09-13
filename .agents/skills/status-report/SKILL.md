@@ -8,7 +8,7 @@ user-invocable: true
 # Status Report
 
 **Entry:** a human request, or Joe-mode's full-cycle/major-feature-merge event,
-under the [invocation contract](../../INVOCATION.md). Otherwise do not invoke
+under the [invocation contract](../setup/INVOCATION.md). Otherwise do not invoke
 automatically. The original [intent](intent.md) remains unchanged.
 
 Produce one read-only snapshot. Do not change tickets, files, assignments,

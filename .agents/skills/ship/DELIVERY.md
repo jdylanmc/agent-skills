@@ -3,7 +3,7 @@
 Supporting contract for the peer Ship, Patch, and Refactor routes, not another
 routable skill or permission to invoke Ship. The selected route owns its work
 through independent review, publication, and actual Shepherd custody. Follow
-[invocation policy](../../INVOCATION.md); narrower human requests remain narrower.
+[invocation policy](../setup/INVOCATION.md); narrower human requests remain narrower.
 Never approve, merge, enable automatic merge, or close tracker items yourself.
 
 ## One delivery packet, one owner
@@ -65,7 +65,7 @@ and templates. Resolve code-project operations separately from planning items.
 A local Markdown backlog is not a PR host; establish the supported code-hosting
 destination before publication. Report unsupported configuration rather than
 silently choosing another provider.
-Use the [commit-message policy](../../COMMIT-STYLE.md) for authored messages.
+Use the [commit-message policy](../setup/COMMIT-STYLE.md) for authored messages.
 
 Before creation, inspect existing PRs for this delivery/branch. Reuse the matching
 PR; clarify ambiguity. After an uncertain creation result, query before retrying.

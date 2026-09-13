@@ -50,7 +50,7 @@ State transitions: an unlabeled issue normally goes to `needs-triage` first; fro
 ## Invocation
 
 The maintainer invokes `/triage`, or human-started Joe-mode supplies a selected
-backlog scope and current owner. Follow the [invocation contract](../../INVOCATION.md);
+backlog scope and current owner. Follow the [invocation contract](../setup/INVOCATION.md);
 Joe's authority does not waive the explicit tracker/decision gates below.
 Interpret the scoped request. Examples:
 

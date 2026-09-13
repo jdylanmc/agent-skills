@@ -8,7 +8,7 @@ user-invocable: true
 # Squadron
 
 **Entry:** human request or agent selection within authorized work, under the
-[invocation contract](../../INVOCATION.md). Dispatch bounded workers, not a
+[invocation contract](../setup/INVOCATION.md). Dispatch bounded workers, not a
 replacement Joe-mode or delivery controller.
 
 Use [Doctrine](../doctrine/SKILL.md) and its [packet contract](../doctrine/APPLY.md).
@@ -49,7 +49,7 @@ the conversation. Include:
 - Owner/controller and objective identity, original timing evidence when known,
   issue numbers **and titles**, PR coverage, and parent/return relationships.
 - Authorized workspace, branch/base, owned files/resources, and integration owner.
-- Doctrine packet, [commit style](../../COMMIT-STYLE.md), stop conditions,
+- Doctrine packet, [commit style](../setup/COMMIT-STYLE.md), stop conditions,
   expected return, and follow-up/monitor custody.
 
 Writing workers need distinct isolated workspaces, not merely disjoint files

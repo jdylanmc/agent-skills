@@ -7,7 +7,7 @@ user-invocable: false
 
 # Refactor
 
-Follow the common [invocation policy](../../INVOCATION.md). This route is internal-only: human-started Joe-mode selects it for behavior-preserving structural work. Scoped structural work may also be delegated within an existing delivery; then return to that owner without starting a second PR or custody loop. A Shepherd continuation of an existing Refactor delivery is not a new root selection.
+Follow the common [invocation policy](../setup/INVOCATION.md). This route is internal-only: human-started Joe-mode selects it for behavior-preserving structural work. Scoped structural work may also be delegated within an existing delivery; then return to that owner without starting a second PR or custody loop. A Shepherd continuation of an existing Refactor delivery is not a new root selection.
 
 Joe-mode's selected delivery grants in-scope worktree, changes, commits, push/PR, review/fixes, and Shepherd authority. Do not repeatedly ask whether to implement or publish; do ask for missing material requirements, scope changes, semantic conflicts, destructive probes, or production-data access. Explicit narrower assignments stay narrower. Refactor is a peer route, not a wrapper around Ship.
 

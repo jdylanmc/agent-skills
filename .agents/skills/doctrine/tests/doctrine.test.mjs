@@ -8,7 +8,7 @@ import test from 'node:test';
 import { DEFAULT_ROOT, formatResult, parseArgs, run } from '../scripts/doctrine.mjs';
 
 const HELPER = fileURLToPath(new URL('../scripts/doctrine.mjs', import.meta.url));
-const TEST_ROOT = fileURLToPath(new URL('.', import.meta.url));
+const TEST_ROOT = fileURLToPath(new URL('../../../../.test-sandbox/', import.meta.url));
 const CODE = '---\nname: code\ndescription: "Readable code."\nscope: shared-engineering-doctrine\n---\n\n# Code\nKeep BODY_CODE_SECRET exact.  \n';
 const CODE_HASH = '2fa3b19d32672a8db5ad4aad921126d995838806d7fcd83d5e13a61fd5fa798d';
 const LAZY = "---\r\nname: laziness\r\ndescription: 'Do less; don''t guess.'\r\n---\r\nBODY_LAZY_SECRET";
@@ -31,7 +31,8 @@ doctrine:
 `;
 
 function fixture(t) {
-  // Project-local roots are required by this environment's filesystem policy.
+  // Keep transient fixtures outside the package that distribution tests copy.
+  mkdirSync(TEST_ROOT, { recursive: true });
   const base = path.join(TEST_ROOT, `.fixture-${randomUUID()}`);
   mkdirSync(base);
   t.after(() => rmSync(base, { recursive: true, force: true }));

@@ -8,7 +8,7 @@ user-invocable: false
 # Interrogate
 
 **Entry:** only inside an authorized Discovery or Joe-mode context, under the
-[invocation contract](../../INVOCATION.md). If another workflow needs one
+[invocation contract](../setup/INVOCATION.md). If another workflow needs one
 clarification, it asks normally; material discovery goes through Discovery.
 Return questions to the parent for the human, never simulate human answers.
 

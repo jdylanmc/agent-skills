@@ -8,7 +8,7 @@ user-invocable: true
 # Synthesize
 
 **Entry:** human-directed, or a parent explicitly supplies **sources, output
-purpose, and altitude**, under the [invocation contract](../../INVOCATION.md).
+purpose, and altitude**, under the [invocation contract](../setup/INVOCATION.md).
 Without all three, return the missing inputs to that parent instead of
 automatically beginning a synthesis interview. A direct human request may
 resolve missing altitude through the question below.

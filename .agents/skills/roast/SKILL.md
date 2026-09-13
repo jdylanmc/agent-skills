@@ -7,7 +7,7 @@ user-invocable: true
 
 # Roast
 
-**Entry:** Human or scoped agent use. Independently review code, PRs, skills, specs, documents, or other supplied material against purpose and evidence; return consequential findings, not implicit fixes or approval. Follow the [invocation contract](../../INVOCATION.md).
+**Entry:** Human or scoped agent use. Independently review code, PRs, skills, specs, documents, or other supplied material against purpose and evidence; return consequential findings, not implicit fixes or approval. Follow the [invocation contract](../setup/INVOCATION.md).
 
 Review this and find flaws. The original human-authored [intent](intent.md) is preserved unchanged. Subject, format, and authorship do not restrict eligibility. Critique the work, not the person.
 
