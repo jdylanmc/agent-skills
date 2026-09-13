@@ -9,6 +9,9 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- Repository-local workflow configuration for GitHub Issues, canonical triage
+  labels, single-context domain guidance, and an attributed commit-policy copy.
+  Keep Joe-mode scoped to the human's anchor and preserve tracker write gates.
 - An editable, repository-local Copilot library of 32 skills, adapted from
   existing collections with preserved licenses and original import records.
 - `doctrine`: catalog browsing, scoped worker selections, and verified full
