@@ -44,6 +44,9 @@ Modifications to Apache-licensed files must carry prominent change notices.
 - `verify` combines Julius Brussee's `verify-and-stop` with Jesse Vincent's
   `verification-before-completion` from Superpowers. Its primary lock record
   retains `skills/verify-and-stop/SKILL.md`. Both MIT notices apply.
+- `ship` combines Matt Pocock's `implement` with Julius Brussee's `lean-build`.
+  Its primary lock record retains `skills/engineering/implement/SKILL.md`.
+  Both MIT notices apply.
 
 These workflows and their callers have been adapted locally. Original import
 records and contents remain recoverable from Git history.

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Merge `implement` and `lean-build` into `ship`: retain test-driven
+  implementation, code review, and local commits with strict scope and the
+  smallest complete end-to-end outcome. Update active callers and provenance;
+  keep 40 active skills without restoring the archived delivery orchestrator.
 - Merge `tdd` and `test-driven-development` into `tdd`; permit small,
   behavior-preserving refactoring after green and rerun affected tests.
   Consolidate supporting test guidance and update the Hermes invocation example.

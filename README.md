@@ -23,12 +23,12 @@ archive/atomic-v1/   Previous skills, agents, tooling, hooks, and documentation
 | Source | Initial count | Remaining | Initial selection |
 | --- | --- | --- | --- |
 | [mattpocock/skills](https://github.com/mattpocock/skills) | 37 | 21 | Complete collection |
-| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 12 | Complete skill collection; not its engine or gateway |
+| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 20 | 11 | Complete skill collection; not its engine or gateway |
 | [anthropics/skills](https://github.com/anthropics/skills) | 1 | 1 | `skill-creator` only |
 | [obra/superpowers](https://github.com/obra/superpowers) | 14 | 7 | Complete skill collection |
 
 Human keep/drop passes have removed 25 skills outright; two three-to-one and
-two two-to-one consolidations reduce the remaining entry points to **41**. All
+three two-to-one consolidations reduce the remaining entry points to **40**. All
 `openai.yaml` agent metadata files have also been removed. `wayfinder` is now
 [`discovery`](./.agents/skills/discovery/SKILL.md), with updated invocation names,
 tracker labels, and cross-skill references.
@@ -45,6 +45,10 @@ tracker labels, and cross-skill references.
 - [`verify`](./.agents/skills/verify/SKILL.md) combines `verify-and-stop` and
   `verification-before-completion`: reuse evidence only while relevant state
   and inputs remain unchanged; otherwise rerun.
+- [`ship`](./.agents/skills/ship/SKILL.md) combines `implement` and `lean-build`:
+  build the smallest complete change, test, review, verify, and commit locally.
+  It does not restore the archived Ship orchestrator or automatically publish,
+  shepherd, or merge a PR.
 - `codebase-design` is removed; its callers use the project's own interfaces
   and terminology.
 - Caveman's `setup`, `discover`, `evidence-review`, `manage`, `optimize`, `learn`,
