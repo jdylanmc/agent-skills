@@ -33,7 +33,7 @@ Look at the current repo to understand its starting state. Read whatever exists;
 
 Summarise what's present and what's missing. Then take the sections in order. One section, one answer, then the next.
 
-Lead each section with the recommended answer so the user can accept it in a word. Give a one-line explainer only when the choice genuinely branches; skip the section entirely when exploration already settled it (Section B when `triage` isn't installed, Section C when there's no monorepo).
+Lead each section with the recommended answer so the user can accept it in a word. Give a one-line explainer only when the choice genuinely branches; skip the section entirely when exploration already settled it (Section B when neither `triage` nor `joe-mode` is installed, Section C when there's no monorepo).
 
 **Section A: Issue tracker.**
 
@@ -53,7 +53,7 @@ For Joe-mode, record the selected repository/project/area or saved query, how au
 
 **Section B: Triage label vocabulary.** Skip only when neither `triage` nor `joe-mode` is installed.
 
-If it is installed, ask exactly one question:
+When either skill is installed, ask exactly one question:
 
 > Do you want to keep the default triage labels? (recommended: **yes**)
 
@@ -110,7 +110,7 @@ Then write the docs files using the seed templates in this skill folder as a sta
 - [issue-tracker-azure-devops.md](./issue-tracker-azure-devops.md): Azure DevOps work items, planning/code scopes, readiness tags, and PR operations
 - [issue-tracker-gitlab.md](./issue-tracker-gitlab.md): GitLab issue tracker
 - [issue-tracker-local.md](./issue-tracker-local.md): local-markdown issue tracker
-- [triage-labels.md](./triage-labels.md): label mapping (only if `triage` is installed)
+- [triage-labels.md](./triage-labels.md): label mapping (when `triage` or `joe-mode` is installed)
 - [domain.md](./domain.md): domain doc consumer rules + layout
 
 For "other" issue trackers, write `docs/agents/issue-tracker.md` from scratch using the user's description.
