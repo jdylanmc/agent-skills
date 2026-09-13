@@ -58,7 +58,7 @@ Choose the next agreed behavior using what the last slice taught you. Do not wri
 
 ## Bugs and existing work
 
-For a bug, reproduce the original symptom and turn it into a regression test at a seam that exercises the real interaction. Use `debug` when the cause or reproduction is unclear. Verify both the minimized test and the original scenario after the fix.
+For a bug, reproduce the original symptom and turn it into a regression test at a seam that exercises the real interaction. Use [patch](../patch/SKILL.md) in diagnosis-only mode when the cause or reproduction is unclear, then resume the test-first loop. Verify both the minimized test and the original scenario after the fix.
 
 If production code already exists before the test, preserve the user's work and say so. Do not delete or rewrite others' changes to manufacture a test-first history. Add honest characterization or regression coverage; demonstrating a regression against a pre-fix state requires an isolated or explicitly authorized method.
 
