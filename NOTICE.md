@@ -57,6 +57,11 @@ not an upstream import. It uses the repository MIT license and has no installer
 lock record. The active Ship and Shepherd intents contain human-approved
 updates; their historical originals remain in the archive.
 
+The rewritten `synthesize` intent also draws on Julius Brussee's
+`caveman-compress` for token-focused prose compression and exact technical
+content preservation. The Caveman MIT notice above applies. Only the intent
+is present; no synthesis implementation or compression runtime is restored.
+
 ## Archived collection
 
 Earlier third-party adaptations and their notices remain in

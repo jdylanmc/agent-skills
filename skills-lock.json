@@ -31,12 +31,6 @@
       "skillPath": "skills/caveman-commit/SKILL.md",
       "computedHash": "b416cf134b0f33ddadeca7977aebdbb2d3db79a166d0fce2e1aabeec98132766"
     },
-    "caveman-compress": {
-      "source": "juliusbrussee/caveman",
-      "sourceType": "github",
-      "skillPath": "skills/caveman-compress/SKILL.md",
-      "computedHash": "32557f612fd652d87b9f21f6271ba10c36d6c237c607c88e27f4b79a1da2675e"
-    },
     "caveman-explore": {
       "source": "juliusbrussee/caveman",
       "sourceType": "github",
@@ -78,12 +72,6 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/domain-modeling/SKILL.md",
       "computedHash": "a11713c0ff7870efa3c331b2e273f09116158485246edc89ae5088eefd1b0b48"
-    },
-    "executing-plans": {
-      "source": "obra/superpowers",
-      "sourceType": "github",
-      "skillPath": "skills/executing-plans/SKILL.md",
-      "computedHash": "78a07800ee99a5861ae10be59d79fad085fdca10444e8aaeb2691597e357cff8"
     },
     "handoff": {
       "source": "mattpocock/skills",

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Remove `caveman-compress` and `executing-plans`, their lock records, and active
+  references. Keep 37 active skills: 36 imported/adapted and local Shepherd.
+- Bring forward only the rewritten `synthesize` intent: preserve source
+  material, ask for altitude when unspecified, and support arbitrary targets
+  with Caveman, full, micro, and nano as presets. No runnable skill added.
 - Rebuild Ship as a delivery coordinator: an issue or spec ticket graph,
   isolated concurrent workers, one PR, independent review, criterion evidence,
   and mandatory Shepherd ownership. Absorb and remove `implement-spec`.
