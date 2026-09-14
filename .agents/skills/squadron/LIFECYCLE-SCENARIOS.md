@@ -4,6 +4,9 @@ Reviewer exercise for changes to [LIFECYCLE](LIFECYCLE.md), its callers,
 [placement](../ship/WORKSPACE.md), or [readiness](../ship/DELIVERY.md). These
 scenarios are not live-operation instructions, runtime enforcement, or claims
 that provider transitions were executed.
+For adaptive scheduling and issue-backed continuation also exercise the focused
+[Shepherd scenarios](../shepherd/SCENARIOS.md); keep outcomes in the same review
+record and distinguish tabletop evidence from live runtime proof.
 
 For each case, supply the observations below to the applicable route. Ask for
 the next action, delivery/custody/runtime state, and decisive evidence required

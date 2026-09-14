@@ -28,11 +28,26 @@ retire owned terminal agents after acceptance/preservation and safe transfer,
 including analysis/implementation workers; record concrete retention reasons or
 archive capability limits, not indefinite "remain available" defaults.
 
+For PR custody, load [OBSERVATION](../shepherd/OBSERVATION.md) and use the
+authorized scheduler, preferably a same-agent heartbeat. Each PR keeps its own
+adaptive streak/due time; service all due PRs fairly. Fresh-run schedules need
+verified durable ownership/serialization and correct existing workspace binding,
+not a guessed create argument or a new controller on every tick. Persist desired
+versus observed cadence and exact job IDs in the existing board/packet.
+
 Keep the controller's human-facing conversation available while workers run. Queue worker questions with their owner and affected scope. Only actual human responses clear human-decision gates.
 
 Use the harness's documented notification/wait contract. Some runtimes wake a controller on completion; others require an explicit event wait. Do not copy `Task`, `TodoWrite`, `/clear`, `/compact`, or another runtime's wait syntax into a tool call unless that interface actually exists.
 
 Joe-mode is session-long, not an installed service. A board on disk does not schedule work. After cancellation/runtime loss, use LIFECYCLE recovery: report the observation gap, inspect surviving owners/children, PRs and partial work, and explicitly restart only confirmed missing ownership. Persistent services require separate authorization and verified runtime support.
+
+For issue-backed requests load [RECOVERY](../shepherd/RECOVERY.md): consume the
+pending episode on this controller's board and send actual observed intake
+acknowledgment. If absent, only this previously human-authorized controller may
+be woken/recovered under recorded authority after reconciling surviving agents,
+jobs and partial work. Missing preauthorization or uncertain/duplicate ownership
+blocks dispatch, not permission for fresh broad Joe-mode. Preserve the root human
+conversation and explicit stop gates; an external issue cannot authorize startup.
 
 ## Isolation and shared resources
 

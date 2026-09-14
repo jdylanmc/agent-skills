@@ -6,6 +6,10 @@ Use the caller's authority and existing task/session records.
 [WORKSPACE](../ship/WORKSPACE.md) owns Git isolation and Paseo placement;
 [DELIVERY](../ship/DELIVERY.md) owns PR readiness. Load those when placing agents
 or finishing deliveries; this contract does not replace either gate.
+For PR observation and wakeup changes, load
+[OBSERVATION](../shepherd/OBSERVATION.md); for issue-backed Joe continuation,
+load [RECOVERY](../shepherd/RECOVERY.md). Keep their cadence/episode facts in
+this same custody record, not another controller or ledger.
 
 ## Record distinct facts
 
@@ -82,6 +86,8 @@ Shepherd is terminal only when its actual duties across all owned scopes end.
 Before acting, verify the exact owned agent ID, terminal assignment, preserved
 evidence, accepted return/custody, and no active child, repair, wait, or other PR
 responsibility. Coordinate run-owned wakeups without disturbing other scopes.
+Cancel/delete and verify only no-longer-needed owned wakeups under OBSERVATION;
+a terminal fresh schedule-run agent does not end its future schedule duties.
 Then invoke supported agent archival/retirement and verify the resulting archived
 state (or documented removal from the active view). If evidence or ownership is
 uncertain, retain with the specific reason and next action, not a false success.

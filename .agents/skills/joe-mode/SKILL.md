@@ -14,6 +14,10 @@ Use [Doctrine](../doctrine/SKILL.md) under the [common application contract](../
 Joe-mode starts only when requested and stays active in this session until paused or stopped. Route subsequent turns within the anchor. A side question does not stop work; explicit redirection does. Bounded workers must not activate another Joe-mode controller. Follow the [invocation contract](../setup/INVOCATION.md): one controller per repository, not per issue, branch, worktree, or selected scope.
 
 Kickoff authorizes ordinary delivery of selected in-scope work: repairs, commits, PR publication, review, and shepherding. Do not ask again at routine transitions. Preserve explicit narrower requests, human product decisions, scope changes, and every planning/recording approval gate. Never delegate human approval or merging.
+Record each delivery's narrow monitoring/recovery authority in the
+[existing packet](../ship/DELIVERY.md#one-delivery-packet-one-owner), including
+this controller and root human conversation; do not turn wake authority into
+permission for another controller.
 
 ## 1. Resolve the anchor
 
@@ -101,6 +105,24 @@ Use provider-qualified item identities; record each delivery group's full covera
 Reserve a spec's group before ticket breakdown: `specify` may already have applied the readiness label. Newly published children must not race a parent delivery or dispatch before the approved graph and grouping are recorded. Ask if grouping is materially ambiguous.
 
 A dependency across separate PRs is satisfied only when the required changes are available on the consumer's agreed base, normally after the prerequisite merges. A green but unmerged PR or a closed tracker item alone is insufficient. Inside one Ship graph, Ship's integrated-commit and validation rules govern.
+
+### Consume linked recovery intake
+
+On Shepherd notification or board reconciliation, load and execute
+[RECOVERY](../shepherd/RECOVERY.md). Read the linked issue and original delivery
+packet, verify live refs/ownership and the episode, and actually acknowledge
+observed intake before accepting it. Reuse this board's coverage/owner, not a
+second queue or controller. A link does not widen the anchor, prove the
+configured ready role, authorize labeling, or dispatch beside a live repair.
+
+Route eligible recovery within settled intent to a bounded same-branch/same-PR
+continuation; use Discovery/the human for changed requirements, architecture,
+risk or semantic decisions. Record outgoing write release and receiving owner
+acknowledgment before repair writes. Shepherd retains observation-only custody
+or explicit safe suspension. Repeated ticks resume the recorded episode, not a
+new issue/worker. Require fresh artifacts/head/target, validation and independent
+review on return; Shepherd must reconcile and accept it. Failed/no-progress
+repair escalates without automatic redispatch.
 
 ## 4. Run concurrent paths through the existing flow
 

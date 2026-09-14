@@ -89,6 +89,17 @@ unresolved product decisions, scope expansion, destructive operations, productio
 access, human approval, or merging. A read-only or diagnosis-only request stays
 that narrow.
 
+At that original delivery kickoff, grant and record only its bounded monitoring
+job/lifetime and narrow recovery issue create/update plus notification/wake of
+an existing human-authorized Joe controller. Execute
+[OBSERVATION](../shepherd/OBSERVATION.md) for authorized scheduler-first custody
+and [RECOVERY](../shepherd/RECOVERY.md) for issue-backed re-routing. Explicit
+narrower requests, configured tracker mutation/readiness gates and human
+decisions prevail. This does not activate Joe, authorize a new broad controller,
+change unrelated schedules/labels, or grant approval/merge/issue closure.
+Recovering a previously authorized controller requires reconciled surviving
+ownership and recorded wake authority; otherwise report the blocker.
+
 Nested work carries its actual human/parent authority, route owner, issue/PR
 coverage, workspace, dependencies, stop conditions, evidence, and doctrine
 packet. Calling another skill does not launder missing authority. Patch or

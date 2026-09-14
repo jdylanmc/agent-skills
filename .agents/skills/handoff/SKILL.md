@@ -36,6 +36,12 @@ ledger. The sender retains custody until the receiver inspects the actual
 artifacts/worktree/PR and acknowledges the scope, observed state, and duties.
 Sending or a sender-authored owner field proves none of those. Never leave two
 writers on one branch, two PR monitors, or two Joe controllers for one repository.
+For Shepherd custody, load and carry [OBSERVATION](../shepherd/OBSERVATION.md)'s
+per-PR snapshot/streak, exact wakeup/binding, desired/observed cadence and gaps.
+For issue-backed continuation, load [RECOVERY](../shepherd/RECOVERY.md) and carry
+the existing episode/issue, kickoff authority, controller/human path, pending
+operation and write-release/receiver acknowledgment. Neither a link nor a
+scheduled wake establishes accepted intake or permits another controller.
 
 After acknowledgment, retire a terminal owned sender/worker with preserved
 evidence and completed/transferred duties under LIFECYCLE. Arrange parent-owned

@@ -4,7 +4,9 @@ Supporting contract for the peer Ship, Patch, and Refactor routes, not another
 routable skill or permission to invoke Ship. The selected route owns its work
 through independent review, publication, and actual Shepherd custody. Follow
 [invocation policy](../setup/INVOCATION.md); narrower human requests remain narrower.
-Never approve, merge, enable automatic merge, or close tracker items yourself.
+Never approve, merge, or enable automatic merge. Do not close delivery tracker
+items yourself; the only recovery-issue resolution exception is the separately
+authorized, verified episode closure in [RECOVERY](../shepherd/RECOVERY.md).
 
 Load and execute the shared [agent lifecycle](../squadron/LIFECYCLE.md) for
 dispatch, accepted returns/custody, cancellation recovery, and terminal
@@ -24,6 +26,15 @@ Keep the existing task/session record, not another controller:
   head/base, independent review coverage, findings, and criterion verdicts.
 - Scoped doctrine IDs, source locations, pinned digests, required flags, and
   actual load/application reports as specified by [Doctrine](../doctrine/APPLY.md).
+- At original authorized kickoff, bounded monitor job/lifetime and scheduler
+  authority or explicit override under [OBSERVATION](../shepherd/OBSERVATION.md);
+  narrow recovery issue create/update and existing-controller notification/wake
+  authority under [RECOVERY](../shepherd/RECOVERY.md). Record configured tracker
+  destination/identity/readiness vocabulary, permitted actions, previously
+  human-authorized Joe controller and root conversation, or their absence.
+  Explicit narrower requests and tracker gates prevail; this does not activate
+  Joe-mode or grant arbitrary labels/closure. Carry any episode key/issue,
+  pending operation and owner through all continuations in this same packet.
 
 Require `worktrees` and [workspace isolation](WORKSPACE.md) before PR changes.
 Reuse compatible isolation and serialize integration. Each independent writer
@@ -142,7 +153,11 @@ No recursive route, replacement PR, second controller, or nested monitor. A scop
 worker within another delivery returns to its owner instead of publishing.
 
 Pure rebase/regeneration stays Shepherd work. Different-kind work or changed
-requirements returns to Joe-mode/the human for routing, not automatic Ship fallback.
+requirements uses [issue-backed recovery](../shepherd/RECOVERY.md) to the existing
+Joe controller/the human, not automatic Ship fallback. Load it for such a
+continuation; require concrete functional/acceptance evidence, not target diff
+size. The receiver must observe and acknowledge intake before write transfer;
+return fresh candidate/proof to the same Shepherd for actual acceptance.
 Recover a missing packet from live evidence; do not require an exact old revision,
 but resolve unknown ownership or product intent before mutation.
 
