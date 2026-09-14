@@ -2,9 +2,9 @@
 
 ## Overview
 
-When you fix a bug caused by invalid data, adding validation at one place feels sufficient. But that single check can be bypassed by different code paths, refactoring, or mocks.
+A single check may seem sufficient for invalid-data bugs, but different code paths, refactoring, or mocks can bypass it.
 
-**Core principle:** Validate where an invariant is owned. Add another check only when a demonstrated bypass path or a distinct trust boundary justifies it. Multiple layers are a technique, not a requirement to duplicate validation everywhere.
+**Core principle:** Validate where the invariant is owned. Add checks only for demonstrated bypass paths or distinct trust boundaries. Multiple layers are a technique, not mandatory duplication everywhere.
 
 ## Why Multiple Layers
 
@@ -90,8 +90,8 @@ When you find a bug:
 
 1. **Trace the data flow** - Where does bad value originate? Where used?
 2. **Map all checkpoints** - List every point data passes through
-3. **Choose justified validation points** - Identify the invariant and bypass path each check addresses; do not add every example layer automatically
-4. **Test the chosen checks** - Exercise the real bypass scenarios without coupling tests to internal implementation details
+3. **Choose justified validation points** - Identify each check's invariant and bypass path; do not automatically add every example layer
+4. **Test the chosen checks** - Exercise real bypass scenarios without coupling tests to implementation details
 
 ## Example from Session
 
@@ -119,4 +119,4 @@ All four layers were necessary. During testing, each layer caught bugs the other
 - Edge cases on different platforms needed environment guards
 - Debug logging identified structural misuse
 
-One validation point may be sufficient. Add another only when the observed failure or a supported bypass scenario requires it; keep changes within the authorized repair.
+One validation point may suffice. Add another only when the observed failure or a supported bypass scenario requires it; stay within the authorized repair.

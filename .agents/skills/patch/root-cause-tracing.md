@@ -2,9 +2,9 @@
 
 ## Overview
 
-Bugs often manifest deep in the call stack (git init in wrong directory, file created in wrong location, database opened with wrong path). Your instinct is to fix where the error appears, but that's treating a symptom.
+Bugs often surface deep in the call stack (git init in wrong directory, file created in wrong location, database opened with wrong path). Fixing where the error appears treats a symptom.
 
-**Core principle:** Trace backward through the call chain until you find the original trigger, then fix at the source.
+**Core principle:** Trace backward through the call chain to the original trigger, then fix at the source.
 
 ## When to Use
 
@@ -65,7 +65,7 @@ Project.create('name', context.tempDir); // Accessed before beforeEach!
 
 ## Adding Stack Traces
 
-When you can't trace manually, add instrumentation:
+If manual tracing fails, add instrumentation:
 
 ```typescript
 // Before the problematic operation
@@ -96,9 +96,9 @@ npm test 2>&1 | grep 'DEBUG git init'
 
 ## Finding Which Test Causes Pollution
 
-If something appears during tests but you don't know which test:
+If an unknown test creates an artifact:
 
-Inspect `find-polluter.sh` before use. It runs tests and may delete the named pollution artifact; use it only in a disposable reproduction directory with an explicitly approved target, never against a valuable checkout or its repository metadata:
+Inspect `find-polluter.sh` before use: it runs tests and may delete the named pollution artifact. Use only in a disposable reproduction directory with an explicitly approved target, never against a valuable checkout or its repository metadata:
 
 ```bash
 ./find-polluter.sh '.git' 'src/**/*.test.ts'
@@ -151,7 +151,7 @@ digraph principle {
 }
 ```
 
-**NEVER fix just where the error appears.** Trace back to find the original trigger.
+**NEVER fix just where the error appears.** Trace to the original trigger.
 
 ## Stack Trace Tips
 

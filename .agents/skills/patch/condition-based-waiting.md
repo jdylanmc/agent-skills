@@ -2,9 +2,9 @@
 
 ## Overview
 
-Flaky tests often guess at timing with arbitrary delays. This creates race conditions where tests pass on fast machines but fail under load or in CI.
+Arbitrary test delays create race conditions: tests pass on fast machines but fail under load or in CI.
 
-**Core principle:** Wait for the actual condition you care about, not a guess about how long it takes.
+**Core principle:** Wait for the actual condition, not a guessed duration.
 
 ## When to Use
 
@@ -79,7 +79,7 @@ async function waitFor<T>(
 }
 ```
 
-See `condition-based-waiting-example.ts` in this directory for complete implementation with domain-specific helpers (`waitForEvent`, `waitForEventCount`, `waitForEventMatch`) from actual debugging session.
+See `condition-based-waiting-example.ts` here for the complete implementation and domain-specific helpers (`waitForEvent`, `waitForEventCount`, `waitForEventMatch`) from an actual debugging session.
 
 ## Common Mistakes
 
