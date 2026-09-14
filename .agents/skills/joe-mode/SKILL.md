@@ -13,7 +13,7 @@ Use [Doctrine](../doctrine/SKILL.md) under the [common application contract](../
 
 Joe-mode starts only when requested and stays active in this session until paused or stopped. Route subsequent turns within the anchor. A side question does not stop work; explicit redirection does. Bounded workers must not activate another Joe-mode controller. Follow the [invocation contract](../setup/INVOCATION.md): one controller per repository, not per issue, branch, worktree, or selected scope.
 
-The separate human-enabled [Paseo PM adapter](../joe-mode-paseo-pm/SKILL.md)
+The separate human-enabled [Paseo PM adapter](../joe-mode-paseo/SKILL.md)
 does not extend this session mode's lifetime. Before taking repository control,
 reconcile its saved activation, wakeup job and current pass on the **same owner
 board**. Join an existing logical controller or arrange observed release and

@@ -51,6 +51,40 @@ test('initialization preserves one repository activation and defaults to six del
   assert.throws(() => transact(filename, { op: 'init', config: { ...config, id: 'other' } }), /different/);
 });
 
+test('approved minute-step cadence binds heartbeat and fresh jobs without changing legacy boards', t => {
+  for (const wakeupMode of ['heartbeat', 'fresh']) {
+    for (const cron of ['* * * * *', '*/1 * * * *', '*/5 * * * *', '*/10 * * * *', '*/59 * * * *']) {
+      const filename = store(t);
+      const input = wakeupMode === 'heartbeat' ? heartbeatConfig : { ...config, wakeupMode };
+      const selected = { ...input, cron };
+      transact(filename, { op: 'init', config: selected });
+      const schedule = { ...heartbeatJob, cron, ...(wakeupMode === 'fresh'
+        ? { kind: 'schedule', targetAgentId: undefined } : {}) };
+      const state = transact(filename, { op: 'resume', human: 'human/cadence', schedule }).state.pm;
+      assert.equal(state.config.cron, cron);
+      assert.equal(state.schedule.cron, cron);
+      assert.equal(transact(filename, { op: 'init', config: selected }).status, 'existing');
+      const changed = cron === '*/5 * * * *' ? '*/10 * * * *' : '*/5 * * * *';
+      assert.throws(() => transact(filename, { op: 'resume', human: 'human',
+        schedule: { ...schedule, cron: changed } }), /binding/);
+      assert.throws(() => transact(filename, { op: 'init', config: { ...selected, cron: changed } }), /different/);
+    }
+  }
+  const legacy = enabled(t);
+  const pm = transact(legacy, { op: 'inspect' }).state.pm;
+  assert.equal(pm.config.cron, undefined);
+  assert.equal(pm.schedule.cron, '* * * * *');
+});
+
+test('unsupported cadence fails before initialization without creating a board', t => {
+  for (const cron of ['', null, 5, '*/0 * * * *', '*/60 * * * *', '*/1.5 * * * *',
+    '*/05 * * * *', '@hourly', '* * * *', '0 * * * *', '*/5 * * * *\n']) {
+    const filename = store(t);
+    assert.throws(() => transact(filename, { op: 'init', config: { ...config, cron } }), /cadence/);
+    assert.deepEqual(transact(filename, { op: 'inspect' }).state, {});
+  }
+});
+
 function reserve(filename, lease, key, kind = 'delivery', coverage = [key]) {
   return owned(filename, lease, { op: 'reserve', worker: { key, kind, coverage, packet: `packets/${key}` } });
 }
@@ -65,6 +99,111 @@ test('six delivery reservations include unconfirmed launches and survive success
   lease = claim(filename, 'next').state.pm.lease;
   assert.throws(() => reserve(filename, lease, 'ticket-6'), /capacity/);
   reserve(filename, lease, 'research', 'research');
+});
+
+test('course planning reuses its goal revision across pulses beside delivery and requirements intake', t => {
+  const filename = heartbeatEnabled(t);
+  const first = claim(filename, 'pm-agent').state.pm.lease;
+  for (let i = 0; i < 6; i++) reserve(filename, first, `ticket-${i}`);
+  reserve(filename, first, 'requirements', 'discovery');
+  reserve(filename, first, 'course/goal-a/revision-1', 'research');
+  owned(filename, first, { op: 'bind', key: 'course/goal-a/revision-1', agentId: 'course-agent',
+    evidence: 'course/accepted-goal-and-inputs' });
+  owned(filename, first, { op: 'release', result: 'pulse/one', duties: 'course, intake and deliveries retained' });
+  const next = claim(filename, 'pm-agent').state.pm.lease;
+  assert.equal(reserve(filename, next, 'course/goal-a/revision-1', 'research').status, 'reused');
+  assert.equal(reserve(filename, next, 'requirements', 'discovery').status, 'reused');
+  const pm = transact(filename, { op: 'inspect' }).state.pm;
+  assert.equal(pm.workers.length, 8);
+  assert.equal(pm.workers.find(worker => worker.kind === 'research').agentId, 'course-agent');
+  assert.throws(() => reserve(filename, next, 'interviewer-2', 'discovery'), /Discovery/);
+  assert.throws(() => reserve(filename, next, 'ticket-6'), /capacity/);
+});
+
+test('ticket publication reserves the parent then reconciles actual children before any delivery launch', t => {
+  const filename = enabled(t);
+  const parent = 'github/org/repo/issues/100';
+  const child = 'github/org/repo/issues/101';
+  const graph = { key: 'spec/revision-1', kind: 'delivery', coverage: [parent],
+    packet: 'approved/spec-revision-1', graph: true };
+  let lease = claim(filename).state.pm.lease;
+  owned(filename, lease, { op: 'reserve', worker: graph });
+  assert.throws(() => reserve(filename, lease, child), /publication/);
+  assert.throws(() => owned(filename, lease, { op: 'bind', key: graph.key,
+    agentId: 'premature-implementer', evidence: 'placement/observed' }), /publication/);
+  owned(filename, lease, { op: 'cover', key: graph.key, coverage: [parent, child],
+    complete: false, evidence: 'tracker/partial-publication-receipt' });
+  owned(filename, lease, { op: 'release', result: 'pass/partial-graph', duties: 'reconcile publication; no new delivery' });
+  lease = claim(filename, 'next-run').state.pm.lease;
+  assert.equal(owned(filename, lease, { op: 'reserve', worker: graph }).status, 'reused');
+  const complete = { op: 'cover', key: graph.key, coverage: [parent, child],
+    complete: true, evidence: 'tracker/complete-graph-with-actual-edges' };
+  const published = owned(filename, lease, complete).state.pm.workers[0];
+  assert.deepEqual(published.coverage, [parent, child]);
+  assert.deepEqual(published.assignment, graph);
+  assert.equal(published.graph.complete, true);
+  assert.equal(published.graph.receipts.length, 2);
+  assert.equal(owned(filename, lease, complete).state.pm.workers[0].graph.receipts.length, 2);
+  assert.throws(() => reserve(filename, lease, child), /coverage/);
+  assert.equal(owned(filename, lease, { op: 'bind', key: graph.key,
+    agentId: 'ship-owner', evidence: 'owner/accepted-complete-graph' }).status, 'bound');
+});
+
+test('publication coverage rejects overlaps, dropped identities and completed-graph changes without mutation', t => {
+  const filename = enabled(t);
+  const lease = claim(filename).state.pm.lease;
+  reserve(filename, lease, 'preexisting-child');
+  owned(filename, lease, { op: 'reserve', worker: {
+    key: 'graph', kind: 'delivery', coverage: ['parent'], packet: 'approved/graph', graph: true,
+  } });
+  const request = { op: 'cover', key: 'graph', coverage: ['parent', 'new-child'],
+    complete: false, evidence: 'tracker/partial' };
+  for (const coverage of [[], ['new-child'], ['parent', 'parent'], ['parent', 'preexisting-child']]) {
+    const before = readFileSync(filename, 'utf8');
+    assert.throws(() => owned(filename, lease, { ...request, coverage }), /coverage/);
+    assert.equal(readFileSync(filename, 'utf8'), before);
+  }
+  owned(filename, lease, request);
+  owned(filename, lease, { ...request, complete: true, evidence: 'tracker/complete' });
+  for (const change of [{ complete: false }, { coverage: ['parent', 'new-child', 'later-child'] }]) {
+    assert.throws(() => owned(filename, lease, { ...request, complete: true, ...change }), /immutable/);
+  }
+  assert.throws(() => owned(filename, lease, { ...request, key: 'preexisting-child' }), /publication/);
+});
+
+test('paused publication preserves returned IDs but cannot launch; released tokens cannot expand the graph', t => {
+  const filename = enabled(t);
+  const lease = claim(filename).state.pm.lease;
+  owned(filename, lease, { op: 'reserve', worker: {
+    key: 'graph', kind: 'delivery', coverage: ['parent'], packet: 'approved/graph', graph: true,
+  } });
+  transact(filename, { op: 'pause', human: 'human/pause', disposition: 'preserve publication results' });
+  const request = { op: 'cover', key: 'graph', coverage: ['parent', 'child'],
+    complete: true, evidence: 'tracker/already-issued-publication-returned' };
+  assert.equal(owned(filename, lease, request).status, 'covered');
+  assert.throws(() => owned(filename, lease, { op: 'bind', key: 'graph',
+    agentId: 'new-owner', evidence: 'receipt' }), /not enabled/);
+  owned(filename, lease, { op: 'release', result: 'pause/receipt', duties: 'human resume only' });
+  assert.throws(() => owned(filename, lease, request), /lease/);
+});
+
+test('corrupt publication receipts cannot drop the parent or falsely unblock delivery', t => {
+  for (const forge of [
+    worker => { worker.graph.complete = true; },
+    worker => { worker.coverage = ['child']; },
+    worker => { worker.graph.receipts = [{ coverage: ['child'], complete: true, evidence: 'forged' }]; },
+    worker => { worker.agentId = 'premature-owner'; },
+  ]) {
+    const filename = enabled(t);
+    const lease = claim(filename).state.pm.lease;
+    owned(filename, lease, { op: 'reserve', worker: {
+      key: 'graph', kind: 'delivery', coverage: ['parent'], packet: 'approved/graph', graph: true,
+    } });
+    const state = JSON.parse(readFileSync(filename));
+    forge(state.pm.workers[0]);
+    writeFileSync(filename, JSON.stringify(state));
+    assert.throws(() => transact(filename, { op: 'inspect' }), /publication/);
+  }
 });
 
 test('Discovery conversation reservation persists while waiting for alignment, separately per repository', t => {

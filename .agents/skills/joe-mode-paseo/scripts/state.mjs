@@ -7,6 +7,42 @@ function requireText(value, label) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`Missing ${label}`);
 }
 
+function validCoverage(coverage) {
+  return Array.isArray(coverage) && coverage.length > 0 &&
+    coverage.every(id => typeof id === 'string' && id.trim()) &&
+    new Set(coverage).size === coverage.length;
+}
+
+function validateGraph(worker) {
+  if (worker.assignment.graph === undefined) {
+    if (worker.graph !== undefined || !isDeepStrictEqual(worker.assignment.coverage, worker.coverage)) {
+      throw new Error('Invalid worker coverage');
+    }
+    return;
+  }
+  if (worker.assignment.graph !== true || worker.kind !== 'delivery' ||
+    !validCoverage(worker.assignment.coverage) || typeof worker.graph?.complete !== 'boolean' ||
+    !Array.isArray(worker.graph.receipts)) throw new Error('Invalid publication graph');
+  let coverage = worker.assignment.coverage;
+  let complete = false;
+  for (const receipt of worker.graph.receipts) {
+    requireText(receipt.evidence, 'publication evidence');
+    if (!validCoverage(receipt.coverage) || typeof receipt.complete !== 'boolean' ||
+      coverage.some(id => !receipt.coverage.includes(id)) ||
+      (complete && (!receipt.complete || !isDeepStrictEqual(coverage, receipt.coverage)))) {
+      throw new Error('Invalid publication receipt');
+    }
+    coverage = receipt.coverage;
+    complete = receipt.complete;
+  }
+  if (!isDeepStrictEqual(coverage, worker.coverage) || complete !== worker.graph.complete ||
+    (worker.agentId && !complete)) throw new Error('Invalid publication state');
+}
+
+function publicationPending(pm) {
+  return pm.workers.some(worker => !worker.settled && worker.graph && !worker.graph.complete);
+}
+
 function validateConfig(input) {
   const config = { ...input, capacity: input?.capacity ?? 6 };
   for (const key of ['id', 'repository', 'commonDir', 'cwd', 'projectId', 'workspaceId',
@@ -15,6 +51,10 @@ function validateConfig(input) {
   }
   if (config.merge !== 'human') throw new Error('Automated merge unsupported');
   if (!Number.isSafeInteger(config.capacity) || config.capacity < 1) throw new Error('Invalid capacity');
+  if (config.cron !== undefined && (typeof config.cron !== 'string' ||
+    !/^(?:\*|\*\/(?:[1-9]|[1-5][0-9])) \* \* \* \*$/.test(config.cron))) {
+    throw new Error('Invalid PM cadence');
+  }
   if (config.wakeupMode !== undefined && !['fresh', 'heartbeat'].includes(config.wakeupMode)) {
     throw new Error('Invalid wakeup mode');
   }
@@ -32,7 +72,7 @@ function validateJob(config, job) {
   requireText(job.evidence, 'schedule readback');
   requireText(job.observation, 'initial observation');
   const heartbeat = config.wakeupMode === 'heartbeat';
-  if (job.enabled !== true || job.cron !== '* * * * *' ||
+  if (job.enabled !== true || job.cron !== (config.cron ?? '* * * * *') ||
     ['cwd', 'projectId', 'workspaceId'].some(key => job[key] !== config[key]) ||
     (heartbeat ? job.kind !== 'heartbeat' || job.targetAgentId !== config.pmAgentId :
       (job.kind !== undefined && job.kind !== 'schedule') || job.targetAgentId !== undefined)) {
@@ -94,16 +134,14 @@ function validateState(state) {
     if (!worker || typeof worker.settled !== 'boolean' ||
       !['delivery', 'discovery', 'research'].includes(worker.kind) ||
       typeof worker.key !== 'string' || !worker.key.trim() || keys.has(worker.key) ||
-      !Array.isArray(worker.coverage) || !worker.coverage.length ||
-      worker.coverage.some(id => typeof id !== 'string' || !id.trim()) ||
-      new Set(worker.coverage).size !== worker.coverage.length ||
+      !validCoverage(worker.coverage) ||
       worker.assignment?.key !== worker.key || worker.assignment?.kind !== worker.kind ||
-      !isDeepStrictEqual(worker.assignment?.coverage, worker.coverage) ||
       !(worker.agentId === null || (typeof worker.agentId === 'string' && worker.agentId.trim()))) {
       throw new Error('Invalid worker state');
     }
     keys.add(worker.key);
     requireText(worker.assignment.packet, 'Invalid worker packet');
+    validateGraph(worker);
     if (worker.settled) {
       for (const key of ['evidence', 'result', 'acceptance']) requireText(worker.return?.[key], `Invalid return ${key}`);
       continue;
@@ -125,9 +163,10 @@ function reserve(pm, worker) {
   requireText(worker?.key, 'worker key');
   requireText(worker.packet, 'worker packet');
   if (!['delivery', 'discovery', 'research'].includes(worker.kind)) throw new Error('Invalid worker kind');
-  if (!Array.isArray(worker.coverage) || !worker.coverage.length ||
-    worker.coverage.some(value => typeof value !== 'string' || !value.trim()) ||
-    new Set(worker.coverage).size !== worker.coverage.length) throw new Error('Invalid coverage');
+  if (!validCoverage(worker.coverage)) throw new Error('Invalid coverage');
+  if (worker.graph !== undefined && (worker.graph !== true || worker.kind !== 'delivery')) {
+    throw new Error('Invalid publication group');
+  }
   const existing = pm.workers.find(item => item.key === worker.key);
   if (existing) {
     if (!isDeepStrictEqual(existing.assignment, worker)) throw new Error('Different worker assignment');
@@ -138,6 +177,7 @@ function reserve(pm, worker) {
     throw new Error('Discovery conversation already reserved');
   }
   if (worker.kind === 'delivery') {
+    if (publicationPending(pm)) throw new Error('Unresolved ticket publication; hold new delivery');
     if (active.some(item => item.kind === 'delivery' && item.coverage.some(id => worker.coverage.includes(id)))) {
       throw new Error('Overlapping delivery coverage');
     }
@@ -146,16 +186,35 @@ function reserve(pm, worker) {
     }
   }
   pm.workers.push({ key: worker.key, kind: worker.kind, coverage: worker.coverage,
-    assignment: worker, settled: false, agentId: null });
+    assignment: worker, settled: false, agentId: null,
+    ...(worker.graph ? { graph: { complete: false, receipts: [] } } : {}) });
   return 'reserved';
+}
+
+function cover(pm, worker, request) {
+  if (worker.settled || !worker.graph) throw new Error('Missing active publication group');
+  if (!validCoverage(request.coverage) || typeof request.complete !== 'boolean' ||
+    worker.coverage.some(id => !request.coverage.includes(id))) throw new Error('Invalid expanded coverage');
+  if (worker.graph.complete && (!request.complete || !isDeepStrictEqual(worker.coverage, request.coverage))) {
+    throw new Error('Completed publication coverage is immutable');
+  }
+  if (pm.workers.some(other => other !== worker && !other.settled && other.kind === 'delivery' &&
+    other.coverage.some(id => request.coverage.includes(id)))) throw new Error('Overlapping delivery coverage');
+  const receipt = { coverage: request.coverage, complete: request.complete, evidence: request.evidence };
+  if (!isDeepStrictEqual(worker.graph.receipts.at(-1), receipt)) worker.graph.receipts.push(receipt);
+  worker.coverage = request.coverage;
+  worker.graph.complete = request.complete;
+  return 'covered';
 }
 
 function updateWorker(pm, request) {
   const worker = pm.workers.find(item => item.key === request.key);
   if (!worker) throw new Error('Unknown worker');
   requireText(request.evidence, 'live evidence');
+  if (request.op === 'cover') return cover(pm, worker, request);
   if (request.op === 'bind') {
     requireText(request.agentId, 'observed agent ID');
+    if (worker.kind === 'delivery' && publicationPending(pm)) throw new Error('Unresolved ticket publication; hold delivery launch');
     if (worker.settled || (worker.agentId && worker.agentId !== request.agentId)) throw new Error('Worker already bound or settled');
     worker.agentId = request.agentId;
     worker.observation = request.evidence;
@@ -229,7 +288,7 @@ function apply(state, request) {
     if (pm.mode !== 'enabled') throw new Error('PM is not enabled');
   }
   if (request.op === 'reserve') return reserve(pm, request.worker);
-  if (['bind', 'settle', 'archive'].includes(request.op)) return updateWorker(pm, request);
+  if (['cover', 'bind', 'settle', 'archive'].includes(request.op)) return updateWorker(pm, request);
   if (request.op === 'record') {
     requireText(request.key, 'operation key');
     requireText(request.evidence, 'operation evidence');

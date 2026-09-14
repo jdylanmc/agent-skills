@@ -1,6 +1,33 @@
 # Paseo capability gates
 
-Primary-source review, not a live runtime experiment. Consult the current
+## Recommended orchestration recipe
+
+Paseo's current [orchestration workflows](https://paseo.sh/docs/orchestration-workflows.md)
+pair periodic continuation through a same-agent heartbeat with worker delegation,
+progress checks, follow-up prompts, isolated implementations and independent
+review. Its [schedules guide](https://paseo.sh/docs/schedules.md) distinguishes
+heartbeats for reassessing ongoing work from fresh agents for recurring jobs.
+
+For this ongoing engineering team, recommend **one dedicated repository PM with
+a heartbeat**, five minutes by default and an explicitly recorded minute-step
+cron. The retained agent is the coordinator, not a keepalive for a user's chat.
+Each prompt executes RUN once, using Joe-mode's decisions and shared board.
+Completion callbacks handle normal progress; recurring passes catch missed
+returns, stalls, scope drift, new requirements and changes to the backlog path.
+Fresh scheduling remains an option only when its placement/lifetime gates pass.
+
+Use the supported MCP or CLI orchestration surface; a custom SDK service is
+not required for this recipe. The [TypeScript SDK](https://paseo.sh/docs/sdk.md)
+is a client of the same daemon, not a separate scheduling guarantee. Never
+invent SDK scheduling methods or install a new long-running service merely to
+wrap an available tool.
+
+A heartbeat **does not repair its own dead PM agent** or survive every provider,
+permission or host failure. Inspect the bound agent and job when resuming, report
+the observation gap, and require explicit fenced takeover if the PM is lost.
+Do not claim perpetual supervision from a stored cron record.
+
+The following is primary-source review, not a live runtime experiment. Consult the current
 [official index](https://paseo.sh/llms.txt),
 [orchestration](https://paseo.sh/docs/orchestration.md),
 [workflows](https://paseo.sh/docs/orchestration-workflows.md),

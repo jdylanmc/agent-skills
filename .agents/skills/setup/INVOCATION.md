@@ -48,7 +48,7 @@ machine-starts session Joe-mode or inherits authority merely from its name.
 | [handoff](../handoff/SKILL.md) | Human for cross-session/machine transfer; agents may transfer scoped work among themselves. |
 | [interrogate](../interrogate/SKILL.md) | Internal to Discovery or Joe-mode only. |
 | [joe-mode](../joe-mode/SKILL.md) | Human-only activation; one controller per repository, never nested. |
-| [joe-mode-paseo-pm](../joe-mode-paseo-pm/SKILL.md) | Human setup/management only; explicit consent for same-agent heartbeat or runtime-proven fresh schedule. Matching preauthorized wakeup enters RUN, not intake. One repository controller; human merges only. |
+| [joe-mode-paseo](../joe-mode-paseo/SKILL.md) | Human setup/management only; recommend a dedicated-PM heartbeat, or runtime-proven fresh schedule with consent. Human may delegate runner mechanics. Matching preauthorized wakeup enters RUN, not intake. One repository controller; human merges only. |
 | [migration](../migration/SKILL.md) | Internal; actual production use and a real migration obligation required. |
 | [patch](../patch/SKILL.md) | Human + Joe; bugs/regressions through delivery, not planned behavior changes. |
 | [poc](../poc/SKILL.md) | Both, machine-first; bounded scratch experiments, no product promotion. |
@@ -72,11 +72,11 @@ machine-starts session Joe-mode or inherits authority merely from its name.
 
 ## Carry authority, not another controller
 
-The [Paseo PM adapter](../joe-mode-paseo-pm/SKILL.md) is an explicit
+The [Paseo PM adapter](../joe-mode-paseo/SKILL.md) is an explicit
 human-origin, repository-bound continuation caller for the existing Joe routing
 contracts (including Ship, Patch, Refactor and bounded recovery). Verify its
 saved grant, chosen-mode wakeup provenance, anchor and exclusive run claim under
-[RUN](../joe-mode-paseo-pm/RUN.md) before accepting its packet. It coordinates
+[RUN](../joe-mode-paseo/RUN.md) before accepting its packet. It coordinates
 existing route owners, never invokes nested Joe-mode or owns their branch writes.
 Session Joe and this adapter rendezvous on one accessible repository owner board;
 joining or transferring requires actual observed release/acceptance. A session
