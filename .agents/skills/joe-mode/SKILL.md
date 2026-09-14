@@ -38,7 +38,7 @@ Use harness session storage or a uniquely named session/OS-temporary artifact, n
 
 Reconcile any prior board with live agents and provider state before reusing it. Resolve the common Git directory and normalized repository/provider identity so another worktree or clone is not mistaken for a different repository. Do not duplicate another active Joe-mode owner even for disjoint scopes in that repository: join the current controller or arrange explicit transfer. If visibility or ownership is uncertain, resolve it before dispatch rather than racing another session. A local board is coordination state, not a cross-session lock. An idea without a repository may begin discovery; check repository-wide ownership when its repository is resolved.
 
-Read [runtime guidance](RUNTIME.md) before dispatch. Confirm the harness supports the requested agents and background work. Use a bounded capacity appropriate to available tools and resources; retain capacity for the human-facing discovery path and for completion/review work rather than filling every slot with new implementation.
+Read [runtime guidance](RUNTIME.md) and execute [LIFECYCLE](../squadron/LIFECYCLE.md) before dispatch, transfer, recovery, or retirement. Keep its placement, delivery, custody, and runtime evidence on this board. Confirm the harness supports the requested agents and background work. Use a bounded capacity appropriate to available tools and resources; retain capacity for the human-facing discovery path and for completion/review work rather than filling every slot with new implementation.
 
 ### Bootstrap missing setup under this owner
 
@@ -148,7 +148,7 @@ On a completion, human answer, PR event, or meaningful backlog change:
 
 1. Read the result; verify decisive artifacts or provider state. A worker's "done" does not prove a published PR, human approval, or completed prerequisite.
 2. Reconcile owned item coverage, dependencies, permissions, and pending questions. Record partial writes before retrying; inspect the provider after uncertain publication to avoid duplicate specs, tickets, or PRs.
-3. Route newly ready work; release capacity only after actual ownership transfer or work completion. Reuse existing workers for follow-up where supported.
+3. Route newly ready work; release capacity only after receiver-observed and acknowledged transfer or accepted work completion. Retain workers for concrete pending follow-up; actually retire terminal owned agents under LIFECYCLE, preserving evidence and all remaining PR scopes.
 4. Surface review-ready PRs and material human questions; keep unrelated work moving.
 
 If findings contradict an active delivery, notify its owner and pause affected work at a safe boundary. Reconcile scope with the human; do not change requirements underneath a worker or restart the entire backlog. Preserve unrelated progress.
@@ -184,11 +184,23 @@ read-only, never another controller.
 
 For each delivery, surface the actual PR URL, covered issue/spec references, concise change summary, acceptance/check evidence, outstanding decisions, and confirmed Shepherd owner/status. Distinguish **draft/in progress**, **blocked**, and **ready for human review** using the shared delivery contract and current provider state. The final ready handoff is reviewed, GREEN, and rebased/current with latest main or the explicit target, with checks tied to the current head and a freshly observed base. "PR created", mergeable, or yesterday's green result does not mean ready. Human final sign-off remains outstanding.
 
+Require DELIVERY's actual promotion and provider non-draft readback plus
+receiver-observed, acknowledged Shepherd custody. Reconcile each selected PR:
+mixed ready/draft/blocked batches are progress, never **all delivered** while
+scoped work is unfinished. Do not promote blocked drafts to clear the board.
+
 Every PR handed to the human must have a Roast covering its current candidate, whether produced by this run or supplied by a coworker. Reuse a still-applicable review; otherwise route to Roast without taking over the PR's delivery owner or silently authorizing edits. Review a draft's available candidate with its incomplete scope explicit. Missing review capability requires reporting the gap and seeking direction, not a clean-review or review-ready claim.
 
 Return human feedback to the same owner and PR. A review-ready PR does not end Joe-mode or discovery. After merging/closure, reconcile backlog and dependencies before dispatching more work; do not manufacture follow-up work or close unrelated tracker items.
 
-When no path can progress, explain what is awaited and remain active for the next event or user turn. Do not invent tickets to keep agents busy. When paused or stopped, stop new dispatch, coordinate an explicit pause/transfer for active owners, preserve their work and monitoring state, and report any owner still running. Never silently abandon a Shepherd or pretend it persists after runtime shutdown.
+When no path can progress, explain what is awaited and keep this controller
+available for the next event or user turn while Joe-mode remains active. Retire
+accepted terminal workers under LIFECYCLE rather than keeping the entire fleet
+idle; retain concrete waiters/blocked owners with their next action. Do not invent
+tickets to keep agents busy. When paused or stopped, stop new dispatch, coordinate
+an explicit pause/accepted transfer for active owners, preserve their work and
+monitoring state, and report any owner still running. Never silently abandon a
+Shepherd or pretend it persists after runtime shutdown.
 
 On re-anchoring, settle active ownership first. Do not silently expand the old scope or cancel its workers. On context pressure, use [phase-boundary guidance](PHASE-BOUNDARIES.md) and preserve the board, decisions, evidence pointers, pending questions, and monitor ownership. Resume by reconciling real state, not replaying stale instructions.
 

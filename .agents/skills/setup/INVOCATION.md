@@ -96,6 +96,13 @@ Refactor work inside an existing delivery returns to that owner on the same PR;
 it does not start a competing publication or monitoring loop. Human-approved
 Retro recommendations can initiate a bounded delivery without activating Joe.
 
+For bounded agent dispatch/return, custody transfer, recovery, and retirement,
+load and execute [LIFECYCLE](../squadron/LIFECYCLE.md). Use its existing-record
+evidence, [WORKSPACE](../ship/WORKSPACE.md) for Git/Paseo placement, and
+[DELIVERY](../ship/DELIVERY.md) for verified non-draft readiness. Owning workflows
+retire accepted terminal agents by supported operations; this grants no blanket
+idle-agent cleanup or project/workspace/worktree/branch deletion authority.
+
 Every modifying agent consults [Changelog](../changelog/SKILL.md). An isolated
 worker can return entry proposals for the integration owner to consolidate;
 never race on a shared changelog or manufacture an entry for incidental scratch

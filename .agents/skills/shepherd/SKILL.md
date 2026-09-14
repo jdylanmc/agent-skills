@@ -9,6 +9,11 @@ user-invocable: true
 
 Own one published pull request (PR) beyond a green snapshot. Follow the common [invocation policy](../setup/INVOCATION.md) for human invocation or machine handoff. Humans may invoke `/shepherd` on conflicted PRs; the resolver stays internal. Observe, rebase whenever the target advances, and return functional work to the existing Ship, Patch, or Refactor route owner. Never merge, approve, enable auto-merge, accept product risk, or delete the delivery branch. See the human-authored [intent](intent.md).
 
+Each invocation owns one PR scope; a runtime may host several explicitly assigned
+scopes without duplicate owners or changing any PR's observation cadence. Load
+and execute [LIFECYCLE](../squadron/LIFECYCLE.md) for accepted custody, recovery,
+and retirement. Runtime idle is not evidence that maintenance has ended.
+
 Preserve the delivery's [doctrine selection](../doctrine/APPLY.md) through maintenance and repair handoffs. **Require `worktrees` before preparing PR changes** and use the [workspace procedure](../ship/WORKSPACE.md) to reuse the owned delivery workspace. Invocation/handoff grants bounded maintenance within established ownership; an explicit observation-only request does not. Load applied standards; pass metadata and pinned digests to the route owner. The monitor need not read every worker doctrine.
 
 ## Take ownership
@@ -17,9 +22,19 @@ Read repository guidance and resolve the PR, provider, delivery branch/worktree,
 
 Ensure no other agent is implementing or maintaining this delivery branch. Wait for transfer while its route is building. If a live Shepherd owns it, confirm and return its status; do not duplicate the loop. A stale progress file does not prove live ownership; resolve uncertain worker status before competing work.
 
+Observe the actual PR immediately, then acknowledge the observed head/target,
+scope, duties, and next observation to the sender. Preserve that acknowledgment
+in the existing record before claiming accepted custody. If taking this role in
+the same session, record the actual first observation and role acceptance.
+
 Use the harness's session storage for a small progress file, or an approved repository-local ignored session location when unavailable. Do not commit it or silently change ignore rules. Report its absolute path. Record the PR URL, route/return owner, maintenance owner, worktree, creation time, last observation, observed base/head, validation/review coverage and invalidations, pending human signoff, handled findings, active repair, and next observation time. Keep credentials and private log bodies out of it.
 
-Read back record updates. If persistence fails, report the error; do not claim resumability. On resume, inspect live state first, record the observation gap, and check for a still-running repair before redispatching. If the old record is unavailable, reconstruct from the PR and report reduced history.
+Include LIFECYCLE's agent/parent and repository/project/worktree/workspace
+mapping, accepted custody evidence, and retirement/retention status in this same
+record. Read back updates. If persistence fails, report the error; do not claim
+resumability. On cancellation/resume, reconcile live owners, children, partial
+work and wakeups before replacing a monitor or repair. Record the observation
+gap; reconstruct unavailable history from the PR with that limit explicit.
 
 ## Observe the PR
 
@@ -50,7 +65,7 @@ Use [the shared current-base readiness gate](../ship/DELIVERY.md#current-base-re
 
 | Observation | Action |
 | --- | --- |
-| PR merged or closed | Record the terminal state and stop. |
+| PR merged or closed | Record and finish this PR's duties; use LIFECYCLE to retire the owned terminal agent only after all its scopes/duties end and evidence is preserved. |
 | Open with no meaningful changes, or only pending checks | Record the observation and wait for the next interval. |
 | Target advanced, even while PR remains mergeable/policy-compliant | Rebase the owned branch onto the latest fetched target; invalidate stale proof and refresh it below. |
 | Conflicted/unmergeable, or policy needs maintenance | Perform bounded branch maintenance; invoke the internal resolver for actual conflicts. |
@@ -86,6 +101,12 @@ The route classifies evidence, performs bounded implementation and independent r
 
 If a draft's outstanding delivery work needs completing, return it to its existing route under the same ownership rule. Do not promote while acceptance, independent review, current-base proof, or required checks remain incomplete. A blocked draft is not the final handoff.
 
+Once DELIVERY's full gate and accepted custody hold, actually promote through
+the provider and verify its non-draft response and current candidate before
+announcing readiness. A send/request success is not the required readback.
+After accepting a terminal repair return, arrange its agent's retirement under
+LIFECYCLE; keep the monitoring scope and worktree alive.
+
 ## Observation rhythm
 
 Choose the interval by PR age since creation, not check count or session start:
@@ -104,3 +125,10 @@ Observe immediately on taking or resuming ownership. Between observations, use i
 Stay session-attached unless the human explicitly authorizes a persistent external monitor. Schedule wakeups or promise continued monitoring only when the runtime can deliver them. If it cannot wait or continue, record the stopped state and report the limitation.
 
 On meaningful changes, report the PR, checks/readiness, action, and next observation. On merge, closure, human decision, operator stop, or runtime loss, leave the latest truthful record. A crash ends observation; last green does not prove continued monitoring. Stop only run-owned waits/workers when safe; preserve unfinished work and report uncertain worker termination.
+
+Finish with LIFECYCLE's explicit scope reconciliation: active idle waiters,
+pending fixes/permissions, and other owned PRs need retention or accepted
+transfer, not archival. When all duties are terminal, preserve results and
+actually retire the owned agent, arranging parent-performed self-retirement
+when necessary. Record missing archive capability rather than substituting
+workspace archival or deleting branches, worktrees, or evidence.

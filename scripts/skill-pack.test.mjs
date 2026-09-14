@@ -105,6 +105,40 @@ function assertPortable(directory) {
   }
 }
 
+function assertLifecycleSupport(directory) {
+  const contracts = [
+    'squadron/LIFECYCLE.md', 'squadron/LIFECYCLE-SCENARIOS.md',
+    'ship/WORKSPACE.md', 'ship/DELIVERY.md',
+  ].map(name => path.join(directory, name));
+  for (const contract of contracts) assert.ok(readFileSync(contract).length > 0, contract);
+
+  for (const entry of [
+    'squadron/SKILL.md', 'ship/SKILL.md', 'ship/WORKER.md',
+    'joe-mode/SKILL.md', 'joe-mode/RUNTIME.md', 'shepherd/SKILL.md',
+    'handoff/SKILL.md', 'patch/SKILL.md', 'refactor/SKILL.md', 'setup/INVOCATION.md',
+  ]) {
+    const pending = [path.join(directory, entry)];
+    const visited = new Set();
+    while (pending.length) {
+      const filename = pending.pop();
+      if (visited.has(filename)) continue;
+      visited.add(filename);
+      for (const link of markdownLinks(readFileSync(filename, 'utf8'))) {
+        if (/^(?:[a-z][a-z0-9+.-]*:|#)/i.test(link)) continue;
+        const target = path.resolve(path.dirname(filename), decodeURIComponent(link.split('#')[0]));
+        if (target.endsWith('.md')) pending.push(target);
+      }
+    }
+    for (const contract of contracts) {
+      assert.ok(visited.has(contract), `${entry}: unreachable supporting contract ${contract}`);
+    }
+  }
+}
+
+test('lifecycle guidance and review scenarios are reachable through local package links', () => {
+  assertLifecycleSupport(path.join(root, '.agents/skills'));
+});
+
 test('Chart-a-course is a portable, human- and model-invocable local package', () => {
   const directory = path.join(root, '.agents/skills');
   const skill = readFileSync(path.join(directory, 'chart-a-course/SKILL.md'), 'utf8');
@@ -153,6 +187,9 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     await t.test('installed Markdown dependencies resolve inside the pack', () => {
       assertPortable(installed);
     });
+    await t.test('installed routes can reach lifecycle, placement, readiness and review guidance', () => {
+      assertLifecycleSupport(installed);
+    });
     await t.test('required policies, provenance and licenses travel with the pack', () => {
       for (const name of [
         'LICENSE', 'NOTICE.md', 'INVOCATION.md', 'COMMIT-STYLE.md',
@@ -195,6 +232,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
       const before = snapshot(consumer);
       install();
       assert.deepEqual(snapshot(consumer), before);
+      assertLifecycleSupport(installed);
     });
   } finally {
     rmSync(consumer, { recursive: true, force: true });

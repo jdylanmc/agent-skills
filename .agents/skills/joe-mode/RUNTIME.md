@@ -15,21 +15,37 @@ If required delegation, independent review, or monitoring is unavailable, name t
 
 ## Lifecycle
 
-A background launch does not prove the worker started successfully. Confirm actual agent ID/state and reconcile its first result or observation before claiming ownership transferred. Every delivery route's Shepherd handoff requires a real monitor that has observed the PR.
+Load and execute [LIFECYCLE](../squadron/LIFECYCLE.md) for every dispatch,
+return/transfer, recovery, and terminal retirement. Record its evidence fields
+on the existing board. Launch/send success or runtime idle is not accepted
+custody; every delivery needs receiver observation and acknowledgment.
+
+One runtime may maintain multiple explicitly owned PR scopes with each PR's
+Shepherd cadence and one owner per PR. Sharing execution does not consolidate
+human intent or permit silently changing assignments. A merged/closed PR ends
+only its scope; keep an idle heartbeat waiter or other active PR owner. Actually
+retire owned terminal agents after acceptance/preservation and safe transfer,
+including analysis/implementation workers; record concrete retention reasons or
+archive capability limits, not indefinite "remain available" defaults.
 
 Keep the controller's human-facing conversation available while workers run. Queue worker questions with their owner and affected scope. Only actual human responses clear human-decision gates.
 
 Use the harness's documented notification/wait contract. Some runtimes wake a controller on completion; others require an explicit event wait. Do not copy `Task`, `TodoWrite`, `/clear`, `/compact`, or another runtime's wait syntax into a tool call unless that interface actually exists.
 
-Joe-mode is session-long, not an installed service. A board on disk does not schedule work. When resuming after runtime loss, report the observation gap, inspect surviving workers and PRs, and explicitly restart only missing ownership. Persistent services require separate authorization and verified runtime support.
+Joe-mode is session-long, not an installed service. A board on disk does not schedule work. After cancellation/runtime loss, use LIFECYCLE recovery: report the observation gap, inspect surviving owners/children, PRs and partial work, and explicitly restart only confirmed missing ownership. Persistent services require separate authorization and verified runtime support.
 
 ## Isolation and shared resources
 
-Give each independent writer its own authorized workspace. Discovery/research sources stay read-only; POC writes stay in its agreed scratch environment. Domain/ADR writers must not edit an active implementer's checkout.
+Give each independent writer its own authorized Git worktree. Follow
+[WORKSPACE](../ship/WORKSPACE.md) for placement: with Paseo, one repository
+project and one workspace per worktree; agents sharing a worktree reuse its
+registration. Read-only dispatch alone creates no new worktree/project/workspace.
+Discovery/research sources stay read-only; POC writes stay in its agreed scratch
+environment. Domain/ADR writers must not edit an active implementer's checkout.
 
 The selected Ship, Patch, or Refactor owner owns its delivery branch, integration queue, and nested workers. Joe-mode uses Squadron for distinct assignments and owns their non-overlapping coverage, not cherry-picks into their branches. Transfer artifacts and permissions through the owner, with one writer/integrator per shared mutable target. Serialize Changelog updates through that integrator.
 
-Read actual repository worktree guidance before creating any workspace. An existing linked worktree is not automatically safe for several writers. Never clean up a worker's branch, worktree, or process merely because its last message said "done."
+Read actual repository worktree guidance before creating any workspace. An existing linked worktree is not automatically safe for several writers. Retire agents only after LIFECYCLE's terminal checks; agent archival never substitutes for separately authorized branch/worktree/workspace cleanup.
 
 Every PR-producing lane requires `worktrees`, including domain/ADR and documentation deliveries. Route workspace operations to the owning workflow's [workspace procedure](../ship/WORKSPACE.md); doctrine selection does not create a workspace or authorize publication.
 

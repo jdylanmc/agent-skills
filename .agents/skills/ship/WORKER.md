@@ -2,6 +2,11 @@
 
 The delivery route supplies this contract to each implementer. It is supporting guidance, not another delivery controller. Ship, Patch, and Refactor retain their own scope and delivery ownership under [the common invocation policy](../setup/INVOCATION.md).
 
+Load [LIFECYCLE](../squadron/LIFECYCLE.md) for accepted return, recovery, and
+retirement, and [WORKSPACE](WORKSPACE.md) to verify assigned placement before
+writing. Reuse the supplied worktree and its harness registration; do not create
+resources merely because this is a new agent.
+
 ## Inputs from the owner
 
 - Owner route (`ship`, `patch`, or `refactor`), return owner, existing PR/Shepherd when present, source/target refs and observed commits.
@@ -38,9 +43,18 @@ Save the report in the agreed session location and return a concise summary plus
 - Each acceptance condition: met, unmet, or unverified, with supporting evidence.
 - Actual validation commands, relevant output, environment/inputs, and red/green evidence when applicable.
 - Remaining concerns, failed attempts, proposed next action, and any run-owned process or artifact still active.
+- Actual repository/project/worktree/workspace mapping and agent/parent identity;
+  offered return versus the owner's observed acceptance, remaining duties, and
+  retirement owner or specific retention/capability limit under LIFECYCLE.
 - Notable changelog entry proposals, destination component file, and existing entries to reuse/deduplicate.
 - Doctrine IDs/digests actually loaded, relevant application or inapplicability notes, unavailable standards, and evidence-backed recommendations citing exact rules. Selection or loading alone is not approval.
 
-For a fix round, append the specific findings addressed, fix-base/result commits, changes, and fresh covering evidence. Reuse the same worker when the harness supports it. A finding is not resolved merely because a fix was attempted; the owner sends the result to Roast.
+For a fix round, append the specific findings addressed, fix-base/result commits, changes, and fresh covering evidence. Reuse a worker retained for pending fixes when supported; do not retain a terminal agent for hypothetical future work. A finding is not resolved merely because a fix was attempted; the owner sends the result to Roast.
 
 The route owner owns task state, integration, final review, publication, and the mandatory Shepherd handoff under [the shared finish](DELIVERY.md). Existing-PR fixes return to that PR's current Shepherd, never a second monitor. There is no second approval ledger, autonomous risk ruling, or alternate finishing workflow.
+
+The owner must acknowledge the actual return before it is accepted. Preserve
+the complete diff/evidence and stop writes at that boundary. When this assignment
+is terminal, arrange owner-performed archival after acceptance if self-retirement
+would interrupt reporting. Do not archive yourself before the owner can recover
+the result, or delete the assigned worktree/workspace to retire the agent.
