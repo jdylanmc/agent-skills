@@ -7,19 +7,36 @@ user-invocable: true
 
 # Shepherd
 
-Own one published pull request (PR), not a one-time green snapshot. Follow the common [invocation policy](../setup/INVOCATION.md) for human invocation or machine handoff. A human may invoke `/shepherd` on a conflicted PR; the resolver is an internal helper, not the human entry point. Observe, rebase whenever the target advances, and return functional work to the existing Ship, Patch, or Refactor route owner. Never merge, approve, enable auto-merge, accept product risk, or delete the delivery branch. See the human-authored [intent](intent.md).
+Own one published pull request (PR) beyond a green snapshot. Follow the common [invocation policy](../setup/INVOCATION.md) for human invocation or machine handoff. Humans may invoke `/shepherd` on conflicted PRs; the resolver stays internal. Observe, rebase whenever the target advances, and return functional work to the existing Ship, Patch, or Refactor route owner. Never merge, approve, enable auto-merge, accept product risk, or delete the delivery branch. See the human-authored [intent](intent.md).
 
-Preserve the delivery's [doctrine selection](../doctrine/APPLY.md) through maintenance and repair handoffs. **Require `worktrees` before preparing PR changes** and use the [workspace procedure](../ship/WORKSPACE.md) to reuse the owned delivery workspace. Invocation/handoff grants bounded maintenance within established ownership; an explicit observation-only request does not. Load the standards you apply; pass metadata and pinned digests to the route owner rather than requiring the monitor to read every worker doctrine.
+Each invocation owns one PR scope; a runtime may host several explicitly assigned
+scopes without duplicate owners or changing any PR's observation cadence. Load
+and execute [LIFECYCLE](../squadron/LIFECYCLE.md) for accepted custody, recovery,
+and retirement. Runtime idle is not evidence that maintenance has ended.
+Load and execute [OBSERVATION](OBSERVATION.md) before custody for scheduler-first
+adaptive cadence, durable per-PR state, fair shared wakeups and owned cleanup.
+
+Preserve the delivery's [doctrine selection](../doctrine/APPLY.md) through maintenance and repair handoffs. **Require `worktrees` before preparing PR changes** and use the [workspace procedure](../ship/WORKSPACE.md) to reuse the owned delivery workspace. Invocation/handoff grants bounded maintenance within established ownership; an explicit observation-only request does not. Load applied standards; pass metadata and pinned digests to the route owner. The monitor need not read every worker doctrine.
 
 ## Take ownership
 
-Read repository guidance and resolve the PR, provider, delivery branch/worktree, requirements, and declared validation. Reuse the [delivery packet](../ship/DELIVERY.md#one-delivery-packet-one-owner), including owner route, return owner, source/target refs and doctrine digests. A missing old handoff is not a reason to refuse a PR that can be inspected now. Recover the route from original scope and live evidence; ask Joe-mode/the human when unclear rather than defaulting to Ship. Reconstruct target from the actual PR (usually main, or its explicit target), not a guessed default branch.
+Read repository guidance and resolve the PR, provider, delivery branch/worktree, requirements, and declared validation. Reuse the [delivery packet](../ship/DELIVERY.md#one-delivery-packet-one-owner), including owner route, return owner, source/target refs and doctrine digests. Do not refuse an inspectable PR for a missing old handoff. Recover the route from original scope and live evidence; ask Joe-mode/the human when unclear, never default to Ship. Read the actual PR target (usually main, or its explicit target); do not guess the default branch.
 
-Ensure no other agent is actively implementing or maintaining this same delivery branch. If its route is still building, wait for its transfer rather than competing with it. If another live Shepherd owns it, confirm and return that owner's status instead of starting a duplicate loop. A stale progress file is not proof of a live owner; uncertain worker status needs resolution before starting competing work.
+Ensure no other agent is implementing or maintaining this delivery branch. Wait for transfer while its route is building. If a live Shepherd owns it, confirm and return its status; do not duplicate the loop. A stale progress file does not prove live ownership; resolve uncertain worker status before competing work.
 
-Use the harness's session storage for a small progress file, or an approved repository-local ignored session location when unavailable. Do not commit it or silently change ignore rules. Report its absolute path. Record the PR URL, route/return owner, maintenance owner, worktree, creation time, last observation, observed base/head, validation/review coverage and invalidations, pending human signoff, handled findings, active repair, and next observation time. Keep credentials and private log bodies out of it.
+Observe the actual PR immediately, then acknowledge the observed head/target,
+scope, duties, and next observation to the sender. Preserve that acknowledgment
+in the existing record before claiming accepted custody. If taking this role in
+the same session, record the actual first observation and role acceptance.
 
-Read back updates to this record. If persistence fails, report the error; do not claim resumability. On a resumed run, inspect live state first, record the observation gap, and check whether a previously dispatched repair is still running before redispatching. If the old record is unavailable, reconstruct from the PR and report the reduced history.
+Use the harness's session storage for a small progress file, or an approved repository-local ignored session location when unavailable. Do not commit it or silently change ignore rules. Report its absolute path. Record the PR URL, route/return owner, maintenance owner, worktree, creation time, last observation, observed base/head, validation/review coverage and invalidations, pending human signoff, handled findings, active repair, and next observation time. Add OBSERVATION's snapshot, quiet stage/streak and desired/observed scheduler state, and any [recovery episode](RECOVERY.md), to this same record. Keep credentials and private log bodies out of it.
+
+Include LIFECYCLE's agent/parent and repository/project/worktree/workspace
+mapping, accepted custody evidence, and retirement/retention status in this same
+record. Read back updates. If persistence fails, report the error; do not claim
+resumability. On cancellation/resume, reconcile live owners, children, partial
+work and wakeups before replacing a monitor or repair. Record the observation
+gap; reconstruct unavailable history from the PR with that limit explicit.
 
 ## Observe the PR
 
@@ -38,11 +55,11 @@ gh pr view "$PR" --repo "$REPO" --comments
 gh api --paginate "repos/$REPO/pulls/$PR/comments"
 ```
 
-Read check details/logs when a result needs diagnosis. A nonzero `gh pr checks` status can mean checks failed or remain pending; inspect its output rather than calling it a provider outage.
+Read check details/logs for diagnosis. Nonzero `gh pr checks` status can mean failed or pending checks; inspect output before calling it a provider outage.
 
 For Azure DevOps, use the configured integration and the [provider reference](../setup/issue-tracker-azure-devops.md). Inspect the code-project PR's `status`, `isDraft`, `mergeStatus`, reviewer votes, threads, PR statuses, and applicable blocking policy evaluations. `active` is open, `completed` is merged, and `abandoned` is closed without merge. A successful merge calculation or an empty check list is not approval. Inspect live refs where the last merge-calculation commits lag, and distinguish missing policy evidence from success. Report pre-existing auto-completion rather than silently relying on human-only merging. For another host, use equivalent configured operations; report missing capabilities instead of guessing endpoints.
 
-Compare with the last observation. An unchanged check failure or previously handled comment is not new repair work. Reopen it only when new evidence warrants it; a failed remedy becomes an explicit blocker, not a fresh identical dispatch.
+Compare with the last observation. Unchanged check failures or handled comments are not new repair work. Reopen only when new evidence warrants it; a failed remedy is an explicit blocker, not an identical redispatch.
 
 Use [the shared current-base readiness gate](../ship/DELIVERY.md#current-base-readiness-and-real-custody). Do not call unknown mergeability, pending checks, missing required evidence, or an old-base head ready. No check results is not proof of success: establish what the repository requires. Separate **ready for human signoff** from actual approval/merge eligibility; report outstanding human votes without casting them. Blocking findings/reviews or other unmet policies prevent readiness. Immediately before promotion/announcement, reread actual remote source and target refs plus provider state; if either changed, invalidate the claim and reconcile again. Report the observed head/base/time, not a guarantee against the next base race, and continue watching after green.
 
@@ -50,12 +67,13 @@ Use [the shared current-base readiness gate](../ship/DELIVERY.md#current-base-re
 
 | Observation | Action |
 | --- | --- |
-| PR merged or closed | Record the terminal state and stop. |
+| PR merged or closed | Record and finish this PR's duties; use LIFECYCLE to retire the owned terminal agent only after all its scopes/duties end and evidence is preserved. |
 | Open with no meaningful changes, or only pending checks | Record the observation and wait for the next interval. |
 | Target advanced, even while PR remains mergeable/policy-compliant | Rebase the owned branch onto the latest fetched target; invalidate stale proof and refresh it below. |
 | Conflicted/unmergeable, or policy needs maintenance | Perform bounded branch maintenance; invoke the internal resolver for actual conflicts. |
 | Unexpected source-head movement or target retarget/rewrite | Reconcile actual ownership and intent before mutation; do not overwrite concurrent work or silently replay onto a different target. |
 | In-scope review feedback or check failure requiring code/test changes | Return to the existing route's feedback continuation on this same PR. |
+| Concrete incompatibility or failed acceptance requires Joe re-routing/reimplementation/refactoring | Execute [issue-backed recovery](RECOVERY.md) within recorded authority; preserve one episode, existing controller and same PR. Target diff size alone is not evidence for this route. |
 | Cancelled check, missing runner/tool, or service outage | Distinguish infrastructure from code failure. Report the blocker; use only authorized provider recovery actions. |
 | Changed requirements, architecture, scope, accepted risk, or a semantic conflict | Present the decision to the human and stop. |
 | Provider access, branch ownership, or required evidence becomes unavailable | Record what is known, report the blocker, and stop rather than claim readiness. |
@@ -80,27 +98,33 @@ Use the [shared commit-message policy](../setup/COMMIT-STYLE.md) for newly autho
 
 ### Feedback repair
 
-Call the existing owner route—[Ship](../ship/SKILL.md), [Patch](../patch/SKILL.md), or [Refactor](../refactor/SKILL.md)—with this same PR, its original requirements/kind, new evidence, current source/target, workspace, validation, doctrine packet, and this Shepherd as return owner. Record the repair worker before waiting. Do not concurrently modify the branch or start another repair for the same findings.
+Call the existing owner route—[Ship](../ship/SKILL.md), [Patch](../patch/SKILL.md), or [Refactor](../refactor/SKILL.md)—with the same PR, original requirements/kind, new evidence, current source/target, workspace, validation, doctrine packet, and this Shepherd as return owner. Record the repair worker before waiting; neither modify the branch concurrently nor duplicate repair of the same findings.
 
-The route classifies evidence, performs bounded implementation and independent review, validates, and updates the same PR. It never invokes Ship as a generic finish or starts a nested Shepherd. On return, reconcile actual head, review coverage, check state, and addressed findings before resuming observation. A missing result, failed repair, or human-owned decision is reported explicitly and ends safe automatic remediation. If the finding requires another kind of delivery, return to Joe-mode/the human for routing, not an automatic route switch.
+The route classifies evidence, performs bounded implementation and independent review, validates, and updates the same PR. It never invokes Ship as a generic finish or starts a nested Shepherd. On return, reconcile actual head, review coverage, check state, and addressed findings before resuming observation. A missing result, failed repair, or human-owned decision is reported explicitly and ends safe automatic remediation. If concrete evidence requires Joe re-routing/reimplementation/refactoring, load and execute [RECOVERY](RECOVERY.md): one linked issue/episode, actual existing-controller intake acknowledgment and serialized repair/return, not an automatic route switch. Missing authority or a human product decision remains a blocker.
 
 If a draft's outstanding delivery work needs completing, return it to its existing route under the same ownership rule. Do not promote while acceptance, independent review, current-base proof, or required checks remain incomplete. A blocked draft is not the final handoff.
 
+Once DELIVERY's full gate and accepted custody hold, actually promote through
+the provider and verify its non-draft response and current candidate before
+announcing readiness. A send/request success is not the required readback.
+After accepting a terminal repair return, arrange its agent's retirement under
+LIFECYCLE; keep the monitoring scope and worktree alive.
+
 ## Observation rhythm
 
-Choose the interval from the PR's age since creation, not the number of checks or the time this session started:
+Execute [OBSERVATION](OBSERVATION.md), not an age table: observe immediately,
+then default to 1 minute, slowing to 5 and then 15 only after each stage's 30
+consecutive successful complete unchanged observations. Meaningful change
+resets the streak and fast cadence. Preserve explicit human overrides. Use the
+authorized supported scheduler for actual observation, preferably a same-agent
+heartbeat; do not replace it with a shell wait loop. Persist and verify cadence
+changes and wakeup binding; unavailable monitoring is an explicit limitation.
 
-| PR age | Interval |
-| --- | --- |
-| Under 1 hour | 2 minutes |
-| 1 to under 2 hours | 5 minutes |
-| 2 to under 3 hours | 10 minutes |
-| 3 to under 4 hours | 15 minutes |
-| 4 to under 5 hours | 30 minutes |
-| 5 hours onward | 60 minutes |
+On meaningful changes, report the PR, checks/readiness, action, and next observation. On merge, closure, human decision, operator stop, or runtime loss, leave the latest truthful record. A crash ends observation; last green does not prove continued monitoring. Stop only run-owned waits/workers when safe; preserve unfinished work and report uncertain worker termination.
 
-Observe once immediately when taking or resuming ownership. Between observations, use an interruptible wait or a supported scheduled wakeup; do not busy-poll. Bound each wait to the next interval and check for stop requests before acting again. An active repair is supervised through its worker lifecycle, not duplicated by the observation clock.
-
-Stay attached to the session unless the human explicitly authorizes a persistent external monitor. Never schedule a wakeup or promise continued monitoring unless the runtime can actually deliver it. If it cannot wait or continue, record the stopped state and report the limitation.
-
-On meaningful changes, report the PR, checks/readiness, action taken, and next observation. On merge, closure, human decision, operator stop, or runtime loss, leave the latest truthful record. A crash ends observation; the last green result does not prove monitoring continued. Stop only run-owned waits/workers when safe, preserve unfinished work, and report any worker whose termination is uncertain.
+Finish with OBSERVATION's owned wakeup cleanup and LIFECYCLE's explicit scope reconciliation: active idle waiters,
+pending fixes/permissions, and other owned PRs need retention or accepted
+transfer, not archival. When all duties are terminal, preserve results and
+actually retire the owned agent, arranging parent-performed self-retirement
+when necessary. Record missing archive capability rather than substituting
+workspace archival or deleting branches, worktrees, or evidence.

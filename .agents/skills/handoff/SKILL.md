@@ -29,10 +29,25 @@ return conditions. Source paths must be accessible at the destination; summaries
 do not replace unavailable originals. Keep status-report event identities when
 transferring a controller so resumption does not duplicate reports.
 
-The sender retains custody until the receiver acknowledges the assignment and
-actual workspace/PR state. Do not imply that writing or sending the packet
-transferred ownership, stopped a monitor, or scheduled work. Never leave two
-writers on one branch or two Joe controllers for one repository.
+Load and execute [LIFECYCLE](../squadron/LIFECYCLE.md) for observed acceptance,
+cancellation recovery, and retirement; use [WORKSPACE](../ship/WORKSPACE.md)
+when resolving placement. Carry these facts in the existing packet, not a new
+ledger. The sender retains custody until the receiver inspects the actual
+artifacts/worktree/PR and acknowledges the scope, observed state, and duties.
+Sending or a sender-authored owner field proves none of those. Never leave two
+writers on one branch, two PR monitors, or two Joe controllers for one repository.
+For Shepherd custody, load and carry [OBSERVATION](../shepherd/OBSERVATION.md)'s
+per-PR snapshot/streak, exact wakeup/binding, desired/observed cadence and gaps.
+For issue-backed continuation, load [RECOVERY](../shepherd/RECOVERY.md) and carry
+the existing episode/issue, kickoff authority, controller/human path, pending
+operation and write-release/receiver acknowledgment. Neither a link nor a
+scheduled wake establishes accepted intake or permits another controller.
+
+After acknowledgment, retire a terminal owned sender/worker with preserved
+evidence and completed/transferred duties under LIFECYCLE. Arrange parent-owned
+self-retirement when needed for safe reporting. If transfer or archival cannot
+complete, report the actual blocker/retained responsibility; do not delete
+workspaces, worktrees, or branches to remove an agent.
 
 Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead.
 

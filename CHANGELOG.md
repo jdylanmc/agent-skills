@@ -43,6 +43,14 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- Unify agent lifecycle across Squadron, Ship, Joe-mode, Shepherd, and related
+  routes: verify Paseo repository/worktree placement, require observed custody
+  acceptance and provider-confirmed non-draft readiness, and retire accepted
+  terminal owned agents without deleting workspaces or losing active duties.
+  Shepherd uses authorized scheduling with adaptive 1/5/15-minute observation,
+  preserving explicit overrides, and routes evidenced recovery through one
+  linked issue to the existing Joe controller on the same PR, with acknowledged
+  ownership and human decision gates intact.
 - Rename internal `resolving-merge-conflicts` to `conflicts`; preserve its
   caller restrictions and original upstream provenance.
 - Make invocation explicit across every skill: human-only modes, internal
