@@ -9,6 +9,11 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `joe-mode-paseo-pm`: opt-in repository PM with explicitly consented one-minute
+  same-agent heartbeats or runtime-proven fresh scheduling,
+  durable exclusive ownership, six default delivery lanes and human merges.
+  Gate activation on verified Paseo placement/access; heartbeat pause/stop deletes
+  its owned wakeup, with reconciled human-only recreation. Installation stays inert.
 - `chart-a-course`: find a critical task path to a named goal, exposing missing
   tasks and research spikes without tracker writes. Joe-mode acts on targeted
   Discovery recommendations within its existing authority and preserves human

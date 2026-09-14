@@ -11,11 +11,11 @@ const installSource = process.env.SKILLS_PACK_SOURCE ?? root;
 const expected = [
   'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts',
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
-  'handoff', 'interrogate', 'joe-mode', 'migration', 'patch', 'poc', 'refactor',
+  'handoff', 'interrogate', 'joe-mode', 'joe-mode-paseo-pm', 'migration', 'patch', 'poc', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'specify',
   'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what',
 ];
-const originalNames = expected.filter(name => name !== 'chart-a-course');
+const originalNames = expected.filter(name => !['chart-a-course', 'joe-mode-paseo-pm'].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
 // Changes require explicit human authorization, not automatic fixture regeneration.
@@ -34,6 +34,8 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     .map(filename => path.relative(root, filename).split(path.sep).join('/'))
     .filter(filename => filename.endsWith('/intent.md') || filename.includes('/doctrines/'))
     .filter(filename => filename !== '.agents/skills/chart-a-course/intent.md')
+    // New PM intent explicitly authorized separately; pinned below.
+    .filter(filename => filename !== '.agents/skills/joe-mode-paseo-pm/intent.md')
     // Only Shepherd intent was authorized for the adaptive/recovery extension.
     .filter(filename => filename !== '.agents/skills/shepherd/intent.md');
   sources.push('intent.md');
@@ -45,6 +47,23 @@ test('specifically authorized Shepherd intent remains pinned to the extension', 
   const intent = readFileSync(path.join(root, '.agents/skills/shepherd/intent.md'));
   assert.equal(createHash('sha256').update(intent).digest('hex'),
     '57e4a3bbf91ef2bb561d5067228791b92a1212e700390870a17cb7c01ed06344');
+});
+
+test('separately authorized PM intent and entrypoint metadata remain pinned', () => {
+  const directory = path.join(root, '.agents/skills/joe-mode-paseo-pm');
+  assert.equal(createHash('sha256').update(readFileSync(path.join(directory, 'intent.md'))).digest('hex'),
+    'a4a944bb24b3638c91e644c68fc279cd26e78712a6cf251dbb0557ca9e5c8d83');
+  const metadata = readFileSync(path.join(directory, 'SKILL.md'), 'utf8').split('---\n')[1];
+  assert.equal(createHash('sha256').update(metadata).digest('hex'),
+    '4445415b6a3bfe53b32892478b5077e9575145d35dc2dc7723e00a2f099add20');
+  assert.match(metadata, /^name: joe-mode-paseo-pm$/m);
+  assert.match(metadata, /^disable-model-invocation: false$/m);
+  assert.match(metadata, /^user-invocable: true$/m);
+  for (const support of ['RUN.md', 'RUNTIME.md', 'STATE.md', 'SCENARIOS.md', 'intent.md']) {
+    const text = readFileSync(path.join(directory, support), 'utf8');
+    assert.ok(text.trim(), support);
+    assert.ok(!text.startsWith('---\n'), `${support}: support is not a second skill entry`);
+  }
 });
 
 test('all original entrypoint metadata, including invocation flags, is preserved', () => {
@@ -123,7 +142,8 @@ function assertLifecycleSupport(directory) {
 
   for (const entry of [
     'squadron/SKILL.md', 'ship/SKILL.md', 'ship/WORKER.md',
-    'joe-mode/SKILL.md', 'joe-mode/RUNTIME.md', 'shepherd/SKILL.md',
+    'joe-mode/SKILL.md', 'joe-mode/RUNTIME.md', 'joe-mode-paseo-pm/SKILL.md',
+    'joe-mode-paseo-pm/RUN.md', 'shepherd/SKILL.md',
     'handoff/SKILL.md', 'patch/SKILL.md', 'refactor/SKILL.md', 'setup/INVOCATION.md',
   ]) {
     const pending = [path.join(directory, entry)];
@@ -169,9 +189,9 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
   try {
     const home = path.join(consumer, '.test-home');
     mkdirSync(home);
-    const install = () => execFileSync(process.execPath, [
+    const install = (selection = '*') => execFileSync(process.execPath, [
       path.join(root, 'node_modules/skills/bin/cli.mjs'), 'add', installSource,
-      '--skill', '*', '--agent', 'github-copilot', '--copy', '-y',
+      '--skill', selection, '--agent', 'github-copilot', '--copy', '-y',
     ], {
       cwd: consumer,
       env: {
@@ -184,7 +204,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     install();
     const installed = path.join(consumer, '.agents/skills');
-    await t.test('all 33 active names, no archive', () => {
+    await t.test('all 34 active names, no archive', () => {
       assert.deepEqual(readdirSync(installed).sort(), expected);
     });
     await t.test('installation writes only project skill files and installer lock, not Setup outputs', () => {
@@ -200,6 +220,22 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     await t.test('installed routes can reach lifecycle, placement, readiness and review guidance', () => {
       assertLifecycleSupport(installed);
+    });
+    await t.test('PM is separately selectable alongside prerequisites with all support intact', () => {
+      const pm = path.join(installed, 'joe-mode-paseo-pm');
+      rmSync(pm, { recursive: true });
+      install('joe-mode-paseo-pm');
+      assert.deepEqual(snapshot(pm), snapshot(path.join(root, '.agents/skills/joe-mode-paseo-pm')));
+      assert.deepEqual(readdirSync(installed).sort(), expected);
+      assertPortable(installed);
+    });
+    await t.test('installed PM helper runs read-only from the consumer without activating anything', () => {
+      const output = execFileSync(process.execPath, [
+        path.join(installed, 'joe-mode-paseo-pm/scripts/state.mjs'),
+        path.join(consumer, 'absent-board.json'), '{"op":"inspect"}',
+      ], { cwd: consumer, encoding: 'utf8', timeout: 10_000 });
+      assert.deepEqual(JSON.parse(output), { status: 'observed', state: {} });
+      assert.ok(!existsSync(path.join(consumer, 'absent-board.json')));
     });
     await t.test('required policies, provenance and licenses travel with the pack', () => {
       for (const name of [
