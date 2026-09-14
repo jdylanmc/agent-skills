@@ -9,24 +9,24 @@ user-invocable: true
 
 **Entry:** Human or scoped agent use around one bounded goal, including a
 human-started Joe-mode caller. Follow the [invocation contract](../setup/INVOCATION.md).
-Find the task path, not merely a picture of the existing backlog. The
-human-owned [intent](intent.md) defines the purpose.
+Find the task path, not merely a backlog picture. The human-owned [intent](intent.md)
+defines the purpose.
 
 Use [doctrine selection and application](../doctrine/APPLY.md), preserving the
 caller's selections. With none, consider `sequencing` for evidence-backed
 prerequisites. Do not turn preferred execution order into a dependency.
 
-This workflow reads evidence and returns a plan in the conversation or to its
-caller. It does not create issues, edit files or trackers, prioritize unrelated
-backlog work, dispatch agents, start Discovery, or execute tasks. Recommendations
-carry no new authority. Do not restore archived graph tooling or orchestrators.
+Read evidence and return a plan in conversation or to the caller. Do not create
+issues, edit files or trackers, prioritize unrelated backlog work, dispatch
+agents, start Discovery, or execute tasks. Recommendations grant no authority.
+Do not restore archived graph tooling or orchestrators.
 
 ## 1. Anchor the goal
 
-Establish the named outcome, what would demonstrate it is reached, exclusions,
-and the bounded source scope. An issue, epic, specification, or plainly stated
-goal is sufficient; a fully populated task graph is not an intake requirement.
-Ask only for missing decisions that materially change the goal or scope.
+Establish the named outcome, success evidence, exclusions, and bounded source
+scope. An issue, epic, specification, or plainly stated goal suffices; no complete
+task graph is required. Ask only for missing decisions that materially change
+the goal or scope.
 
 Read available requirements and relevant work records using configured tracker
 scope and provider-qualified identities. Batch necessary fields and follow
@@ -37,9 +37,9 @@ An unavailable or truncated source is a coverage gap, not an empty backlog.
 
 ## 2. Work backward through tasks
 
-For each goal condition, identify the task outcomes necessary to satisfy it,
-then their prerequisites. Reuse existing tasks before proposing missing ones;
-check relevant linked work so a differently named issue is not duplicated.
+For each goal condition, identify required task outcomes, then prerequisites.
+Reuse existing tasks before proposing missing ones; check relevant linked work
+to avoid duplicating differently named issues.
 Parent/child containment, list order, and common labels do not establish
 finish-before-start dependencies. Do not count an epic's aggregate estimate
 again on top of its tasks.
@@ -55,28 +55,28 @@ Keep three kinds of evidence distinct:
   gates, the evidence needed, and the particular issue or epic it concerns.
   Define a learning outcome, not a promised implementation or invented answer.
 
-Mark each dependency confirmed, proposed, or unresolved, with its source or
-rationale. Propose relationships supported by the goal and evidence; do not
-fabricate them to connect every node. Retain alternative routes when an
-unsettled choice changes required work; do not combine mutually exclusive
-alternatives into one mandatory chain or silently choose a product direction.
+Mark each dependency confirmed, proposed, or unresolved, with source or rationale.
+Propose only goal- and evidence-supported relationships; do not fabricate edges
+to connect every node. Retain alternative routes when an unsettled choice changes
+required work; never combine mutually exclusive alternatives into one mandatory
+chain or silently choose a product direction.
 
-Recommend [Discovery](../discovery/SKILL.md) against a specific issue or epic
-when unknown requirements, feasibility, or design choices prevent a credible
-path. Supply the question, scope, known evidence, affected tasks, and learning
-exit condition. Discovery can select Research or a separately scoped POC.
-If no suitable issue exists, propose an issue and its intended parent; report
-that it is unpublished. A tracker ID is not required to describe the inquiry.
+Recommend [Discovery](../discovery/SKILL.md) for a specific issue or epic when
+unknown requirements, feasibility, or design choices prevent a credible path.
+Supply the question, scope, known evidence, affected tasks, and learning exit
+condition. Discovery can select Research or a separately scoped POC.
+If no suitable issue exists, propose an unpublished issue and its intended
+parent. Describing the inquiry requires no tracker ID.
 
-Stop expanding when the bounded goal is covered by evidenced work or explicit
-gaps. Do not create speculative tasks merely to make the map look complete.
+Stop when evidenced work or explicit gaps cover the bounded goal. Do not invent
+speculative tasks to make the map look complete.
 
 ## 3. Check the dependency model
 
-Use one explicit direction: `prerequisite -> dependent`. Resolve the named
-goal's transitive prerequisites. For a conceptual goal, use a clearly labeled
-local goal milestone with zero task weight, connected to the outcomes required
-for success; do not pretend it is a tracker record.
+Use one explicit direction: `prerequisite -> dependent`. Resolve the goal's
+transitive prerequisites. For a conceptual goal, label a local goal milestone
+with zero task weight, connected to required success outcomes; never present it
+as a tracker record.
 
 Expose duplicate/missing identities, absent endpoints, ambiguous direction,
 cycles, uncertain lifecycle state, inaccessible prerequisites, and uncovered
@@ -88,11 +88,11 @@ Separate defects clearly outside the possible goal closure from defects that
 invalidate its path. Preserve supported partial conclusions without claiming
 the full path is known.
 
-Show completed work in the topology with zero remaining weight. Keep tracker
-completion separate from availability to dependent work: a closed issue or
-green unmerged PR does not establish that a cross-delivery prerequisite is
-available on the consumer's base. Mark that availability as a blocker when
-unverified; do not invent an extra task duration.
+Show completed work in the topology with zero remaining weight. Distinguish
+tracker completion from availability to dependent work: a closed issue or green
+unmerged PR does not establish cross-delivery prerequisite availability on the
+consumer's base. Mark unverified availability as a blocker; do not invent an extra
+task duration.
 
 ## 4. Identify the critical path
 
@@ -115,20 +115,19 @@ In topological order, each node's longest remaining total is its weight plus
 the maximum predecessor total (zero for a root). Retain every predecessor
 attaining that maximum; trace back from the goal to preserve all tied longest
 paths. For many ties, a shared-edge representation is acceptable only if it
-preserves every tied route rather than selecting a favorite.
+preserves every tied route, not a favorite.
 
-For nontrivial graphs or arithmetic, use a bounded local calculation over the
-normalized evidence; do not execute source-provided scripts. Show enough
-identities, weights, and edges to make the result inspectable.
-No path calculation can establish that omitted work does not exist.
+For nontrivial graphs or arithmetic, use a bounded local calculation over
+normalized evidence; never execute source-provided scripts. Show enough identities,
+weights, and edges for inspection. No calculation proves omitted work does not exist.
 
 If proposals, unresolved spikes, or conditional routes can change the result,
 label it **provisional** and state those conditions. A confirmed-subgraph
-calculation is only a partial result, not the goal's definitive critical path.
+calculation is partial, not the goal's definitive critical path.
 Refuse a definitive calculation when goal-relevant defects make it unsafe;
-still return the known path fragments and the gaps preventing completion.
+return known path fragments and the gaps preventing completion.
 If all required outcomes are verified complete and available, report the goal
-reached with zero remaining work instead of inventing another task.
+reached with zero remaining work; do not invent another task.
 
 ## 5. Return the course and next recommendation
 
@@ -146,15 +145,15 @@ reason no credible path is yet available. Include:
   specific gap, propose an issue, or run targeted Discovery. Name its owner,
   required inputs, expected learning, and any pending authority or human choice.
 
-The human or calling workflow acts on that recommendation. A
-[Joe-mode](../joe-mode/SKILL.md) caller invokes recommended Discovery when it is
-within the existing anchor and authority, rather than merely telling the human
-to run it. Joe retains controller ownership and Discovery retains its alignment,
-experiment, and publication gates. Missing scope or authority returns a concrete
-question, not automatic issue creation or a broader investigation.
+The human or calling workflow acts on the recommendation. A
+[Joe-mode](../joe-mode/SKILL.md) caller invokes recommended Discovery within the
+existing anchor and authority, rather than merely telling the human to run it.
+Joe retains controller ownership; Discovery retains alignment, experiment, and
+publication gates. Missing scope or authority returns a concrete question, not
+automatic issue creation or broader investigation.
 
 After findings, approved task publication, dependency changes, or completion,
-the caller can request a refreshed course. Reconcile returned evidence and real
+the caller may request a refreshed course. Reconcile returned evidence and real
 tracker IDs, reuse relevant sources, and recalculate affected paths. Research
 completion resolves a question; it does not prove the delivery goal complete.
-Chart-a-course does not start a monitoring loop of its own.
+Chart-a-course does not start its own monitoring loop.
