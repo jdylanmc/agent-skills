@@ -31,45 +31,39 @@ Record path, branch, actual base/start commit, owner, and relevant pre-existing 
 
 Preserve baseline failures and missing checks in the report; neither is a clean baseline. The owner resolves their impact before making completion claims.
 
-Independent write deliveries get independent Git worktrees, not merely branches
-or UI entries; serialize integration and shared resources. Read-only agents may
-share sources without a new worktree. Record placement and custody using the
-[lifecycle contract](../squadron/LIFECYCLE.md).
+Independent write deliveries need distinct Git worktrees, not branches/UI entries.
+Serialize integration/shared resources; read-only agents may share sources without new
+worktrees. Record placement/custody under [lifecycle contract](../squadron/LIFECYCLE.md).
 
 ## Paseo placement, when used
 
 Use exactly **one Paseo project per Git repository and one Paseo workspace per
-Git worktree**. Multiple agents on a worktree share that registered workspace;
-independent write deliveries still use distinct worktrees/workspaces grouped
-under the same repository project. A new agent alone never requires another
-project, workspace, or worktree.
+Git worktree**. Same-worktree agents share registration; independent writers
+use distinct worktrees/workspaces under that project. New agents alone require
+no project/workspace/worktree.
 
-Resolve the repository identity and Git common directory alongside actual
-worktree paths and existing Paseo registrations. Reuse compatible registrations;
-do not equate a UI project/workspace, Git repository/common directory, branch,
-and mutable working state. Resolve ambiguous/duplicate mappings with the owner
-before creating resources; do not delete registrations to force consistency.
+Resolve repository identity/common directory, actual worktree paths, existing
+registrations; reuse compatible ones. Distinguish UI project/workspace, Git
+repository/common directory, branch, mutable state. Before creation, resolve
+ambiguous/duplicate mappings with owner; never force consistency by deleting registrations.
 
-Inspect current harness schemas. When creating a needed worktree/workspace,
-always specify the existing repository `projectId` (establish one only if none
-exists within the caller's authority). Native worktree creation is suitable only
-when it respects approved layout and ownership. Otherwise create the Git worktree
-above, then register its explicit path with
+Inspect schemas. Needed worktree/workspace creation always specifies existing
+repository `projectId`; establish one only if absent and authorized.
+Native creation must honor approved layout/ownership. Otherwise create Git
+worktree above, register explicit path:
 `create_workspace({isolation: 'local', path, projectId, title})`.
-The returned workspace may report `isolation: 'worktree'`; verify its actual
-path, project ID, workspace ID, and Git worktree/branch before use.
+Result may report `isolation: 'worktree'`; before use verify actual path,
+project/workspace IDs, Git worktree/branch.
 
-Place each agent with the verified `workspaceId` in `create_agent`. Do not invent
-an independent cwd argument or assume an agent inherits the controller's path:
-have it inspect actual cwd, Git paths, branch, and starting state. A mismatch or
-missing mapping capability blocks affected writes, not permission to use main,
-create a project per worker, or enable bypass/allow-all permissions.
+Place agents with verified `workspaceId` in `create_agent`. No invented cwd argument
+or assumed controller-path inheritance: each inspects actual cwd/Git paths/branch/
+starting state. Mismatch/missing mapping capability blocks writes, never permits
+main, project-per-worker, or bypass/allow-all permissions.
 
 ## Preserve resources at retirement
 
-Agent archival follows LIFECYCLE, separately from Git/UI resource cleanup.
-Before any separately authorized worktree removal, confirm run ownership,
-integration, no live writer, and no uncommitted/unpreserved work. Remove only the
-specific completed worker worktrees this run owns. Keep the delivery workspace
-while its PR/Shepherd still needs it. Do not archive projects/workspaces or delete
-branches/worktrees merely to remove finished agents from the UI.
+Agent archival follows LIFECYCLE, not Git/UI cleanup. Before separately authorized
+worktree removal, verify run ownership, integration, no live writer, no uncommitted/
+unpreserved work. Remove only specific completed run-owned worker worktrees.
+Keep delivery workspace while PR/Shepherd needs it; never archive projects/workspaces
+or delete branches/worktrees merely to clear finished agents.

@@ -18,8 +18,8 @@ flags, source paths, and digests; each applying worker loads the actual texts.
 Every PR-producing worker requires `worktrees`; code reviewers require `solid`.
 
 Load and execute [LIFECYCLE](LIFECYCLE.md) for dispatch, accepted returns,
-recovery, and retirement. Keep its evidence fields in the existing work packet;
-do not create another controller or ledger.
+recovery, and retirement. Keep evidence in the existing work packet;
+no new controller or ledger.
 
 ## 1. Find truly independent work
 
@@ -57,11 +57,11 @@ the conversation. Include:
 - Doctrine packet, [commit style](../setup/COMMIT-STYLE.md), stop conditions,
   expected return, and follow-up/monitor custody.
 
-Independent writing workers need distinct isolated Git worktrees, not merely disjoint files
-in one checkout with a shared Git index. Use the existing delivery's
+Independent writers need distinct isolated Git worktrees, not disjoint files
+sharing one checkout and Git index. Use the existing delivery's
 [workspace procedure](../ship/WORKSPACE.md), including Paseo's one repository
 project and one workspace per worktree. Read-only workers share compatible
-sources/registration without new isolation merely for dispatch.
+sources/registration; dispatch alone needs no new isolation.
 Coordinate other shared resources too: ports, databases, fixtures, and services.
 
 Every modifying worker uses [Changelog](../changelog/SKILL.md). Assign one owner
@@ -83,7 +83,7 @@ do not pretend serial work was parallel or install a runtime without permission.
 
 Continue independent work while agents run. Consume completion notifications
 or the supported wait mechanism; do not repeatedly poll known workers.
-Reuse an agent retained for concrete pending follow-up where supported; retire
+Reuse agents retained for concrete pending follow-up where supported; retire
 accepted terminal workers under LIFECYCLE. Queue human questions
 through the parent instead of letting workers manufacture answers.
 
@@ -107,9 +107,8 @@ Keep custody until the receiver observes the actual state and acknowledges
 acceptance under LIFECYCLE, not just message delivery. Never approve or merge
 on the human's behalf.
 
-Execute terminal owned-agent retirement after accepted/preserved results and
-completed/transferred duties; distinguish it from workspace/worktree cleanup.
-A return message or idle state alone proves neither. If a worker is cancelled
-or the runtime stops, reconcile live owners, children, and partial work under
-LIFECYCLE before replacement. Report retained responsibilities or capability
-limits explicitly; do not abandon drafts or claim a mixed unfinished batch delivered.
+Retire terminal owned agents after accepted/preserved results and completed/
+transferred duties, not as workspace/worktree cleanup. Return messages/idle status
+prove neither. Cancellation/runtime stop: reconcile live owners/children/partial
+work under LIFECYCLE before replacement. Report retained duties/capability limits;
+never abandon drafts or call mixed unfinished batches delivered.

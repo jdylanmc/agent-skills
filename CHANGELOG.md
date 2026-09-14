@@ -9,6 +9,15 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `joe-mode-paseo`: opt-in engineering-team PM for one repository. Recommend
+  Paseo's dedicated coordinator heartbeat, every five minutes by default;
+  chart the backlog, intake requirements, assess worker progress and direction,
+  and dispatch existing planning/delivery routes. Preserve durable exclusive
+  ownership, six default delivery lanes, human merges and compatible fresh scheduling.
+  Gate activation on verified Paseo placement/access; heartbeat pause/stop deletes
+  its owned wakeup, with reconciled human-only recreation. Installation stays inert.
+  Reserve approved ticket publication before child IDs exist, then reconcile the
+  returned graph before launching delivery so parent and child ownership cannot race.
 - `chart-a-course`: find a critical task path to a named goal, exposing missing
   tasks and research spikes without tracker writes. Joe-mode acts on targeted
   Discovery recommendations within its existing authority and preserves human
@@ -43,6 +52,8 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- Compress lifecycle instructions and acceptance traces; preserve ownership,
+  cadence, recovery, retirement, and human approval gates.
 - Unify agent lifecycle across Squadron, Ship, Joe-mode, Shepherd, and related
   routes: verify Paseo repository/worktree placement, require observed custody
   acceptance and provider-confirmed non-draft readiness, and retire accepted
