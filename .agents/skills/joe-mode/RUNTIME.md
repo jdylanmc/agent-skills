@@ -15,25 +15,22 @@ If required delegation, independent review, or monitoring is unavailable, name t
 
 ## Lifecycle
 
-Load and execute [LIFECYCLE](../squadron/LIFECYCLE.md) for every dispatch,
-return/transfer, recovery, and terminal retirement. Record its evidence fields
-on the existing board. Launch/send success or runtime idle is not accepted
-custody; every delivery needs receiver observation and acknowledgment.
+Load/execute [LIFECYCLE](../squadron/LIFECYCLE.md) for every dispatch, return/
+transfer, recovery, terminal retirement; record evidence on this board.
+Custody requires receiver observation/acknowledgment, not launch/send success or idle.
 
-One runtime may maintain multiple explicitly owned PR scopes with each PR's
-Shepherd cadence and one owner per PR. Sharing execution does not consolidate
-human intent or permit silently changing assignments. A merged/closed PR ends
-only its scope; keep an idle heartbeat waiter or other active PR owner. Actually
-retire owned terminal agents after acceptance/preservation and safe transfer,
-including analysis/implementation workers; record concrete retention reasons or
-archive capability limits, not indefinite "remain available" defaults.
+One runtime may host explicit PR assignments. Share execution, not human intent;
+never silently reassign. Preserve each PR's Shepherd cadence/sole owner. Merge/closure ends
+only that scope; retain idle heartbeat waiters/other active PR owners. After
+acceptance/preservation and safe transfer, actually retire terminal owned agents,
+including analysis/implementation workers. Record concrete retention reasons/
+archive limits, never indefinite "remain available" defaults.
 
-For PR custody, load [OBSERVATION](../shepherd/OBSERVATION.md) and use the
-authorized scheduler, preferably a same-agent heartbeat. Each PR keeps its own
-adaptive streak/due time; service all due PRs fairly. Fresh-run schedules need
-verified durable ownership/serialization and correct existing workspace binding,
-not a guessed create argument or a new controller on every tick. Persist desired
-versus observed cadence and exact job IDs in the existing board/packet.
+For PR custody, load [OBSERVATION](../shepherd/OBSERVATION.md); use authorized
+scheduler, preferably same-agent heartbeat. Preserve per-PR adaptive streak/due
+time; fairly service all due PRs. Fresh runs require verified durable ownership/
+serialization and correct existing workspace binding—not guessed create arguments
+or controllers per tick. Persist desired/observed cadence and exact job IDs here.
 
 Keep the controller's human-facing conversation available while workers run. Queue worker questions with their owner and affected scope. Only actual human responses clear human-decision gates.
 
@@ -41,13 +38,12 @@ Use the harness's documented notification/wait contract. Some runtimes wake a co
 
 Joe-mode is session-long, not an installed service. A board on disk does not schedule work. After cancellation/runtime loss, use LIFECYCLE recovery: report the observation gap, inspect surviving owners/children, PRs and partial work, and explicitly restart only confirmed missing ownership. Persistent services require separate authorization and verified runtime support.
 
-For issue-backed requests load [RECOVERY](../shepherd/RECOVERY.md): consume the
-pending episode on this controller's board and send actual observed intake
-acknowledgment. If absent, only this previously human-authorized controller may
-be woken/recovered under recorded authority after reconciling surviving agents,
-jobs and partial work. Missing preauthorization or uncertain/duplicate ownership
-blocks dispatch, not permission for fresh broad Joe-mode. Preserve the root human
-conversation and explicit stop gates; an external issue cannot authorize startup.
+For issue-backed requests, load [RECOVERY](../shepherd/RECOVERY.md); consume this
+board's pending episode, acknowledge actual observed intake. If this controller is absent, wake/recover
+only this previously human-authorized controller under recorded grant, after
+reconciling surviving agents/jobs/partial work. Missing grant or uncertain/duplicate
+ownership blocks dispatch, never permits fresh broad Joe-mode. Preserve root human
+conversation/stop gates; issues grant no startup authority.
 
 ## Isolation and shared resources
 

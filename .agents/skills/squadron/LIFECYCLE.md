@@ -1,110 +1,102 @@
 # Owned agent lifecycle
 
-Supporting contract, not a new skill, controller, or permission system. Owners
-and workers load it before dispatch, return/transfer, recovery, and retirement.
-Use the caller's authority and existing task/session records.
-[WORKSPACE](../ship/WORKSPACE.md) owns Git isolation and Paseo placement;
-[DELIVERY](../ship/DELIVERY.md) owns PR readiness. Load those when placing agents
-or finishing deliveries; this contract does not replace either gate.
-For PR observation and wakeup changes, load
-[OBSERVATION](../shepherd/OBSERVATION.md); for issue-backed Joe continuation,
-load [RECOVERY](../shepherd/RECOVERY.md). Keep their cadence/episode facts in
-this same custody record, not another controller or ledger.
+Owners/workers load this supporting contract before dispatch, return/transfer,
+recovery, and retirement. Use caller authority and existing task/session records;
+no new skill, controller, permission system, or ledger.
+Load the owning contracts without replacing their gates:
+[WORKSPACE](../ship/WORKSPACE.md) for Git isolation/Paseo placement when placing agents;
+[DELIVERY](../ship/DELIVERY.md) for PR readiness when finishing;
+[OBSERVATION](../shepherd/OBSERVATION.md) before PR observation/wakeup changes;
+[RECOVERY](../shepherd/RECOVERY.md) for issue-backed Joe continuation.
+Keep cadence/episode facts in this custody record.
 
 ## Record distinct facts
 
-Keep these observable fields in the existing packet/record, with evidence
-pointers and observation times; unknown or unsupported stays explicit:
+Record observable facts, evidence pointers, observation times, and explicit
+unknowns/capability limits:
 
 - **Identity/role:** repository identity, agent ID, owning parent/return owner,
-  bounded assignment, owned PR scopes, and authorized actions.
+  assignment bounds, owned PR scopes, authorized actions.
 - **Placement:** Git common directory, worktree path, branch/start commit;
-  Paseo project/workspace IDs and returned mapping when used.
+  Paseo project/workspace IDs and returned mapping, when used.
 - **Delivery:** actual PR state/draft flag, observed source/target refs and
-  commits, acceptance and review/check evidence for that candidate, blockers.
+  commits, candidate-specific acceptance/review/check evidence, blockers.
 - **Custody:** current scope owner, offered return/transfer, receiver's observed
-  state and acknowledgment, remaining duties and next observation when relevant.
+  state/acknowledgment, remaining duties, next observation when relevant.
 - **Runtime:** actual agent status, live child/repair/wakeup ownership, retirement
   result or concrete retention reason, and missing capabilities.
 
-A draft URL is progress, not readiness. A send result is not accepted custody.
-Running/idle/completed/cancelled is runtime state, not delivery state. A record
-written by the sender is not evidence that a receiver observed or accepted it.
-No receipt establishes truth, human approval, or permissions by itself.
+Draft URLs prove progress, not readiness; running/idle/completed/cancelled describes
+runtime, not delivery. Sending or sender-authored records cannot prove receiver
+observation/acceptance. Receipts alone establish neither truth, human approval,
+nor permissions.
 
 ## Dispatch, return, and transfer
 
-1. Reconcile existing owners and placement before launching. Confirm the returned
-   agent identity and its first observation of the assigned state. Until then,
-   dispatch is pending, not a successful ownership transfer.
-2. Workers return the actual complete diff/artifacts, candidate IDs, validation
-   and acceptance evidence, blockers, and live responsibilities. A bounded
-   implementation return is not full delivery; its parent still owns integration,
-   independent review, publication, and Shepherd handoff.
-3. The receiver inspects decisive artifacts/live state and explicitly
-   acknowledges the accepted scope, observed candidate, remaining duties, and
-   custody. Preserve that receiver response in the existing record. Delivery
-   handoff needs a Shepherd's actual initial PR observation and accepted custody;
-   enqueue/send success, a self-authored owner field, or idle status is insufficient.
-4. Until acknowledgment, the sender retains responsibility without concurrent
-   mutation. Sequence branch access: outgoing writer stops writing before the
-   receiver begins; no duplicate monitor or repair loop. Same-session entry into
-   Shepherd still requires its initial observation and recorded acceptance of
-   the role, not merely naming the skill.
-5. After accepted return, either assign a concrete follow-up with an owner and
-   resumption condition, or retire the terminal worker below. Reuse a retained
-   worker for pending fixes when supported; hypothetical future work is not a
-   reason for indefinite retention. If self-retirement would lose the report,
-   explicitly assign the owning parent to accept/preserve it and retire the agent.
+1. Before launch, reconcile owners/placement. Dispatch stays pending until
+   returned agent identity and its first assigned-state observation are confirmed.
+2. Workers return complete actual diff/artifacts, candidate IDs, validation/
+   acceptance evidence, blockers, and live responsibilities. Bounded returns are
+   not full delivery: parents retain integration, independent review, publication,
+   and Shepherd handoff.
+3. Receivers inspect decisive artifacts/live state and explicitly acknowledge
+   accepted scope, observed candidate, remaining duties, and custody. Preserve
+   their response. Shepherd handoff requires actual initial PR observation and
+   accepted custody—not enqueue/send success, self-authored ownership, or idle status.
+4. Senders retain responsibility until acknowledgment, without concurrent
+   mutation. Outgoing writers stop before receivers write; no duplicate monitor
+   or repair loop. Same-session Shepherd entry still records initial observation
+   and role acceptance; naming the skill is insufficient.
+5. After acceptance, assign concrete follow-up with owner/resumption condition
+   or retire terminal workers below. Reuse retained workers for pending fixes
+   when supported, never retain indefinitely for hypothetical work.
+   If self-retirement risks the report, explicitly assign its acceptance,
+   preservation, and agent retirement to the owning parent.
 
 ## Recover before replacing
 
-Cancellation, runtime loss, or an unconfirmed handoff invalidates live-custody
-claims. Record the observation gap and reconcile the known owner and children,
-provider refs, partial diffs/commits, pending permissions, and scheduled wakeups.
-Do not infer no work from a cancelled parent or idle child. Preserve partial
-work; establish which writers/monitors actually stopped before resuming the same
-owner or assigning a replacement. Uncertain visibility blocks overlapping work.
-Transfer each remaining scope explicitly; never revive stale ownership or create
-a second monitor merely because sending to the first failed.
+Cancellation, runtime loss, or unconfirmed handoff invalidates live custody.
+Record gaps; reconcile known owners/children, provider refs, partial diffs/commits,
+pending permissions, and wakeups. Cancelled parents or idle children do not prove
+no work. Preserve partial work; verify stopped writers/monitors before resuming
+or replacing owners. Uncertain visibility blocks overlap. Explicitly transfer
+each remaining scope; failed sending never justifies stale ownership or duplicate
+monitors.
 
-A runtime may host several explicitly assigned Shepherd PR scopes. Keep one
-owner and each PR's required observation cadence; share execution, not scope,
-intent, or readiness. One PR's merge ends only that scope. Active repairs,
-other PRs, a heartbeat waiter, a human/permission blocker, or recovery work can
-justify retention even when the runtime reports idle.
+One runtime may host several explicitly assigned Shepherd scopes, each with one
+owner and its required cadence. Share execution, not scope, intent, or readiness.
+One merge ends only that PR's scope. Active repairs, other PRs, heartbeat waits,
+human/permission blockers, or recovery duties can justify idle-agent retention.
 
 ## Retire finished owned agents
 
-The owning workflow **must actually archive/retire** its clearly terminal agents
-using supported harness operations after accepting/preserving results and
-transferring or completing all remaining duties. This is the default within
-that ownership authority, not just a list of cleanup candidates. Read-only
-analysis and bounded implementation can be terminal after accepted return;
-Shepherd is terminal only when its actual duties across all owned scopes end.
+Owners **must actually archive/retire** clearly terminal owned agents through
+supported harness operations after accepting/preserving results and completing/
+transferring all duties. Default: action, not cleanup candidates. Read-only
+analysis and bounded implementation may end after accepted return; Shepherd ends
+only after all owned scopes' actual duties.
 
-Before acting, verify the exact owned agent ID, terminal assignment, preserved
-evidence, accepted return/custody, and no active child, repair, wait, or other PR
-responsibility. Coordinate run-owned wakeups without disturbing other scopes.
-Cancel/delete and verify only no-longer-needed owned wakeups under OBSERVATION;
-a terminal fresh schedule-run agent does not end its future schedule duties.
-Then invoke supported agent archival/retirement and verify the resulting archived
-state (or documented removal from the active view). If evidence or ownership is
-uncertain, retain with the specific reason and next action, not a false success.
+Before retirement:
+- Verify exact owned agent ID, terminal assignment, preserved evidence, accepted
+  return/custody, and no active child, repair, wait, or other PR duty.
+- Coordinate run-owned wakeups without disturbing other scopes. Under OBSERVATION,
+  cancel/delete and verify only unneeded owned wakeups; terminal fresh-run agents
+  do not end future schedule duties.
+- Invoke supported retirement; verify archived state or documented active-view
+  removal. Uncertain evidence/ownership requires retention, specific reason, and
+  next action—not success.
 
-For Paseo, inspect current tool schemas: `archive_agent` interrupts a running
-agent, so it is not a harmless visibility toggle. Never archive all idle agents,
-another owner's agents, or a live monitor to make the UI tidy. If self-archive
-cannot safely finish reporting, the acknowledged parent performs and verifies it.
-When archival is unavailable/denied, report the capability limit, retained ID,
-and responsible owner's next action; do not guess APIs, widen permissions, or
-silently retain forever.
+For Paseo, inspect current schemas: `archive_agent` interrupts running agents,
+not just visibility. Never archive another owner's agents, all idle agents,
+or live monitors for tidiness. When self-archive interrupts reporting, the
+acknowledged parent performs/verifies it. Unavailable/denied archival requires
+retained ID, capability limit, responsible owner and next action; never guess
+APIs, widen permissions, or silently retain forever.
 
-Agent retirement is **not** project/workspace archival or deletion of worktrees,
-branches, or evidence. In particular, Paseo workspace archival may delete an
-owned worktree: never substitute it for agent archival. Preserve those resources;
-any separately authorized Git cleanup follows WORKSPACE's preservation checks.
+Retirement is **not** project/workspace archival or worktree/branch/evidence
+deletion. Paseo workspace archival may delete owned worktrees; never substitute
+it. Preserve resources; separately authorized Git cleanup follows WORKSPACE's
+preservation checks.
 
-For changes to this contract or its callers, exercise the
-[acceptance scenarios](LIFECYCLE-SCENARIOS.md). Package/link tests prove shipped
-guidance is reachable, not that a runtime obeyed it.
+For contract/caller changes, exercise [acceptance scenarios](LIFECYCLE-SCENARIOS.md).
+Package/link tests prove reachability, not runtime compliance.
