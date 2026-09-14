@@ -24,6 +24,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs
+      - run: node --test .agents/skills/joe-mode-paseo-pm/tests/*.test.mjs
       - run: npm ci --ignore-scripts
       - run: npm run test:pack
         env:
