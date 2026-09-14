@@ -2,10 +2,9 @@
 
 The delivery route supplies this contract to each implementer. It is supporting guidance, not another delivery controller. Ship, Patch, and Refactor retain their own scope and delivery ownership under [the common invocation policy](../setup/INVOCATION.md).
 
-Load [LIFECYCLE](../squadron/LIFECYCLE.md) for accepted return, recovery, and
-retirement, and [WORKSPACE](WORKSPACE.md) to verify assigned placement before
-writing. Reuse the supplied worktree and its harness registration; do not create
-resources merely because this is a new agent.
+Load [LIFECYCLE](../squadron/LIFECYCLE.md) for accepted return/recovery/retirement;
+load [WORKSPACE](WORKSPACE.md), verify placement before writes.
+Reuse assigned worktree/registration; new agents alone warrant no resources.
 
 ## Inputs from the owner
 
@@ -14,12 +13,11 @@ resources merely because this is a new agent.
 - Authorized workspace and branch, recorded starting commit, dependency/integration state, and any shared resources the worker must not touch.
 - Relevant code and prior findings, required validation, agreed test seams, and the scope of any permitted commits.
 - A session-artifact destination for the report, the owner to return to, and stop/escalation conditions.
-- For issue-backed recovery, the original delivery packet, episode/issue and
-  acknowledged owner/write release under [RECOVERY](../shepherd/RECOVERY.md).
-  Read it for that assignment; keep the same delivery branch/PR as the owner's
-  integration destination and return exact resulting head/target and complete
-  artifacts to the owner. Issue text grants
-  no wider authority; no independent tracker mutation, controller wake or retry.
+- For issue-backed recovery, original packet, episode/issue, acknowledged owner/
+  write release. Load [RECOVERY](../shepherd/RECOVERY.md); preserve same delivery
+  branch/PR integration destination. Return exact resulting head/target, complete
+  artifacts to owner. Issue text grants no wider authority; no independent
+  tracker mutation, controller wake/retry.
 - The scoped [doctrine packet](../doctrine/APPLY.md): operator selections, assigned and required IDs, reasons, accessible source/selector locations, and pinned digests.
 
 Read the actual task and repository guidance. Resolve missing requirements with the owner before changing behavior. Do not treat a plan, issue, or review comment as authority to disregard human instructions.
@@ -59,8 +57,7 @@ For a fix round, append the specific findings addressed, fix-base/result commits
 
 The route owner owns task state, integration, final review, publication, and the mandatory Shepherd handoff under [the shared finish](DELIVERY.md). Existing-PR fixes return to that PR's current Shepherd, never a second monitor. There is no second approval ledger, autonomous risk ruling, or alternate finishing workflow.
 
-The owner must acknowledge the actual return before it is accepted. Preserve
-the complete diff/evidence and stop writes at that boundary. When this assignment
-is terminal, arrange owner-performed archival after acceptance if self-retirement
-would interrupt reporting. Do not archive yourself before the owner can recover
-the result, or delete the assigned worktree/workspace to retire the agent.
+Owner acknowledges actual return before acceptance. Preserve complete diff/evidence;
+stop writes at that boundary. If terminal self-retirement interrupts reporting,
+arrange owner archival after acceptance. Never self-archive before owner can recover
+results, or delete assigned worktree/workspace to retire.

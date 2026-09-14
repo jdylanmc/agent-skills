@@ -29,7 +29,7 @@ Keep the scoped doctrine selection and per-worker required IDs, source/digest re
 
 Load and execute [LIFECYCLE](../squadron/LIFECYCLE.md): verified dispatch
 placement, receiver-observed acceptance, cancellation recovery, and actual
-terminal owned-agent retirement. Keep these facts in the same progress record.
+terminal owned-agent retirement. Keep evidence in the same progress record.
 
 Use the [shared delivery packet and finish contract](DELIVERY.md), recording `ship` as owner route and the actual return owner/source/target refs. Every modifying worker uses [changelog](../changelog/SKILL.md); return proposals from isolated workers and serialize consolidation by the integration owner.
 
@@ -71,9 +71,9 @@ An internal draft may be reported as work in progress with explicit gaps, never 
 
 Execute [the shared delivery finish](DELIVERY.md): independent whole-deliverable Roast, repository validation and criterion verdicts, the same PR, current-target synchronization, and real Shepherd custody. Ship owns this finish; linking it is not completion. Include consolidated changelog entries in the reviewed result. No final draft handoff, self-approval, or green claim for an old base.
 
-Verify receiver acknowledgment and actual provider non-draft state after
-promotion before returning readiness. A published draft or unaccepted transfer
-remains progress/blocker with an owner, not completed delivery.
+Before reporting readiness, verify receiver acknowledgment and actual provider
+non-draft state after promotion. Drafts or unaccepted transfers remain owned
+progress/blockers, not completed delivery.
 
 ## Feedback on an existing PR
 
