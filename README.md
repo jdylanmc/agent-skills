@@ -51,22 +51,24 @@ any workflow. Invoke `/setup` separately when you want repository configuration;
 its existing human-choice and exact-file approval gates still apply, including
 the named Joe-mode bootstrap.
 
-**Optional Paseo PM:** invoke `/joe-mode-paseo-pm` explicitly to set up or manage
-one repository's one-minute bounded PM passes, with six default concurrent
-delivery lanes and human merges. Setup explains capabilities and asks for an
-explicit mode choice: same-agent heartbeat, or fresh conversations only on a
-runtime with proven stable workspace placement/lifetime. Its
-[capability gates](.agents/skills/joe-mode-paseo-pm/RUNTIME.md) block fresh mode
+**Optional Paseo PM:** invoke `/joe-mode-paseo` explicitly to set up or manage
+one repository's engineering team, with six default concurrent delivery lanes
+and human merges. Each pass checks progress and direction, charts the backlog,
+intakes new requirements and dispatches existing planning/delivery routes.
+Setup recommends Paseo's dedicated-PM heartbeat recipe, **every five minutes
+by default**, and records the approved cadence and runner choice. Fresh
+conversations require proven stable workspace placement/lifetime. Its
+[capability gates](.agents/skills/joe-mode-paseo/RUNTIME.md) block fresh mode
 on the inspected upstream scheduler because each run creates a new workspace.
-Setup recommends the heartbeat alternative there but never substitutes or
-enables it without consent. Both modes still require narrow access and verified
+Explicit fresh-only requests never silently fall back. A human may delegate
+runner mechanics, but activation still requires narrow access and verified
 binding. Installation does not activate monitoring or repair Paseo.
 
 The adapter is separately discoverable/selectable. A consumer that already has
 the prerequisite full pack can install/update only this new package:
 
 ```sh
-DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill joe-mode-paseo-pm --agent github-copilot --copy -y
+DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill joe-mode-paseo --agent github-copilot --copy -y
 ```
 
 That selection copies its support files but does not fetch missing sibling
@@ -91,7 +93,7 @@ Validation keeps telemetry disabled and does not claim directory registration.
 - **Joe-mode:** human-started, one controller per repository, looping until
   paused or stopped. Use Squadron aggressively for independent discovery,
   delivery, and Shepherd assignments without overlapping owners.
-- **Joe-mode Paseo PM:** separately human-enabled one-minute adapter, sharing the
+- **Joe-mode Paseo:** separately human-enabled recurring team PM, sharing the
   same repository ownership registry. Consented heartbeat or runtime-proven fresh
   passes retain one interactive
   Discovery conversation per repository, existing delivery/Shepherd custody,
@@ -224,7 +226,7 @@ material for separately authorized debugging, not install-time hooks.
 
 ```sh
 node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs
-node --test .agents/skills/joe-mode-paseo-pm/tests/*.test.mjs
+node --test .agents/skills/joe-mode-paseo/tests/*.test.mjs
 npm ci --ignore-scripts
 npm run test:pack
 ```

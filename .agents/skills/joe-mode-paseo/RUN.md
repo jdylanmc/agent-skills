@@ -36,6 +36,10 @@ controller. Missing setup/permissions/decisions return to the human anchor.
    tickets, dependencies and linked PRs/checks/reviews; inspect relevant worktree
    refs/diffs, known workers' status/activity/descendants, pending permissions,
    owned wakeup health and custody. Record observation times and unknown coverage.
+   Include newly supplied requirements and changes to the human's priorities,
+   not just already-ready tickets. Compare each worker's accepted assignment,
+   latest artifacts and next action to the current goal and dependency path:
+   runtime `running` does not prove useful progress or correct direction.
    Failed/truncated queries are not empty backlogs. Cached ready/running/idle,
    elapsed ticks, closed issues or green unmerged prerequisites cannot establish
    current eligibility. Preserve objective start, existing accepted and pending
@@ -55,15 +59,31 @@ controller. Missing setup/permissions/decisions return to the human anchor.
 
 5. **Choose bounded existing routes.** Reuse [Joe routing](../joe-mode/SKILL.md#3-refresh-the-relevant-backlog)
    within this activation's authority without invoking its session mode.
-   Preserve configured readiness, dependency and grouping rules. Reserve the
-   full provider-qualified specification/child coverage **before** breakdown
-   can publish children, so parent and child deliveries cannot race.
+   Preserve configured readiness, dependency and grouping rules. After the
+   human approves publication, reserve the provider-qualified parent
+   specification as a delivery group with `graph: true` **before** Breakdown
+   publishes children. Do not invent child IDs before the tracker returns them.
+   Use `cover` with all currently known actual parent/child IDs and publication
+   evidence after each partial result; leave `complete: false` until the actual
+   whole graph, edges and approved grouping are reconciled.
+   While publication is unresolved, hold **all new delivery launches**, since
+   unobserved child IDs cannot yet be excluded reliably. Existing workers,
+   research and the human conversation continue. Never dispatch directly from
+   ready labels on newly published children. An uncertain result remains one
+   pending publication operation, not a reason to create tickets again.
+   Only then call `cover` with `complete: true` and the verified full graph.
+   One Ship owns that entire group. Intentionally independent child deliveries
+   instead require acknowledged release of the planning reservation, durable
+   parent suppression, and reservation of the complete selected child groups
+   in this same claimed pass **before** any launch; never launch the parent too.
    A PM reservation is exclusion, not readiness or authority to implement.
    Prioritize finishing/review/recovery work; then select eligible independent
    deliveries up to the configured six-default delivery-owner capacity.
 
    | Evidence/need | Existing owner/route |
    | --- | --- |
+   | Unclear critical path, changed priorities/dependencies, or missing work toward the goal | Scoped Chart-a-course agent; preserve its cited path and feed findings back to this PM |
+   | New requirement or targeted Discovery recommended by Chart-a-course | Intake into the existing interactive Discovery lane; actual human alignment before planning/execution |
    | Material unknowns, changed intent or semantic decisions | Existing interactive Discovery lane and actual human |
    | Full human-aligned Discovery artifact | Specify, preserving full sources and recording/publication gates |
    | Complete requirements/specification | Breakdown Tickets, actual approval before publication; retain agreed delivery grouping |
@@ -82,14 +102,26 @@ controller. Missing setup/permissions/decisions return to the human anchor.
    [DELIVERY](../ship/DELIVERY.md). Delegate the existing packet and doctrine
    selection, not a parallel definition of done.
 
+   Use [Chart-a-course](../chart-a-course/SKILL.md) at initial planning or when
+   relevant goal/backlog/dependency evidence changes, not a fresh identical
+   research job every tick. Reserve it as bounded read-only `research`, with a
+   goal/input-revision key and existing workspace. Its recommendation is not
+   tracker-write authority. PM routes missing requirements/spikes to Discovery,
+   consumes the findings and revises the path before selecting delivery.
+   If a worker is progressing on the wrong scope, send a bounded correction to
+   its existing owner and verify acknowledgment; preserve partial work and avoid
+   a competing implementer. Changed product decisions return to the human.
+
 6. **Reserve before dispatch; reconcile before reuse.** Execute helper `reserve`
-   for each full delivery group, interactive Discovery lane or bounded research
+   for each delivery/publication group, interactive Discovery lane or bounded research
    assignment. `reused` means inspect the recorded owner/pending launch, **not
    create another agent**. A reservation with no confirmed agent ID still consumes
    capacity. Pending, cancelled or stale runtime records do not free slots.
    Count delivery-owner lanes once, not all nested reviewers as deliveries;
    reconcile live descendants and their separate runtime resource budget before
-   filling slots. Record known pre-existing delivery owners before new selection.
+   filling slots. Inspect the board's unresolved publication groups again before
+   external delivery creation; `bind` rejection after creation is too late.
+   Record known pre-existing delivery owners before new selection.
    If existing load exceeds the configured limit, hold new dispatch and reconcile
    with the human rather than omit owners to fit the helper.
 
@@ -120,6 +152,9 @@ controller. Missing setup/permissions/decisions return to the human anchor.
    permissions and wakeups, then reconcile write release and accepted transfer
    before any recovery. Follow RECOVERY's one bounded repair attempt and
    human escalation for repeated failure; ticks do not reset the episode.
+   Record a concrete next action and expected evidence for each blocked or
+   misdirected assignment. Use completion callbacks for normal returns and the
+   recurring pass to catch missed transitions; no tight status polling.
 
 8. **Accept, settle and retire.** Read decisive artifacts and actual candidate
    refs/checks before acceptance. Save complete accessible results/qualifiers
@@ -152,7 +187,7 @@ controller. Missing setup/permissions/decisions return to the human anchor.
    nested heartbeat or spawn a successor PM.
 
    **Heartbeat:** release the pass lease, then return/idle in the **same agent**
-   for its owned one-minute job. Each new pass claims a new fencing token.
+   for its owned configured-cadence job. Each new pass claims a new fencing token.
    This agent is not terminal between passes: ongoing wakeup, children and
    reporting remain concrete duties. Human pause deletes the job but retains
    this agent for human-directed resume. Retirement requires stop/end of all
@@ -172,3 +207,6 @@ controller. Missing setup/permissions/decisions return to the human anchor.
 Report only observed progress, pending human decisions/manual merge readiness,
 gaps and ownership. One completed pass/setup is not proof that recurring
 delivery works. No indefinite idle wait inside a bounded pass.
+The pass receipt records goal/path changes, requirements awaiting human intake,
+worker progress/direction, recovery/corrections, new assignments, and the next
+useful action. Quiet queues are allowed; never manufacture work to fill capacity.

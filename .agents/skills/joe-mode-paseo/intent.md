@@ -1,9 +1,16 @@
-# Intent: joe-mode-paseo-pm
+# Intent: joe-mode-paseo
 
 This is an opt-in, repository-bound project manager for Paseo. It keeps my
 selected backlog moving through the existing skills and brings me reviewed,
 green pull requests to approve and merge. Installing it does not activate it.
 It is a separate skill, not a change to Joe-mode's session-only lifetime.
+
+This is the heartbeat of my engineering team, not a heartbeat whose purpose is
+keeping a chat alive. It checks that agents are making progress and working on
+the right thing, charts a course through the backlog, takes in new requirements,
+and dispatches planning and implementation through Joe-mode's existing skills.
+The choice of runner is an implementation detail: follow Paseo's recommended
+recipes and explain the resulting behavior rather than making me choose APIs.
 
 ## Set it up with me
 
@@ -19,15 +26,17 @@ substantial regression and continuous-integration gauntlet are a future idea,
 not permission for this version. A request for that mode is blocked or explicitly
 changed with me to human merging.
 
-## One-minute passes, durable ownership
+## Recurring passes, durable ownership
 
-Setup explains the runtime's capabilities and asks which one-minute mode I
-explicitly consent to. A same-agent heartbeat keeps one dedicated or reused PM
-conversation alive, returning to idle between bounded passes. A fresh schedule
+Setup explains the runtime's capabilities and records the approved cadence,
+five minutes by default, and runner selection. When I delegate the mechanics,
+recommend Paseo's same-agent heartbeat for ongoing coordination. It retains one
+dedicated or reused PM's team custody, returning to idle between bounded passes.
+A fresh schedule
 starts a new PM conversation each pass, but is available only when the deployed
 runtime proves stable existing-workspace placement and safe workspace lifetime.
 On an incompatible fresh scheduler, recommend the heartbeat and record my
-consent; never silently substitute it. If I insist on unsupported fresh mode,
+consent or actual delegation; never silently override an explicit choice. If I insist on unsupported fresh mode,
 do not activate. The host must be available. A stored job is not proof that
 monitoring ran through a host or permissions outage.
 
@@ -37,6 +46,13 @@ ongoing work, saves results and questions outside the conversation,
 and releases its run claim. A busy pass prevents the next pass from becoming
 another controller. There is one logical controller per repository, reconciled
 with existing Joe-mode ownership, not one per worktree, tick or backlog slice.
+
+Changes to goals and dependencies can need Chart-a-course, not just another
+implementer. New requirements enter the one human Discovery conversation,
+then the existing specification and ticket workflows when aligned. A running
+agent is not automatically healthy or on course: compare its work with the
+accepted assignment and goal, follow up with its owner, and preserve partial
+work before any bounded recovery. Do not spawn identical planning on every tick.
 
 Long-lived delivery owners, Shepherds and the Discovery conversation keep their
 scoped custody between passes. PM coordinates routes; it does not replace their
