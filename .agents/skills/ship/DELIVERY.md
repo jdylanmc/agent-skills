@@ -1,7 +1,7 @@
 # Shared delivery finish and custody
 
-Supporting contract for the peer Ship, Patch, and Refactor routes, not another
-routable skill or permission to invoke Ship. The selected route owns its work
+Supporting contract for peer Ship, Patch, and Refactor routes—not a routable
+skill or permission to invoke Ship. The selected route owns its work
 through independent review, publication, and actual Shepherd custody. Follow
 [invocation policy](../setup/INVOCATION.md); narrower human requests remain narrower.
 Never approve, merge, enable automatic merge, or close tracker items yourself.
@@ -34,17 +34,17 @@ automatic release/version change or recursive entry for changelog-only maintenan
 
 ## Independent review and proof
 
-The route owns implementation using its own workflow, never by secretly routing
-through Ship. Use [TDD](../tdd/SKILL.md) where applicable. Workers follow the bounded
+The route owns implementation through its own workflow, never secretly through
+Ship. Use [TDD](../tdd/SKILL.md) where applicable. Workers follow the bounded
 [worker contract](WORKER.md); their self-inspection does not approve their code.
 
 Have an independent [Roast](../roast/SKILL.md) reviewer inspect the whole committed
 deliverable against its requirements and standards, including the changelog.
 Code review requires `solid`. Pass the actual review base/head and all in-scope
 requirements. Receive evidence-backed findings and coverage limits, not approval.
-If independent review cannot run, report a blocker rather than grade your own work.
+If independent review cannot run, report a blocker; do not grade your own work.
 
-Reconcile findings with requirements. Prefer simplification during remediation.
+Reconcile findings with requirements; prefer simplification in fixes.
 Return supported in-scope fixes to the route's implementer, integrate, rerun
 affected checks, and independently review the changed candidate. Use Roast's
 [scoped fix-review](../roast/FIX-REVIEW.md) without losing whole-deliverable coverage.
@@ -67,14 +67,14 @@ destination before publication. Report unsupported configuration rather than
 silently choosing another provider.
 Use the [commit-message policy](../setup/COMMIT-STYLE.md) for authored messages.
 
-Before creation, inspect existing PRs for this delivery/branch. Reuse the matching
-PR; clarify ambiguity. After an uncertain creation result, query before retrying.
+Before creation, inspect PRs for this delivery/branch. Reuse a matching PR;
+clarify ambiguity. After an uncertain creation result, query before retrying.
 Push the owned branch and create an internal draft once a meaningful candidate
 exists; never manufacture an empty commit. Include requirements/ticket references,
 scope, summary, criterion evidence, checks, and outstanding work. Use closing
 references only for fully satisfied work. Confirm publication and its actual URL.
-Missing access is a blocker. If no change is needed, report the already-satisfied
-result rather than manufacture a PR.
+Missing access blocks publication. If no change is needed, report the satisfied
+result; do not manufacture a PR.
 
 An internal draft is progress, not a final handoff or readiness claim. The route
 retains custody while implementing; no competing Shepherd repair loop. On Azure
@@ -122,8 +122,8 @@ worker within another delivery returns to its owner instead of publishing.
 
 Pure rebase/regeneration stays Shepherd work. Different-kind work or changed
 requirements returns to Joe-mode/the human for routing, not automatic Ship fallback.
-Recover a missing packet from live evidence; do not require an exact old revision,
-but resolve unknown ownership or product intent before mutation.
+Recover missing packets from live evidence, without requiring an exact old
+revision. Resolve unknown ownership or product intent before mutation.
 
 Report the PR, criterion verdicts, review/check head/base, pending human signoff,
 and actual Shepherd owner/status. Remove only integrated, completed run-owned
