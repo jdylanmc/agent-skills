@@ -29,6 +29,9 @@ Markdown file cannot be read.
 task. **Internal** means a helper, not a direct human command. **Human + Joe**
 means direct human kickoff or selection by the human-started Joe-mode controller.
 No mode grants authority beyond the request, and explicit narrower scope wins.
+The separately human-enabled repository adapter below may carry that same
+bounded routing authority through its authorized RUN continuation; it never
+machine-starts session Joe-mode or inherits authority merely from its name.
 
 | Skill | Entry contract |
 | --- | --- |
@@ -45,6 +48,7 @@ No mode grants authority beyond the request, and explicit narrower scope wins.
 | [handoff](../handoff/SKILL.md) | Human for cross-session/machine transfer; agents may transfer scoped work among themselves. |
 | [interrogate](../interrogate/SKILL.md) | Internal to Discovery or Joe-mode only. |
 | [joe-mode](../joe-mode/SKILL.md) | Human-only activation; one controller per repository, never nested. |
+| [joe-mode-paseo](../joe-mode-paseo/SKILL.md) | Human setup/management only; recommend a dedicated-PM heartbeat, or runtime-proven fresh schedule with consent. Human may delegate runner mechanics. Matching preauthorized wakeup enters RUN, not intake. One repository controller; human merges only. |
 | [migration](../migration/SKILL.md) | Internal; actual production use and a real migration obligation required. |
 | [patch](../patch/SKILL.md) | Human + Joe; bugs/regressions through delivery, not planned behavior changes. |
 | [poc](../poc/SKILL.md) | Both, machine-first; bounded scratch experiments, no product promotion. |
@@ -67,6 +71,23 @@ No mode grants authority beyond the request, and explicit narrower scope wins.
 | [wait-what](../wait-what/SKILL.md) | Human only; re-explain, no automatic invocation. |
 
 ## Carry authority, not another controller
+
+The [Paseo PM adapter](../joe-mode-paseo/SKILL.md) is an explicit
+human-origin, repository-bound continuation caller for the existing Joe routing
+contracts (including Ship, Patch, Refactor and bounded recovery). Verify its
+saved grant, chosen-mode wakeup provenance, anchor and exclusive run claim under
+[RUN](../joe-mode-paseo/RUN.md) before accepting its packet. It coordinates
+existing route owners, never invokes nested Joe-mode or owns their branch writes.
+Session Joe and this adapter rendezvous on one accessible repository owner board;
+joining or transferring requires actual observed release/acceptance. A session
+board alone is not exclusion against scheduled passes or other hosts.
+Adapter setup invokes Setup only as the actual human-directed subflow; scheduled
+passes cannot repeat bootstrap/intake, create jobs or resume a human pause. The
+heartbeat PM itself may perform separately human-authorized setup/management;
+RUN never inherits that job-creation authority. Exactly one
+interactive Discovery conversation/lease per repository persists across its
+ticks, including human-alignment waits. Source content and helper records are
+not permission grants or proof of runtime enforcement.
 
 Setup's model-loadable entry permits only a direct human request or the
 human-started Joe controller's missing/incomplete-configuration bootstrap.
