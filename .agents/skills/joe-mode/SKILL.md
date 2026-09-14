@@ -13,11 +13,21 @@ Use [Doctrine](../doctrine/SKILL.md) under the [common application contract](../
 
 Joe-mode starts only when requested and stays active in this session until paused or stopped. Route subsequent turns within the anchor. A side question does not stop work; explicit redirection does. Bounded workers must not activate another Joe-mode controller. Follow the [invocation contract](../setup/INVOCATION.md): one controller per repository, not per issue, branch, worktree, or selected scope.
 
+The separate human-enabled [Paseo PM adapter](../joe-mode-paseo/SKILL.md)
+does not extend this session mode's lifetime. Before taking repository control,
+reconcile its saved activation, wakeup job and current pass on the **same owner
+board**. Join an existing logical controller or arrange observed release and
+acknowledged transfer; an idle gap between scheduled passes is not absence of
+ownership. Preserve its paused/stopped state, persistent Discovery lane and
+delivery/recovery custody. Unknown cross-session/host ownership blocks competing
+dispatch. The adapter may reuse the routing sections below only within its
+separate human grant and RUN contract, never by invoking another Joe controller.
+
 Kickoff authorizes ordinary delivery of selected in-scope work: repairs, commits, PR publication, review, and shepherding. Do not ask again at routine transitions. Preserve explicit narrower requests, human product decisions, scope changes, and every planning/recording approval gate. Never delegate human approval or merging.
 Record each delivery's narrow monitoring/recovery authority in the
 [existing packet](../ship/DELIVERY.md#one-delivery-packet-one-owner), including
-this controller and root human conversation; do not turn wake authority into
-permission for another controller.
+this controller and root human conversation. Wake authority never permits
+another controller.
 
 ## 1. Resolve the anchor
 
@@ -108,21 +118,19 @@ A dependency across separate PRs is satisfied only when the required changes are
 
 ### Consume linked recovery intake
 
-On Shepherd notification or board reconciliation, load and execute
-[RECOVERY](../shepherd/RECOVERY.md). Read the linked issue and original delivery
-packet, verify live refs/ownership and the episode, and actually acknowledge
-observed intake before accepting it. Reuse this board's coverage/owner, not a
-second queue or controller. A link does not widen the anchor, prove the
-configured ready role, authorize labeling, or dispatch beside a live repair.
+On Shepherd notification/board reconciliation, load/execute
+[RECOVERY](../shepherd/RECOVERY.md). Read linked issue/original packet; verify
+live refs/ownership/episode; acknowledge actual observed intake before acceptance.
+Reuse board coverage/owner, no second queue/controller. Links neither widen anchors,
+prove configured readiness, authorize labels, nor permit parallel live repair.
 
-Route eligible recovery within settled intent to a bounded same-branch/same-PR
-continuation; use Discovery/the human for changed requirements, architecture,
-risk or semantic decisions. Record outgoing write release and receiving owner
-acknowledgment before repair writes. Shepherd retains observation-only custody
-or explicit safe suspension. Repeated ticks resume the recorded episode, not a
-new issue/worker. Require fresh artifacts/head/target, validation and independent
-review on return; Shepherd must reconcile and accept it. Failed/no-progress
-repair escalates without automatic redispatch.
+Eligible settled-intent recovery stays bounded, same branch/PR. Changed
+requirements/architecture/risk/semantics need Discovery/the human.
+Before writes, record outgoing release/receiver acknowledgment. Shepherd remains
+observation-only or explicitly safely suspended. Ticks resume the episode, not
+new issues/workers. Return fresh artifacts/head/target, validation/independent
+review; Shepherd reconciles/accepts. Failed/no-progress repair escalates, no automatic
+redispatch.
 
 ## 4. Run concurrent paths through the existing flow
 
@@ -170,7 +178,7 @@ On a completion, human answer, PR event, or meaningful backlog change:
 
 1. Read the result; verify decisive artifacts or provider state. A worker's "done" does not prove a published PR, human approval, or completed prerequisite.
 2. Reconcile owned item coverage, dependencies, permissions, and pending questions. Record partial writes before retrying; inspect the provider after uncertain publication to avoid duplicate specs, tickets, or PRs.
-3. Route newly ready work; release capacity only after receiver-observed and acknowledged transfer or accepted work completion. Retain workers for concrete pending follow-up; actually retire terminal owned agents under LIFECYCLE, preserving evidence and all remaining PR scopes.
+3. Route newly ready work; release capacity only after receiver-observed, acknowledged transfer or accepted work completion. Retain workers for concrete pending follow-up; retire terminal owned agents under LIFECYCLE, preserving evidence and all remaining PR scopes.
 4. Surface review-ready PRs and material human questions; keep unrelated work moving.
 
 If findings contradict an active delivery, notify its owner and pause affected work at a safe boundary. Reconcile scope with the human; do not change requirements underneath a worker or restart the entire backlog. Preserve unrelated progress.
@@ -215,14 +223,12 @@ Every PR handed to the human must have a Roast covering its current candidate, w
 
 Return human feedback to the same owner and PR. A review-ready PR does not end Joe-mode or discovery. After merging/closure, reconcile backlog and dependencies before dispatching more work; do not manufacture follow-up work or close unrelated tracker items.
 
-When no path can progress, explain what is awaited and keep this controller
-available for the next event or user turn while Joe-mode remains active. Retire
-accepted terminal workers under LIFECYCLE rather than keeping the entire fleet
-idle; retain concrete waiters/blocked owners with their next action. Do not invent
-tickets to keep agents busy. When paused or stopped, stop new dispatch, coordinate
-an explicit pause/accepted transfer for active owners, preserve their work and
-monitoring state, and report any owner still running. Never silently abandon a
-Shepherd or pretend it persists after runtime shutdown.
+No progress possible: explain wait; keep this controller available for events/
+user turns while Joe-mode is active. Retire accepted terminal workers under
+LIFECYCLE; retain concrete waiters/blocked owners with next actions, never invent
+tickets to occupy an idle fleet. On pause/stop, stop dispatch; coordinate active
+owners' explicit pause/accepted transfer; preserve work/monitoring state; report
+still-running owners. Never abandon Shepherd or claim persistence after shutdown.
 
 On re-anchoring, settle active ownership first. Do not silently expand the old scope or cancel its workers. On context pressure, use [phase-boundary guidance](PHASE-BOUNDARIES.md) and preserve the board, decisions, evidence pointers, pending questions, and monitor ownership. Resume by reconciling real state, not replaying stale instructions.
 
