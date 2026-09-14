@@ -29,14 +29,22 @@ function digestFiles(filenames, select = bytes => bytes) {
   return hash.digest('hex');
 }
 
-test('original human intents and complete doctrine sources remain byte-preserved', () => {
+test('protected human intents and complete doctrine sources remain byte-preserved', () => {
   const sources = files(path.join(root, '.agents/skills'))
     .map(filename => path.relative(root, filename).split(path.sep).join('/'))
     .filter(filename => filename.endsWith('/intent.md') || filename.includes('/doctrines/'))
-    .filter(filename => filename !== '.agents/skills/chart-a-course/intent.md');
+    .filter(filename => filename !== '.agents/skills/chart-a-course/intent.md')
+    // Only Shepherd intent was authorized for the adaptive/recovery extension.
+    .filter(filename => filename !== '.agents/skills/shepherd/intent.md');
   sources.push('intent.md');
-  assert.equal(sources.length, 37);
-  assert.equal(digestFiles(sources), 'ef01b4c94174de1888a03a21207e0053842c0c136a3d9cc5f5dbb82473b1767a');
+  assert.equal(sources.length, 36);
+  assert.equal(digestFiles(sources), 'b005d1f5bd7956854c85f2c10f157c6c46f53e0f296a734fea8e0a8eb52354ff');
+});
+
+test('specifically authorized Shepherd intent remains pinned to the extension', () => {
+  const intent = readFileSync(path.join(root, '.agents/skills/shepherd/intent.md'));
+  assert.equal(createHash('sha256').update(intent).digest('hex'),
+    '57e4a3bbf91ef2bb561d5067228791b92a1212e700390870a17cb7c01ed06344');
 });
 
 test('all original entrypoint metadata, including invocation flags, is preserved', () => {
@@ -105,10 +113,47 @@ function assertPortable(directory) {
   }
 }
 
+function assertLifecycleSupport(directory) {
+  const contracts = [
+    'squadron/LIFECYCLE.md', 'squadron/LIFECYCLE-SCENARIOS.md',
+    'ship/WORKSPACE.md', 'ship/DELIVERY.md',
+    'shepherd/OBSERVATION.md', 'shepherd/RECOVERY.md', 'shepherd/SCENARIOS.md',
+  ].map(name => path.join(directory, name));
+  for (const contract of contracts) assert.ok(readFileSync(contract).length > 0, contract);
+
+  for (const entry of [
+    'squadron/SKILL.md', 'ship/SKILL.md', 'ship/WORKER.md',
+    'joe-mode/SKILL.md', 'joe-mode/RUNTIME.md', 'shepherd/SKILL.md',
+    'handoff/SKILL.md', 'patch/SKILL.md', 'refactor/SKILL.md', 'setup/INVOCATION.md',
+  ]) {
+    const pending = [path.join(directory, entry)];
+    const visited = new Set();
+    while (pending.length) {
+      const filename = pending.pop();
+      if (visited.has(filename)) continue;
+      visited.add(filename);
+      for (const link of markdownLinks(readFileSync(filename, 'utf8'))) {
+        if (/^(?:[a-z][a-z0-9+.-]*:|#)/i.test(link)) continue;
+        const target = path.resolve(path.dirname(filename), decodeURIComponent(link.split('#')[0]));
+        if (target.endsWith('.md')) pending.push(target);
+      }
+    }
+    for (const contract of contracts) {
+      assert.ok(visited.has(contract), `${entry}: unreachable supporting contract ${contract}`);
+    }
+  }
+}
+
+test('lifecycle guidance and review scenarios are reachable through local package links', () => {
+  assertLifecycleSupport(path.join(root, '.agents/skills'));
+});
+
 test('Chart-a-course is a portable, human- and model-invocable local package', () => {
   const directory = path.join(root, '.agents/skills');
   const skill = readFileSync(path.join(directory, 'chart-a-course/SKILL.md'), 'utf8');
   const metadata = skill.split('---\n')[1];
+  assert.equal(createHash('sha256').update(metadata).digest('hex'),
+    '7d74b4658ddec3e58897117555d7303b6aa612927648284ce7501d67dc930426');
   assert.match(metadata, /^name: chart-a-course$/m);
   assert.match(metadata, /^disable-model-invocation: false$/m);
   assert.match(metadata, /^user-invocable: true$/m);
@@ -153,6 +198,9 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     await t.test('installed Markdown dependencies resolve inside the pack', () => {
       assertPortable(installed);
     });
+    await t.test('installed routes can reach lifecycle, placement, readiness and review guidance', () => {
+      assertLifecycleSupport(installed);
+    });
     await t.test('required policies, provenance and licenses travel with the pack', () => {
       for (const name of [
         'LICENSE', 'NOTICE.md', 'INVOCATION.md', 'COMMIT-STYLE.md',
@@ -195,6 +243,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
       const before = snapshot(consumer);
       install();
       assert.deepEqual(snapshot(consumer), before);
+      assertLifecycleSupport(installed);
     });
   } finally {
     rmSync(consumer, { recursive: true, force: true });
