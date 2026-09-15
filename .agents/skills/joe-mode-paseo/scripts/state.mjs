@@ -2,6 +2,7 @@ import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readF
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { teamKinds, checkTeamReservation, checkTeamBinding, checkTeamState, teamOperation } from './team.mjs';
 
 function requireText(value, label) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`Missing ${label}`);
@@ -69,6 +70,8 @@ function validateConfig(input) {
   } else if (config.pmAgentId !== undefined) {
     throw new Error('Fresh wakeup cannot bind a heartbeat PM agent');
   }
+  if (config.team !== undefined && config.team !== true) throw new Error('Invalid team selection');
+  if (config.team && config.wakeupMode !== 'heartbeat') throw new Error('Team mode requires the persistent PM heartbeat');
   return config;
 }
 
@@ -138,7 +141,7 @@ function validateState(state) {
   let deliveries = 0;
   for (const worker of pm.workers) {
     if (!worker || typeof worker.settled !== 'boolean' ||
-      !['delivery', 'discovery', 'research'].includes(worker.kind) ||
+      !(pm.config.team ? teamKinds : ['delivery', 'discovery', 'research']).includes(worker.kind) ||
       typeof worker.key !== 'string' || !worker.key.trim() || keys.has(worker.key) ||
       !validCoverage(worker.coverage) ||
       worker.assignment?.key !== worker.key || worker.assignment?.kind !== worker.kind ||
@@ -162,13 +165,14 @@ function validateState(state) {
     }
   }
   if (discovery > 1 || deliveries > pm.config.capacity) throw new Error('Invalid capacity state');
+  if (pm.config.team) checkTeamState(pm);
   return state;
 }
 
 function reserve(pm, worker) {
   requireText(worker?.key, 'worker key');
   requireText(worker.packet, 'worker packet');
-  if (!['delivery', 'discovery', 'research'].includes(worker.kind)) throw new Error('Invalid worker kind');
+  if (!(pm.config.team ? teamKinds : ['delivery', 'discovery', 'research']).includes(worker.kind)) throw new Error('Invalid worker kind');
   if (!validCoverage(worker.coverage)) throw new Error('Invalid coverage');
   if (worker.graph !== undefined && (worker.graph !== true || worker.kind !== 'delivery')) {
     throw new Error('Invalid publication group');
@@ -191,6 +195,7 @@ function reserve(pm, worker) {
       throw new Error('Delivery capacity exhausted');
     }
   }
+  if (pm.config.team) checkTeamReservation(pm, worker);
   pm.workers.push({ key: worker.key, kind: worker.kind, coverage: worker.coverage,
     assignment: worker, settled: false, agentId: null,
     ...(worker.graph ? { graph: { complete: false, receipts: [] } } : {}) });
@@ -222,6 +227,11 @@ function updateWorker(pm, request) {
     requireText(request.agentId, 'observed agent ID');
     if (worker.kind === 'delivery' && publicationPending(pm)) throw new Error('Unresolved ticket publication; hold delivery launch');
     if (worker.settled || (worker.agentId && worker.agentId !== request.agentId)) throw new Error('Worker already bound or settled');
+    if (pm.config.team) {
+      checkTeamBinding(pm, worker, request);
+      worker.permissions = request.permissions;
+      if (worker.kind === 'delivery') worker.worktree = request.worktree;
+    }
     worker.agentId = request.agentId;
     worker.observation = request.evidence;
     return 'bound';
@@ -232,6 +242,7 @@ function updateWorker(pm, request) {
     return 'archive-recorded';
   }
   if (request.noLiveWriters !== true || request.noUntransferredDuties !== true) throw new Error('Unreconciled live custody');
+  if (worker.heartbeat && !['deleted', 'absent'].includes(worker.heartbeat.status)) throw new Error('Unresolved owned heartbeat');
   if (worker.kind === 'discovery' && request.discoveryEnded !== true) throw new Error('Discovery alignment or explicit end required');
   requireText(request.result, 'preserved result');
   requireText(request.acceptance, 'receiver acceptance');
@@ -254,9 +265,17 @@ function apply(state, request) {
   if (request.op === 'inspect') return 'observed';
   const pm = state.pm;
   if (pm?.version !== 1) throw new Error('Missing or unsupported PM state');
-  if (['pause', 'stop', 'resume', 'recover', 'configure-merge'].includes(request.op)) {
+  if (['pause', 'stop', 'resume', 'recover', 'configure-merge', 'enable-team'].includes(request.op)) {
     requireText(request.human, 'human decision');
-    if (request.op === 'configure-merge') {
+    if (request.op === 'enable-team') {
+      if (pm.mode === 'enabled') throw new Error('Team conversion requires paused state');
+      if (pm.lease) throw new Error('Team conversion requires released or fenced lease');
+      requireText(request.reconciliation, 'all owners and wakeups reconciled');
+      if (pm.workers.some(worker => !worker.settled) || pm.pending.some(record => record.status === 'pending')) {
+        throw new Error('Settle existing owners and pending operations before changing capacity units');
+      }
+      pm.config = validateConfig({ ...pm.config, team: true });
+    } else if (request.op === 'configure-merge') {
       if (pm.mode === 'enabled') throw new Error('Merge configuration requires paused or stopped state');
       if (pm.lease) throw new Error('Merge configuration requires released or fenced lease');
       requireText(request.reconciliation, 'merge authority and pending-operation reconciliation');
@@ -293,7 +312,12 @@ function apply(state, request) {
     pm.lease = { owner: request.owner, token: randomUUID(), reconciliation: request.reconciliation };
     return 'claimed';
   }
-  if (!pm.lease || pm.lease.owner !== request.owner || pm.lease.token !== request.token) {
+  const management = pm.config.team && pm.mode !== 'enabled' && !pm.lease && request.human &&
+    ['role-heartbeat', 'record', 'settle', 'archive', 'retire-developer', 'cleanup-ready', 'cleanup'].includes(request.op);
+  if (management) {
+    requireText(request.human, 'human management decision');
+    requireText(request.reconciliation, 'current custody and pending-operation reconciliation');
+  } else if (!pm.lease || pm.lease.owner !== request.owner || pm.lease.token !== request.token) {
     throw new Error('Invalid run lease');
   }
   if (request.op === 'release') {
@@ -307,6 +331,9 @@ function apply(state, request) {
     if (pm.mode !== 'enabled') throw new Error('PM is not enabled');
   }
   if (request.op === 'reserve') return reserve(pm, request.worker);
+  if (['staff', 'retire-developer', 'role-heartbeat', 'block', 'unblock', 'cleanup-ready', 'cleanup'].includes(request.op)) {
+    return teamOperation(pm, request);
+  }
   if (['cover', 'bind', 'settle', 'archive'].includes(request.op)) return updateWorker(pm, request);
   if (request.op === 'record') {
     requireText(request.key, 'operation key');
@@ -340,6 +367,7 @@ export function transact(filename, request) {
   try {
     const state = read();
     const status = apply(state, request);
+    validateState(state);
     const next = `${filename}.next`;
     const fd = openSync(next, 'wx', 0o600);
     try {

@@ -188,3 +188,91 @@ an uncertainty. Unknown/corrupt state is a blocker.
 Unit/CLI tests exercise filesystem exclusion, transitions, custody records and
 capacity. [SCENARIOS](SCENARIOS.md) separately covers actual runtime/agent
 behavior; a passing test is not an activation receipt.
+
+## Team mode
+
+New setups explicitly use `config.team: true` with the persistent PM heartbeat.
+Capacity then means **developer slots**, not legacy delivery owners. Keep the
+same board, lease and operation records. There is no separate team daemon.
+
+Old configs retain old units and behavior. To adopt the team, pause, fence/release
+the pass, settle all old workers and pending operations, reconcile all existing
+jobs, then call `enable-team` with `human` and `reconciliation` references.
+It preserves old settled assignments/history and stays paused. Do not reinterpret
+active reservations or discard them to fit the new limit. A legacy fresh runner
+cannot be converted this way; obtain an explicit stopped, reconciled handoff to
+the persistent PM rather than changing the agent target behind a live job.
+
+Team `reserve` adds `work` for `kind: "delivery"`:
+`feature` costs two, `bug`, `hardening` and `refactor` cost one.
+Missing/unknown work fails. `research`, `roast` and `investigator` are bounded
+support assignments; `discovery`, `shepherd` and `coordinator` are singleton
+roles outside developer capacity. Coordinator needs the configured orchestrator
+merge grant plus the actual human request in its packet. No automatic grant.
+
+Team `bind` requires `permissions` and, for delivery, the observed `worktree`.
+The permission proof is:
+
+```json
+{
+  "parent": {"provider": "actual-provider", "modeId": "actual-mode", "features": {}},
+  "child": {"provider": "actual-provider", "modeId": "actual-mode", "features": {}},
+  "authority": "current-human-grant",
+  "evidence": "actual-parent-and-child-readback"
+}
+```
+
+Use the actual permission features, including `auto_accept` when exposed;
+`{}` does not mean "ignore features." Cross-provider differences cannot pass
+as identical inheritance. Resolve a separately approved target policy before
+dispatch rather than manufacturing matching snapshots. Helper evidence strings
+are pointers; they do not prove authority, external settings or filesystem state.
+
+The following operations use the same PM `owner`/`token`. Roles return receipts
+to PM; they do not write this board.
+
+| Operation | Inputs beyond lease and `op` | Meaning |
+| --- | --- | --- |
+| `staff` | Delivery `key`, actual `agentId`, isolated `worktree`, `permissions`, `evidence` | Bind a real writing descendant inside the reserved one/two slots. Duplicate writers/worktrees and excess staffing fail. Include a route owner here if it writes. |
+| `retire-developer` | Delivery `key`, member `agentId`, `noLiveWriters: true`, `noUntransferredDuties: true`, preserved `result`, receiver `acceptance`, actual `archive` readback and `evidence` | End one developer binding after verified retirement; preserve its history and the lane's outer reservation. New task/integration workers may fill that slot; uncertain retirement cannot. |
+| `role-heartbeat` | Role `key`, `action`, `evidence`; fields below | Record target-executed heartbeat lifecycle. Does not call Paseo. |
+| `block` | Delivery `key`, covered qualified `issue`, independent `investigator`, `selfReview`, `challenge`, `missing`, `category`, `evidence` | `category` is `work`, `permission` or `human`. First work blocker returns `retry`; second returns `blocked`. Other categories block without retry. Replayed identical attempt does not increment. |
+| `unblock` | `issue`, `resolution`, `readiness`; `human` for permission/decision blockers | Close that episode after actual answer/readiness; preserve history. Does not change tracker labels. |
+| `cleanup-ready` | Settled/archived `key`, `noLiveWriters: true`, `clean: true`, full remote `branch`, matching `localHead`/`remoteHead`, `evidence` | Record verified preservation **before** exact owned-worktree removal. Dirty files, missing/unequal remote proof fail. |
+| `cleanup` | `key`, actual removal `evidence` | Record performed cleanup only after preservation. Does not delete anything. |
+
+`role-heartbeat` applies only to bound Shepherd/Discovery workers:
+
+- `action: "plan"` needs approved `settings` reference. Save before the role
+  creates its job. An existing pending/active/uncertain job blocks another plan.
+- `action: "created"` needs returned `id` and `targetAgentId` matching that
+  worker, plus complete creation receipt evidence. A late create receipt after
+  pause is still recorded so PM can direct deletion of the exact ID.
+- `action: "observed"` records an actual bounded wake. No synthetic health
+  from a cron string. `action: "uncertain"` records a failed/unknown operation.
+- `action: "deleted"` needs the exact owned `id` and successful deletion
+  evidence. Uncertain deletion does not settle the role. Plan recreation only
+  after definite absence, remaining grant and enabled PM are reconciled.
+- `action: "absent"` needs definitive `absence` evidence: creation failed
+  without an external effect, or supported reconciliation proves no job exists.
+  Include the exact `id` when one was known. This permits settlement or a new
+  authorized plan without inventing a creation/deletion receipt. Generic
+  not-found and transport errors are not proof of absence.
+- After human pause/stop with no pass lease, this operation may instead carry
+  `human` and current `reconciliation` references to preserve deletion/late
+  receipts. The same cleanup-only path permits `record`, `settle`, `archive`,
+  `retire-developer`, `cleanup-ready` and `cleanup`. It never grants dispatch,
+  staffing, timer creation or resume. A live lease must first release or be
+  explicitly fenced; stale tokens remain invalid.
+
+PM's heartbeat stays in `pm.schedule`; support jobs stay on their owning worker.
+Together these are the project heartbeat inventory. PM checks every one on
+pause/stop and role retirement. `settle` rejects any unresolved role heartbeat.
+The helper does not verify a provider deletion merely because evidence is text.
+
+Blocker episodes live in `pm.blockers`, keyed by qualified issue, not tick.
+Retry requires the predecessor settled and archived. Binding refuses the old
+agent/context or worktree; confirmation also needs a fresh investigator.
+After escalation, helper reservation refuses covered blocked issues even if the
+tracker still says ready. PM separately records tag/comment/backlog writes and
+spawns/reuses Discovery under TEAM. Keep uncertain tracker operations pending.

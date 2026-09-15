@@ -1,6 +1,6 @@
 ---
 name: joe-mode-paseo
-description: "Human-enabled engineering-team PM for one repository. Set up recurring Paseo coordination; chart the backlog, intake requirements, check worker progress and scope, and dispatch planning and delivery through Joe-mode."
+description: "Human-enabled repository team. PM owns role heartbeats, six developer slots, backlog intake, shared Shepherd, blocker recovery and an optional requested PR coordinator."
 disable-model-invocation: false
 user-invocable: true
 ---
@@ -20,12 +20,13 @@ activation. Follow [INVOCATION](../setup/INVOCATION.md) and the human-approved
 [intent](intent.md). Installing/discovering the package does not start anything.
 Requires the sibling workflow packages; see [runtime gates](RUNTIME.md).
 
+Follow [TEAM](TEAM.md) for roles, capacity, testing, blockers and cleanup.
 This adapter extends the existing Joe owner board across bounded passes. It does not
 activate nested/session Joe-mode or replace delivery owners. **Human merging is
-the default.** With human-granted repository authority, the final orchestrator
+the default.** When requested, a separate PR coordinator
 may merge under [the repository-defined gate](MERGE.md). If that gate is missing,
 clarify with the human. At minimum require independent Roast, successful CI and
-linting, then rubber-duck reasoning and final verification by the orchestrator.
+linting, then its own rubber-duck reasoning and final verification.
 No self-approval, blanket auto-merge or provider-policy bypass.
 
 ## 1. Resolve and reconcile before setup
@@ -65,19 +66,19 @@ Reuse already settled answers; ask only material missing choices:
    Which routine delivery, tracker,
    scheduler and bounded recovery actions are authorized, and where do questions
    return to the actual human?
-3. Delivery capacity: **six by default**, or what limit? Reserve resources for
-   the single interactive Discovery lane, research, review and finishing work.
+3. Developer pool: **six by default**, or what limit? Features reserve two;
+   bug fixes, hardening and refactors reserve one. Support roles are separate.
 4. Which cadence (**five minutes by default**), host/repository worktree, accessible private evidence location and
    existing runtime profiles? What is the explicit child disposition at
    pause/stop, and who accepts results and retires terminal run parents?
 
-Recommend the documented dedicated-PM heartbeat recipe after inspecting host
+Recommend the documented primary-chat PM heartbeat recipe after inspecting host
 availability and capabilities below. Runner mechanics are an implementation
 choice when the human delegates them; record that delegation and the explained
 selection rather than repeatedly asking them to choose APIs. An explicit fresh
 runner requirement still wins and cannot silently fall back.
-Capacity is delivery-owner lanes, not permission for
-unlimited nested workers: each route packet gets a bounded nested resource budget.
+Count actual writing descendants inside each lane's reservation, not unlimited
+nested workers or an extra slot for the same red/green pair.
 Do not hardcode users, repositories, labels, providers or models.
 
 ## 3. Establish durable continuity and capabilities
@@ -97,6 +98,11 @@ board without exposing its contents. Verify ignore/access, persistence readback
 and cross-worktree discovery of this **same path**, never a new board per tick.
 The registry locator belongs in the existing owner/handoff record.
 
+New team setups set `team: true` and `wakeupMode: "heartbeat"`.
+Existing boards keep their old capacity units. Use STATE's paused `enable-team`
+transition only after old owners and pending operations are settled; never reset
+a busy board. Existing fresh scheduling remains a legacy, separately consented
+mode, not a supported replacement for this persistent team.
 Prepare the exact activation config; after all following capability gates pass,
 follow [STATE](STATE.md) to call the bundled helper with `init`. It validates
 required evidence references, defaults
@@ -110,17 +116,21 @@ owned dispatch/return/archive, local board access and mode-specific owned wakeup
 Orchestrator merging additionally needs the repository-scoped grant and provider
 merge capability under MERGE; do not widen worker permissions.
 Record the actual grant, lifetime/until-stopped boundary and human-origin anchor.
-Never automatically select allow-all, `auto_accept`, approve prompts or edit
-global configuration. Permission failures wait for the missing human approval.
+Use [permission-preserving dispatch](RUNTIME.md#permission-preserving-dispatch).
+Propagate the parent's current authorized mode and permission features explicitly,
+including human-selected Allow All or Auto Accept. Verify child readback; do not
+restore a stale restrictive default. Never broaden grants, approve pending
+requests as a workaround or edit global configuration.
 Pass the shared and selected-mode [RUNTIME gates](RUNTIME.md) before job creation.
 Once capabilities are known, establish the consented runner:
 
-- **Same-agent heartbeat:** one dedicated or reused PM agent in the correct
+- **Same-agent heartbeat:** the original human chat is PM by default, in the correct
   existing workspace receives the configured cron prompts (`*/5 * * * *` by
   default). It returns/idles between bounded passes, retaining team custody,
   pending decisions and wakeup duty. **Recommend this for ongoing team
   coordination**, following [Paseo's recipe](RUNTIME.md#recommended-orchestration-recipe).
-  Use a dedicated PM, not this disposable setup conversation.
+  Reuse this chat unless it is actually disposable or the human requests another
+  PM; transfer authority and results before replacing it.
 - **Fresh schedule:** each pass starts a new PM conversation. Available only
   when the deployed runtime proves stable existing-workspace mapping and safe
   workspace lifetime. If the operator insists on fresh mode on an incompatible
@@ -132,7 +142,14 @@ with the explained conversation/lifetime difference. Previous interest in
 fresh mode or “keep going” is not consent to change it. No automatic fallback,
 activation or broader permissions. Unavailable required evidence remains a block.
 
-## 4. Create or adopt exactly one owned wakeup
+## 4. Establish PM, then its role heartbeats
+
+Establish exactly one PM heartbeat below. Once enabled, PM provisions one
+Shepherd heartbeat while PR duties exist and one backlog-manager heartbeat
+while that role exists, following TEAM and STATE's `role-heartbeat` receipts.
+The role itself makes the target-bound call; PM owns inventory and cleanup.
+This delegated lifecycle is authorized by team kickoff, not repeated permission
+interviews. No fourth timer for developers, roasters or the PR coordinator.
 
 Only after the gates pass and the human authorizes activation: reconcile the
 saved owned job and pending operations using mode-specific evidence below.
@@ -141,7 +158,7 @@ receipts and actual same-agent wakeups, not schedule APIs. Multiple/ambiguous
 jobs or uncertain creation wait for reconciliation. Record the create/adopt intent on the paused board's
 existing human setup record **before** the external operation.
 
-**Heartbeat:** first resolve the actual dedicated/reused PM agent and inspect its
+**Heartbeat:** first resolve the actual primary/reused PM agent and inspect its
 identity, human-origin packet and correct existing `workspaceId`, project, cwd
 and Git mapping. Reuse a compatible owned agent; if human-authorized setup must
 create one, use that existing workspace, not another resource/controller. Record
@@ -155,8 +172,8 @@ a competing controller to work around that. Use the saved `config.cron`, the app
 timezone/lifetime and bounded RUN prompt. Verify the returned creation summary
 and actual agent binding through [RUNTIME](RUNTIME.md#same-agent-heartbeat-surface),
 not just the response's job ID. Preserve the receipt; do not call
-`inspect_schedule` or `list_schedules` for this heartbeat. RUN never
-creates/resumes any wakeup job.
+`inspect_schedule` or `list_schedules` for this heartbeat. RUN never recreates
+or resumes the PM job; its bounded role provisioning follows TEAM.
 
 **Fresh:** use the current supported `create_schedule` schema, the saved `config.cron`, explicit
 verified `cwd`, local isolation and discovered runtime settings. Prompt it with
@@ -189,7 +206,9 @@ working unattended monitoring. Use [SCENARIOS](SCENARIOS.md) for acceptance.
   controller, workers, pending permissions and latest observations. No mutation,
   activation or stale cached readiness claim. Report gaps and pending results.
 - **Pause:** on human direction call helper `pause` first, recording explicit
-  active-child disposition. For fresh mode, use supported `pause_schedule` and
+  active-child disposition. Direct every live Shepherd/Discovery role to delete
+  its exact owned heartbeat and record each receipt, not just PM's.
+  For fresh mode, use supported `pause_schedule` and
   inspect actual paused state/next-run behavior. For heartbeat, have the bound PM
   agent call `delete_heartbeat` for its exact owned ID and preserve its successful
   acknowledgement as deletion evidence. There is no `pause_heartbeat` or heartbeat
@@ -209,7 +228,8 @@ working unattended monitoring. Use [SCENARIOS](SCENARIOS.md) for acceptance.
   helper `resume` with [STATE's exact replacement evidence](STATE.md), including
   old ID and human proof. No board reset, automatic tick resume or target change.
 - **Stop:** call `stop` first, then delete the exact owned wakeup and verify
-  deletion through its mode-specific evidence. Stop is not blanket cancellation: obey
+  deletion through its mode-specific evidence, including every role heartbeat.
+  Stop is not blanket cancellation: obey
   the chosen retain/finish/acknowledged-transfer disposition for each child,
   resolve pending results, and record continuing Shepherd duties or explicit
   monitoring gaps. Preserve artifacts and workspaces. Failed or uncertain deletion
