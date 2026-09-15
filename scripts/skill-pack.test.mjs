@@ -231,11 +231,14 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
       assertPortable(installed);
     });
     await t.test('installed PM helper runs read-only from the consumer without activating anything', () => {
-      const output = execFileSync(process.execPath, [
+      const inspect = request => execFileSync(process.execPath, [
         path.join(installed, 'joe-mode-paseo/scripts/state.mjs'),
-        path.join(consumer, 'absent-board.json'), '{"op":"inspect"}',
+        path.join(consumer, 'absent-board.json'), request,
       ], { cwd: consumer, encoding: 'utf8', timeout: 10_000 });
-      assert.deepEqual(JSON.parse(output), { status: 'observed', state: {} });
+      assert.deepEqual(JSON.parse(inspect('{"op":"inspect"}')),
+        { status: 'observed', view: { initialized: false } });
+      assert.deepEqual(JSON.parse(inspect('{"op":"inspect","view":"full"}')),
+        { status: 'observed', state: {} });
       assert.ok(!existsSync(path.join(consumer, 'absent-board.json')));
     });
     await t.test('required policies, provenance and licenses travel with the pack', () => {

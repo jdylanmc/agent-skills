@@ -174,17 +174,29 @@ just the setup-era mode. A feature such as `auto_accept` is separate from
 
 Before every role/worker launch:
 
-1. Inspect provider capabilities and configured profiles. Profiles may select
-   model/reasoning, but may not silently replace the human's permission choice.
+1. Inspect provider capabilities, available models and configured profiles.
+   Choose a current frontier model for substantive work by discovery, not a
+   remembered name. Profiles may select model/reasoning, but may not silently
+   replace the human's permission choice.
 2. For the same provider, pass the authorized `settings.modeId` and permission
    `settings.features` explicitly before the initial prompt. Do not copy
    unrelated provider features blindly. Carry narrower task limits in the packet.
-3. Read child mode/features after startup and workflow initialization. Join its
-   actual ID/workspace/cwd to the assignment. Bind only after readback matches.
-   A mismatch holds its reservation and affected work; diagnose once, not a
-   permission storm. Do not call a broad mode "drift" merely because an old
-   default was narrower.
-4. Respect later human changes. Verify provenance; if a recorded grant and live
+3. For a different target provider, compare the actual target policy with the
+   parent's authorized one and record STATE's `permission-preflight` before the
+   launch: `equivalent` when the target expresses the same meaning, or a
+   human-authorized mapping for a genuine difference. Plan the exact workspace
+   and worktree there; the child's ID cannot exist yet. After creation record
+   `permission-launch` with the ID the runtime actually returned, so the plan
+   binds to that one child in that one worktree. Ambiguous or escalating
+   mappings wait for the human. Fabricated matching snapshots or launch receipts
+   are never mapping evidence, and no mapping transfers approvals, credentials
+   or provider policy.
+4. Read child mode/features after startup and workflow initialization. Join its
+   actual ID/workspace/cwd to the assignment. Bind only after readback matches
+   the recorded plan. A mismatch holds its reservation and affected work;
+   diagnose once, not a permission storm. Do not call a broad mode "drift"
+   merely because an old default was narrower.
+5. Respect later human changes. Verify provenance; if a recorded grant and live
    settings disagree without a known human change, ask once rather than
    downgrade, upgrade or replay approval. Pause affected child work for a
    revocation. A parent mode change does not magically update existing children.
@@ -225,3 +237,19 @@ scheduled tick, deleted the exact ID successfully, then was archived.
 This proves that explicit configuration and target-bound create/delete worked
 on that host. It does **not** prove automatic inheritance, recurring wakes,
 cross-provider equivalence or production rollout. Recheck deployed capabilities.
+
+A second bounded probe on 2026-09-15 used two current frontier models through
+the same provider. Both children received the parent's actual Agent mode with
+`auto_accept`, which their readbacks matched; no pending permission request
+appeared. A delivery child and an independent investigator each reported the
+same missing input, and a distinct fresh agent on a fresh worktree confirmed the
+second blocker. One self-bound timer fired on its target and that same caller
+deleted it with an acknowledged success receipt. All four probe agents were
+archived with verified closed/archived state.
+
+That probe proves these **primitives** on that host. It does not prove board-helper
+integration, nested launches beneath a route owner, a six-slot pool over long
+runs, pause/resume across all three role heartbeats, or cross-provider policy
+equivalence. Agent plus `auto_accept` is also not Allow All, and no observed
+native-provider bypass has been shown equivalent to it; never infer a wider
+grant from these results.

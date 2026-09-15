@@ -83,6 +83,9 @@ After reviewed repairs, it observes and accepts custody back. Other PRs continue
 3. If the answer exists, send it to the current developer and verify receipt.
 4. First confirmed work blocker: preserve partial work and evidence, settle
    custody, archive the worker, then try one fresh agent on a fresh worktree.
+   Fresh means fresh for **every** participant of the previous attempt: the
+   lane owner and each developer it staffed, including retired ones. Reusing
+   any of those agents or worktrees is not a fresh attempt and is refused.
    Pass requirements and facts, not the predecessor's conclusion. Keep the old
    result available for recovery without priming the new diagnosis.
 5. Second independently confirmed attempt on that issue: apply its configured
@@ -106,6 +109,12 @@ then remove only that exact owned worktree and read back the result.
 Failed push, dirty state, uncertain ownership or inaccessible evidence means
 **keep the local copy**, report the cleanup blocker, and move on safely.
 Archiving an agent is not permission to delete its workspace or branch.
+Retirement is a duty, not a deletion quota: record a deliberately kept worktree
+with `cleanup` and `retained: true` so the board shows a decided outcome. Each
+accepted cleanup receipt is final: replay the identical one freely, but a
+changed branch, head or evidence fails instead of overwriting what happened. Until
+each settled worker is archived and its worktree actually removed or retained,
+it stays in the bounded view's retirement queue with its recovery locator.
 
 ## Permissions follow the human
 
@@ -115,13 +124,49 @@ Copy the parent's actual authorized mode and permission features before the
 first prompt, then inspect the child. A prompt saying "inherit" is not a setting.
 Do not undo a human's current Allow All/Auto Accept choice using a stale board
 default. Do not enable either merely to make progress. Respect revocations and
-narrower assignments; unsupported cross-provider equivalence blocks that launch.
+narrower assignments.
+
+Same provider, same snapshot. For a **different** target provider, verify the
+target's actual policy against the parent's before launching and record that
+mapping with STATE's `permission-preflight`: an `equivalent` mapping when the
+target expresses the same meaning, or a human-authorized mapping for a real
+difference. Plan the exact workspace and worktree, then record
+`permission-launch` with the identity the runtime actually created, so one
+approval cannot cover a different developer, worktree or later launch.
+Preserve the human's choices; never fabricate a matching snapshot,
+widen the target or downgrade a granted mode silently. Ask the human only when
+the mapping is genuinely ambiguous or would escalate authority, not for every
+mixed-provider task. Unmapped or unsupported equivalence queues that launch
+with the precise missing choice.
+
+## Choose current frontier models
+
+Discover what the host actually offers: inspect available providers, models and
+configured profiles at selection time. Pick a current capable frontier model for
+implementation, review, investigation and planning; profiles may set model and
+reasoning, but never replace the human's permission choice. Cheap or small
+models are for narrow mechanical lookups, not features, diagnosis or review.
+Record the actual selected model with the assignment. Do not hardcode model
+names in this skill, a prompt or the board; an aging identifier in old notes is
+a hint to re-inspect, not a selection. Unavailable discovery is a reported
+limit, not a reason to guess a name.
 
 ## Role heartbeats belong to PM
 
 PM owns the inventory and lifecycle: its own heartbeat, plus Shepherd's and
-the backlog manager's while those roles exist. Developers, roasters and the
-PR coordinator use results/dispatch events, not extra recurring timers.
+the backlog manager's while those roles exist. PM's heartbeat targets **this
+same PM conversation** and continues Joe-mode; it never reruns setup or starts
+another controller. Its prompt names Joe-mode continuation, the repository,
+workspace, board path, PM ownership and the pause/stop gates, then one bounded
+pass: check workers, blockers, permissions, PRs and free slots; take authorized
+next steps; reuse existing assignments; record compact progress; notify the
+human only for meaningful changes or decisions.
+
+Developers, roasters and the PR coordinator have **no default timer**: they use
+completion notifications and PM's explicit continuation. A bounded developer
+timer is allowed only for a real recurring duty (such as a long external wait
+the lane must poll), created and deleted by that target agent, with PM
+recording its intent, ID and removal like any other role job.
 Default cadence is five minutes; preserve explicit cadence and lifetime choices.
 Shepherd uses its configured override instead of changing PM's timer to match
 every PR. New/urgent PR events can request an immediate bounded observation.

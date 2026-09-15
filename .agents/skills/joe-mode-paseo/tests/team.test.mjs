@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { transact } from '../scripts/state.mjs';
+import { summarize, transact } from '../scripts/state.mjs';
 
 const permissions = { provider: 'copilot', modeId: 'agent', features: { auto_accept: true } };
 const proof = { parent: permissions, child: permissions, authority: 'human/current-grant', evidence: 'runtime/readback' };
@@ -87,6 +87,46 @@ test('child binding compares provider, mode and permission features, not labels 
   assert.throws(() => b.bind('one', { permissions: undefined }), /permission/i);
   assert.equal(b.bind('one').status, 'bound');
   assert.deepEqual(JSON.parse(readFileSync(b.file)).pm.workers[0].permissions, proof);
+});
+
+test('cross-provider binding needs recorded prelaunch mapping and unchanged native snapshots', t => {
+  const b = board(t);
+  b.reserve('mixed');
+  const target = { provider: 'target-provider', modeId: 'review', features: { approval: 'ask' } };
+  const mapped = { ...proof, child: target, preflight: 'launch-mixed',
+    parentAgentId: 'pm', workspaceId: 'mixed-workspace' };
+  const bind = permissions => b.bind('mixed', { permissions });
+  assert.throws(() => bind(mapped), /permission|preflight/i);
+  const preflight = { op: 'permission-preflight', key: 'mixed', launchId: 'launch-mixed',
+    parentAgentId: 'pm', workspaceId: 'mixed-workspace', worktree: '/worktrees/mixed',
+    parent: permissions, target,
+    authority: proof.authority, evidence: 'live-parent-and-target-profile',
+    mapping: { kind: 'equivalent', preservesChoices: true,
+      sourceCapabilities: 'source-native-docs-and-readback',
+      targetCapabilities: 'target-native-docs-and-profile',
+      rationale: 'Both request approval for the same operations; no approval or credentials transfer',
+      evidence: 'verified-policy-comparison' } };
+  assert.equal(b.call(preflight).status, 'permission-preflight-recorded');
+  assert.throws(() => b.call({ ...preflight, launchId: 'bad', mapping: undefined }), /mapping/i);
+  assert.throws(() => b.call({ ...preflight, launchId: 'bad', worktree: undefined }), /worktree/i);
+  assert.throws(() => b.call({ ...preflight, launchId: 'bad', mapping: { ...preflight.mapping, preservesChoices: false } }), /permission|choices/i);
+  assert.throws(() => b.call({ ...preflight, target: { ...target, modeId: 'unrestricted' } }), /Changed/);
+  assert.throws(() => bind(mapped), /launch receipt/i);
+  const launch = { op: 'permission-launch', key: 'mixed', launchId: 'launch-mixed',
+    agentId: 'agent-mixed', workspaceId: 'mixed-workspace', worktree: '/worktrees/mixed',
+    evidence: 'create-agent-receipt-and-child-readback' };
+  assert.throws(() => b.call({ ...launch, worktree: '/elsewhere' }), /placement/i);
+  assert.equal(b.call(launch).status, 'permission-launch-recorded');
+  for (const changed of [
+    { parent: { ...permissions, features: { auto_accept: false } } },
+    { child: { ...target, modeId: 'unrestricted' } },
+    { parentAgentId: 'another-parent' }, { workspaceId: 'elsewhere' },
+    { authority: 'different-grant' },
+  ]) assert.throws(() => bind({ ...mapped, ...changed }), /permission|preflight/i);
+  assert.throws(() => b.bind('mixed', { permissions: mapped, agentId: 'other-child' }), /launch/i);
+  assert.equal(bind(mapped).status, 'bound');
+  assert.deepEqual(JSON.parse(readFileSync(b.file)).pm.workers[0].permissions.child, target);
+  assert.throws(() => b.call({ ...preflight, launchId: 'after-launch' }), /already bound/i);
 });
 
 test('feature staffing is two real developers; duplicate and excess developer bindings fail', t => {
@@ -174,6 +214,46 @@ test('permission and human-decision blockers cannot trigger fresh-agent retries'
     assert.throws(() => b.call({ op: 'unblock', issue: 'first',
       resolution: 'answer', readiness: 'ready' }), /human/);
   }
+});
+
+test('retry excludes every prior developer context and worktree, including retired members', t => {
+  const b = board(t);
+  b.reserve('first', 'feature', 'delivery', ['issue']);
+  b.bind('first');
+  const staff = (key, agentId, worktree) => b.call({ op: 'staff', key, agentId, worktree,
+    permissions: proof, evidence: 'developer/readback' });
+  staff('first', 'retired-red', '/actual/red');
+  b.call({ op: 'retire-developer', key: 'first', agentId: 'retired-red',
+    noLiveWriters: true, noUntransferredDuties: true, result: 'saved',
+    acceptance: 'accepted', archive: 'archived', evidence: 'retired' });
+  staff('first', 'green', '/actual/green');
+  b.call({ op: 'block', key: 'first', issue: 'issue', investigator: 'duck',
+    selfReview: 'attempts', challenge: 'independent', missing: 'answer',
+    category: 'work', evidence: 'blocked' });
+  settle(b, 'first');
+  b.reserve('retry', 'feature', 'delivery', ['issue']);
+  for (const [agentId, worktree] of [
+    ['retired-red', '/fresh'], ['fresh', '/actual/red'],
+    ['green', '/fresh'], ['fresh', '/actual/green'],
+  ]) {
+    assert.throws(() => b.bind('retry', { agentId, worktree }), /fresh/);
+  }
+  b.bind('retry');
+  for (const [agentId, worktree] of [
+    ['retired-red', '/fresh'], ['fresh', '/actual/red'],
+    ['green', '/fresh'], ['fresh', '/actual/green'],
+    ['agent-first', '/fresh'], ['fresh', '/worktrees/first'],
+  ]) assert.throws(() => staff('retry', agentId, worktree), /fresh/);
+  staff('retry', 'new-red', '/fresh/red');
+  const board_ = JSON.parse(readFileSync(b.file)).pm;
+  const attempt = board_.blockers[0].attempts[0];
+  assert.equal(attempt.key, 'first');
+  const blocked = board_.workers.find(worker => worker.key === attempt.key);
+  assert.equal(blocked.worktree, '/worktrees/first');
+  assert.deepEqual(blocked.developers.map(({ agentId, worktree }) => ({ agentId, worktree })), [
+    { agentId: 'retired-red', worktree: '/actual/red' },
+    { agentId: 'green', worktree: '/actual/green' },
+  ]);
 });
 
 test('local cleanup needs archived custody, clean files and matching verified remote head', t => {
@@ -314,4 +394,192 @@ test('definitive heartbeat absence permits retirement or replanning, unknown cre
     if (outcome === 'retire') settle(b, 'shepherd');
     else assert.equal(beat('plan', { settings: 'approved' }).status, 'heartbeat-recorded');
   }
+});
+
+test('the bounded team view shows live lanes and open blockers without permission or return detail', t => {
+  const b = board(t);
+  b.reserve('lane', 'feature');
+  b.bind('lane');
+  for (const agentId of ['red', 'green']) {
+    b.call({ op: 'staff', key: 'lane', agentId, worktree: `/worktrees/${agentId}`,
+      permissions: proof, evidence: 'developer/readback' });
+  }
+  b.call({ op: 'retire-developer', key: 'lane', agentId: 'red', noLiveWriters: true,
+    noUntransferredDuties: true, result: 'preserved', acceptance: 'accepted',
+    archive: 'archived/readback', evidence: 'retired/readback' });
+  b.call({ op: 'block', key: 'lane', issue: 'lane', investigator: 'duck', selfReview: 'attempts',
+    challenge: 'independent', missing: 'answer', category: 'work', evidence: 'blocker/evidence' });
+  const view = summarize(JSON.parse(readFileSync(b.file)));
+  assert.equal(view.team, true);
+  assert.deepEqual(view.workers, [{ key: 'lane', kind: 'delivery', coverage: ['lane'], work: 'feature',
+    agentId: 'agent-lane', worktree: '/worktrees/lane',
+    developers: [{ agentId: 'green', worktree: '/worktrees/green' }], retiredDevelopers: 1 }]);
+  assert.deepEqual(view.blockers, [{ issue: 'lane', status: 'retry', attempts: 1 }]);
+  const text = JSON.stringify(view);
+  for (const omitted of ['runtime/readback', 'archived/readback', 'blocker/evidence', 'packets/lane']) {
+    assert.ok(!text.includes(omitted), `bounded team view leaked ${omitted}`);
+  }
+  b.call({ op: 'unblock', issue: 'lane', resolution: 'answer/delivered', readiness: 'verified/ready' });
+  const resolved = summarize(JSON.parse(readFileSync(b.file)));
+  assert.equal(resolved.blockers, undefined);
+  assert.equal(resolved.history.blockers, 1);
+});
+
+test('a lane staffed after one covered issue blocks keeps working and still bars those contexts on retry', t => {
+  const b = board(t);
+  b.reserve('lane', 'feature', 'delivery', ['blocked-issue', 'other-issue']);
+  b.bind('lane');
+  const staff = (key, agentId, worktree) => b.call({ op: 'staff', key, agentId, worktree,
+    permissions: proof, evidence: 'developer/readback' });
+  staff('lane', 'first', '/actual/first');
+  const blocker = { op: 'block', key: 'lane', issue: 'blocked-issue', investigator: 'duck',
+    selfReview: 'attempts', challenge: 'independent', missing: 'answer',
+    category: 'work', evidence: 'blocked/evidence' };
+  b.call(blocker);
+  assert.equal(staff('lane', 'later', '/actual/later').status, 'staffed');
+  assert.equal(b.call(blocker).status, 'retry');
+  assert.equal(b.call({ op: 'inspect' }).status, 'observed');
+  settle(b, 'lane');
+  b.reserve('retry', 'feature', 'delivery', ['blocked-issue']);
+  for (const [agentId, worktree] of [['first', '/fresh'], ['later', '/fresh'],
+    ['fresh', '/actual/first'], ['fresh', '/actual/later']]) {
+    assert.throws(() => b.bind('retry', { agentId, worktree }), /fresh/);
+  }
+  b.bind('retry');
+});
+
+const target = { provider: 'target-provider', modeId: 'review', features: { approval: 'ask' } };
+const mapping = { kind: 'equivalent', preservesChoices: true,
+  sourceCapabilities: 'source-native-docs-and-readback',
+  targetCapabilities: 'target-native-docs-and-profile',
+  rationale: 'Both request approval for the same operations',
+  evidence: 'verified-policy-comparison' };
+
+test('a cross-provider preflight authorizes only its planned worktree and actually launched child', t => {
+  const b = board(t);
+  b.reserve('lane', 'feature');
+  b.bind('lane');
+  const plan = { op: 'permission-preflight', key: 'lane', launchId: 'launch-one', purpose: 'staff',
+    parentAgentId: 'agent-lane', workspaceId: 'workspace-red', worktree: '/planned/red',
+    parent: permissions, target, authority: proof.authority,
+    evidence: 'live-parent-and-target-profile', mapping };
+  assert.equal(b.call(plan).status, 'permission-preflight-recorded');
+  const mapped = { ...proof, child: target, preflight: 'launch-one',
+    parentAgentId: 'agent-lane', workspaceId: 'workspace-red' };
+  const staff = (agentId, worktree) => b.call({ op: 'staff', key: 'lane', agentId, worktree,
+    permissions: mapped, evidence: 'developer/readback' });
+  assert.throws(() => staff('actual-red', '/planned/red'), /launch/i);
+  const receipt = { op: 'permission-launch', key: 'lane', launchId: 'launch-one',
+    agentId: 'actual-red', workspaceId: 'workspace-red', worktree: '/planned/red',
+    evidence: 'create-agent-receipt-and-child-readback' };
+  assert.equal(b.call(receipt).status, 'permission-launch-recorded');
+  assert.throws(() => b.call({ ...receipt, agentId: 'other-child' }), /Changed/);
+  assert.throws(() => staff('other-child', '/planned/red'), /launch/i);
+  assert.throws(() => staff('actual-red', '/elsewhere'), /launch|worktree/i);
+  assert.equal(staff('actual-red', '/planned/red').status, 'staffed');
+  assert.throws(() => b.call({ op: 'staff', key: 'lane', agentId: 'second-child',
+    worktree: '/planned/green', permissions: mapped, evidence: 'developer/readback' }), /launch|preflight/i);
+});
+
+test('the bounded view keeps a retirement queue until each settled worker is actually terminal', t => {
+  const b = board(t);
+  const view = () => summarize(JSON.parse(readFileSync(b.file)));
+  const queue = () => view().retirement;
+  b.reserve('lane');
+  b.bind('lane');
+  b.reserve('helper', undefined, 'roast', ['lane']);
+  b.bind('helper', { worktree: undefined });
+  b.call({ op: 'settle', key: 'lane', evidence: 'no-live-writers', result: 'preserved',
+    acceptance: 'receiver/readback', noLiveWriters: true, noUntransferredDuties: true });
+  assert.deepEqual(queue(), [{ key: 'lane', kind: 'delivery', agentId: 'agent-lane',
+    worktree: '/worktrees/lane', phase: 'archive-pending' }]);
+  b.call({ op: 'archive', key: 'lane', evidence: 'archive/readback' });
+  assert.deepEqual(queue(), [{ key: 'lane', kind: 'delivery', agentId: 'agent-lane',
+    worktree: '/worktrees/lane', phase: 'cleanup-pending' }]);
+  const head = 'a'.repeat(40);
+  b.call({ op: 'cleanup-ready', key: 'lane', noLiveWriters: true, clean: true,
+    branch: 'refs/heads/recovery/lane', localHead: head, remoteHead: head, evidence: 'preserved/remote' });
+  assert.deepEqual(queue(), [{ key: 'lane', kind: 'delivery', agentId: 'agent-lane',
+    worktree: '/worktrees/lane', phase: 'removal-pending',
+    recovery: { branch: 'refs/heads/recovery/lane', head } }]);
+  b.call({ op: 'cleanup', key: 'lane', evidence: 'removal/readback' });
+  assert.equal(queue(), undefined);
+  assert.equal(view().history.settledWorkers, 1);
+
+  b.call({ op: 'settle', key: 'helper', evidence: 'no-live-writers', result: 'review',
+    acceptance: 'receiver/readback', noLiveWriters: true, noUntransferredDuties: true });
+  assert.deepEqual(queue(), [{ key: 'helper', kind: 'roast', agentId: 'agent-helper',
+    phase: 'archive-pending' }]);
+  b.call({ op: 'archive', key: 'helper', evidence: 'archive/readback' });
+  assert.equal(queue(), undefined, 'a role without an owned worktree is terminal once archived');
+
+  b.reserve('kept');
+  b.bind('kept');
+  settle(b, 'kept');
+  assert.equal(queue()[0].phase, 'cleanup-pending');
+  assert.equal(b.call({ op: 'cleanup', key: 'kept', retained: true,
+    evidence: 'human-directed/worktree-retained' }).status, 'retained');
+  assert.equal(queue(), undefined, 'a deliberately retained worktree is a terminal outcome');
+  assert.equal(view().history.settledWorkers, 3);
+});
+
+test('an accepted cleanup receipt is immutable and a terminal outcome cannot be erased', t => {
+  const b = board(t);
+  const worker = () => JSON.parse(readFileSync(b.file)).pm.workers.find(item => item.key === 'lane');
+  b.reserve('lane');
+  b.bind('lane');
+  settle(b, 'lane');
+  const head = 'a'.repeat(40);
+  const ready = { op: 'cleanup-ready', key: 'lane', noLiveWriters: true, clean: true,
+    branch: 'refs/heads/recovery/lane', localHead: head, remoteHead: head, evidence: 'preserved/remote' };
+  assert.equal(b.call(ready).status, 'cleanup-ready');
+  assert.equal(b.call(ready).status, 'cleanup-ready', 'identical preservation replay is idempotent');
+  const other = 'b'.repeat(40);
+  assert.throws(() => b.call({ ...ready, branch: 'refs/heads/recovery/other' }), /Changed cleanup preservation/);
+  assert.throws(() => b.call({ ...ready, localHead: other, remoteHead: other }), /Changed cleanup preservation/);
+  assert.throws(() => b.call({ ...ready, evidence: 'other/remote' }), /Changed cleanup preservation/);
+  assert.throws(() => b.call({ ...ready, clean: false }), /Live writers|unpreserved/i);
+  assert.deepEqual(worker().cleanup,
+    { branch: 'refs/heads/recovery/lane', head, preservation: 'preserved/remote' });
+  const removal = { op: 'cleanup', key: 'lane', evidence: 'removal/readback' };
+  assert.equal(b.call(removal).status, 'cleaned');
+  assert.equal(b.call(removal).status, 'cleaned', 'identical removal replay is idempotent');
+  assert.throws(() => b.call({ ...removal, evidence: 'other/readback' }), /Changed cleanup removal/);
+  assert.throws(() => b.call(ready), /already removed/i);
+  assert.throws(() => b.call({ op: 'cleanup', key: 'lane', retained: true, evidence: 'kept' }), /already removed/i);
+  assert.deepEqual(worker().cleanup, { branch: 'refs/heads/recovery/lane', head,
+    preservation: 'preserved/remote', removal: 'removal/readback' });
+  assert.equal(summarize(JSON.parse(readFileSync(b.file))).retirement, undefined);
+
+  b.reserve('kept');
+  b.bind('kept');
+  settle(b, 'kept');
+  const retain = { op: 'cleanup', key: 'kept', retained: true, evidence: 'human-directed/kept' };
+  assert.equal(b.call(retain).status, 'retained');
+  assert.equal(b.call(retain).status, 'retained', 'identical retention replay is idempotent');
+  assert.throws(() => b.call({ ...retain, evidence: 'other/kept' }), /Changed cleanup retention/);
+  assert.throws(() => b.call({ ...ready, key: 'kept' }), /retained/i);
+  assert.throws(() => b.call({ op: 'cleanup', key: 'kept', evidence: 'removal/readback' }), /preservation|retained/i);
+});
+
+test('a contradictory or malformed cleanup record fails validation', t => {
+  const b = board(t);
+  b.reserve('lane');
+  b.bind('lane');
+  settle(b, 'lane');
+  const head = 'a'.repeat(40);
+  b.call({ op: 'cleanup-ready', key: 'lane', noLiveWriters: true, clean: true,
+    branch: 'refs/heads/recovery/lane', localHead: head, remoteHead: head, evidence: 'preserved/remote' });
+  const state = JSON.parse(readFileSync(b.file));
+  const poison = cleanup => {
+    const copy = JSON.parse(JSON.stringify(state));
+    copy.pm.workers.find(item => item.key === 'lane').cleanup = cleanup;
+    writeFileSync(b.file, JSON.stringify(copy));
+    assert.throws(() => b.call({ op: 'inspect' }), /cleanup/i);
+  };
+  poison({ retention: 'kept', removal: 'removal/readback' });
+  poison({ retention: 'kept', branch: 'refs/heads/recovery/lane', head });
+  poison({ removal: 'removal/readback' });
+  poison({ branch: 'refs/heads/recovery/lane', head, preservation: '' });
+  poison('cleaned');
 });

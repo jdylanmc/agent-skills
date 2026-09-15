@@ -9,11 +9,15 @@ only the named helper seams.
 | Primary chat starts Joe | That same agent is PM; one project per repo, one workspace per actual worktree |
 | Six developer slots | Three features, two features plus two fixes, or six fixes; support roles outside the pool; pending launches still counted |
 | Parent Agent + Auto Accept, or human-selected Allow All | Child mode **and permission features** match before and after bootstrap; no stale-mode "repair" |
-| Unsupported cross-provider permission policy | One precise pre-dispatch blocker; no fallback, auto-approval or repeating child launches |
+| Verified cross-provider target policy | Preflight recorded before launch with the compared capabilities and rationale; bind/staff rejects any later drift |
+| Ambiguous or escalating cross-provider mapping | One precise pre-dispatch blocker naming the missing human choice; no fallback, fabricated snapshot, auto-approval or repeating child launches |
+| Model selection for a lane | Current provider/model/profile discovery recorded with the assignment; frontier model for substantive work; no hardcoded or weak default |
+| Routine pass reads the board | Bounded current view is enough to route work; settled workers stay in an actionable retirement queue until archived and their worktrees removed or deliberately retained; full history requested explicitly for recovery or audit; durable records unchanged |
 | PRs and unclear backlog | One shared Shepherd and one backlog manager; each creates its own heartbeat, PM records exact target/ID/settings |
 | Pause with all roles live | Board gate closes first; all owned role timers deleted with receipts; queued effects reconciled; no auto-resume |
 | Discovery waits for human | Same question/input revision retained; no duplicate interview or repeated research |
-| First confirmed work blocker | Self-challenge plus independent investigator; answer guides existing worker, otherwise one fresh-context/worktree retry |
+| First confirmed work blocker | Self-challenge plus independent investigator; answer guides existing worker, otherwise one retry whose agents and worktrees are fresh for every prior participant, including retired developers |
+| Recurring duty inside a lane | Bounded timer created and deleted by that target agent with PM-recorded intent, ID and removal; developers otherwise run on callbacks and PM continuation, never a default timer |
 | Second confirmed work blocker | Issue blocked/tagged/commented, delivery workers retired, next ready issue dispatched; Discovery takes missing answers |
 | Push fails during cleanup | Local worktree and evidence kept; no success-shaped deletion |
 | Requested PR coordinator | Role created without re-questioning choice; adequate repo gate resolved; highest-impact eligible candidate verified and merged, no self-approval |

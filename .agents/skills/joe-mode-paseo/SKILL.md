@@ -29,6 +29,18 @@ clarify with the human. At minimum require independent Roast, successful CI and
 linting, then its own rubber-duck reasoning and final verification.
 No self-approval, blanket auto-merge or provider-policy bypass.
 
+## Happy path
+
+1. Resolve the repository, existing owners and Setup completeness (§1).
+2. Ask only the unsettled activation questions (§2).
+3. Verify board, permissions and Paseo capabilities, then initialize paused (§3).
+4. Create the PM heartbeat in this chat, observe once, then resume (§4).
+5. Each wakeup runs one bounded [RUN](RUN.md) pass; [TEAM](TEAM.md) routes work.
+
+Every step below keeps its gates. Recovery, replacement, pause/stop and
+uncertainty handling live in §4, [STATE](STATE.md) and [RUNTIME](RUNTIME.md);
+read them when something is missing, uncertain or already owned.
+
 ## 1. Resolve and reconcile before setup
 
 Read the chosen repository's instructions and actual Git remotes/common directory,
@@ -119,8 +131,12 @@ Record the actual grant, lifetime/until-stopped boundary and human-origin anchor
 Use [permission-preserving dispatch](RUNTIME.md#permission-preserving-dispatch).
 Propagate the parent's current authorized mode and permission features explicitly,
 including human-selected Allow All or Auto Accept. Verify child readback; do not
-restore a stale restrictive default. Never broaden grants, approve pending
-requests as a workaround or edit global configuration.
+restore a stale restrictive default. Record a verified target-policy mapping
+with STATE's `permission-preflight` before any cross-provider launch, and bind
+it to the child actually created with `permission-launch`. Never
+broaden grants, approve pending requests as a workaround or edit global
+configuration. Select current frontier models by discovery, never a hardcoded
+name; see [TEAM](TEAM.md#choose-current-frontier-models).
 Pass the shared and selected-mode [RUNTIME gates](RUNTIME.md) before job creation.
 Once capabilities are known, establish the consented runner:
 
@@ -149,7 +165,8 @@ Shepherd heartbeat while PR duties exist and one backlog-manager heartbeat
 while that role exists, following TEAM and STATE's `role-heartbeat` receipts.
 The role itself makes the target-bound call; PM owns inventory and cleanup.
 This delegated lifecycle is authorized by team kickoff, not repeated permission
-interviews. No fourth timer for developers, roasters or the PR coordinator.
+interviews. Developers, roasters and the PR coordinator get no default timer;
+only a real recurring duty earns the bounded exception in TEAM.
 
 Only after the gates pass and the human authorizes activation: reconcile the
 saved owned job and pending operations using mode-specific evidence below.

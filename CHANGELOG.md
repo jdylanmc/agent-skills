@@ -23,6 +23,14 @@ have tagged releases. Current cleanup is tracked in
   not schedule-only inspection; later wakeups prove recurring operation separately.
   Reserve approved ticket publication before child IDs exist, then reconcile the
   returned graph before launching delivery so parent and child ownership cannot race.
+  Read a bounded current board by default and request full durable history
+  explicitly, keeping settled workers in an actionable retirement queue until
+  their archival and worktree removal or deliberate retention is actually
+  recorded and its accepted receipt kept immutable. Bind a cross-provider permission plan to its planned worktree and to
+  the child the runtime actually created, so one approval cannot authorize a
+  different developer or later launch. Keep the continuation alarm on the PM
+  chat itself, with no default developer timers, and select current frontier
+  models by runtime discovery.
 - `chart-a-course`: find a critical task path to a named goal, exposing missing
   tasks and research spikes without tracker writes. Joe-mode acts on targeted
   Discovery recommendations within its existing authority and preserves human
@@ -60,12 +68,16 @@ have tagged releases. Current cleanup is tracked in
 - Joe's default pool is six developers: features use two slots; bugs, hardening
   and refactors use one. One shared Shepherd and optional backlog manager stay
   outside the pool. PM owns all role heartbeats, delegates blocker investigation,
-  retries a confirmed work blocker once with fresh context/worktree, then sends
+  retries a confirmed work blocker once with context and worktrees that are fresh
+  for every prior participant, including retired developers, then sends
   repeated blockers to Discovery. Preserve remote work before local cleanup.
   Existing boards need paused, settled reconciliation before changing capacity units.
 - Propagate current human-authorized parent permission mode and features to
   children, then verify readback. Do not undo human-selected Allow All/Auto Accept
-  using stale defaults. Provider limitations and denied grants remain explicit.
+  using stale defaults. A cross-provider launch first records a verified
+  target-policy mapping and is refused when the observed settings later drift;
+  ambiguous or escalating mappings wait for the human. Provider limitations and
+  denied grants remain explicit.
 - Standalone Ship uses TDD only when selected; Joe prefers it for features.
   Patch and Refactor do not force red/green. Refactor applies laziness/KISS/YAGNI
   and SOLID, with useful behavior proof and independent review from distinct angles.
