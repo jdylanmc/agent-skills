@@ -40,7 +40,8 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     .filter(filename => filename !== '.agents/skills/shepherd/intent.md');
   sources.push('intent.md');
   assert.equal(sources.length, 36);
-  assert.equal(digestFiles(sources), 'b005d1f5bd7956854c85f2c10f157c6c46f53e0f296a734fea8e0a8eb52354ff');
+  // Root intent adds only the requested repository-scoped Paseo merge delegation.
+  assert.equal(digestFiles(sources), 'c2a802897082b5e8d275ecc0f18dfca4706762f418d85ca0c5f24f4e3e732167');
 });
 
 test('specifically authorized Shepherd intent remains pinned to the extension', () => {
@@ -52,14 +53,14 @@ test('specifically authorized Shepherd intent remains pinned to the extension', 
 test('separately authorized PM intent and entrypoint metadata remain pinned', () => {
   const directory = path.join(root, '.agents/skills/joe-mode-paseo');
   assert.equal(createHash('sha256').update(readFileSync(path.join(directory, 'intent.md'))).digest('hex'),
-    '8d2c752578f10150035fd167a1bfb14291bdf8e7be76153697cdd60a6a5d0229');
+    '3cec19202485233d292bfa90dd060841a95684d0ab45d33e1fabdeee2ee26a0c');
   const metadata = readFileSync(path.join(directory, 'SKILL.md'), 'utf8').split('---\n')[1];
   assert.equal(createHash('sha256').update(metadata).digest('hex'),
     'e667bc36fc671b7b1f793e7ced6572854067578a9ff57e87bf221fe54db79f7f');
   assert.match(metadata, /^name: joe-mode-paseo$/m);
   assert.match(metadata, /^disable-model-invocation: false$/m);
   assert.match(metadata, /^user-invocable: true$/m);
-  for (const support of ['RUN.md', 'RUNTIME.md', 'STATE.md', 'SCENARIOS.md', 'intent.md']) {
+  for (const support of ['RUN.md', 'RUNTIME.md', 'STATE.md', 'MERGE.md', 'SCENARIOS.md', 'intent.md']) {
     const text = readFileSync(path.join(directory, support), 'utf8');
     assert.ok(text.trim(), support);
     assert.ok(!text.startsWith('---\n'), `${support}: support is not a second skill entry`);

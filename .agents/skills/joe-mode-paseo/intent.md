@@ -2,7 +2,8 @@
 
 This is an opt-in, repository-bound project manager for Paseo. It keeps my
 selected backlog moving through the existing skills and brings me reviewed,
-green pull requests to approve and merge. Installing it does not activate it.
+green pull requests to approve and merge, or merges them through the final
+orchestrator when I authorize that repository's gate. Installing it does not activate it.
 It is a separate skill, not a change to Joe-mode's session-only lifetime.
 
 This is the heartbeat of my engineering team, not a heartbeat whose purpose is
@@ -21,10 +22,13 @@ non-goals, merge authority, and capacity. The default is six concurrent delivery
 workers, with room for discovery and finishing work; repository identities and
 backlog filters are activation choices, not library defaults.
 
-In version one I still approve and merge. Fully automated merges behind a
-substantial regression and continuous-integration gauntlet are a future idea,
-not permission for this version. A request for that mode is blocked or explicitly
-changed with me to human merging.
+Human merging remains the default. I can delegate merging to the final
+orchestrator for a repository, including experimental repositories. The merge
+gate is defined per repository; if it is missing or unclear, clarify it with me.
+At minimum it includes independent Roast, successful CI and linting, then
+rubber ducking and verification by the final orchestrator. Workers do not approve
+their own work, and this does not bypass repository protections or extend merge
+authority to session Joe-mode, delivery workers or Shepherd.
 
 ## Recurring passes, durable ownership
 

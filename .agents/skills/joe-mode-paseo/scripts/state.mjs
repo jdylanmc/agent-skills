@@ -49,7 +49,12 @@ function validateConfig(input) {
     'humanOrigin', 'anchor', 'setupEvidence', 'authority', 'capabilities', 'mapping', 'retirement']) {
     requireText(config[key], key);
   }
-  if (config.merge !== 'human') throw new Error('Automated merge unsupported');
+  if (!['human', 'orchestrator'].includes(config.merge)) throw new Error('Merge mode unsupported');
+  if (config.merge === 'orchestrator') {
+    for (const key of ['source', 'authority', 'roast', 'ci', 'lint', 'rubberDuck', 'verification']) {
+      requireText(config.mergeGate?.[key], `repository merge gate ${key}; clarify with the human`);
+    }
+  }
   if (!Number.isSafeInteger(config.capacity) || config.capacity < 1) throw new Error('Invalid capacity');
   if (config.cron !== undefined && (typeof config.cron !== 'string' ||
     !/^(?:\*|\*\/(?:[1-9]|[1-5][0-9])) \* \* \* \*$/.test(config.cron))) {
@@ -68,8 +73,8 @@ function validateConfig(input) {
 }
 
 function validateJob(config, job) {
-  requireText(job?.id, 'schedule ID');
-  requireText(job.evidence, 'schedule readback');
+  requireText(job?.id, 'wakeup ID');
+  requireText(job.evidence, 'wakeup verification evidence');
   requireText(job.observation, 'initial observation');
   const heartbeat = config.wakeupMode === 'heartbeat';
   if (job.enabled !== true || job.cron !== (config.cron ?? '* * * * *') ||
@@ -121,6 +126,7 @@ function validateState(state) {
     !isDeepStrictEqual(pm.config, validateConfig(pm.config))) throw new Error('Invalid PM state');
   if (pm.schedule !== undefined) validateJob(pm.config, pm.schedule);
   if (pm.wakeupHistory !== undefined && !Array.isArray(pm.wakeupHistory)) throw new Error('Invalid wakeup history');
+  if (pm.mergeHistory !== undefined && !Array.isArray(pm.mergeHistory)) throw new Error('Invalid merge history');
   if (pm.mode === 'enabled' && !pm.schedule) throw new Error('Missing schedule binding');
   if (pm.lease !== null) {
     for (const key of ['owner', 'token', 'reconciliation']) requireText(pm.lease?.[key], `Invalid lease ${key}`);
@@ -248,9 +254,22 @@ function apply(state, request) {
   if (request.op === 'inspect') return 'observed';
   const pm = state.pm;
   if (pm?.version !== 1) throw new Error('Missing or unsupported PM state');
-  if (['pause', 'stop', 'resume', 'recover'].includes(request.op)) {
+  if (['pause', 'stop', 'resume', 'recover', 'configure-merge'].includes(request.op)) {
     requireText(request.human, 'human decision');
-    if (request.op === 'resume') {
+    if (request.op === 'configure-merge') {
+      if (pm.mode === 'enabled') throw new Error('Merge configuration requires paused or stopped state');
+      if (pm.lease) throw new Error('Merge configuration requires released or fenced lease');
+      requireText(request.reconciliation, 'merge authority and pending-operation reconciliation');
+      const { mergeGate, ...previous } = pm.config;
+      const config = validateConfig({ ...previous, merge: request.merge,
+        ...(request.merge === 'orchestrator' ? { mergeGate: request.mergeGate } : {}) });
+      if (!isDeepStrictEqual(pm.config, config)) {
+        pm.mergeHistory ??= [];
+        pm.mergeHistory.push({ merge: pm.config.merge, ...(mergeGate ? { mergeGate } : {}),
+          human: request.human, reconciliation: request.reconciliation });
+        pm.config = config;
+      }
+    } else if (request.op === 'resume') {
       resume(pm, request);
     } else if (request.op === 'recover') {
       requireText(request.fencing, 'stopped-owner fencing evidence');

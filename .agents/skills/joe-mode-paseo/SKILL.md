@@ -21,10 +21,12 @@ activation. Follow [INVOCATION](../setup/INVOCATION.md) and the human-approved
 Requires the sibling workflow packages; see [runtime gates](RUNTIME.md).
 
 This adapter extends the existing Joe owner board across bounded passes. It does not
-activate nested/session Joe-mode, replace delivery owners, or approve/merge PRs.
-**V1 supports human approval and merges only.** Block requested automated merge
-mode unless the operator explicitly chooses human mode instead. Do not enable
-auto-merge, change protected intent or treat future CI ambitions as authorization.
+activate nested/session Joe-mode or replace delivery owners. **Human merging is
+the default.** With human-granted repository authority, the final orchestrator
+may merge under [the repository-defined gate](MERGE.md). If that gate is missing,
+clarify with the human. At minimum require independent Roast, successful CI and
+linting, then rubber-duck reasoning and final verification by the orchestrator.
+No self-approval, blanket auto-merge or provider-policy bypass.
 
 ## 1. Resolve and reconcile before setup
 
@@ -58,7 +60,9 @@ Reuse already settled answers; ask only material missing choices:
 
 1. Which backlog selection (labels, epic, query, assigned identity, or explicit
    tickets), scope and non-goals? Which approved dependency/PR grouping?
-2. Confirm **human approval/merge** in V1. Which routine delivery, tracker,
+2. Resolve human merging or authorized orchestrator merging and the repository's
+   [merge gate](MERGE.md); clarify missing policy, do not invent it.
+   Which routine delivery, tracker,
    scheduler and bounded recovery actions are authorized, and where do questions
    return to the actual human?
 3. Delivery capacity: **six by default**, or what limit? Reserve resources for
@@ -103,6 +107,8 @@ validate the truth of runtime evidence. Do not use fixture values as evidence.
 Inspect current profiles/notes and provider/tool capabilities through Paseo.
 Verify narrow recurring access for backlog/PR/agent/permission/worktree reads,
 owned dispatch/return/archive, local board access and mode-specific owned wakeup management.
+Orchestrator merging additionally needs the repository-scoped grant and provider
+merge capability under MERGE; do not widen worker permissions.
 Record the actual grant, lifetime/until-stopped boundary and human-origin anchor.
 Never automatically select allow-all, `auto_accept`, approve prompts or edit
 global configuration. Permission failures wait for the missing human approval.
@@ -128,10 +134,11 @@ activation or broader permissions. Unavailable required evidence remains a block
 
 ## 4. Create or adopt exactly one owned wakeup
 
-Only after the gates pass and the human authorizes activation: inspect the
-matching job by saved ID and full kind/target/prompt/config identity. No match
-requires complete observations, not failed queries. Multiple/ambiguous matches
-wait for reconciliation. Record the create/adopt intent on the paused board's
+Only after the gates pass and the human authorizes activation: reconcile the
+saved owned job and pending operations using mode-specific evidence below.
+Fresh schedules support listing/inspection; heartbeats use creation/deletion
+receipts and actual same-agent wakeups, not schedule APIs. Multiple/ambiguous
+jobs or uncertain creation wait for reconciliation. Record the create/adopt intent on the paused board's
 existing human setup record **before** the external operation.
 
 **Heartbeat:** first resolve the actual dedicated/reused PM agent and inspect its
@@ -145,8 +152,11 @@ human setup subflow (not RUN), calls agent-scoped `create_heartbeat`. Its schema
 has no target-agent/workspace creation arguments: invoking it from a disposable
 setup agent binds the wrong target. Never fake `PASEO_AGENT_ID`, detach, or create
 a competing controller to work around that. Use the saved `config.cron`, the approved
-timezone/lifetime and bounded RUN prompt. Verify the stored target is this actual
-agent, not just the response's job ID. RUN never creates/resumes any wakeup job.
+timezone/lifetime and bounded RUN prompt. Verify the returned creation summary
+and actual agent binding through [RUNTIME](RUNTIME.md#same-agent-heartbeat-surface),
+not just the response's job ID. Preserve the receipt; do not call
+`inspect_schedule` or `list_schedules` for this heartbeat. RUN never
+creates/resumes any wakeup job.
 
 **Fresh:** use the current supported `create_schedule` schema, the saved `config.cron`, explicit
 verified `cwd`, local isolation and discovered runtime settings. Prompt it with
@@ -156,10 +166,11 @@ parameters, no unapproved mode substitution, no per-minute worktree creation. Pr
 the approved timezone, lifetime and settings. After uncertain creation, inspect
 by the recorded identity before retry; do not create another job.
 
-For either mode, reconcile uncertain create responses by complete owned-job
-inspection before any retry. Read back the actual stored job, kind/target,
-enabled state, prompt, cron, binding, next
-wakeup and configured runtime. Perform an actual initial scoped observation of
+For either mode, reconcile uncertain create responses before any retry; missing
+heartbeat evidence returns to the human rather than an invented inspection API.
+Verify the creation receipt for heartbeat or stored readback for fresh: actual
+kind/target, active state, prompt, cron, binding, next wakeup and settings.
+Perform an actual initial scoped observation of
 backlog/PRs and ownership; record the evidence separately from creation response.
 Then call `resume` with that human decision and verified binding. An early tick
 sees paused state and must return without dispatch. Verify later recurring
@@ -170,14 +181,18 @@ working unattended monitoring. Use [SCENARIOS](SCENARIOS.md) for acceptance.
 
 ## Inspect, pause, resume, stop
 
-- **Inspect/status:** read the helper and actual owned job/logs, current
+- **Change merge policy:** human management only. Resolve the repository gate
+  under MERGE, pause/reconcile owners and any issued merge operations, release
+  or explicitly fence the old pass, then call STATE's `configure-merge`.
+  Preserve the board and other config; changing policy does not resume it.
+- **Inspect/status:** read the helper, mode-specific wakeup evidence, current
   controller, workers, pending permissions and latest observations. No mutation,
   activation or stale cached readiness claim. Report gaps and pending results.
 - **Pause:** on human direction call helper `pause` first, recording explicit
   active-child disposition. For fresh mode, use supported `pause_schedule` and
   inspect actual paused state/next-run behavior. For heartbeat, have the bound PM
-  agent call `delete_heartbeat` for its exact owned ID and verify absence through
-  complete supported inspection. There is no `pause_heartbeat` or heartbeat
+  agent call `delete_heartbeat` for its exact owned ID and preserve its successful
+  acknowledgement as deletion evidence. There is no `pause_heartbeat` or heartbeat
   resume MCP operation. Reconcile an already dispatched prompt/run;
   it must not start new work. Existing scoped workers remain owned, not killed.
   Record operation outcomes in the human management record, including failure.
@@ -185,15 +200,16 @@ working unattended monitoring. Use [SCENARIOS](SCENARIOS.md) for acceptance.
   children, partial work, mapping, access and job first; observe now. Fresh mode
   uses supported `resume_schedule` on the same verified ID; a deleted fresh job
   requires separately reconciled setup, never the heartbeat replacement path.
-  Heartbeat mode requires complete proof the old owned job is absent and the old
+  Heartbeat mode requires acknowledged exact-ID deletion (or other supported
+  definitive absence evidence) and the old
   pass lease released or explicitly fenced. Preserve the same PM agent, scope,
   config, prompt, timezone/lifetime/settings, workers and pending results; record
   human recreation intent before that agent calls `create_heartbeat` once.
-  Reconcile an uncertain creation before retrying. Read back the new job and call
+  Reconcile an uncertain creation before retrying. Verify the new creation receipt and call
   helper `resume` with [STATE's exact replacement evidence](STATE.md), including
   old ID and human proof. No board reset, automatic tick resume or target change.
 - **Stop:** call `stop` first, then delete the exact owned wakeup and verify
-  absence through complete inspection. Stop is not blanket cancellation: obey
+  deletion through its mode-specific evidence. Stop is not blanket cancellation: obey
   the chosen retain/finish/acknowledged-transfer disposition for each child,
   resolve pending results, and record continuing Shepherd duties or explicit
   monitoring gaps. Preserve artifacts and workspaces. Failed or uncertain deletion
@@ -205,7 +221,7 @@ working unattended monitoring. Use [SCENARIOS](SCENARIOS.md) for acceptance.
 Heartbeat control uses MCP **create/delete only**. A CLI period-only update is
 not a pause/resume API. Keep the approved cadence on recreation; a cadence change
 requires human-authorized paused/fenced reconfiguration, not a tick adjustment. If
-supported complete observation/deletion is unavailable, keep the local gate
+supported verification of a pending creation/deletion is unavailable, keep the local gate
 closed, report uncertainty and do not recreate or claim successful pause/stop.
 No wakeup operation automatically cleans Git/UI resources. No automatic
 resumption after a human pause. Every modifying owner consults
