@@ -283,8 +283,8 @@ to PM; they do not write this board.
 | `role-heartbeat` | Role `key`, `action`, `evidence`; fields below | Record target-executed heartbeat lifecycle. Does not call Paseo. |
 | `block` | Delivery `key`, covered qualified `issue`, independent `investigator`, `selfReview`, `challenge`, `missing`, `category`, `evidence` | `category` is `work`, `permission` or `human`. First work blocker returns `retry`; second returns `blocked`. Other categories block without retry. Replayed identical attempt does not increment. |
 | `unblock` | `issue`, `resolution`, `readiness`; `human` for permission/decision blockers | Close that episode after actual answer/readiness; preserve history. Does not change tracker labels. |
-| `cleanup-ready` | Settled/archived `key`, `noLiveWriters: true`, `clean: true`, full remote `branch`, matching `localHead`/`remoteHead`, `evidence` | Record verified preservation **before** exact owned-worktree removal. Dirty files, missing/unequal remote proof fail. |
-| `cleanup` | `key`, actual removal `evidence`, or `retained: true` with the deliberate-retention `evidence` | Record performed cleanup only after preservation, or record that the worktree is deliberately kept. Does not delete anything. Retention and removal exclude each other; reconcile custody to change course. |
+| `cleanup-ready` | Settled/archived `key`, `noLiveWriters: true`, `clean: true`, full remote `branch`, matching `localHead`/`remoteHead`, `evidence` | Record verified preservation **before** exact owned-worktree removal. Dirty files, missing/unequal remote proof fail. An identical replay is idempotent; a changed one fails, and a removed or retained worktree is terminal. |
+| `cleanup` | `key`, actual removal `evidence`, or `retained: true` with the deliberate-retention `evidence` | Record performed cleanup only after preservation, or record that the worktree is deliberately kept. Does not delete anything. Retention and removal exclude each other; an accepted receipt never changes, so reconcile custody instead of replacing it. |
 
 `role-heartbeat` applies only to bound Shepherd/Discovery workers:
 

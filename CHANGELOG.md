@@ -26,7 +26,7 @@ have tagged releases. Current cleanup is tracked in
   Read a bounded current board by default and request full durable history
   explicitly, keeping settled workers in an actionable retirement queue until
   their archival and worktree removal or deliberate retention is actually
-  recorded. Bind a cross-provider permission plan to its planned worktree and to
+  recorded and its accepted receipt kept immutable. Bind a cross-provider permission plan to its planned worktree and to
   the child the runtime actually created, so one approval cannot authorize a
   different developer or later launch. Keep the continuation alarm on the PM
   chat itself, with no default developer timers, and select current frontier

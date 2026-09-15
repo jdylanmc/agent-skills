@@ -144,6 +144,22 @@ export function checkTeamBinding(pm, worker, request) {
   checkFreshAttempt(pm, worker, request);
 }
 
+// Preservation, removal and retention describe one custody outcome each.
+function checkCleanupRecord(cleanup) {
+  if (typeof cleanup !== 'object' || cleanup === null || Array.isArray(cleanup)) throw new Error('Invalid cleanup record');
+  if (cleanup.retention !== undefined) {
+    text(cleanup.retention, 'cleanup retention');
+    if (['branch', 'head', 'preservation', 'removal'].some(key => cleanup[key] !== undefined)) {
+      throw new Error('Contradictory cleanup record');
+    }
+    return;
+  }
+  text(cleanup.branch, 'cleanup recovery branch');
+  text(cleanup.head, 'cleanup recovery head');
+  text(cleanup.preservation, 'cleanup preservation');
+  if (cleanup.removal !== undefined) text(cleanup.removal, 'cleanup removal');
+}
+
 export function checkTeamState(pm) {
   if (pm.blockers !== undefined && !Array.isArray(pm.blockers)) throw new Error('Invalid blocker history');
   const unresolved = new Set();
@@ -211,6 +227,7 @@ export function checkTeamState(pm) {
     if (worker.settled && worker.heartbeat && !['deleted', 'absent'].includes(worker.heartbeat.status)) {
       throw new Error('Settled role has an unresolved heartbeat');
     }
+    if (worker.cleanup !== undefined) checkCleanupRecord(worker.cleanup);
     // Quiescent migration preserves old, settled assignments in their original units.
     if (worker.settled) continue;
     used += developerSlots(worker.assignment);
@@ -425,22 +442,39 @@ export function teamOperation(pm, request) {
   if (!worker.settled || !worker.archive) throw new Error('Cleanup needs settled and archived custody');
   if (request.op === 'cleanup-ready') {
     if (worker.cleanup?.retention) throw new Error('Worktree recorded as retained; reconcile custody before removal');
+    if (worker.cleanup?.removal) throw new Error('Worktree already removed; that outcome stands');
     if (request.noLiveWriters !== true || request.clean !== true) throw new Error('Live writers or unpreserved files');
     text(request.branch, 'remote recovery branch');
     if (!/^refs\/heads\/.+/.test(request.branch) || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(request.localHead) ||
       request.localHead !== request.remoteHead) throw new Error('Unverified remote preservation');
-    worker.cleanup = { branch: request.branch, head: request.localHead, preservation: request.evidence };
+    const preserved = { branch: request.branch, head: request.localHead, preservation: request.evidence };
+    // An accepted receipt is the record of what actually happened: never rewrite it.
+    if (worker.cleanup) {
+      if (!isDeepStrictEqual(worker.cleanup, preserved)) {
+        throw new Error('Changed cleanup preservation receipt; reconcile custody');
+      }
+      return 'cleanup-ready';
+    }
+    worker.cleanup = preserved;
     return 'cleanup-ready';
   }
   if (request.op === 'cleanup') {
     // Keeping an owned worktree is a real outcome, not a skipped deletion.
     if (request.retained === true) {
-      if (worker.cleanup?.removal) throw new Error('Worktree already removed');
-      if (worker.cleanup && !worker.cleanup.retention) throw new Error('Verified removal preparation recorded; reconcile custody');
+      if (worker.cleanup?.removal) throw new Error('Worktree already removed; that outcome stands');
+      if (worker.cleanup?.retention) {
+        if (worker.cleanup.retention !== request.evidence) throw new Error('Changed cleanup retention receipt; reconcile custody');
+        return 'retained';
+      }
+      if (worker.cleanup) throw new Error('Verified removal preparation recorded; reconcile custody');
       worker.cleanup = { retention: request.evidence };
       return 'retained';
     }
     if (!worker.cleanup || worker.cleanup.retention) throw new Error('Missing verified remote preservation');
+    if (worker.cleanup.removal !== undefined) {
+      if (worker.cleanup.removal !== request.evidence) throw new Error('Changed cleanup removal receipt; reconcile custody');
+      return 'cleaned';
+    }
     worker.cleanup.removal = request.evidence;
     return 'cleaned';
   }

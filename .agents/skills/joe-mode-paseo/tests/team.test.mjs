@@ -522,3 +522,64 @@ test('the bounded view keeps a retirement queue until each settled worker is act
   assert.equal(queue(), undefined, 'a deliberately retained worktree is a terminal outcome');
   assert.equal(view().history.settledWorkers, 3);
 });
+
+test('an accepted cleanup receipt is immutable and a terminal outcome cannot be erased', t => {
+  const b = board(t);
+  const worker = () => JSON.parse(readFileSync(b.file)).pm.workers.find(item => item.key === 'lane');
+  b.reserve('lane');
+  b.bind('lane');
+  settle(b, 'lane');
+  const head = 'a'.repeat(40);
+  const ready = { op: 'cleanup-ready', key: 'lane', noLiveWriters: true, clean: true,
+    branch: 'refs/heads/recovery/lane', localHead: head, remoteHead: head, evidence: 'preserved/remote' };
+  assert.equal(b.call(ready).status, 'cleanup-ready');
+  assert.equal(b.call(ready).status, 'cleanup-ready', 'identical preservation replay is idempotent');
+  const other = 'b'.repeat(40);
+  assert.throws(() => b.call({ ...ready, branch: 'refs/heads/recovery/other' }), /Changed cleanup preservation/);
+  assert.throws(() => b.call({ ...ready, localHead: other, remoteHead: other }), /Changed cleanup preservation/);
+  assert.throws(() => b.call({ ...ready, evidence: 'other/remote' }), /Changed cleanup preservation/);
+  assert.throws(() => b.call({ ...ready, clean: false }), /Live writers|unpreserved/i);
+  assert.deepEqual(worker().cleanup,
+    { branch: 'refs/heads/recovery/lane', head, preservation: 'preserved/remote' });
+  const removal = { op: 'cleanup', key: 'lane', evidence: 'removal/readback' };
+  assert.equal(b.call(removal).status, 'cleaned');
+  assert.equal(b.call(removal).status, 'cleaned', 'identical removal replay is idempotent');
+  assert.throws(() => b.call({ ...removal, evidence: 'other/readback' }), /Changed cleanup removal/);
+  assert.throws(() => b.call(ready), /already removed/i);
+  assert.throws(() => b.call({ op: 'cleanup', key: 'lane', retained: true, evidence: 'kept' }), /already removed/i);
+  assert.deepEqual(worker().cleanup, { branch: 'refs/heads/recovery/lane', head,
+    preservation: 'preserved/remote', removal: 'removal/readback' });
+  assert.equal(summarize(JSON.parse(readFileSync(b.file))).retirement, undefined);
+
+  b.reserve('kept');
+  b.bind('kept');
+  settle(b, 'kept');
+  const retain = { op: 'cleanup', key: 'kept', retained: true, evidence: 'human-directed/kept' };
+  assert.equal(b.call(retain).status, 'retained');
+  assert.equal(b.call(retain).status, 'retained', 'identical retention replay is idempotent');
+  assert.throws(() => b.call({ ...retain, evidence: 'other/kept' }), /Changed cleanup retention/);
+  assert.throws(() => b.call({ ...ready, key: 'kept' }), /retained/i);
+  assert.throws(() => b.call({ op: 'cleanup', key: 'kept', evidence: 'removal/readback' }), /preservation|retained/i);
+});
+
+test('a contradictory or malformed cleanup record fails validation', t => {
+  const b = board(t);
+  b.reserve('lane');
+  b.bind('lane');
+  settle(b, 'lane');
+  const head = 'a'.repeat(40);
+  b.call({ op: 'cleanup-ready', key: 'lane', noLiveWriters: true, clean: true,
+    branch: 'refs/heads/recovery/lane', localHead: head, remoteHead: head, evidence: 'preserved/remote' });
+  const state = JSON.parse(readFileSync(b.file));
+  const poison = cleanup => {
+    const copy = JSON.parse(JSON.stringify(state));
+    copy.pm.workers.find(item => item.key === 'lane').cleanup = cleanup;
+    writeFileSync(b.file, JSON.stringify(copy));
+    assert.throws(() => b.call({ op: 'inspect' }), /cleanup/i);
+  };
+  poison({ retention: 'kept', removal: 'removal/readback' });
+  poison({ retention: 'kept', branch: 'refs/heads/recovery/lane', head });
+  poison({ removal: 'removal/readback' });
+  poison({ branch: 'refs/heads/recovery/lane', head, preservation: '' });
+  poison('cleaned');
+});

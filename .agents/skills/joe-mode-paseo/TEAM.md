@@ -110,7 +110,9 @@ Failed push, dirty state, uncertain ownership or inaccessible evidence means
 **keep the local copy**, report the cleanup blocker, and move on safely.
 Archiving an agent is not permission to delete its workspace or branch.
 Retirement is a duty, not a deletion quota: record a deliberately kept worktree
-with `cleanup` and `retained: true` so the board shows a decided outcome. Until
+with `cleanup` and `retained: true` so the board shows a decided outcome. Each
+accepted cleanup receipt is final: replay the identical one freely, but a
+changed branch, head or evidence fails instead of overwriting what happened. Until
 each settled worker is archived and its worktree actually removed or retained,
 it stays in the bounded view's retirement queue with its recovery locator.
 
