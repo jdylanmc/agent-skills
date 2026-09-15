@@ -23,7 +23,7 @@ invent SDK scheduling methods or install a new long-running service merely to
 wrap an available tool.
 
 A heartbeat **does not repair its own dead PM agent** or survive every provider,
-permission or host failure. Inspect the bound agent and job when resuming, report
+permission or host failure. Reconcile the bound agent and wakeup evidence when resuming, report
 the observation gap, and require explicit fenced takeover if the PM is lost.
 Do not claim perpetual supervision from a stored cron record.
 
@@ -76,17 +76,50 @@ creation argument or `pause_heartbeat`/`resume_heartbeat`.
 Use MCP create/delete only for this mode. The dedicated/reused PM agent must
 call them in its human-authorized setup/management subflow; bootstrap/reviewer
 calls would bind to the wrong agent. Never alter `PASEO_AGENT_ID` or fake detach.
-Inspect the owned schedule record (`inspect_schedule`, `list_schedules`,
-`schedule_logs` where supported) and join its observed agent target to actual
-agent/workspace/Git identity. The helper's `kind: "heartbeat"` and flattened
-binding are observations of that join, **not API creation fields**. Failed,
-partial or unavailable inspection cannot prove absence or safe replacement.
+**Do not use schedule APIs to verify heartbeats.** The current
+[MCP reference](https://paseo.sh/docs/mcp.md) limits schedule listing, inspection,
+logs, pause/resume and run-once to new-agent schedules. At source
+**174055a63c4651bff2a5ab5a316e8d7a403a3444**, inspected 2026-09-14,
+[the MCP handlers](https://github.com/getpaseo/paseo/blob/174055a63c4651bff2a5ab5a316e8d7a403a3444/packages/server/src/server/agent/tools/paseo-tools.ts#L2568-L2683)
+return the created heartbeat summary, filter agent-target jobs out of
+`list_schedules`, and reject them in `inspect_schedule`.
+
+Use the successful **creation receipt** as configuration evidence. Verify its
+actual `id`, `target.type: "agent"`, `target.agentId`, `status: "active"`,
+`prompt`, `cadence.expression`/timezone, `nextRunAt`, `expiresAt` and `maxRuns`
+against the approved request. Join its target to the actual PM's current
+agent/workspace/project/cwd/Git observations. Runtime settings belong to that
+agent, not a fresh-schedule config. The helper's flattened `kind`, `enabled`,
+`cron` and mapping are this verified join, **not API creation fields**.
+Save the full request/receipt and human decision in the existing private packet.
+
+A complete creation receipt plus actual initial backlog/ownership observation
+is sufficient to enable the local board. Do not delete a successfully configured
+heartbeat merely because schedule inspection rejects it. This proves
+**configured**, not **recurring operation verified**. Later actual wakeups in
+the same PM conversation, with runtime provenance and bounded-pass receipts,
+establish recurring delivery. A copied prompt or saved cron is not a wakeup.
+Status uses those receipts and current agent state, with observation gaps stated;
+do not fabricate a heartbeat-list/inspect API or require one to finish setup.
+
+For adoption/recovery, inspect the saved operation receipt and actual caller
+identity, pending changes and received wakeups. A stale receipt alone does not
+prove a heartbeat is still active. If a creation response was lost or the job's
+current identity/state is uncertain, keep the board gated and ask the human or
+use a separately verified heartbeat-specific runtime surface. An empty schedule
+list or a schedule-only rejection proves neither heartbeat absence nor failure.
+Do not create another job to probe the uncertainty.
 
 Pause/stop closes the local board gate **before** deleting the exact owned
 heartbeat; queued prompts must return without dispatch. Keep the PM agent for
 pause/resume and unresolved duties. A human may recreate only after complete
-old-job absence, released/fenced old pass and preserved target/scope/settings
-are verified. Reconcile uncertain delete/create responses before any retry.
+acknowledged deletion of the exact old ID, released/fenced old pass and preserved
+target/scope/settings are verified. `delete_heartbeat` returns `{success: true}`
+after deleting the caller-owned heartbeat at the source above; preserve that
+receipt as deletion evidence without a second schedule query. A transport error,
+generic not-found or wrong-target error is not that acknowledgement. Reconcile
+uncertain delete/create responses through supported heartbeat-specific evidence
+or the human before retry/replacement.
 Preserve absolute expiry and remaining run budget when applicable; recreation
 must not silently extend the original grant. Stop/end permits retirement only
 after owned-wakeup absence and accepted transfer/end of all children/reporting.
@@ -95,8 +128,8 @@ after owned-wakeup absence and accepted transfer/end of all children/reporting.
 
 Before any job creation, identify the actual daemon version and supported
 schemas/source behavior, actual PM placement and granted capabilities below.
-After creating/adopting the one job while locally paused, verify its stored
-binding and initial observation before enabling claims. Subsequent receipts
+After creating/adopting the one job while locally paused, verify its mode-specific
+binding evidence and initial observation before enabling claims. Subsequent receipts
 alone prove recurring delivery; future results are not precreation evidence.
 
 1. **Fresh only:** same explicit cwd resolves each fresh scheduled run to the **existing**
@@ -108,12 +141,12 @@ alone prove recurring delivery; future results are not precreation evidence.
 3. **Heartbeat only:** the human explicitly chose this conversation/lifetime mode.
    Verify the dedicated/reused PM agent is already in the one correct existing
    workspace/project/cwd, not a disposable bootstrap/reviewer, and the supported
-   API binds the caller. After creation/adoption, verify the actual stored target
+   API binds the caller. After creation, verify the receipt's actual target
    equals that agent. Same-agent delivery must not provision/retire workspaces per tick. This mode
    does not need fresh-workspace-factory proof, but must prove actual agent
    binding and safe ongoing lifetime on the deployed host.
 4. **Both modes:** PM passes can read/write the same durable board, inspect known agents,
-   descendants, permissions and schedule state, and preserve/report results
+   descendants, permissions and mode-specific wakeup evidence, and preserve/report results
    with narrow human-granted tools. Scheduler availability is not tool access.
 5. **Both modes:** parent/child archival and callback visibility are known, or each still-needed
    parent is explicitly retained with a bounded role. `archive_agent` interrupts

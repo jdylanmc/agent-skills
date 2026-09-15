@@ -48,7 +48,7 @@ machine-starts session Joe-mode or inherits authority merely from its name.
 | [handoff](../handoff/SKILL.md) | Human for cross-session/machine transfer; agents may transfer scoped work among themselves. |
 | [interrogate](../interrogate/SKILL.md) | Internal to Discovery or Joe-mode only. |
 | [joe-mode](../joe-mode/SKILL.md) | Human-only activation; one controller per repository, never nested. |
-| [joe-mode-paseo](../joe-mode-paseo/SKILL.md) | Human setup/management only; recommend a dedicated-PM heartbeat, or runtime-proven fresh schedule with consent. Human may delegate runner mechanics. Matching preauthorized wakeup enters RUN, not intake. One repository controller; human merges only. |
+| [joe-mode-paseo](../joe-mode-paseo/SKILL.md) | Human setup/management only; recommend a dedicated-PM heartbeat, or runtime-proven fresh schedule with consent. Human may delegate runner mechanics. Matching preauthorized wakeup enters RUN, not intake. One repository controller; human merging by default, or final-orchestrator merging under the human-granted repository [merge gate](../joe-mode-paseo/MERGE.md). No merge authority for workers or session Joe. |
 | [migration](../migration/SKILL.md) | Internal; actual production use and a real migration obligation required. |
 | [patch](../patch/SKILL.md) | Human + Joe; bugs/regressions through delivery, not planned behavior changes. |
 | [poc](../poc/SKILL.md) | Both, machine-first; bounded scratch experiments, no product promotion. |

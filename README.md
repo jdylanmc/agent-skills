@@ -53,7 +53,11 @@ the named Joe-mode bootstrap.
 
 **Optional Paseo PM:** invoke `/joe-mode-paseo` explicitly to set up or manage
 one repository's engineering team, with six default concurrent delivery lanes
-and human merges. Each pass checks progress and direction, charts the backlog,
+and human merging by default. The final PM can also merge under a human-granted
+[repository merge gate](.agents/skills/joe-mode-paseo/MERGE.md): at least independent
+Roast, successful CI and linting, then its own rubber-duck review and verification.
+Missing policy is clarified with the human, not invented.
+Each pass checks progress and direction, charts the backlog,
 intakes new requirements and dispatches existing planning/delivery routes.
 Setup recommends Paseo's dedicated-PM heartbeat recipe, **every five minutes
 by default**, and records the approved cadence and runner choice. Fresh
@@ -62,7 +66,10 @@ conversations require proven stable workspace placement/lifetime. Its
 on the inspected upstream scheduler because each run creates a new workspace.
 Explicit fresh-only requests never silently fall back. A human may delegate
 runner mechanics, but activation still requires narrow access and verified
-binding. Installation does not activate monitoring or repair Paseo.
+binding. Heartbeat setup verifies the creation receipt and actual PM placement;
+schedule-only inspection APIs cannot inspect heartbeats. Later wakeup receipts
+prove recurring operation separately. Installation does not activate monitoring
+or repair Paseo.
 
 The adapter is separately discoverable/selectable. A consumer that already has
 the prerequisite full pack can install/update only this new package:
