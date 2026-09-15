@@ -13,9 +13,14 @@ have tagged releases. Current cleanup is tracked in
   Paseo's dedicated coordinator heartbeat, every five minutes by default;
   chart the backlog, intake requirements, assess worker progress and direction,
   and dispatch existing planning/delivery routes. Preserve durable exclusive
-  ownership, six default delivery lanes, human merges and compatible fresh scheduling.
+  ownership, six default delivery lanes, human merging by default and compatible fresh scheduling.
+  Allow human-granted final-orchestrator merges under a repository-defined gate:
+  independent Roast, successful CI/lint, then final rubber-duck review and verification.
+  Clarify missing policy with the human; workers gain no merge authority.
   Gate activation on verified Paseo placement/access; heartbeat pause/stop deletes
   its owned wakeup, with reconciled human-only recreation. Installation stays inert.
+  Verify heartbeat configuration/deletion through their actual tool receipts,
+  not schedule-only inspection; later wakeups prove recurring operation separately.
   Reserve approved ticket publication before child IDs exist, then reconcile the
   returned graph before launching delivery so parent and child ownership cannot race.
 - `chart-a-course`: find a critical task path to a named goal, exposing missing

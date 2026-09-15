@@ -40,6 +40,7 @@ blocks instead of running two persistence protocols on the same file.
 | `inspect` | None | `observed`, read-only board; empty object means not initialized |
 | `resume` | `human` decision reference; `schedule` observation below; heartbeat replacement requires `replacement` below | `enabled` only after actual human-authorized job verification; never called by a tick |
 | `pause`, `stop` | `human`, `disposition` reference for every active child | `paused` / `stopped`; local dispatch gate first, **not** proof of external operation |
+| `configure-merge` | `human`, `reconciliation` of authority/owners/pending operations, `merge`, and `mergeGate` for orchestrator mode | Human management only, paused/stopped with released/fenced lease; changes only merge config, retains prior policy in `pm.mergeHistory`, never resumes or merges |
 | `claim` | `owner`, `reconciliation` live ownership reference | `claimed` with new `state.pm.lease.token`, or `busy` / `paused` / `stopped` without dispatch authority |
 | `recover` | `human`, exact old `token`, `fencing`, `reconciliation` | Clears only that stopped/fenced pass; preserves workers, records and mode |
 | `reserve` | Lease credentials; `worker: {key, kind, coverage, packet, graph?}` | `reserved` or `reused`; kind `delivery`, `discovery`, `research`; coverage is nonempty unique qualified identities; `graph: true` reserves a delivery's parent before approved ticket publication |
@@ -75,7 +76,16 @@ abandonment still requires `settle`'s reconciled custody/result acceptance.
 `config`: `id`, normalized `repository`, `commonDir`, `cwd`, `projectId`,
 `workspaceId`, `humanOrigin`, `anchor`, `setupEvidence`, `authority`,
 `capabilities`, `mapping`, `retirement` are nonempty strings/evidence references;
-`merge` must be `human`; positive integer `capacity` defaults to **6**.
+`merge` is `human` (normal setup default) or `orchestrator`; unknown values fail.
+Orchestrator mode requires `mergeGate` with nonempty `source`, `authority`,
+`roast`, `ci`, `lint`, `rubberDuck` and `verification` references under
+[MERGE](MERGE.md). Missing gate information requires human clarification.
+These references describe the repository gate, not completed candidate checks
+or permission to bypass it. Human-mode boards need no gate object and retain
+their existing semantics. For an existing activation use `configure-merge`
+after human-directed pause and reconciliation, not reinitialization or a direct
+JSON edit. A matching update is idempotent; workers, schedule, pending results,
+run history and unrelated config remain intact. Positive integer `capacity` defaults to **6**.
 New setups explicitly save `cron`, defaulting to `*/5 * * * *`: supported values
 are `* * * * *` or `*/N * * * *` for integer N from 1 to 59, using Paseo's
 minute-field cron semantics. Omission preserves existing one-minute boards;
@@ -89,12 +99,17 @@ decision reference. Heartbeat requires that nonempty consent reference and
 These are machine-local activation data, never committed defaults.
 `schedule`: actual `id`, `cron` matching the configured value (legacy omission
 means `* * * * *`), matching `cwd`, `projectId`,
-`workspaceId`, `enabled: true`, `evidence` for stored readback and `observation`
+`workspaceId`, `enabled: true`, `evidence` for mode-specific verification and `observation`
 for the initial actual observation. Fresh uses `kind: "schedule"` (legacy
 omission accepted) and no `targetAgentId`. Heartbeat requires `kind: "heartbeat"`,
 `targetAgentId` equal to `config.pmAgentId`, and nonempty `settings`: a reference
 to the exact approved prompt, timezone, lifetime/run budget and runtime settings.
-Read back and verify those actual settings; the helper checks reference equality,
+For heartbeat, preserve the successful `create_heartbeat` receipt and join its
+returned target to actual PM/agent/workspace/Git observations. Verify returned
+prompt, cadence, active status, next run and lifetime against the approved request
+using [RUNTIME](RUNTIME.md#same-agent-heartbeat-surface); no schedule inspection
+API is needed. Fresh mode still requires actual schedule readback.
+The helper checks reference equality,
 not their external truth. Unknown kind, wrong target/mapping/cadence or unapproved
 fallback fails. This is **observed state**, not parameters for `create_schedule`
 or `create_heartbeat`; cwd/project/workspace are joined observations, not invented
@@ -112,9 +127,11 @@ delivery; those are supported runtime operations with separate observations.
 ### Human-only heartbeat recreation
 
 `pause`/`stop` first closes the local gate and preserves the active lease/children.
-Then the bound agent deletes its owned heartbeat through MCP and verifies complete
-absence. No heartbeat pause/resume API is assumed. Uncertain deletion stays gated;
-inspect/reconcile, never duplicate. A resumed heartbeat uses a **new** verified ID
+Then the bound agent deletes its owned heartbeat through MCP and preserves the
+successful acknowledgement for that exact ID as deletion evidence. Schedule
+listing/inspection cannot verify heartbeat absence. No heartbeat pause/resume
+API is assumed. Uncertain deletion stays gated; reconcile through a supported
+heartbeat-specific surface or the human, never duplicate. A resumed heartbeat uses a **new** verified ID
 on the same PM agent, not a new agent/config/board. Record human creation intent
 and settings before the external call and reconcile uncertain creation.
 
@@ -127,14 +144,15 @@ kind/target/cadence and unchanged `settings`, plus:
   "replacement": {
     "oldId": "exact-previous-owned-heartbeat-id",
     "human": "explicit-human-recreation-decision",
-    "absence": "complete-verified-old-owned-job-absence",
+    "absence": "exact-owned-id-successful-delete-receipt",
     "reconciliation": "current-ownership-children-scope-target-settings-evidence"
   }
 }
 ```
 
 These are required evidence references, not self-authenticating approval.
-The caller verifies the actual human origin, complete absence and grant lifetime;
+The caller verifies the actual human origin, acknowledged exact-ID deletion
+(or other supported definitive absence evidence) and grant lifetime;
 a tick cannot supply authority by inventing strings. Preserve original expiry
 and remaining run budget, not a fresh grant on recreation. The helper appends
 old job/replacement evidence to `pm.wakeupHistory`, preserves config/workers/

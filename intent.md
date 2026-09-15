@@ -65,6 +65,10 @@ whatever tooling exists at the time.
   clearly broken, and gets a disinterested second opinion on what is arguable.
   Then a person signs off. Automating the review is not automating the approval,
   and that line must not erode as the automation improves.
+  For Joe-mode Paseo, I may instead authorize the final orchestrator to merge
+  under a repository-defined gate: independent Roast, successful CI and linting,
+  then its own rubber ducking and verification. An undefined gate comes back to
+  me. This narrow delegation is not self-approval or a waiver of repository policy.
 - **A rule that cannot be satisfied is a signal about the work, not about the
   rule.** The pressure to relax a shared standard always arrives attached to
   something that seems reasonable in isolation. If a package cannot meet the
