@@ -52,15 +52,15 @@ its existing human-choice and exact-file approval gates still apply, including
 the named Joe-mode bootstrap.
 
 **Optional Paseo PM:** invoke `/joe-mode-paseo` explicitly to set up or manage
-one repository's engineering team, with six default concurrent delivery lanes
-and human merging by default. The final PM can also merge under a human-granted
+one repository's engineering team, with six developer slots by default
+and human merging by default. A requested PR coordinator can merge under a human-granted
 [repository merge gate](.agents/skills/joe-mode-paseo/MERGE.md): at least independent
 Roast, successful CI and linting, then its own rubber-duck review and verification.
 Missing policy is clarified with the human, not invented.
 Each pass checks progress and direction, charts the backlog,
 intakes new requirements and dispatches existing planning/delivery routes.
-Setup recommends Paseo's dedicated-PM heartbeat recipe, **every five minutes
-by default**, and records the approved cadence and runner choice. Fresh
+Setup uses the primary chat as PM, with its own and persistent-role heartbeats
+**every five minutes by default**, and records the approved cadence. Legacy fresh
 conversations require proven stable workspace placement/lifetime. Its
 [capability gates](.agents/skills/joe-mode-paseo/RUNTIME.md) block fresh mode
 on the inspected upstream scheduler because each run creates a new workspace.
@@ -101,10 +101,13 @@ Validation keeps telemetry disabled and does not claim directory registration.
   paused or stopped. Use Squadron aggressively for independent discovery,
   delivery, and Shepherd assignments without overlapping owners.
 - **Joe-mode Paseo:** separately human-enabled recurring team PM, sharing the
-  same repository ownership registry. Consented heartbeat or runtime-proven fresh
-  passes retain one interactive
-  Discovery conversation per repository, existing delivery/Shepherd custody,
-  durable results and explicit pause/resume/stop; no automated approval or merging.
+  same repository ownership registry. Primary chat is PM; one shared Shepherd
+  and optional backlog manager have their own PM-managed heartbeats.
+  Six developer slots by default: feature two, bug/hardening/refactor one.
+  Support roles and disposable roasters are separate. A requested PR coordinator
+  may merge under the repository gate; implementers never approve themselves.
+  See [TEAM](.agents/skills/joe-mode-paseo/TEAM.md) for permission inheritance,
+  blocker recovery, names and safe cleanup.
 - **Planning:** Discovery preserves the full aligned evidence artifact;
   Specify turns it into complete requirements; Breakdown Tickets produces
   human-approved slices. Already-clear small deliveries need no new ceremony.
@@ -116,6 +119,8 @@ Validation keeps telemetry disabled and does not claim directory registration.
   and internal Refactor handles behavior-preserving restructuring. Each
   reaches an independently reviewed, green PR current with its target.
   Kickoff authorizes routine in-scope delivery steps, not repeated prompts.
+  Standalone Ship is TDD opt-in; Joe prefers it for features. Patch/Refactor do
+  not force red/green. Tests and useful acceptance proof still matter.
 - **Shepherd:** one owner maintains that PR, rebasing when main/the agreed
   target advances even if mergeable, refreshing checks and review coverage.
   Functional feedback stays on the same delivery. Final approval and merging
