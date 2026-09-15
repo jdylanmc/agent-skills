@@ -234,6 +234,7 @@ to PM; they do not write this board.
 | Operation | Inputs beyond lease and `op` | Meaning |
 | --- | --- | --- |
 | `staff` | Delivery `key`, actual `agentId`, isolated `worktree`, `permissions`, `evidence` | Bind a real writing descendant inside the reserved one/two slots. Duplicate writers/worktrees and excess staffing fail. Include a route owner here if it writes. |
+| `retire-developer` | Delivery `key`, member `agentId`, `noLiveWriters: true`, `noUntransferredDuties: true`, preserved `result`, receiver `acceptance`, actual `archive` readback and `evidence` | End one developer binding after verified retirement; preserve its history and the lane's outer reservation. New task/integration workers may fill that slot; uncertain retirement cannot. |
 | `role-heartbeat` | Role `key`, `action`, `evidence`; fields below | Record target-executed heartbeat lifecycle. Does not call Paseo. |
 | `block` | Delivery `key`, covered qualified `issue`, independent `investigator`, `selfReview`, `challenge`, `missing`, `category`, `evidence` | `category` is `work`, `permission` or `human`. First work blocker returns `retry`; second returns `blocked`. Other categories block without retry. Replayed identical attempt does not increment. |
 | `unblock` | `issue`, `resolution`, `readiness`; `human` for permission/decision blockers | Close that episode after actual answer/readiness; preserve history. Does not change tracker labels. |
@@ -252,9 +253,17 @@ to PM; they do not write this board.
 - `action: "deleted"` needs the exact owned `id` and successful deletion
   evidence. Uncertain deletion does not settle the role. Plan recreation only
   after definite absence, remaining grant and enabled PM are reconciled.
+- `action: "absent"` needs definitive `absence` evidence: creation failed
+  without an external effect, or supported reconciliation proves no job exists.
+  Include the exact `id` when one was known. This permits settlement or a new
+  authorized plan without inventing a creation/deletion receipt. Generic
+  not-found and transport errors are not proof of absence.
 - After human pause/stop with no pass lease, this operation may instead carry
-  the `human` management reference to preserve deletion/late receipts. It still
-  cannot plan a new timer while disabled.
+  `human` and current `reconciliation` references to preserve deletion/late
+  receipts. The same cleanup-only path permits `record`, `settle`, `archive`,
+  `retire-developer`, `cleanup-ready` and `cleanup`. It never grants dispatch,
+  staffing, timer creation or resume. A live lease must first release or be
+  explicitly fenced; stale tokens remain invalid.
 
 PM's heartbeat stays in `pm.schedule`; support jobs stay on their owning worker.
 Together these are the project heartbeat inventory. PM checks every one on

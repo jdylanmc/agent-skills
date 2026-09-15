@@ -242,7 +242,7 @@ function updateWorker(pm, request) {
     return 'archive-recorded';
   }
   if (request.noLiveWriters !== true || request.noUntransferredDuties !== true) throw new Error('Unreconciled live custody');
-  if (worker.heartbeat && worker.heartbeat.status !== 'deleted') throw new Error('Unresolved owned heartbeat');
+  if (worker.heartbeat && !['deleted', 'absent'].includes(worker.heartbeat.status)) throw new Error('Unresolved owned heartbeat');
   if (worker.kind === 'discovery' && request.discoveryEnded !== true) throw new Error('Discovery alignment or explicit end required');
   requireText(request.result, 'preserved result');
   requireText(request.acceptance, 'receiver acceptance');
@@ -303,10 +303,6 @@ function apply(state, request) {
     pm.control = request;
     return pm.mode;
   }
-  if (request.op === 'role-heartbeat' && request.human && pm.mode !== 'enabled' && !pm.lease) {
-    requireText(request.human, 'human management decision');
-    return teamOperation(pm, request);
-  }
   if (request.op === 'claim') {
     validateOwner(pm.config, request.owner);
     if (pm.mode !== 'enabled') return pm.mode;
@@ -316,7 +312,12 @@ function apply(state, request) {
     pm.lease = { owner: request.owner, token: randomUUID(), reconciliation: request.reconciliation };
     return 'claimed';
   }
-  if (!pm.lease || pm.lease.owner !== request.owner || pm.lease.token !== request.token) {
+  const management = pm.config.team && pm.mode !== 'enabled' && !pm.lease && request.human &&
+    ['role-heartbeat', 'record', 'settle', 'archive', 'retire-developer', 'cleanup-ready', 'cleanup'].includes(request.op);
+  if (management) {
+    requireText(request.human, 'human management decision');
+    requireText(request.reconciliation, 'current custody and pending-operation reconciliation');
+  } else if (!pm.lease || pm.lease.owner !== request.owner || pm.lease.token !== request.token) {
     throw new Error('Invalid run lease');
   }
   if (request.op === 'release') {
@@ -330,7 +331,7 @@ function apply(state, request) {
     if (pm.mode !== 'enabled') throw new Error('PM is not enabled');
   }
   if (request.op === 'reserve') return reserve(pm, request.worker);
-  if (['staff', 'role-heartbeat', 'block', 'unblock', 'cleanup-ready', 'cleanup'].includes(request.op)) {
+  if (['staff', 'retire-developer', 'role-heartbeat', 'block', 'unblock', 'cleanup-ready', 'cleanup'].includes(request.op)) {
     return teamOperation(pm, request);
   }
   if (['cover', 'bind', 'settle', 'archive'].includes(request.op)) return updateWorker(pm, request);

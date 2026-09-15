@@ -239,9 +239,79 @@ test('unknown creation can accept its recovered receipt during paused human clea
   b.call({ op: 'role-heartbeat', key: 'backlog', action: 'uncertain', evidence: 'transport-failed' });
   transact(b.file, { op: 'pause', human: 'pause', disposition: 'retain-for-cleanup' });
   b.call({ op: 'release', result: 'paused', duties: 'unknown-heartbeat' });
-  const manage = { op: 'role-heartbeat', key: 'backlog', human: 'human/pause', evidence: 'recovered-receipt' };
+  const manage = { op: 'role-heartbeat', key: 'backlog', human: 'human/pause',
+    reconciliation: 'all-current-owners', evidence: 'recovered-receipt' };
   assert.equal(transact(b.file, { ...manage, action: 'created', id: 'found',
     targetAgentId: 'agent-backlog' }).status, 'heartbeat-recorded');
   assert.equal(transact(b.file, { ...manage, action: 'deleted', id: 'found',
     evidence: 'exact-delete-success' }).status, 'heartbeat-recorded');
+});
+
+test('a feature lane can retire individual developers and run its next task within the same two slots', t => {
+  const b = board(t);
+  b.reserve('feature', 'feature');
+  b.bind('feature');
+  const staff = agentId => b.call({ op: 'staff', key: 'feature', agentId, worktree: `/trees/${agentId}`,
+    permissions: proof, evidence: 'first-observation' });
+  staff('red');
+  staff('green');
+  const retire = { op: 'retire-developer', key: 'feature', agentId: 'red', evidence: 'stopped-readback',
+    result: 'saved-commit', acceptance: 'receiver/readback', archive: 'actual-archive-readback',
+    noLiveWriters: true, noUntransferredDuties: true };
+  assert.throws(() => b.call({ ...retire, archive: '' }), /archive/);
+  assert.throws(() => b.call({ ...retire, noLiveWriters: false }), /custody/);
+  assert.throws(() => staff('next'), /capacity/);
+  assert.equal(b.call(retire).status, 'developer-retired');
+  assert.equal(staff('next').status, 'staffed');
+  assert.throws(() => staff('overflow'), /capacity/);
+  const state = JSON.parse(readFileSync(b.file)).pm;
+  assert.equal(state.workers[0].settled, false);
+  assert.equal(state.workers[0].developers.length, 3);
+  assert.equal(state.workers[0].developers[0].return.archive, 'actual-archive-readback');
+});
+
+test('human management accepts late returns and retirement after pause/stop without dispatch authority', t => {
+  for (const [control, finish] of [['pause', 'release'], ['stop', 'release'], ['stop', 'recover']]) {
+    const b = board(t);
+    b.reserve('shepherd', undefined, 'shepherd');
+    b.bind('shepherd');
+    b.call({ op: 'role-heartbeat', key: 'shepherd', action: 'plan', settings: 'settings', evidence: 'intent' });
+    b.call({ op: 'role-heartbeat', key: 'shepherd', action: 'created', id: 'job',
+      targetAgentId: 'agent-shepherd', evidence: 'receipt' });
+    transact(b.file, { op: control, human: 'human/stop', disposition: 'retain-for-return' });
+    if (finish === 'release') b.call({ op: 'release', result: 'stopped', duties: 'late-role-return' });
+    else transact(b.file, { op: 'recover', human: 'human/recovery',
+      token: JSON.parse(readFileSync(b.file)).pm.lease.token,
+      fencing: 'old-pass-stopped', reconciliation: 'late-role-return' });
+    const management = { human: 'human/stop', reconciliation: 'stopped-owners-and-pending-jobs' };
+    const manage = request => transact(b.file, { ...management, ...request });
+    manage({ op: 'role-heartbeat', key: 'shepherd', action: 'deleted', id: 'job', evidence: 'delete-success' });
+    manage({ op: 'record', key: 'late-result', status: 'accepted', evidence: 'result', receiver: 'PM/readback' });
+    assert.equal(manage({ op: 'settle', key: 'shepherd', result: 'result', acceptance: 'readback',
+      noLiveWriters: true, noUntransferredDuties: true, evidence: 'terminal' }).status, 'settled');
+    assert.equal(manage({ op: 'archive', key: 'shepherd', evidence: 'archive/readback' }).status, 'archive-recorded');
+    assert.throws(() => manage({ op: 'reserve', worker: {
+      key: 'new', kind: 'research', coverage: ['new'], packet: 'new',
+    } }), /lease/);
+    assert.throws(() => b.call({ op: 'record', key: 'stale', status: 'observed', evidence: 'stale' }), /lease/);
+    assert.equal(transact(b.file, { op: 'claim', owner: 'pm', reconciliation: 'live' }).status,
+      control === 'pause' ? 'paused' : 'stopped');
+  }
+});
+
+test('definitive heartbeat absence permits retirement or replanning, unknown creation does not', t => {
+  for (const [uncertain, outcome] of [[false, 'retire'], [true, 'replan']]) {
+    const b = board(t);
+    b.reserve('shepherd', undefined, 'shepherd');
+    b.bind('shepherd');
+    const beat = (action, extra = {}) => b.call({ op: 'role-heartbeat', key: 'shepherd', action,
+      evidence: 'runtime', ...extra });
+    beat('plan', { settings: 'approved' });
+    if (uncertain) beat('uncertain');
+    assert.throws(() => beat('absent'), /absence/);
+    assert.throws(() => beat('plan', { settings: 'approved' }), /heartbeat/);
+    assert.equal(beat('absent', { absence: 'verified-no-external-effect' }).status, 'heartbeat-recorded');
+    if (outcome === 'retire') settle(b, 'shepherd');
+    else assert.equal(beat('plan', { settings: 'approved' }).status, 'heartbeat-recorded');
+  }
 });

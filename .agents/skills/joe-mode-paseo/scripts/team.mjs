@@ -31,6 +31,10 @@ function episode(pm, issue) {
   return pm.blockers?.find(item => item.issue === issue && !item.resolution);
 }
 
+function activeDevelopers(worker) {
+  return (worker.developers ?? []).filter(member => !member.return);
+}
+
 export function checkTeamReservation(pm, worker) {
   developerSlots(worker);
   const active = pm.workers.filter(item => !item.settled);
@@ -55,7 +59,7 @@ export function checkTeamReservation(pm, worker) {
 export function checkTeamBinding(pm, worker, request) {
   permissionProof(request.permissions);
   if (pm.workers.some(other => other !== worker && !other.settled &&
-    (other.agentId === request.agentId || other.developers?.some(member => member.agentId === request.agentId)))) {
+    (other.agentId === request.agentId || activeDevelopers(other).some(member => member.agentId === request.agentId)))) {
     throw new Error('Agent already owns another role');
   }
   if (request.agentId === pm.config.pmAgentId) throw new Error('PM cannot be its own worker');
@@ -114,7 +118,7 @@ export function checkTeamState(pm) {
   const developers = new Set();
   const worktrees = new Set();
   for (const worker of pm.workers) {
-    if (worker.settled && worker.heartbeat && worker.heartbeat.status !== 'deleted') {
+    if (worker.settled && worker.heartbeat && !['deleted', 'absent'].includes(worker.heartbeat.status)) {
       throw new Error('Settled role has an unresolved heartbeat');
     }
     // Quiescent migration preserves old, settled assignments in their original units.
@@ -127,16 +131,20 @@ export function checkTeamState(pm) {
     if (worker.agentId) {
       if (agents.has(worker.agentId) || worker.agentId === pm.config.pmAgentId ||
         pm.workers.some(other => other !== worker && !other.settled &&
-          other.developers?.some(member => member.agentId === worker.agentId))) throw new Error('Duplicate role agent');
+          activeDevelopers(other).some(member => member.agentId === worker.agentId))) throw new Error('Duplicate role agent');
       agents.add(worker.agentId);
       permissionProof(worker.permissions);
       if (worker.kind === 'delivery') text(worker.worktree, 'delivery worktree');
     }
-    if ((worker.developers?.length ?? 0) > developerSlots(worker.assignment)) throw new Error('Invalid developer capacity');
+    if (activeDevelopers(worker).length > developerSlots(worker.assignment)) throw new Error('Invalid developer capacity');
     for (const member of worker.developers ?? []) {
       text(member.agentId, 'developer agent');
       text(member.worktree, 'developer worktree');
       permissionProof(member.permissions);
+      if (member.return) {
+        for (const key of ['evidence', 'result', 'acceptance', 'archive']) text(member.return[key], `developer return ${key}`);
+        continue;
+      }
       if (developers.has(member.agentId) || worktrees.has(member.worktree)) throw new Error('Duplicate developer or worktree');
       developers.add(member.agentId);
       worktrees.add(member.worktree);
@@ -144,10 +152,11 @@ export function checkTeamState(pm) {
     const heartbeat = worker.heartbeat;
     if (heartbeat) {
       if (!['shepherd', 'discovery'].includes(worker.kind) ||
-        !['pending', 'active', 'uncertain', 'deleted'].includes(heartbeat.status)) throw new Error('Invalid role heartbeat');
+        !['pending', 'active', 'uncertain', 'deleted', 'absent'].includes(heartbeat.status)) throw new Error('Invalid role heartbeat');
       text(heartbeat.settings, 'heartbeat settings');
       text(heartbeat.evidence, 'heartbeat evidence');
       if (heartbeat.status === 'active' || heartbeat.status === 'deleted') text(heartbeat.id, 'heartbeat ID');
+      if (heartbeat.status === 'absent') text(heartbeat.absence, 'verified heartbeat absence');
     }
   }
   if (used > pm.config.capacity) throw new Error('Invalid developer capacity');
@@ -160,7 +169,7 @@ function roleHeartbeat(pm, worker, request) {
   const previous = worker.heartbeat;
   if (request.action === 'plan') {
     if (pm.mode !== 'enabled') throw new Error('PM is not enabled');
-    if (previous && previous.status !== 'deleted') throw new Error('Reconcile existing heartbeat');
+    if (previous && !['deleted', 'absent'].includes(previous.status)) throw new Error('Reconcile existing heartbeat');
     text(request.settings, 'approved heartbeat settings');
     worker.heartbeatHistory ??= [];
     if (previous) worker.heartbeatHistory.push(previous);
@@ -177,9 +186,11 @@ function roleHeartbeat(pm, worker, request) {
     // A late receipt after pause is still recorded so its exact job can be deleted.
     worker.heartbeat = { ...previous, id: request.id, status: 'active', evidence: request.evidence };
   } else {
-    if (!previous || previous.status === 'deleted' ||
+    if (!previous || ['deleted', 'absent'].includes(previous.status) ||
       (previous.id && request.id !== previous.id)) throw new Error('Wrong or missing owned heartbeat');
-    if (request.action === 'deleted') {
+    if (request.action === 'absent') {
+      text(request.absence, 'verified heartbeat absence');
+    } else if (request.action === 'deleted') {
       text(request.id, 'heartbeat ID');
       if (!previous.id) throw new Error('Reconcile unknown heartbeat before deletion receipt');
     } else if (!['observed', 'uncertain'].includes(request.action)) {
@@ -187,7 +198,7 @@ function roleHeartbeat(pm, worker, request) {
     }
     if (request.action === 'observed' && previous.status !== 'active') throw new Error('No active heartbeat to observe');
     worker.heartbeat = { ...previous, status: request.action === 'observed' ? 'active' : request.action,
-      evidence: request.evidence };
+      evidence: request.evidence, ...(request.action === 'absent' ? { absence: request.absence } : {}) };
   }
   return 'heartbeat-recorded';
 }
@@ -238,6 +249,17 @@ export function teamOperation(pm, request) {
   text(request.evidence, 'live evidence');
   if (request.op === 'role-heartbeat') return roleHeartbeat(pm, worker, request);
   if (request.op === 'block') return block(pm, worker, request);
+  if (request.op === 'retire-developer') {
+    const member = worker.developers?.find(item => item.agentId === request.agentId);
+    if (!member) throw new Error('Unknown developer');
+    if (request.noLiveWriters !== true || request.noUntransferredDuties !== true) throw new Error('Unreconciled developer custody');
+    for (const key of ['result', 'acceptance', 'archive']) text(request[key], `developer ${key}`);
+    const returned = { evidence: request.evidence, result: request.result,
+      acceptance: request.acceptance, archive: request.archive };
+    if (member.return && !isDeepStrictEqual(member.return, returned)) throw new Error('Changed developer return');
+    member.return = returned;
+    return 'developer-retired';
+  }
   if (request.op === 'staff') {
     if (pm.mode !== 'enabled' || worker.settled || !worker.agentId || worker.kind !== 'delivery') {
       throw new Error('Staffing needs an enabled bound delivery');
@@ -255,12 +277,12 @@ export function teamOperation(pm, request) {
     }
     for (const other of pm.workers.filter(item => !item.settled)) {
       if (other !== worker && other.agentId === request.agentId) throw new Error('Developer owns another role');
-      if (other.developers?.some(item => item.agentId === request.agentId || item.worktree === request.worktree)) {
+      if (activeDevelopers(other).some(item => item.agentId === request.agentId || item.worktree === request.worktree)) {
         throw new Error('Developer or worktree already staffed');
       }
     }
     if (request.agentId === pm.config.pmAgentId) throw new Error('PM is not a developer');
-    if (worker.developers.length >= developerSlots(worker.assignment)) throw new Error('Developer capacity exhausted');
+    if (activeDevelopers(worker).length >= developerSlots(worker.assignment)) throw new Error('Developer capacity exhausted');
     worker.developers.push(member);
     return 'staffed';
   }
