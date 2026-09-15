@@ -9,12 +9,12 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
-- `joe-mode-paseo`: opt-in engineering-team PM for one repository. Recommend
-  Paseo's dedicated coordinator heartbeat, every five minutes by default;
+- `joe-mode-paseo`: opt-in engineering-team PM for one repository. Use the
+  primary chat and role heartbeats, every five minutes by default;
   chart the backlog, intake requirements, assess worker progress and direction,
   and dispatch existing planning/delivery routes. Preserve durable exclusive
-  ownership, six default delivery lanes, human merging by default and compatible fresh scheduling.
-  Allow human-granted final-orchestrator merges under a repository-defined gate:
+  ownership and human merging by default. Legacy fresh schedules keep their
+  existing gates. Allow a requested PR coordinator to merge under a repository-defined gate:
   independent Roast, successful CI/lint, then final rubber-duck review and verification.
   Clarify missing policy with the human; workers gain no merge authority.
   Gate activation on verified Paseo placement/access; heartbeat pause/stop deletes
@@ -56,6 +56,19 @@ have tagged releases. Current cleanup is tracked in
   snapshots at completed-cycle and confirmed major-feature-merge boundaries.
 
 ### Changed
+
+- Joe's default pool is six developers: features use two slots; bugs, hardening
+  and refactors use one. One shared Shepherd and optional backlog manager stay
+  outside the pool. PM owns all role heartbeats, delegates blocker investigation,
+  retries a confirmed work blocker once with fresh context/worktree, then sends
+  repeated blockers to Discovery. Preserve remote work before local cleanup.
+  Existing boards need paused, settled reconciliation before changing capacity units.
+- Propagate current human-authorized parent permission mode and features to
+  children, then verify readback. Do not undo human-selected Allow All/Auto Accept
+  using stale defaults. Provider limitations and denied grants remain explicit.
+- Standalone Ship uses TDD only when selected; Joe prefers it for features.
+  Patch and Refactor do not force red/green. Refactor applies laziness/KISS/YAGNI
+  and SOLID, with useful behavior proof and independent review from distinct angles.
 
 - Compress lifecycle instructions and acceptance traces; preserve ownership,
   cadence, recovery, retirement, and human approval gates.
