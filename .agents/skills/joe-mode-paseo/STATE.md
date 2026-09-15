@@ -7,15 +7,28 @@ that an agent followed the recipe. Preserve the existing Joe/lifecycle evidence
 in the same board/linked packets; only the `pm` namespace is helper-owned.
 
 Resolve the script from its installed package, not the target repo. Commands
-accept the same private board path and one JSON request, returning
-`{"status":"…","state":{…}}`. Failures emit a diagnostic to stderr and exit 1.
+accept the same private board path and one JSON request. The CLI returns the
+**bounded current board** by default: `{"status":"…","view":{…}}` with mode,
+capacity, lease credentials, wakeup binding, live workers, unresolved
+operations, open blocker episodes and counts of the durable history it omits.
+Add `"view":"full"` to any request for the complete `{"status":"…","state":{…}}`
+envelope, including run receipts, settled workers, operation history and wakeup
+or merge history. Unknown view values fail before the board is touched.
+Nothing is discarded: the durable board keeps every record, and the in-process
+`transact` API still returns the full state for callers and tests.
+Failures emit a diagnostic to stderr and exit 1.
 Do not publish output containing private runtime IDs. For example, after
 human-approved initialization:
 
 ```sh
 node /installed/skills/joe-mode-paseo/scripts/state.mjs /owned/ignored/board.json '{"op":"inspect"}'
+node /installed/skills/joe-mode-paseo/scripts/state.mjs /owned/ignored/board.json '{"op":"inspect","view":"full"}'
 node /installed/skills/joe-mode-paseo/scripts/state.mjs /owned/ignored/board.json '{"op":"claim","owner":"actual-run-id","reconciliation":"accessible-live-ownership-evidence"}'
 ```
+
+Read the bounded view on a routine pass; request the full view deliberately for
+recovery, audit or reconciliation of a specific history. A bounded view is a
+current-state projection, not proof that omitted history is unimportant.
 
 Replace example paths/IDs with verified values. The containing directory must
 already exist, be owned, ignored and accessible. All repository worktrees and
@@ -223,17 +236,37 @@ The permission proof is:
 ```
 
 Use the actual permission features, including `auto_accept` when exposed;
-`{}` does not mean "ignore features." Cross-provider differences cannot pass
-as identical inheritance. Resolve a separately approved target policy before
-dispatch rather than manufacturing matching snapshots. Helper evidence strings
-are pointers; they do not prove authority, external settings or filesystem state.
+`{}` does not mean "ignore features." Same-provider launches keep identical
+inheritance: parent and child snapshots must match exactly.
+
+A **cross-provider** launch instead needs a `permission-preflight` recorded
+**before** the launch, and the proof adds `preflight`, `parentAgentId` and
+`workspaceId` naming it:
+
+| Operation | Inputs beyond lease and `op` | Meaning |
+| --- | --- | --- |
+| `permission-preflight` | Live reservation `key`, stable `launchId`, current `parentAgentId`, target `workspaceId`, observed `parent` and `target` snapshots, `authority`, `evidence`, `purpose` (`bind` default or `staff`), and `mapping` when providers differ | Record the verified target-policy mapping before dispatch. `bind` intent must precede binding; `staff` needs the bound delivery. Replaying the identical plan is idempotent; a changed plan needs a new `launchId`. |
+
+`mapping.kind` is `equivalent` for a verified same-meaning target policy or
+`authorized-mapping` with the human's `authority` for an approved difference.
+It also needs `preservesChoices: true`, plus `sourceCapabilities`,
+`targetCapabilities`, `rationale` and `evidence` references naming the actual
+provider policies compared. Ambiguous or escalating mappings have no verified
+equivalent: queue the launch and ask the human for that one decision instead.
+At bind or staff time the helper rejects any drift between the recorded plan
+and the observed parent/target snapshots, authority, parent agent or workspace;
+each developer preflight is single-use. This is truthful mapping evidence, not
+proof of transferred approvals, credentials or provider policy. Never
+manufacture matching snapshots, and never widen the target policy to launch.
+Helper evidence strings are pointers; they do not prove authority, external
+settings or filesystem state.
 
 The following operations use the same PM `owner`/`token`. Roles return receipts
 to PM; they do not write this board.
 
 | Operation | Inputs beyond lease and `op` | Meaning |
 | --- | --- | --- |
-| `staff` | Delivery `key`, actual `agentId`, isolated `worktree`, `permissions`, `evidence` | Bind a real writing descendant inside the reserved one/two slots. Duplicate writers/worktrees and excess staffing fail. Include a route owner here if it writes. |
+| `staff` | Delivery `key`, actual `agentId`, isolated `worktree`, `permissions`, `evidence` | Bind a real writing descendant inside the reserved one/two slots. Duplicate writers/worktrees, excess staffing and any prior blocker participant's agent or worktree fail. Include a route owner here if it writes. |
 | `retire-developer` | Delivery `key`, member `agentId`, `noLiveWriters: true`, `noUntransferredDuties: true`, preserved `result`, receiver `acceptance`, actual `archive` readback and `evidence` | End one developer binding after verified retirement; preserve its history and the lane's outer reservation. New task/integration workers may fill that slot; uncertain retirement cannot. |
 | `role-heartbeat` | Role `key`, `action`, `evidence`; fields below | Record target-executed heartbeat lifecycle. Does not call Paseo. |
 | `block` | Delivery `key`, covered qualified `issue`, independent `investigator`, `selfReview`, `challenge`, `missing`, `category`, `evidence` | `category` is `work`, `permission` or `human`. First work blocker returns `retry`; second returns `blocked`. Other categories block without retry. Replayed identical attempt does not increment. |
@@ -271,8 +304,11 @@ pause/stop and role retirement. `settle` rejects any unresolved role heartbeat.
 The helper does not verify a provider deletion merely because evidence is text.
 
 Blocker episodes live in `pm.blockers`, keyed by qualified issue, not tick.
-Retry requires the predecessor settled and archived. Binding refuses the old
-agent/context or worktree; confirmation also needs a fresh investigator.
+Retry requires the predecessor settled and archived. Each attempt records its
+actual `participants`: the bound role plus every developer it staffed,
+including already retired ones. Binding and staffing refuse **any** prior
+participant's agent or worktree, and confirmation also needs a fresh
+investigator. Changed or missing participant history fails closed.
 After escalation, helper reservation refuses covered blocked issues even if the
 tracker still says ready. PM separately records tag/comment/backlog writes and
 spawns/reuses Discovery under TEAM. Keep uncertain tracker operations pending.

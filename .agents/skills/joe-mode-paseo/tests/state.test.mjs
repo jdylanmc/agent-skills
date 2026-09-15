@@ -654,3 +654,73 @@ test('CLI failures produce no success envelope and leave the board unchanged', t
     assert.equal(readFileSync(filename, 'utf8'), before);
   }
 });
+
+function cli(filename, request) {
+  const script = fileURLToPath(new URL('../scripts/state.mjs', import.meta.url));
+  return spawnSync(process.execPath, [script, filename, JSON.stringify(request)], { encoding: 'utf8' });
+}
+
+test('CLI returns the bounded current board and full durable history only when asked', t => {
+  const filename = enabled(t);
+  let lease = claim(filename).state.pm.lease;
+  reserve(filename, lease, 'ticket-live');
+  reserve(filename, lease, 'ticket-done');
+  owned(filename, lease, { op: 'bind', key: 'ticket-live', agentId: 'agent-live', evidence: 'first/observation' });
+  owned(filename, lease, { op: 'settle', key: 'ticket-done', noLiveWriters: true,
+    noUntransferredDuties: true, evidence: 'settled/readback', result: 'preserved/result',
+    acceptance: 'receiver/observed' });
+  for (let pass = 0; pass < 12; pass++) {
+    owned(filename, lease, { op: 'record', key: 'episode/open', status: 'pending', evidence: `attempt-${pass}` });
+    owned(filename, lease, { op: 'record', key: 'episode/closed', status: 'accepted',
+      evidence: `return-${pass}`, receiver: 'owner/observed' });
+    owned(filename, lease, { op: 'release', result: `pass-receipt-${pass}`, duties: 'none' });
+    lease = claim(filename, `run-${pass}`).state.pm.lease;
+  }
+  const bounded = cli(filename, { op: 'inspect' });
+  assert.equal(bounded.status, 0, bounded.stderr);
+  const observed = JSON.parse(bounded.stdout);
+  assert.equal(observed.status, 'observed');
+  assert.equal(observed.state, undefined);
+  const text = JSON.stringify(observed);
+  for (const omitted of ['pass-receipt-0', 'pass-receipt-11', 'attempt-0', 'return-11', 'packets/ticket-done']) {
+    assert.ok(!text.includes(omitted), `bounded view leaked ${omitted}`);
+  }
+  assert.equal(observed.view.mode, 'enabled');
+  assert.equal(observed.view.lease.owner, 'run-11');
+  assert.deepEqual(observed.view.workers, [{ key: 'ticket-live', kind: 'delivery',
+    coverage: ['ticket-live'], agentId: 'agent-live' }]);
+  assert.deepEqual(observed.view.pending, [{ key: 'episode/open', status: 'pending', evidence: 'attempt-11' }]);
+  assert.deepEqual(observed.view.history, { runs: 12, settledWorkers: 1, resolvedOperations: 1,
+    operationHistory: 22, wakeups: 0, merges: 0, blockers: 0,
+    inspect: '{"op":"inspect","view":"full"}' });
+
+  const claimed = cli(filename, { op: 'claim', owner: 'run-next', reconciliation: 'live/reconciled' });
+  assert.equal(claimed.status, 0, claimed.stderr);
+  assert.equal(JSON.parse(claimed.stdout).status, 'busy');
+
+  const full = cli(filename, { op: 'inspect', view: 'full' });
+  assert.equal(full.status, 0, full.stderr);
+  const complete = JSON.parse(full.stdout);
+  assert.equal(complete.view, undefined);
+  assert.equal(complete.state.pm.runs.length, 12);
+  assert.equal(complete.state.pm.pending.find(item => item.key === 'episode/open').history.length, 11);
+  assert.deepEqual(complete.state, transact(filename, { op: 'inspect' }).state);
+
+  const unknown = cli(filename, { op: 'inspect', view: 'everything' });
+  assert.equal(unknown.status, 1);
+  assert.equal(unknown.stdout, '');
+  assert.match(unknown.stderr, /view/);
+  const empty = JSON.parse(cli(store(t), { op: 'inspect' }).stdout);
+  assert.deepEqual(empty, { status: 'observed', view: { initialized: false } });
+});
+
+test('a bounded mutation view still returns the fencing token and current lease', t => {
+  const filename = enabled(t);
+  const first = JSON.parse(cli(filename, { op: 'claim', owner: 'run-a',
+    reconciliation: 'live/reconciled' }).stdout);
+  assert.equal(first.status, 'claimed');
+  assert.equal(first.view.lease.owner, 'run-a');
+  const lease = { owner: 'run-a', token: first.view.lease.token };
+  assert.equal(owned(filename, lease, { op: 'record', key: 'episode/1',
+    status: 'pending', evidence: 'uncertain/create' }).status, 'recorded');
+});

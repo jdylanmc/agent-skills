@@ -331,7 +331,7 @@ function apply(state, request) {
     if (pm.mode !== 'enabled') throw new Error('PM is not enabled');
   }
   if (request.op === 'reserve') return reserve(pm, request.worker);
-  if (['staff', 'retire-developer', 'role-heartbeat', 'block', 'unblock', 'cleanup-ready', 'cleanup'].includes(request.op)) {
+  if (['permission-preflight', 'staff', 'retire-developer', 'role-heartbeat', 'block', 'unblock', 'cleanup-ready', 'cleanup'].includes(request.op)) {
     return teamOperation(pm, request);
   }
   if (['cover', 'bind', 'settle', 'archive'].includes(request.op)) return updateWorker(pm, request);
@@ -353,6 +353,45 @@ function apply(state, request) {
     return 'recorded';
   }
   throw new Error('Unsupported operation');
+}
+
+function workerView(worker) {
+  const active = (worker.developers ?? []).filter(member => !member.return);
+  return { key: worker.key, kind: worker.kind, coverage: worker.coverage,
+    ...(worker.assignment.work ? { work: worker.assignment.work } : {}),
+    agentId: worker.agentId, ...(worker.worktree ? { worktree: worker.worktree } : {}),
+    ...(active.length ? { developers: active.map(({ agentId, worktree }) => ({ agentId, worktree })) } : {}),
+    ...(worker.developers?.length > active.length ? { retiredDevelopers: worker.developers.length - active.length } : {}),
+    ...(worker.permissionPreflights?.length ? { permissionPreflights: worker.permissionPreflights.length } : {}),
+    ...(worker.heartbeat ? { heartbeat: worker.heartbeat.status } : {}),
+    ...(worker.graph ? { publication: worker.graph.complete ? 'complete' : 'pending' } : {}) };
+}
+
+// Current work, not the whole durable record: growing history stays on the board.
+export function summarize(state) {
+  const pm = state.pm;
+  if (!pm) return { initialized: false };
+  const open = pm.pending.filter(record => ['pending', 'blocked'].includes(record.status));
+  const blockers = (pm.blockers ?? []).filter(episode => !episode.resolution);
+  return {
+    mode: pm.mode, ...(pm.config.team ? { team: true } : {}), capacity: pm.config.capacity,
+    ...(pm.lease ? { lease: { owner: pm.lease.owner, token: pm.lease.token } } : {}),
+    ...(pm.schedule ? { schedule: { id: pm.schedule.id, kind: pm.schedule.kind ?? 'schedule',
+      cron: pm.schedule.cron, targetAgentId: pm.schedule.targetAgentId, enabled: pm.schedule.enabled } } : {}),
+    workers: pm.workers.filter(worker => !worker.settled).map(workerView),
+    pending: open.map(({ key, status, evidence }) => ({ key, status, evidence })),
+    ...(blockers.length ? { blockers: blockers.map(episode => ({ issue: episode.issue,
+      status: episode.status, attempts: episode.attempts.length })) } : {}),
+    history: {
+      runs: pm.runs.length,
+      settledWorkers: pm.workers.length - pm.workers.filter(worker => !worker.settled).length,
+      resolvedOperations: pm.pending.length - open.length,
+      operationHistory: pm.pending.reduce((total, record) => total + (record.history?.length ?? 0), 0),
+      wakeups: pm.wakeupHistory?.length ?? 0, merges: pm.mergeHistory?.length ?? 0,
+      blockers: (pm.blockers ?? []).length - blockers.length,
+      inspect: '{"op":"inspect","view":"full"}',
+    },
+  };
 }
 
 export function transact(filename, request) {
@@ -385,7 +424,12 @@ export function transact(filename, request) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    process.stdout.write(`${JSON.stringify(transact(process.argv[2], JSON.parse(process.argv[3])))}\n`);
+    const request = JSON.parse(process.argv[3]);
+    const view = request?.view ?? 'current';
+    if (!['current', 'full'].includes(view)) throw new Error("Unsupported view; use 'current' or 'full'");
+    const result = transact(process.argv[2], request);
+    process.stdout.write(`${JSON.stringify(view === 'full' ? result
+      : { status: result.status, view: summarize(result.state) })}\n`);
   } catch (error) {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

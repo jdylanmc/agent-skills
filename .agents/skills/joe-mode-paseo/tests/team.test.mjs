@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { transact } from '../scripts/state.mjs';
+import { summarize, transact } from '../scripts/state.mjs';
 
 const permissions = { provider: 'copilot', modeId: 'agent', features: { auto_accept: true } };
 const proof = { parent: permissions, child: permissions, authority: 'human/current-grant', evidence: 'runtime/readback' };
@@ -87,6 +87,37 @@ test('child binding compares provider, mode and permission features, not labels 
   assert.throws(() => b.bind('one', { permissions: undefined }), /permission/i);
   assert.equal(b.bind('one').status, 'bound');
   assert.deepEqual(JSON.parse(readFileSync(b.file)).pm.workers[0].permissions, proof);
+});
+
+test('cross-provider binding needs recorded prelaunch mapping and unchanged native snapshots', t => {
+  const b = board(t);
+  b.reserve('mixed');
+  const target = { provider: 'target-provider', modeId: 'review', features: { approval: 'ask' } };
+  const mapped = { ...proof, child: target, preflight: 'launch-mixed',
+    parentAgentId: 'pm', workspaceId: 'mixed-workspace' };
+  const bind = permissions => b.bind('mixed', { permissions });
+  assert.throws(() => bind(mapped), /permission|preflight/i);
+  const preflight = { op: 'permission-preflight', key: 'mixed', launchId: 'launch-mixed',
+    parentAgentId: 'pm', workspaceId: 'mixed-workspace', parent: permissions, target,
+    authority: proof.authority, evidence: 'live-parent-and-target-profile',
+    mapping: { kind: 'equivalent', preservesChoices: true,
+      sourceCapabilities: 'source-native-docs-and-readback',
+      targetCapabilities: 'target-native-docs-and-profile',
+      rationale: 'Both request approval for the same operations; no approval or credentials transfer',
+      evidence: 'verified-policy-comparison' } };
+  assert.equal(b.call(preflight).status, 'permission-preflight-recorded');
+  assert.throws(() => b.call({ ...preflight, launchId: 'bad', mapping: undefined }), /mapping/i);
+  assert.throws(() => b.call({ ...preflight, launchId: 'bad', mapping: { ...preflight.mapping, preservesChoices: false } }), /permission|choices/i);
+  assert.throws(() => b.call({ ...preflight, target: { ...target, modeId: 'unrestricted' } }), /Changed/);
+  for (const changed of [
+    { parent: { ...permissions, features: { auto_accept: false } } },
+    { child: { ...target, modeId: 'unrestricted' } },
+    { parentAgentId: 'another-parent' }, { workspaceId: 'elsewhere' },
+    { authority: 'different-grant' },
+  ]) assert.throws(() => bind({ ...mapped, ...changed }), /permission|preflight/i);
+  assert.equal(bind(mapped).status, 'bound');
+  assert.deepEqual(JSON.parse(readFileSync(b.file)).pm.workers[0].permissions.child, target);
+  assert.throws(() => b.call({ ...preflight, launchId: 'after-launch' }), /already bound/i);
 });
 
 test('feature staffing is two real developers; duplicate and excess developer bindings fail', t => {
@@ -174,6 +205,46 @@ test('permission and human-decision blockers cannot trigger fresh-agent retries'
     assert.throws(() => b.call({ op: 'unblock', issue: 'first',
       resolution: 'answer', readiness: 'ready' }), /human/);
   }
+});
+
+test('retry excludes every prior developer context and worktree, including retired members', t => {
+  const b = board(t);
+  b.reserve('first', 'feature', 'delivery', ['issue']);
+  b.bind('first');
+  const staff = (key, agentId, worktree) => b.call({ op: 'staff', key, agentId, worktree,
+    permissions: proof, evidence: 'developer/readback' });
+  staff('first', 'retired-red', '/actual/red');
+  b.call({ op: 'retire-developer', key: 'first', agentId: 'retired-red',
+    noLiveWriters: true, noUntransferredDuties: true, result: 'saved',
+    acceptance: 'accepted', archive: 'archived', evidence: 'retired' });
+  staff('first', 'green', '/actual/green');
+  b.call({ op: 'block', key: 'first', issue: 'issue', investigator: 'duck',
+    selfReview: 'attempts', challenge: 'independent', missing: 'answer',
+    category: 'work', evidence: 'blocked' });
+  settle(b, 'first');
+  b.reserve('retry', 'feature', 'delivery', ['issue']);
+  for (const [agentId, worktree] of [
+    ['retired-red', '/fresh'], ['fresh', '/actual/red'],
+    ['green', '/fresh'], ['fresh', '/actual/green'],
+  ]) {
+    assert.throws(() => b.bind('retry', { agentId, worktree }), /fresh/);
+  }
+  b.bind('retry');
+  for (const [agentId, worktree] of [
+    ['retired-red', '/fresh'], ['fresh', '/actual/red'],
+    ['green', '/fresh'], ['fresh', '/actual/green'],
+    ['agent-first', '/fresh'], ['fresh', '/worktrees/first'],
+  ]) assert.throws(() => staff('retry', agentId, worktree), /fresh/);
+  staff('retry', 'new-red', '/fresh/red');
+  const board_ = JSON.parse(readFileSync(b.file)).pm;
+  const attempt = board_.blockers[0].attempts[0];
+  assert.equal(attempt.key, 'first');
+  const blocked = board_.workers.find(worker => worker.key === attempt.key);
+  assert.equal(blocked.worktree, '/worktrees/first');
+  assert.deepEqual(blocked.developers.map(({ agentId, worktree }) => ({ agentId, worktree })), [
+    { agentId: 'retired-red', worktree: '/actual/red' },
+    { agentId: 'green', worktree: '/actual/green' },
+  ]);
 });
 
 test('local cleanup needs archived custody, clean files and matching verified remote head', t => {
@@ -314,4 +385,56 @@ test('definitive heartbeat absence permits retirement or replanning, unknown cre
     if (outcome === 'retire') settle(b, 'shepherd');
     else assert.equal(beat('plan', { settings: 'approved' }).status, 'heartbeat-recorded');
   }
+});
+
+test('the bounded team view shows live lanes and open blockers without permission or return detail', t => {
+  const b = board(t);
+  b.reserve('lane', 'feature');
+  b.bind('lane');
+  for (const agentId of ['red', 'green']) {
+    b.call({ op: 'staff', key: 'lane', agentId, worktree: `/worktrees/${agentId}`,
+      permissions: proof, evidence: 'developer/readback' });
+  }
+  b.call({ op: 'retire-developer', key: 'lane', agentId: 'red', noLiveWriters: true,
+    noUntransferredDuties: true, result: 'preserved', acceptance: 'accepted',
+    archive: 'archived/readback', evidence: 'retired/readback' });
+  b.call({ op: 'block', key: 'lane', issue: 'lane', investigator: 'duck', selfReview: 'attempts',
+    challenge: 'independent', missing: 'answer', category: 'work', evidence: 'blocker/evidence' });
+  const view = summarize(JSON.parse(readFileSync(b.file)));
+  assert.equal(view.team, true);
+  assert.deepEqual(view.workers, [{ key: 'lane', kind: 'delivery', coverage: ['lane'], work: 'feature',
+    agentId: 'agent-lane', worktree: '/worktrees/lane',
+    developers: [{ agentId: 'green', worktree: '/worktrees/green' }], retiredDevelopers: 1 }]);
+  assert.deepEqual(view.blockers, [{ issue: 'lane', status: 'retry', attempts: 1 }]);
+  const text = JSON.stringify(view);
+  for (const omitted of ['runtime/readback', 'archived/readback', 'blocker/evidence', 'packets/lane']) {
+    assert.ok(!text.includes(omitted), `bounded team view leaked ${omitted}`);
+  }
+  b.call({ op: 'unblock', issue: 'lane', resolution: 'answer/delivered', readiness: 'verified/ready' });
+  const resolved = summarize(JSON.parse(readFileSync(b.file)));
+  assert.equal(resolved.blockers, undefined);
+  assert.equal(resolved.history.blockers, 1);
+});
+
+test('a lane staffed after one covered issue blocks keeps working and still bars those contexts on retry', t => {
+  const b = board(t);
+  b.reserve('lane', 'feature', 'delivery', ['blocked-issue', 'other-issue']);
+  b.bind('lane');
+  const staff = (key, agentId, worktree) => b.call({ op: 'staff', key, agentId, worktree,
+    permissions: proof, evidence: 'developer/readback' });
+  staff('lane', 'first', '/actual/first');
+  const blocker = { op: 'block', key: 'lane', issue: 'blocked-issue', investigator: 'duck',
+    selfReview: 'attempts', challenge: 'independent', missing: 'answer',
+    category: 'work', evidence: 'blocked/evidence' };
+  b.call(blocker);
+  assert.equal(staff('lane', 'later', '/actual/later').status, 'staffed');
+  assert.equal(b.call(blocker).status, 'retry');
+  assert.equal(b.call({ op: 'inspect' }).status, 'observed');
+  settle(b, 'lane');
+  b.reserve('retry', 'feature', 'delivery', ['blocked-issue']);
+  for (const [agentId, worktree] of [['first', '/fresh'], ['later', '/fresh'],
+    ['fresh', '/actual/first'], ['fresh', '/actual/later']]) {
+    assert.throws(() => b.bind('retry', { agentId, worktree }), /fresh/);
+  }
+  b.bind('retry');
 });

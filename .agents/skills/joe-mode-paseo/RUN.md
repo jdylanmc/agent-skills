@@ -24,7 +24,9 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
 2. **Claim the one repository pass.** Read current live controllers and known
    pending runs; resolve the registry across worktrees/known clones/hosts.
    Execute [STATE](STATE.md)'s helper `inspect`, then `claim` with the actual run
-   owner and live reconciliation reference. `paused`, `stopped`, `busy` or an
+   owner and live reconciliation reference. Read the bounded current view for
+   routine work; request `"view":"full"` only when recovery, audit or a specific
+   history actually needs it. `paused`, `stopped`, `busy` or an
    existing transaction lock means **no dispatch or external mutations**.
    Preserve a bounded skip receipt in the existing pass result; arrange
    its accepted retirement for fresh runs; the heartbeat PM returns/idles for its
@@ -144,7 +146,10 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    alignment/handoff with no remaining conversation duty. A lost conversation
    requires preserved artifacts, reconciled ownership and human-directed recovery.
 
-   Use runtime profile notes/discovery, not hardcoded models. Route owners create
+   Use runtime profile notes/discovery, not hardcoded models: inspect the
+   available providers, models and profiles now and select a current frontier
+   model for each substantive assignment under
+   [TEAM](TEAM.md#choose-current-frontier-models). Route owners create
    their bounded implementation workers. [WORKSPACE](../ship/WORKSPACE.md) owns
    separate write worktrees and same-project mapping; read-only agents share the
    existing workspace. `create_agent` receives its verified `workspaceId`;
@@ -152,7 +157,8 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    actual returned identity afterward, and use helper `bind` only after the
    worker's first observation/accepted packet verifies placement and assignment.
    Missing/uncertain identity is a pending reservation, not a free slot.
-   Apply RUNTIME's permission-preserving launch/readback for every role.
+   Apply RUNTIME's permission-preserving launch/readback for every role, and
+   record `permission-preflight` before a cross-provider launch, not after it.
    Use clear role/issue names and the verified existing workspace.
    Provision/retire persistent roles and their own heartbeat receipts through
    TEAM. A role wake checks its own assignment and the board gate, returns a
@@ -160,7 +166,8 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
 
 7. **Assess health without storms.** Execute TEAM's blocker sequence: developer
    self-challenge, delegated independent challenge, one fresh-context/worktree
-   retry for a confirmed work blocker, then blocked tag/comment and backlog
+   retry for a confirmed work blocker — fresh for every prior participant,
+   including retired developers — then blocked tag/comment and backlog
    Discovery. Use `block`/`unblock` to retain issue-level attempts across ticks.
    PM consumes the investigator's compact result, not another deep search.
    Error/cancelled is not proof descendants stopped. Permission-blocked means
