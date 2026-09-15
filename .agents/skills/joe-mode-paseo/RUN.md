@@ -10,8 +10,9 @@ controller. Missing setup/permissions/decisions return to the human anchor.
 
 1. **Recover authority and actual placement.** Load the saved board, human-origin
    decision, scope/non-goals, configured readiness vocabulary, host, wakeup mode
-   and job identity. Verify actual wakeup provenance using supported runtime
-   inspection, not prompt assertions. Inspect actual cwd/Git common directory,
+   and job identity. Verify actual wakeup provenance using mode-specific
+   [runtime evidence](RUNTIME.md#same-agent-heartbeat-surface), not prompt
+   assertions or schedule-only APIs for a heartbeat. Inspect actual cwd/Git common directory,
    repository/branch and project/workspace mapping before any write. A mismatch
    or missing capability stops affected work. Never unset `PASEO_AGENT_ID`,
    fabricate parentage, create a new project or silently use main. For heartbeat,
@@ -90,13 +91,16 @@ controller. Missing setup/permissions/decisions return to the human anchor.
    | Eligible feature/issue or approved specification graph | Ship |
    | Reproducible defect/regression | Patch |
    | Authorized behavior-preserving structural work | Refactor |
-   | Existing PR maintenance/current-target/manual-merge readiness | Existing Shepherd |
+   | Existing PR maintenance/current-target readiness | Existing Shepherd |
+   | Ready PR with repository-granted orchestrator merging | Final PM executes [MERGE](MERGE.md), after owner/Shepherd evidence and its own rubber-duck review and verification |
    | Independent noninteractive evidence question | Scoped Research/other authorized read-only helper |
 
    Unaligned recaps cannot skip Discovery → Specify → Breakdown Tickets.
    These are concurrent slices, not a global waterfall. Already-clear eligible
    work need not repeat planning by ritual. PM never directly implements each
-   tick, resets ongoing delivery, writes unmanaged main, votes or merges.
+   tick, resets ongoing delivery, writes unmanaged main or casts approval votes.
+   Only its explicit MERGE contract allows final orchestrator merging; workers
+   and session Joe receive no such authority.
    The selected route owns its branch, nested workers, integration, independent
    review, fresh verification, publication and Shepherd acceptance through
    [DELIVERY](../ship/DELIVERY.md). Delegate the existing packet and doctrine
@@ -204,7 +208,8 @@ controller. Missing setup/permissions/decisions return to the human anchor.
    **Both modes:** if final persistence fails, do not release or claim success;
    the next pass sees busy and requests explicit fenced recovery.
 
-Report only observed progress, pending human decisions/manual merge readiness,
+Report only observed progress, pending human decisions, human-merge readiness
+or verified orchestrator merge outcomes under MERGE,
 gaps and ownership. One completed pass/setup is not proof that recurring
 delivery works. No indefinite idle wait inside a bounded pass.
 The pass receipt records goal/path changes, requirements awaiting human intake,
