@@ -158,7 +158,8 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    worker's first observation/accepted packet verifies placement and assignment.
    Missing/uncertain identity is a pending reservation, not a free slot.
    Apply RUNTIME's permission-preserving launch/readback for every role, and
-   record `permission-preflight` before a cross-provider launch, not after it.
+   record `permission-preflight` before a cross-provider launch, not after it,
+   then `permission-launch` with the identity actually returned.
    Use clear role/issue names and the verified existing workspace.
    Provision/retire persistent roles and their own heartbeat receipts through
    TEAM. A role wake checks its own assignment and the board gate, returns a
@@ -199,7 +200,10 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    Never substitute workspace/project archival. TEAM's explicitly granted
    blocked-work cleanup may remove an exact owned worktree only after verified
    remote preservation, clean files and released custody; otherwise retain it.
-   Use `cleanup-ready` before removal and `cleanup` with actual removal readback.
+   Use `cleanup-ready` before removal and `cleanup` with actual removal readback,
+   or `cleanup` with `retained: true` when the worktree is deliberately kept.
+   Either way the bounded view drops that worker from its retirement queue only
+   once the duty is genuinely settled.
    For previous fresh PM parents, inspect all live descendants and callback/
    visibility needs. Do not assume orphaned children remain usable: verify
    supported runtime behavior or retain that specific parent with its concrete

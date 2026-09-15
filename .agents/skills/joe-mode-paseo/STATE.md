@@ -11,6 +11,14 @@ accept the same private board path and one JSON request. The CLI returns the
 **bounded current board** by default: `{"status":"…","view":{…}}` with mode,
 capacity, lease credentials, wakeup binding, live workers, unresolved
 operations, open blocker episodes and counts of the durable history it omits.
+It also keeps a `retirement` queue: each settled worker whose duties are not
+actually finished, with its key, kind, agent, worktree, `phase`
+(`archive-pending`, `cleanup-pending` or `removal-pending`) and, once recorded,
+the `recovery` branch and head. A worker leaves that queue only when it is
+genuinely terminal: archived with no owned worktree, or with the worktree
+actually removed or deliberately retained. Retirement is a duty, not a deletion
+requirement, so a kept worktree is an explicit recorded outcome rather than an
+omission.
 Add `"view":"full"` to any request for the complete `{"status":"…","state":{…}}`
 envelope, including run receipts, settled workers, operation history and wakeup
 or merge history. Unknown view values fail before the board is touched.
@@ -245,7 +253,8 @@ A **cross-provider** launch instead needs a `permission-preflight` recorded
 
 | Operation | Inputs beyond lease and `op` | Meaning |
 | --- | --- | --- |
-| `permission-preflight` | Live reservation `key`, stable `launchId`, current `parentAgentId`, target `workspaceId`, observed `parent` and `target` snapshots, `authority`, `evidence`, `purpose` (`bind` default or `staff`), and `mapping` when providers differ | Record the verified target-policy mapping before dispatch. `bind` intent must precede binding; `staff` needs the bound delivery. Replaying the identical plan is idempotent; a changed plan needs a new `launchId`. |
+| `permission-preflight` | Live reservation `key`, stable `launchId`, current `parentAgentId`, target `workspaceId`, planned `worktree` (required for a delivery `bind` or any `staff`), observed `parent` and `target` snapshots, `authority`, `evidence`, `purpose` (`bind` default or `staff`), and `mapping` when providers differ | Record the verified target-policy mapping and the exact planned placement before dispatch. `bind` intent must precede binding; `staff` needs the bound delivery. Replaying the identical plan is idempotent; a changed plan needs a new `launchId`. |
+| `permission-launch` | Same reservation `key`, existing `launchId`, the `agentId` the runtime actually created, the observed `workspaceId` and `worktree`, and creation-receipt `evidence` | Bind the plan to the child that was really launched under it. The plan cannot know that ID beforehand, so record the receipt after creation and before binding or staffing. A placement differing from the plan, or a second receipt, fails. |
 
 `mapping.kind` is `equivalent` for a verified same-meaning target policy or
 `authorized-mapping` with the human's `authority` for an approved difference.
@@ -254,12 +263,15 @@ It also needs `preservesChoices: true`, plus `sourceCapabilities`,
 provider policies compared. Ambiguous or escalating mappings have no verified
 equivalent: queue the launch and ask the human for that one decision instead.
 At bind or staff time the helper rejects any drift between the recorded plan
-and the observed parent/target snapshots, authority, parent agent or workspace;
-each developer preflight is single-use. This is truthful mapping evidence, not
-proof of transferred approvals, credentials or provider policy. Never
-manufacture matching snapshots, and never widen the target policy to launch.
-Helper evidence strings are pointers; they do not prove authority, external
-settings or filesystem state.
+and the observed parent/target snapshots, authority, parent agent or workspace.
+It also requires the recorded launch receipt and rejects any agent or worktree
+other than the planned worktree and the actually launched child, so one plan
+cannot authorize a different developer, worktree or later launch. The mapping
+policy itself may be reused by recording a fresh `launchId` per child. This is
+truthful mapping evidence, not proof of transferred approvals, credentials or
+provider policy. Never manufacture matching snapshots or launch receipts, and
+never widen the target policy to launch. Helper evidence strings are pointers;
+they do not prove authority, external settings or filesystem state.
 
 The following operations use the same PM `owner`/`token`. Roles return receipts
 to PM; they do not write this board.
@@ -272,7 +284,7 @@ to PM; they do not write this board.
 | `block` | Delivery `key`, covered qualified `issue`, independent `investigator`, `selfReview`, `challenge`, `missing`, `category`, `evidence` | `category` is `work`, `permission` or `human`. First work blocker returns `retry`; second returns `blocked`. Other categories block without retry. Replayed identical attempt does not increment. |
 | `unblock` | `issue`, `resolution`, `readiness`; `human` for permission/decision blockers | Close that episode after actual answer/readiness; preserve history. Does not change tracker labels. |
 | `cleanup-ready` | Settled/archived `key`, `noLiveWriters: true`, `clean: true`, full remote `branch`, matching `localHead`/`remoteHead`, `evidence` | Record verified preservation **before** exact owned-worktree removal. Dirty files, missing/unequal remote proof fail. |
-| `cleanup` | `key`, actual removal `evidence` | Record performed cleanup only after preservation. Does not delete anything. |
+| `cleanup` | `key`, actual removal `evidence`, or `retained: true` with the deliberate-retention `evidence` | Record performed cleanup only after preservation, or record that the worktree is deliberately kept. Does not delete anything. Retention and removal exclude each other; reconcile custody to change course. |
 
 `role-heartbeat` applies only to bound Shepherd/Discovery workers:
 

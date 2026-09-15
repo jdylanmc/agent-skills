@@ -24,8 +24,13 @@ have tagged releases. Current cleanup is tracked in
   Reserve approved ticket publication before child IDs exist, then reconcile the
   returned graph before launching delivery so parent and child ownership cannot race.
   Read a bounded current board by default and request full durable history
-  explicitly. Keep the continuation alarm on the PM chat itself, with no default
-  developer timers, and select current frontier models by runtime discovery.
+  explicitly, keeping settled workers in an actionable retirement queue until
+  their archival and worktree removal or deliberate retention is actually
+  recorded. Bind a cross-provider permission plan to its planned worktree and to
+  the child the runtime actually created, so one approval cannot authorize a
+  different developer or later launch. Keep the continuation alarm on the PM
+  chat itself, with no default developer timers, and select current frontier
+  models by runtime discovery.
 - `chart-a-course`: find a critical task path to a named goal, exposing missing
   tasks and research spikes without tracker writes. Joe-mode acts on targeted
   Discovery recommendations within its existing authority and preserves human

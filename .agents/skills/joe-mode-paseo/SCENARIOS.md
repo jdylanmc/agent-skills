@@ -12,7 +12,7 @@ only the named helper seams.
 | Verified cross-provider target policy | Preflight recorded before launch with the compared capabilities and rationale; bind/staff rejects any later drift |
 | Ambiguous or escalating cross-provider mapping | One precise pre-dispatch blocker naming the missing human choice; no fallback, fabricated snapshot, auto-approval or repeating child launches |
 | Model selection for a lane | Current provider/model/profile discovery recorded with the assignment; frontier model for substantive work; no hardcoded or weak default |
-| Routine pass reads the board | Bounded current view is enough to route work; full history requested explicitly for recovery or audit; durable records unchanged |
+| Routine pass reads the board | Bounded current view is enough to route work; settled workers stay in an actionable retirement queue until archived and their worktrees removed or deliberately retained; full history requested explicitly for recovery or audit; durable records unchanged |
 | PRs and unclear backlog | One shared Shepherd and one backlog manager; each creates its own heartbeat, PM records exact target/ID/settings |
 | Pause with all roles live | Board gate closes first; all owned role timers deleted with receipts; queued effects reconciled; no auto-resume |
 | Discovery waits for human | Same question/input revision retained; no duplicate interview or repeated research |

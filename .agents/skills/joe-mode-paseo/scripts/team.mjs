@@ -27,8 +27,14 @@ function validatePreflight(plan) {
     text(plan[key], `permission preflight ${key}`);
   }
   if (!['bind', 'staff'].includes(plan.purpose)) throw new Error('Invalid permission preflight purpose');
+  // The child agent cannot exist yet: plan the exact workspace and worktree instead.
+  if (plan.purpose === 'staff' || plan.worktree !== undefined) text(plan.worktree, 'permission preflight worktree');
   permissionSnapshot(plan.parent);
   permissionSnapshot(plan.target);
+  if (plan.launch !== undefined) {
+    text(plan.launch?.agentId, 'permission launch agent');
+    text(plan.launch.evidence, 'permission launch receipt');
+  }
   if (plan.parent.provider === plan.target.provider) {
     if (!isDeepStrictEqual(plan.parent, plan.target)) throw new Error('Same-provider permission mismatch');
     return;
@@ -42,7 +48,7 @@ function validatePreflight(plan) {
   if (mapping.kind === 'authorized-mapping') text(mapping.authority, 'permission mapping authority');
 }
 
-export function permissionProof(proof, preflights = [], purpose = 'bind') {
+export function permissionProof(proof, preflights = [], purpose = 'bind', launch = {}) {
   text(proof?.authority, 'permission authority');
   text(proof.evidence, 'permission readback');
   permissionSnapshot(proof.parent);
@@ -61,6 +67,10 @@ export function permissionProof(proof, preflights = [], purpose = 'bind') {
     if (!isDeepStrictEqual(actual, expected)) {
       throw new Error('Permission preflight drift; hold work and reconcile current parent/target');
     }
+  }
+  if (!plan.launch) throw new Error('Missing actual launch receipt for this permission preflight');
+  if (plan.launch.agentId !== launch.agentId || plan.worktree !== launch.worktree) {
+    throw new Error('Permission preflight belongs to another launch, agent or worktree');
   }
 }
 
@@ -121,7 +131,8 @@ export function checkTeamReservation(pm, worker) {
 }
 
 export function checkTeamBinding(pm, worker, request) {
-  permissionProof(request.permissions, worker.permissionPreflights);
+  permissionProof(request.permissions, worker.permissionPreflights, 'bind',
+    { agentId: request.agentId, worktree: worker.kind === 'delivery' ? request.worktree : undefined });
   if (pm.workers.some(other => other !== worker && !other.settled &&
     (other.agentId === request.agentId || activeDevelopers(other).some(member => member.agentId === request.agentId)))) {
     throw new Error('Agent already owns another role');
@@ -212,14 +223,16 @@ export function checkTeamState(pm) {
         pm.workers.some(other => other !== worker && !other.settled &&
           activeDevelopers(other).some(member => member.agentId === worker.agentId))) throw new Error('Duplicate role agent');
       agents.add(worker.agentId);
-      permissionProof(worker.permissions, worker.permissionPreflights);
+      permissionProof(worker.permissions, worker.permissionPreflights, 'bind',
+        { agentId: worker.agentId, worktree: worker.worktree });
       if (worker.kind === 'delivery') text(worker.worktree, 'delivery worktree');
     }
     if (activeDevelopers(worker).length > developerSlots(worker.assignment)) throw new Error('Invalid developer capacity');
     for (const member of worker.developers ?? []) {
       text(member.agentId, 'developer agent');
       text(member.worktree, 'developer worktree');
-      permissionProof(member.permissions, worker.permissionPreflights, 'staff');
+      permissionProof(member.permissions, worker.permissionPreflights, 'staff',
+        { agentId: member.agentId, worktree: member.worktree });
       if (member.return) {
         for (const key of ['evidence', 'result', 'acceptance', 'archive']) text(member.return[key], `developer return ${key}`);
         continue;
@@ -328,14 +341,17 @@ export function teamOperation(pm, request) {
   text(request.evidence, 'live evidence');
   if (request.op === 'permission-preflight') {
     if (pm.mode !== 'enabled' || worker.settled) throw new Error('Permission preflight needs enabled live reservation');
-    const plan = Object.fromEntries(['launchId', 'parentAgentId', 'workspaceId', 'parent', 'target',
-      'authority', 'evidence', 'mapping'].filter(key => request[key] !== undefined).map(key => [key, request[key]]));
+    const plan = Object.fromEntries(['launchId', 'parentAgentId', 'workspaceId', 'worktree', 'parent',
+      'target', 'authority', 'evidence', 'mapping'].filter(key => request[key] !== undefined)
+      .map(key => [key, request[key]]));
     plan.purpose = request.purpose ?? 'bind';
+    if (plan.purpose === 'bind' && worker.kind === 'delivery') text(plan.worktree, 'permission preflight worktree');
     validatePreflight(plan);
     worker.permissionPreflights ??= [];
     const previous = worker.permissionPreflights.find(item => item.launchId === plan.launchId);
     if (previous) {
-      if (!isDeepStrictEqual(previous, plan)) throw new Error('Changed permission preflight; reconcile and record a new launch intent');
+      const { launch, ...recorded } = previous;
+      if (!isDeepStrictEqual(recorded, plan)) throw new Error('Changed permission preflight; reconcile and record a new launch intent');
       return 'permission-preflight-recorded';
     }
     if (plan.purpose === 'bind' && worker.agentId) throw new Error('Worker already bound; preflight must precede launch');
@@ -344,6 +360,26 @@ export function teamOperation(pm, request) {
     }
     worker.permissionPreflights.push(plan);
     return 'permission-preflight-recorded';
+  }
+  if (request.op === 'permission-launch') {
+    if (pm.mode !== 'enabled' || worker.settled) throw new Error('Permission launch needs enabled live reservation');
+    const plan = worker.permissionPreflights?.find(item => item.launchId === request.launchId);
+    if (!plan) throw new Error('Unknown permission preflight');
+    // The plan is intent; this records the child the runtime actually created for it.
+    text(request.agentId, 'permission launch agent');
+    if (request.workspaceId !== plan.workspaceId || request.worktree !== plan.worktree) {
+      throw new Error('Launched placement differs from the recorded permission preflight');
+    }
+    const launch = { agentId: request.agentId, evidence: request.evidence };
+    if (plan.launch) {
+      if (!isDeepStrictEqual(plan.launch, launch)) throw new Error('Changed permission launch receipt; record a new launch intent');
+      return 'permission-launch-recorded';
+    }
+    if (worker.permissionPreflights.some(item => item.launch?.agentId === request.agentId)) {
+      throw new Error('Launch receipt already recorded for that agent');
+    }
+    plan.launch = launch;
+    return 'permission-launch-recorded';
   }
   if (request.op === 'role-heartbeat') return roleHeartbeat(pm, worker, request);
   if (request.op === 'block') return block(pm, worker, request);
@@ -365,11 +401,8 @@ export function teamOperation(pm, request) {
     text(request.agentId, 'developer agent');
     text(request.worktree, 'developer worktree');
     checkFreshAttempt(pm, worker, request);
-    permissionProof(request.permissions, worker.permissionPreflights, 'staff');
-    if (request.permissions.preflight && worker.developers?.some(member =>
-      member.permissions.preflight === request.permissions.preflight && member.agentId !== request.agentId)) {
-      throw new Error('Permission preflight already used by another developer');
-    }
+    permissionProof(request.permissions, worker.permissionPreflights, 'staff',
+      { agentId: request.agentId, worktree: request.worktree });
     worker.developers ??= [];
     const member = { agentId: request.agentId, worktree: request.worktree,
       permissions: request.permissions, evidence: request.evidence };
@@ -391,6 +424,7 @@ export function teamOperation(pm, request) {
   }
   if (!worker.settled || !worker.archive) throw new Error('Cleanup needs settled and archived custody');
   if (request.op === 'cleanup-ready') {
+    if (worker.cleanup?.retention) throw new Error('Worktree recorded as retained; reconcile custody before removal');
     if (request.noLiveWriters !== true || request.clean !== true) throw new Error('Live writers or unpreserved files');
     text(request.branch, 'remote recovery branch');
     if (!/^refs\/heads\/.+/.test(request.branch) || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(request.localHead) ||
@@ -399,7 +433,14 @@ export function teamOperation(pm, request) {
     return 'cleanup-ready';
   }
   if (request.op === 'cleanup') {
-    if (!worker.cleanup) throw new Error('Missing verified remote preservation');
+    // Keeping an owned worktree is a real outcome, not a skipped deletion.
+    if (request.retained === true) {
+      if (worker.cleanup?.removal) throw new Error('Worktree already removed');
+      if (worker.cleanup && !worker.cleanup.retention) throw new Error('Verified removal preparation recorded; reconcile custody');
+      worker.cleanup = { retention: request.evidence };
+      return 'retained';
+    }
+    if (!worker.cleanup || worker.cleanup.retention) throw new Error('Missing verified remote preservation');
     worker.cleanup.removal = request.evidence;
     return 'cleaned';
   }

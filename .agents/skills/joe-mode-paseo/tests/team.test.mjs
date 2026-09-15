@@ -98,7 +98,8 @@ test('cross-provider binding needs recorded prelaunch mapping and unchanged nati
   const bind = permissions => b.bind('mixed', { permissions });
   assert.throws(() => bind(mapped), /permission|preflight/i);
   const preflight = { op: 'permission-preflight', key: 'mixed', launchId: 'launch-mixed',
-    parentAgentId: 'pm', workspaceId: 'mixed-workspace', parent: permissions, target,
+    parentAgentId: 'pm', workspaceId: 'mixed-workspace', worktree: '/worktrees/mixed',
+    parent: permissions, target,
     authority: proof.authority, evidence: 'live-parent-and-target-profile',
     mapping: { kind: 'equivalent', preservesChoices: true,
       sourceCapabilities: 'source-native-docs-and-readback',
@@ -107,14 +108,22 @@ test('cross-provider binding needs recorded prelaunch mapping and unchanged nati
       evidence: 'verified-policy-comparison' } };
   assert.equal(b.call(preflight).status, 'permission-preflight-recorded');
   assert.throws(() => b.call({ ...preflight, launchId: 'bad', mapping: undefined }), /mapping/i);
+  assert.throws(() => b.call({ ...preflight, launchId: 'bad', worktree: undefined }), /worktree/i);
   assert.throws(() => b.call({ ...preflight, launchId: 'bad', mapping: { ...preflight.mapping, preservesChoices: false } }), /permission|choices/i);
   assert.throws(() => b.call({ ...preflight, target: { ...target, modeId: 'unrestricted' } }), /Changed/);
+  assert.throws(() => bind(mapped), /launch receipt/i);
+  const launch = { op: 'permission-launch', key: 'mixed', launchId: 'launch-mixed',
+    agentId: 'agent-mixed', workspaceId: 'mixed-workspace', worktree: '/worktrees/mixed',
+    evidence: 'create-agent-receipt-and-child-readback' };
+  assert.throws(() => b.call({ ...launch, worktree: '/elsewhere' }), /placement/i);
+  assert.equal(b.call(launch).status, 'permission-launch-recorded');
   for (const changed of [
     { parent: { ...permissions, features: { auto_accept: false } } },
     { child: { ...target, modeId: 'unrestricted' } },
     { parentAgentId: 'another-parent' }, { workspaceId: 'elsewhere' },
     { authority: 'different-grant' },
   ]) assert.throws(() => bind({ ...mapped, ...changed }), /permission|preflight/i);
+  assert.throws(() => b.bind('mixed', { permissions: mapped, agentId: 'other-child' }), /launch/i);
   assert.equal(bind(mapped).status, 'bound');
   assert.deepEqual(JSON.parse(readFileSync(b.file)).pm.workers[0].permissions.child, target);
   assert.throws(() => b.call({ ...preflight, launchId: 'after-launch' }), /already bound/i);
@@ -437,4 +446,79 @@ test('a lane staffed after one covered issue blocks keeps working and still bars
     assert.throws(() => b.bind('retry', { agentId, worktree }), /fresh/);
   }
   b.bind('retry');
+});
+
+const target = { provider: 'target-provider', modeId: 'review', features: { approval: 'ask' } };
+const mapping = { kind: 'equivalent', preservesChoices: true,
+  sourceCapabilities: 'source-native-docs-and-readback',
+  targetCapabilities: 'target-native-docs-and-profile',
+  rationale: 'Both request approval for the same operations',
+  evidence: 'verified-policy-comparison' };
+
+test('a cross-provider preflight authorizes only its planned worktree and actually launched child', t => {
+  const b = board(t);
+  b.reserve('lane', 'feature');
+  b.bind('lane');
+  const plan = { op: 'permission-preflight', key: 'lane', launchId: 'launch-one', purpose: 'staff',
+    parentAgentId: 'agent-lane', workspaceId: 'workspace-red', worktree: '/planned/red',
+    parent: permissions, target, authority: proof.authority,
+    evidence: 'live-parent-and-target-profile', mapping };
+  assert.equal(b.call(plan).status, 'permission-preflight-recorded');
+  const mapped = { ...proof, child: target, preflight: 'launch-one',
+    parentAgentId: 'agent-lane', workspaceId: 'workspace-red' };
+  const staff = (agentId, worktree) => b.call({ op: 'staff', key: 'lane', agentId, worktree,
+    permissions: mapped, evidence: 'developer/readback' });
+  assert.throws(() => staff('actual-red', '/planned/red'), /launch/i);
+  const receipt = { op: 'permission-launch', key: 'lane', launchId: 'launch-one',
+    agentId: 'actual-red', workspaceId: 'workspace-red', worktree: '/planned/red',
+    evidence: 'create-agent-receipt-and-child-readback' };
+  assert.equal(b.call(receipt).status, 'permission-launch-recorded');
+  assert.throws(() => b.call({ ...receipt, agentId: 'other-child' }), /Changed/);
+  assert.throws(() => staff('other-child', '/planned/red'), /launch/i);
+  assert.throws(() => staff('actual-red', '/elsewhere'), /launch|worktree/i);
+  assert.equal(staff('actual-red', '/planned/red').status, 'staffed');
+  assert.throws(() => b.call({ op: 'staff', key: 'lane', agentId: 'second-child',
+    worktree: '/planned/green', permissions: mapped, evidence: 'developer/readback' }), /launch|preflight/i);
+});
+
+test('the bounded view keeps a retirement queue until each settled worker is actually terminal', t => {
+  const b = board(t);
+  const view = () => summarize(JSON.parse(readFileSync(b.file)));
+  const queue = () => view().retirement;
+  b.reserve('lane');
+  b.bind('lane');
+  b.reserve('helper', undefined, 'roast', ['lane']);
+  b.bind('helper', { worktree: undefined });
+  b.call({ op: 'settle', key: 'lane', evidence: 'no-live-writers', result: 'preserved',
+    acceptance: 'receiver/readback', noLiveWriters: true, noUntransferredDuties: true });
+  assert.deepEqual(queue(), [{ key: 'lane', kind: 'delivery', agentId: 'agent-lane',
+    worktree: '/worktrees/lane', phase: 'archive-pending' }]);
+  b.call({ op: 'archive', key: 'lane', evidence: 'archive/readback' });
+  assert.deepEqual(queue(), [{ key: 'lane', kind: 'delivery', agentId: 'agent-lane',
+    worktree: '/worktrees/lane', phase: 'cleanup-pending' }]);
+  const head = 'a'.repeat(40);
+  b.call({ op: 'cleanup-ready', key: 'lane', noLiveWriters: true, clean: true,
+    branch: 'refs/heads/recovery/lane', localHead: head, remoteHead: head, evidence: 'preserved/remote' });
+  assert.deepEqual(queue(), [{ key: 'lane', kind: 'delivery', agentId: 'agent-lane',
+    worktree: '/worktrees/lane', phase: 'removal-pending',
+    recovery: { branch: 'refs/heads/recovery/lane', head } }]);
+  b.call({ op: 'cleanup', key: 'lane', evidence: 'removal/readback' });
+  assert.equal(queue(), undefined);
+  assert.equal(view().history.settledWorkers, 1);
+
+  b.call({ op: 'settle', key: 'helper', evidence: 'no-live-writers', result: 'review',
+    acceptance: 'receiver/readback', noLiveWriters: true, noUntransferredDuties: true });
+  assert.deepEqual(queue(), [{ key: 'helper', kind: 'roast', agentId: 'agent-helper',
+    phase: 'archive-pending' }]);
+  b.call({ op: 'archive', key: 'helper', evidence: 'archive/readback' });
+  assert.equal(queue(), undefined, 'a role without an owned worktree is terminal once archived');
+
+  b.reserve('kept');
+  b.bind('kept');
+  settle(b, 'kept');
+  assert.equal(queue()[0].phase, 'cleanup-pending');
+  assert.equal(b.call({ op: 'cleanup', key: 'kept', retained: true,
+    evidence: 'human-directed/worktree-retained' }).status, 'retained');
+  assert.equal(queue(), undefined, 'a deliberately retained worktree is a terminal outcome');
+  assert.equal(view().history.settledWorkers, 3);
 });

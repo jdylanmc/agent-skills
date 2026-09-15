@@ -184,9 +184,13 @@ Before every role/worker launch:
 3. For a different target provider, compare the actual target policy with the
    parent's authorized one and record STATE's `permission-preflight` before the
    launch: `equivalent` when the target expresses the same meaning, or a
-   human-authorized mapping for a genuine difference. Ambiguous or escalating
-   mappings wait for the human. Fabricated matching snapshots are never mapping
-   evidence, and no mapping transfers approvals, credentials or provider policy.
+   human-authorized mapping for a genuine difference. Plan the exact workspace
+   and worktree there; the child's ID cannot exist yet. After creation record
+   `permission-launch` with the ID the runtime actually returned, so the plan
+   binds to that one child in that one worktree. Ambiguous or escalating
+   mappings wait for the human. Fabricated matching snapshots or launch receipts
+   are never mapping evidence, and no mapping transfers approvals, credentials
+   or provider policy.
 4. Read child mode/features after startup and workflow initialization. Join its
    actual ID/workspace/cwd to the assignment. Bind only after readback matches
    the recorded plan. A mismatch holds its reservation and affected work;

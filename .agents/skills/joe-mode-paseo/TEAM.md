@@ -109,6 +109,10 @@ then remove only that exact owned worktree and read back the result.
 Failed push, dirty state, uncertain ownership or inaccessible evidence means
 **keep the local copy**, report the cleanup blocker, and move on safely.
 Archiving an agent is not permission to delete its workspace or branch.
+Retirement is a duty, not a deletion quota: record a deliberately kept worktree
+with `cleanup` and `retained: true` so the board shows a decided outcome. Until
+each settled worker is archived and its worktree actually removed or retained,
+it stays in the bounded view's retirement queue with its recovery locator.
 
 ## Permissions follow the human
 
@@ -124,7 +128,10 @@ Same provider, same snapshot. For a **different** target provider, verify the
 target's actual policy against the parent's before launching and record that
 mapping with STATE's `permission-preflight`: an `equivalent` mapping when the
 target expresses the same meaning, or a human-authorized mapping for a real
-difference. Preserve the human's choices; never fabricate a matching snapshot,
+difference. Plan the exact workspace and worktree, then record
+`permission-launch` with the identity the runtime actually created, so one
+approval cannot cover a different developer, worktree or later launch.
+Preserve the human's choices; never fabricate a matching snapshot,
 widen the target or downgrade a granted mode silently. Ask the human only when
 the mapping is genuinely ambiguous or would escalate authority, not for every
 mixed-provider task. Unmapped or unsupported equivalence queues that launch

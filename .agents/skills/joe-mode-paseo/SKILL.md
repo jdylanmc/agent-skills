@@ -132,7 +132,8 @@ Use [permission-preserving dispatch](RUNTIME.md#permission-preserving-dispatch).
 Propagate the parent's current authorized mode and permission features explicitly,
 including human-selected Allow All or Auto Accept. Verify child readback; do not
 restore a stale restrictive default. Record a verified target-policy mapping
-with STATE's `permission-preflight` before any cross-provider launch. Never
+with STATE's `permission-preflight` before any cross-provider launch, and bind
+it to the child actually created with `permission-launch`. Never
 broaden grants, approve pending requests as a workaround or edit global
 configuration. Select current frontier models by discovery, never a hardcoded
 name; see [TEAM](TEAM.md#choose-current-frontier-models).

@@ -331,7 +331,8 @@ function apply(state, request) {
     if (pm.mode !== 'enabled') throw new Error('PM is not enabled');
   }
   if (request.op === 'reserve') return reserve(pm, request.worker);
-  if (['permission-preflight', 'staff', 'retire-developer', 'role-heartbeat', 'block', 'unblock', 'cleanup-ready', 'cleanup'].includes(request.op)) {
+  if (['permission-preflight', 'permission-launch', 'staff', 'retire-developer', 'role-heartbeat',
+    'block', 'unblock', 'cleanup-ready', 'cleanup'].includes(request.op)) {
     return teamOperation(pm, request);
   }
   if (['cover', 'bind', 'settle', 'archive'].includes(request.op)) return updateWorker(pm, request);
@@ -367,24 +368,41 @@ function workerView(worker) {
     ...(worker.graph ? { publication: worker.graph.complete ? 'complete' : 'pending' } : {}) };
 }
 
+// A settled worker still needs archival, and an owned worktree still needs an
+// actual removal or a deliberate retention record, before it leaves the queue.
+function retirementView(worker) {
+  const phase = !worker.archive ? 'archive-pending'
+    : !worker.worktree ? null
+      : !worker.cleanup ? 'cleanup-pending'
+        : worker.cleanup.removal || worker.cleanup.retention ? null : 'removal-pending';
+  if (!phase) return null;
+  return { key: worker.key, kind: worker.kind, agentId: worker.agentId,
+    ...(worker.worktree ? { worktree: worker.worktree } : {}), phase,
+    ...(phase === 'removal-pending'
+      ? { recovery: { branch: worker.cleanup.branch, head: worker.cleanup.head } } : {}) };
+}
+
 // Current work, not the whole durable record: growing history stays on the board.
 export function summarize(state) {
   const pm = state.pm;
   if (!pm) return { initialized: false };
   const open = pm.pending.filter(record => ['pending', 'blocked'].includes(record.status));
   const blockers = (pm.blockers ?? []).filter(episode => !episode.resolution);
+  const settled = pm.workers.filter(worker => worker.settled);
+  const retirement = settled.map(retirementView).filter(Boolean);
   return {
     mode: pm.mode, ...(pm.config.team ? { team: true } : {}), capacity: pm.config.capacity,
     ...(pm.lease ? { lease: { owner: pm.lease.owner, token: pm.lease.token } } : {}),
     ...(pm.schedule ? { schedule: { id: pm.schedule.id, kind: pm.schedule.kind ?? 'schedule',
       cron: pm.schedule.cron, targetAgentId: pm.schedule.targetAgentId, enabled: pm.schedule.enabled } } : {}),
     workers: pm.workers.filter(worker => !worker.settled).map(workerView),
+    ...(retirement.length ? { retirement } : {}),
     pending: open.map(({ key, status, evidence }) => ({ key, status, evidence })),
     ...(blockers.length ? { blockers: blockers.map(episode => ({ issue: episode.issue,
       status: episode.status, attempts: episode.attempts.length })) } : {}),
     history: {
       runs: pm.runs.length,
-      settledWorkers: pm.workers.length - pm.workers.filter(worker => !worker.settled).length,
+      settledWorkers: settled.length,
       resolvedOperations: pm.pending.length - open.length,
       operationHistory: pm.pending.reduce((total, record) => total + (record.history?.length ?? 0), 0),
       wakeups: pm.wakeupHistory?.length ?? 0, merges: pm.mergeHistory?.length ?? 0,
