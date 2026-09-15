@@ -11,11 +11,11 @@ const installSource = process.env.SKILLS_PACK_SOURCE ?? root;
 const expected = [
   'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts',
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
-  'handoff', 'interrogate', 'joe-mode', 'migration', 'patch', 'poc', 'refactor',
+  'handoff', 'interrogate', 'joe-mode', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'specify',
   'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what',
 ];
-const originalNames = expected.filter(name => name !== 'chart-a-course');
+const originalNames = expected.filter(name => !['chart-a-course', 'joe-mode-paseo'].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
 // Changes require explicit human authorization, not automatic fixture regeneration.
@@ -29,14 +29,42 @@ function digestFiles(filenames, select = bytes => bytes) {
   return hash.digest('hex');
 }
 
-test('original human intents and complete doctrine sources remain byte-preserved', () => {
+test('protected human intents and complete doctrine sources remain byte-preserved', () => {
   const sources = files(path.join(root, '.agents/skills'))
     .map(filename => path.relative(root, filename).split(path.sep).join('/'))
     .filter(filename => filename.endsWith('/intent.md') || filename.includes('/doctrines/'))
-    .filter(filename => filename !== '.agents/skills/chart-a-course/intent.md');
+    .filter(filename => filename !== '.agents/skills/chart-a-course/intent.md')
+    // New PM intent explicitly authorized separately; pinned below.
+    .filter(filename => filename !== '.agents/skills/joe-mode-paseo/intent.md')
+    // Only Shepherd intent was authorized for the adaptive/recovery extension.
+    .filter(filename => filename !== '.agents/skills/shepherd/intent.md');
   sources.push('intent.md');
-  assert.equal(sources.length, 37);
-  assert.equal(digestFiles(sources), 'ef01b4c94174de1888a03a21207e0053842c0c136a3d9cc5f5dbb82473b1767a');
+  assert.equal(sources.length, 36);
+  // Root intent adds only the requested repository-scoped Paseo merge delegation.
+  assert.equal(digestFiles(sources), 'c2a802897082b5e8d275ecc0f18dfca4706762f418d85ca0c5f24f4e3e732167');
+});
+
+test('specifically authorized Shepherd intent remains pinned to the extension', () => {
+  const intent = readFileSync(path.join(root, '.agents/skills/shepherd/intent.md'));
+  assert.equal(createHash('sha256').update(intent).digest('hex'),
+    '57e4a3bbf91ef2bb561d5067228791b92a1212e700390870a17cb7c01ed06344');
+});
+
+test('separately authorized PM intent and entrypoint metadata remain pinned', () => {
+  const directory = path.join(root, '.agents/skills/joe-mode-paseo');
+  assert.equal(createHash('sha256').update(readFileSync(path.join(directory, 'intent.md'))).digest('hex'),
+    '3cec19202485233d292bfa90dd060841a95684d0ab45d33e1fabdeee2ee26a0c');
+  const metadata = readFileSync(path.join(directory, 'SKILL.md'), 'utf8').split('---\n')[1];
+  assert.equal(createHash('sha256').update(metadata).digest('hex'),
+    'e667bc36fc671b7b1f793e7ced6572854067578a9ff57e87bf221fe54db79f7f');
+  assert.match(metadata, /^name: joe-mode-paseo$/m);
+  assert.match(metadata, /^disable-model-invocation: false$/m);
+  assert.match(metadata, /^user-invocable: true$/m);
+  for (const support of ['RUN.md', 'RUNTIME.md', 'STATE.md', 'MERGE.md', 'SCENARIOS.md', 'intent.md']) {
+    const text = readFileSync(path.join(directory, support), 'utf8');
+    assert.ok(text.trim(), support);
+    assert.ok(!text.startsWith('---\n'), `${support}: support is not a second skill entry`);
+  }
 });
 
 test('all original entrypoint metadata, including invocation flags, is preserved', () => {
@@ -105,10 +133,48 @@ function assertPortable(directory) {
   }
 }
 
+function assertLifecycleSupport(directory) {
+  const contracts = [
+    'squadron/LIFECYCLE.md', 'squadron/LIFECYCLE-SCENARIOS.md',
+    'ship/WORKSPACE.md', 'ship/DELIVERY.md',
+    'shepherd/OBSERVATION.md', 'shepherd/RECOVERY.md', 'shepherd/SCENARIOS.md',
+  ].map(name => path.join(directory, name));
+  for (const contract of contracts) assert.ok(readFileSync(contract).length > 0, contract);
+
+  for (const entry of [
+    'squadron/SKILL.md', 'ship/SKILL.md', 'ship/WORKER.md',
+    'joe-mode/SKILL.md', 'joe-mode/RUNTIME.md', 'joe-mode-paseo/SKILL.md',
+    'joe-mode-paseo/RUN.md', 'shepherd/SKILL.md',
+    'handoff/SKILL.md', 'patch/SKILL.md', 'refactor/SKILL.md', 'setup/INVOCATION.md',
+  ]) {
+    const pending = [path.join(directory, entry)];
+    const visited = new Set();
+    while (pending.length) {
+      const filename = pending.pop();
+      if (visited.has(filename)) continue;
+      visited.add(filename);
+      for (const link of markdownLinks(readFileSync(filename, 'utf8'))) {
+        if (/^(?:[a-z][a-z0-9+.-]*:|#)/i.test(link)) continue;
+        const target = path.resolve(path.dirname(filename), decodeURIComponent(link.split('#')[0]));
+        if (target.endsWith('.md')) pending.push(target);
+      }
+    }
+    for (const contract of contracts) {
+      assert.ok(visited.has(contract), `${entry}: unreachable supporting contract ${contract}`);
+    }
+  }
+}
+
+test('lifecycle guidance and review scenarios are reachable through local package links', () => {
+  assertLifecycleSupport(path.join(root, '.agents/skills'));
+});
+
 test('Chart-a-course is a portable, human- and model-invocable local package', () => {
   const directory = path.join(root, '.agents/skills');
   const skill = readFileSync(path.join(directory, 'chart-a-course/SKILL.md'), 'utf8');
   const metadata = skill.split('---\n')[1];
+  assert.equal(createHash('sha256').update(metadata).digest('hex'),
+    '7d74b4658ddec3e58897117555d7303b6aa612927648284ce7501d67dc930426');
   assert.match(metadata, /^name: chart-a-course$/m);
   assert.match(metadata, /^disable-model-invocation: false$/m);
   assert.match(metadata, /^user-invocable: true$/m);
@@ -124,9 +190,9 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
   try {
     const home = path.join(consumer, '.test-home');
     mkdirSync(home);
-    const install = () => execFileSync(process.execPath, [
+    const install = (selection = '*') => execFileSync(process.execPath, [
       path.join(root, 'node_modules/skills/bin/cli.mjs'), 'add', installSource,
-      '--skill', '*', '--agent', 'github-copilot', '--copy', '-y',
+      '--skill', selection, '--agent', 'github-copilot', '--copy', '-y',
     ], {
       cwd: consumer,
       env: {
@@ -139,7 +205,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     install();
     const installed = path.join(consumer, '.agents/skills');
-    await t.test('all 33 active names, no archive', () => {
+    await t.test('all 34 active names, no archive', () => {
       assert.deepEqual(readdirSync(installed).sort(), expected);
     });
     await t.test('installation writes only project skill files and installer lock, not Setup outputs', () => {
@@ -152,6 +218,25 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     await t.test('installed Markdown dependencies resolve inside the pack', () => {
       assertPortable(installed);
+    });
+    await t.test('installed routes can reach lifecycle, placement, readiness and review guidance', () => {
+      assertLifecycleSupport(installed);
+    });
+    await t.test('PM is separately selectable alongside prerequisites with all support intact', () => {
+      const pm = path.join(installed, 'joe-mode-paseo');
+      rmSync(pm, { recursive: true });
+      install('joe-mode-paseo');
+      assert.deepEqual(snapshot(pm), snapshot(path.join(root, '.agents/skills/joe-mode-paseo')));
+      assert.deepEqual(readdirSync(installed).sort(), expected);
+      assertPortable(installed);
+    });
+    await t.test('installed PM helper runs read-only from the consumer without activating anything', () => {
+      const output = execFileSync(process.execPath, [
+        path.join(installed, 'joe-mode-paseo/scripts/state.mjs'),
+        path.join(consumer, 'absent-board.json'), '{"op":"inspect"}',
+      ], { cwd: consumer, encoding: 'utf8', timeout: 10_000 });
+      assert.deepEqual(JSON.parse(output), { status: 'observed', state: {} });
+      assert.ok(!existsSync(path.join(consumer, 'absent-board.json')));
     });
     await t.test('required policies, provenance and licenses travel with the pack', () => {
       for (const name of [
@@ -195,6 +280,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
       const before = snapshot(consumer);
       install();
       assert.deepEqual(snapshot(consumer), before);
+      assertLifecycleSupport(installed);
     });
   } finally {
     rmSync(consumer, { recursive: true, force: true });

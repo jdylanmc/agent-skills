@@ -1,6 +1,6 @@
 # Agent Skills
 
-Dylan's editable library of **33 skills** and human-owned engineering doctrine,
+Dylan's editable library of **34 skills** and human-owned engineering doctrine,
 designed for GitHub Copilot. The retired atomic framework remains historical
 material under `archive/atomic-v1/`; it does not govern the active library.
 
@@ -26,7 +26,8 @@ DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill '*
 The environment prefix above is POSIX shell syntax; in PowerShell, set
 `$env:DISABLE_TELEMETRY='1'` before running the `npx` command.
 
-Install **all 33** together. Individual installs are unsupported: workflows
+Install **all 34** together for a new consumer. Isolated installs without
+prerequisites are unsupported: workflows
 reference sibling skills, and Setup carries the shared policies, attribution,
 licenses, and historical provenance. The quoted `'*'` selects every active
 skill without shell expansion. The default route does not install the archive;
@@ -50,6 +51,36 @@ any workflow. Invoke `/setup` separately when you want repository configuration;
 its existing human-choice and exact-file approval gates still apply, including
 the named Joe-mode bootstrap.
 
+**Optional Paseo PM:** invoke `/joe-mode-paseo` explicitly to set up or manage
+one repository's engineering team, with six default concurrent delivery lanes
+and human merging by default. The final PM can also merge under a human-granted
+[repository merge gate](.agents/skills/joe-mode-paseo/MERGE.md): at least independent
+Roast, successful CI and linting, then its own rubber-duck review and verification.
+Missing policy is clarified with the human, not invented.
+Each pass checks progress and direction, charts the backlog,
+intakes new requirements and dispatches existing planning/delivery routes.
+Setup recommends Paseo's dedicated-PM heartbeat recipe, **every five minutes
+by default**, and records the approved cadence and runner choice. Fresh
+conversations require proven stable workspace placement/lifetime. Its
+[capability gates](.agents/skills/joe-mode-paseo/RUNTIME.md) block fresh mode
+on the inspected upstream scheduler because each run creates a new workspace.
+Explicit fresh-only requests never silently fall back. A human may delegate
+runner mechanics, but activation still requires narrow access and verified
+binding. Heartbeat setup verifies the creation receipt and actual PM placement;
+schedule-only inspection APIs cannot inspect heartbeats. Later wakeup receipts
+prove recurring operation separately. Installation does not activate monitoring
+or repair Paseo.
+
+The adapter is separately discoverable/selectable. A consumer that already has
+the prerequisite full pack can install/update only this new package:
+
+```sh
+DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill joe-mode-paseo --agent github-copilot --copy -y
+```
+
+That selection copies its support files but does not fetch missing sibling
+workflows. Use the full-pack command for a new consumer.
+
 The [catalog and caller contracts](.agents/skills/setup/INVOCATION.md#full-catalog)
 remain binding: internal helpers are not direct human commands; human-only
 modes do not start themselves. Invocation flags, model hints, and tool metadata
@@ -69,6 +100,11 @@ Validation keeps telemetry disabled and does not claim directory registration.
 - **Joe-mode:** human-started, one controller per repository, looping until
   paused or stopped. Use Squadron aggressively for independent discovery,
   delivery, and Shepherd assignments without overlapping owners.
+- **Joe-mode Paseo:** separately human-enabled recurring team PM, sharing the
+  same repository ownership registry. Consented heartbeat or runtime-proven fresh
+  passes retain one interactive
+  Discovery conversation per repository, existing delivery/Shepherd custody,
+  durable results and explicit pause/resume/stop; no automated approval or merging.
 - **Planning:** Discovery preserves the full aligned evidence artifact;
   Specify turns it into complete requirements; Breakdown Tickets produces
   human-approved slices. Already-clear small deliveries need no new ceremony.
@@ -197,13 +233,17 @@ material for separately authorized debugging, not install-time hooks.
 
 ```sh
 node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs
+node --test .agents/skills/joe-mode-paseo/tests/*.test.mjs
 npm ci --ignore-scripts
 npm run test:pack
 ```
 
 CI retains the 80 doctrine/selector/Scout checks and adds an actual released
 CLI copy install from the local candidate into an owned `.test-sandbox/`
-consumer. Pack tests check exact membership, complete copied support, portable
+consumer. PM tests cover local atomic claims, persistent capacity/Discovery
+reservations, control gates and accepted-result preservation; they do not prove
+Paseo scheduling or agent compliance. Pack tests check exact membership,
+separate PM selection with prerequisites, complete copied support, portable
 Markdown links, bundled resources, installed Doctrine loading, protected
 source bytes/metadata, repeat installation, and unrelated-file preservation.
 After successful validation on a push to `main` (or a manual run on `main`),
