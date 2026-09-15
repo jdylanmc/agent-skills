@@ -65,7 +65,7 @@ whatever tooling exists at the time.
   clearly broken, and gets a disinterested second opinion on what is arguable.
   Then a person signs off. Automating the review is not automating the approval,
   and that line must not erode as the automation improves.
-  For Joe-mode Paseo, I may instead authorize the final orchestrator to merge
+  For Joe-mode Paseo, I may instead request a separate PR coordinator to merge
   under a repository-defined gate: independent Roast, successful CI and linting,
   then its own rubber ducking and verification. An undefined gate comes back to
   me. This narrow delegation is not self-approval or a waiver of repository policy.
@@ -77,7 +77,25 @@ whatever tooling exists at the time.
   wrong moment.
 - **Capability is granted narrowly and deliberately.** Permissions are a human
   decision, justified in words, never widened as a side effect of building
-  something new.
+  something new. My team's children should carry my current permission choices,
+  not get stuck behind stale defaults. Inheritance is not a new grant.
+
+## How the team works
+
+PM runs the project, not every investigation. One shared Shepherd keeps PRs
+clean. One optional backlog manager works through questions with me. Developers
+build; short-lived roasters check them. Six developer slots by default: features
+cost two, bugs and refactors one. Support roles are separate.
+
+Joe prefers TDD for new features. Standalone Ship is opt-in. Legacy code may
+need another useful proof, not a forced red/green ritual. Refactoring means
+simpler architecture with preserved behavior: laziness, KISS, YAGNI and SOLID.
+
+Challenge a blocker twice from different contexts, not twice in PM's head.
+Try one fresh developer/worktree after the first confirmed work blocker.
+A repeated blocker returns to backlog and interactive discovery. Preserve work
+remotely before local cleanup. Permissions and human decisions are not retries
+to evade. PM owns role heartbeats and retires agents that no longer have work.
 
 ## What this is not
 

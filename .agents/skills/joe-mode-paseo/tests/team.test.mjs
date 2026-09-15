@@ -1,0 +1,247 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { test } from 'node:test';
+import { transact } from '../scripts/state.mjs';
+
+const permissions = { provider: 'copilot', modeId: 'agent', features: { auto_accept: true } };
+const proof = { parent: permissions, child: permissions, authority: 'human/current-grant', evidence: 'runtime/readback' };
+const config = {
+  id: 'team', repository: 'forge/org/repo', commonDir: '/repo/.git', cwd: '/repo/main',
+  projectId: 'project', workspaceId: 'main', humanOrigin: 'human/kickoff', anchor: 'goal',
+  setupEvidence: 'setup', authority: 'human/team', capabilities: 'runtime', mapping: 'mapping',
+  retirement: 'preserve-and-retire', merge: 'human', team: true,
+  wakeupMode: 'heartbeat', pmAgentId: 'pm', wakeupConsent: 'human/team', cron: '*/5 * * * *',
+};
+const job = { id: 'pm-job', kind: 'heartbeat', targetAgentId: 'pm', enabled: true,
+  cwd: config.cwd, projectId: config.projectId, workspaceId: config.workspaceId,
+  cron: config.cron, evidence: 'create-receipt', observation: 'initial-pass', settings: 'approved-settings' };
+
+function board(t, selected = config) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'joe-team-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'board.json');
+  transact(file, { op: 'init', config: selected });
+  transact(file, { op: 'resume', human: 'human/start', schedule: job });
+  const lease = transact(file, { op: 'claim', owner: 'pm', reconciliation: 'live-owners' }).state.pm.lease;
+  const call = request => transact(file, { ...lease, ...request });
+  const reserve = (key, work = 'bug', kind = 'delivery', coverage = [key]) =>
+    call({ op: 'reserve', worker: { key, kind, coverage, packet: `packets/${key}`,
+      ...(kind === 'delivery' ? { work } : {}) } });
+  const bind = (key, extra = {}) => call({ op: 'bind', key, agentId: `agent-${key}`,
+    worktree: `/worktrees/${key}`, permissions: proof, evidence: 'first-observation', ...extra });
+  return { file, call, reserve, bind };
+}
+
+function settle(b, key) {
+  b.call({ op: 'settle', key, evidence: 'no-live-writers', result: 'preserved-result',
+    acceptance: 'receiver/readback', noLiveWriters: true, noUntransferredDuties: true, discoveryEnded: true });
+  b.call({ op: 'archive', key, evidence: 'archive/readback' });
+}
+
+test('developer pool fits three features, two features plus two fixes, or six fixes', t => {
+  for (const mix of [
+    ['feature', 'feature', 'feature'],
+    ['feature', 'feature', 'bug', 'refactor'],
+    ['bug', 'bug', 'hardening', 'refactor', 'bug', 'bug'],
+  ]) {
+    const b = board(t);
+    mix.forEach((work, i) => b.reserve(`issue-${i}`, work));
+    assert.throws(() => b.reserve('overflow'), /capacity/);
+    assert.equal(b.reserve('support', undefined, 'research').status, 'reserved');
+    assert.equal(b.reserve('review', undefined, 'roast').status, 'reserved');
+    assert.equal(b.reserve('duck', undefined, 'investigator').status, 'reserved');
+    assert.throws(() => b.reserve('overlap', 'bug', 'delivery', ['issue-0']), /coverage/);
+  }
+});
+
+test('new team deliveries require a known work kind and retain pending reservations', t => {
+  const b = board(t);
+  assert.throws(() => b.reserve('bad', 'unknown'), /work kind/);
+  assert.throws(() => b.call({ op: 'reserve', worker: {
+    key: 'missing', kind: 'delivery', packet: 'packet', coverage: ['missing'],
+  } }), /work kind/);
+  b.reserve('feature', 'feature');
+  assert.equal(b.reserve('feature', 'feature').status, 'reused');
+  assert.throws(() => b.reserve('feature', 'bug'), /assignment/);
+  b.reserve('feature2', 'feature');
+  b.reserve('feature3', 'feature');
+  b.call({ op: 'release', result: 'pass', duties: 'pending-launches' });
+  const lease = transact(b.file, { op: 'claim', owner: 'pm', reconciliation: 'live' }).state.pm.lease;
+  assert.throws(() => transact(b.file, { ...lease, op: 'reserve', worker: {
+    key: 'next', kind: 'delivery', work: 'bug', packet: 'next', coverage: ['next'],
+  } }), /capacity/);
+});
+
+test('child binding compares provider, mode and permission features, not labels alone', t => {
+  const b = board(t);
+  b.reserve('one');
+  for (const child of [
+    { ...permissions, features: { auto_accept: false } },
+    { ...permissions, modeId: 'allow-all' },
+    { ...permissions, provider: 'other-provider' },
+  ]) {
+    assert.throws(() => b.bind('one', { permissions: { ...proof, child } }), /permission/i);
+  }
+  assert.throws(() => b.bind('one', { permissions: undefined }), /permission/i);
+  assert.equal(b.bind('one').status, 'bound');
+  assert.deepEqual(JSON.parse(readFileSync(b.file)).pm.workers[0].permissions, proof);
+});
+
+test('feature staffing is two real developers; duplicate and excess developer bindings fail', t => {
+  const b = board(t);
+  b.reserve('feature', 'feature');
+  b.bind('feature');
+  const staff = (agentId, worktree) => b.call({ op: 'staff', key: 'feature', agentId, worktree,
+    permissions: proof, evidence: 'worker/readback' });
+  staff('red', '/red');
+  assert.throws(() => staff('green', '/red'), /worktree/);
+  staff('green', '/green');
+  assert.throws(() => staff('third', '/third'), /capacity/);
+  assert.equal(staff('red', '/red').status, 'staffed');
+  b.reserve('bug');
+  b.bind('bug');
+  assert.throws(() => b.call({ op: 'staff', key: 'bug', agentId: 'red', worktree: '/red',
+    permissions: proof, evidence: 'readback' }), /developer|worktree/);
+});
+
+test('shared persistent roles are singleton reservations outside developer capacity', t => {
+  const b = board(t);
+  for (const kind of ['shepherd', 'discovery', 'coordinator']) {
+    if (kind === 'coordinator') {
+      assert.throws(() => b.reserve(kind, undefined, kind), /merge|coordinator/i);
+      continue;
+    }
+    b.reserve(kind, undefined, kind);
+    assert.throws(() => b.reserve(`${kind}-duplicate`, undefined, kind), /reserved/);
+  }
+  for (let i = 0; i < 6; i++) b.reserve(`bug-${i}`);
+});
+
+test('heartbeat creation is target-bound, pending cleanup fences retirement, pause prevents new timers', t => {
+  const b = board(t);
+  b.reserve('shepherd', undefined, 'shepherd');
+  b.bind('shepherd');
+  const beat = (action, extra = {}) => b.call({ op: 'role-heartbeat', key: 'shepherd', action,
+    evidence: 'runtime/receipt', ...extra });
+  beat('plan', { settings: 'approved-settings' });
+  assert.throws(() => settle(b, 'shepherd'), /heartbeat/);
+  assert.throws(() => beat('created', { id: 'timer', targetAgentId: 'pm' }), /target/);
+  beat('created', { id: 'timer', targetAgentId: 'agent-shepherd' });
+  assert.throws(() => beat('plan', { settings: 'other' }), /heartbeat/);
+  transact(b.file, { op: 'pause', human: 'human/pause', disposition: 'preserve-workers' });
+  beat('uncertain', { id: 'timer' });
+  assert.throws(() => beat('deleted', { id: 'wrong' }), /heartbeat/);
+  beat('deleted', { id: 'timer' });
+  assert.throws(() => beat('plan', { settings: 'approved-settings' }), /enabled/);
+  settle(b, 'shepherd');
+  assert.equal(JSON.parse(readFileSync(b.file)).pm.workers[0].heartbeat.status, 'deleted');
+});
+
+test('fresh-context retry happens once per issue; repeated blocker is withheld from delivery', t => {
+  const b = board(t);
+  const block = (key, extra = {}) => b.call({ op: 'block', key, issue: 'forge/repo#1',
+    investigator: `duck-${key}`, selfReview: 'developer/attempts', challenge: 'independent/findings',
+    missing: 'required answer', category: 'work', evidence: 'blocked/receipt', ...extra });
+  b.reserve('first', 'bug', 'delivery', ['forge/repo#1']);
+  b.bind('first');
+  assert.throws(() => block('first', { investigator: 'agent-first' }), /independent/);
+  assert.equal(block('first').status, 'retry');
+  assert.equal(block('first').state.pm.blockers[0].attempts.length, 1);
+  settle(b, 'first');
+  b.reserve('second', 'bug', 'delivery', ['forge/repo#1']);
+  assert.throws(() => b.bind('second', { worktree: '/worktrees/first' }), /fresh/);
+  assert.throws(() => b.bind('second', { agentId: 'agent-first' }), /fresh/);
+  b.bind('second');
+  assert.equal(block('second').status, 'blocked');
+  settle(b, 'second');
+  assert.throws(() => b.reserve('third', 'bug', 'delivery', ['forge/repo#1']), /blocked/);
+  b.call({ op: 'unblock', issue: 'forge/repo#1', resolution: 'discovery/answer', readiness: 'tracker/ready' });
+  assert.equal(b.reserve('third', 'bug', 'delivery', ['forge/repo#1']).status, 'reserved');
+});
+
+test('permission and human-decision blockers cannot trigger fresh-agent retries', t => {
+  for (const category of ['permission', 'human']) {
+    const b = board(t);
+    b.reserve('first');
+    b.bind('first');
+    assert.equal(b.call({ op: 'block', key: 'first', issue: 'first', investigator: 'duck',
+      selfReview: 'attempts', challenge: 'independent', missing: 'human grant',
+      category, evidence: 'receipt' }).status, 'blocked');
+    settle(b, 'first');
+    assert.throws(() => b.reserve('retry', 'bug', 'delivery', ['first']), /blocked/);
+    assert.throws(() => b.call({ op: 'unblock', issue: 'first',
+      resolution: 'answer', readiness: 'ready' }), /human/);
+  }
+});
+
+test('local cleanup needs archived custody, clean files and matching verified remote head', t => {
+  const b = board(t);
+  b.reserve('first');
+  b.bind('first');
+  const preserve = { op: 'cleanup-ready', key: 'first', noLiveWriters: true, clean: true,
+    branch: 'refs/heads/recovery/first', localHead: 'a'.repeat(40), remoteHead: 'a'.repeat(40),
+    evidence: 'git/remote-readback' };
+  assert.throws(() => b.call(preserve), /settled|archive/);
+  settle(b, 'first');
+  assert.throws(() => b.call({ ...preserve, remoteHead: 'b'.repeat(40) }), /remote/);
+  assert.throws(() => b.call({ ...preserve, clean: false }), /unpreserved/);
+  assert.equal(b.call(preserve).status, 'cleanup-ready');
+  assert.equal(b.call({ op: 'cleanup', key: 'first', evidence: 'worktree/removal-readback' }).status, 'cleaned');
+});
+
+test('legacy capacity is never silently reinterpreted; team upgrade requires a paused empty pool', t => {
+  const { team, ...legacy } = config;
+  const b = board(t, legacy);
+  b.call({ op: 'reserve', worker: { key: 'old', kind: 'delivery', packet: 'old', coverage: ['old'] } });
+  const upgrade = { op: 'enable-team', human: 'human/team', reconciliation: 'all-owners-and-jobs' };
+  assert.throws(() => transact(b.file, upgrade), /paused/);
+  transact(b.file, { op: 'pause', human: 'pause', disposition: 'preserve' });
+  assert.throws(() => transact(b.file, upgrade), /lease/);
+  b.call({ op: 'release', result: 'first-pass', duties: 'old-worker' });
+  assert.throws(() => transact(b.file, upgrade), /Settle/);
+  transact(b.file, { op: 'resume', human: 'human/reconcile', schedule: { ...job, id: 'replacement' },
+    replacement: { oldId: job.id, human: 'human/recreate', absence: 'deleted-receipt', reconciliation: 'same-owner' } });
+  const next = transact(b.file, { op: 'claim', owner: 'pm', reconciliation: 'live' }).state.pm.lease;
+  b.call = request => transact(b.file, { ...next, ...request });
+  settle(b, 'old');
+  transact(b.file, { op: 'pause', human: 'pause', disposition: 'settled' });
+  b.call({ op: 'release', result: 'pass', duties: 'paused' });
+  assert.equal(transact(b.file, upgrade).state.pm.config.team, true);
+  assert.equal(transact(b.file, { op: 'inspect' }).state.pm.workers[0].assignment.work, undefined);
+});
+
+test('corrupt blocker history fails closed instead of resetting the retry budget', t => {
+  const b = board(t);
+  b.reserve('first');
+  b.bind('first');
+  b.call({ op: 'block', key: 'first', issue: 'first', investigator: 'duck', selfReview: 'attempts',
+    challenge: 'independent', missing: 'answer', category: 'permission', evidence: 'receipt' });
+  const original = JSON.parse(readFileSync(b.file));
+  for (const corrupt of [
+    state => { state.pm.blockers[0].status = 'retry'; },
+    state => { state.pm.blockers[0].attempts = []; },
+    state => { state.pm.blockers.push(state.pm.blockers[0]); },
+  ]) {
+    const state = structuredClone(original);
+    corrupt(state);
+    writeFileSync(b.file, JSON.stringify(state));
+    assert.throws(() => transact(b.file, { op: 'inspect' }), /blocker/);
+  }
+});
+
+test('unknown creation can accept its recovered receipt during paused human cleanup', t => {
+  const b = board(t);
+  b.reserve('backlog', undefined, 'discovery');
+  b.bind('backlog');
+  b.call({ op: 'role-heartbeat', key: 'backlog', action: 'plan', settings: 'approved', evidence: 'intent' });
+  b.call({ op: 'role-heartbeat', key: 'backlog', action: 'uncertain', evidence: 'transport-failed' });
+  transact(b.file, { op: 'pause', human: 'pause', disposition: 'retain-for-cleanup' });
+  b.call({ op: 'release', result: 'paused', duties: 'unknown-heartbeat' });
+  const manage = { op: 'role-heartbeat', key: 'backlog', human: 'human/pause', evidence: 'recovered-receipt' };
+  assert.equal(transact(b.file, { ...manage, action: 'created', id: 'found',
+    targetAgentId: 'agent-backlog' }).status, 'heartbeat-recorded');
+  assert.equal(transact(b.file, { ...manage, action: 'deleted', id: 'found',
+    evidence: 'exact-delete-success' }).status, 'heartbeat-recorded');
+});

@@ -1,10 +1,16 @@
 # Repository-defined orchestrator merging
 
-Only the final Joe-mode Paseo orchestrator may use this contract, within the
-human's repository-scoped merge grant. Human merging remains the default.
+In the Joe team, only the explicitly requested **PR coordinator** uses this
+contract, within the human's repository-scoped merge grant. Human merging remains
+the default. Create the requested role without questioning that choice again.
+PM routes work; this separate human proxy performs the final review and merge.
 Session Joe-mode, delivery workers and Shepherd gain no merge or approval
 authority. An experimental repository is a use case, not an inferred permission
 or a required classification flag. Never approve your own implementation.
+
+Legacy non-team boards retain their recorded final-orchestrator grant until
+human-approved paused transfer. Installing this change does not silently move
+merge authority to a new agent.
 
 ## Resolve the repository gate
 
@@ -35,6 +41,11 @@ the board. A tick cannot change its policy or widen its grant.
 
 ## Finish one candidate
 
+Query all open in-scope PRs, identify those meeting the gate, then rank them by
+impact on the agreed goal and blocked dependencies. Verify the implementation
+against its issue, not just a green check list. Review outside PM's context.
+No extra heartbeat: PM dispatch/results wake this role.
+
 Use the existing delivery/Shepherd packet and `record` operations, not another
 approval ledger. Coordinate with the current delivery owner and Shepherd so
 there is no concurrent source rewrite or second merger.
@@ -48,12 +59,16 @@ there is no concurrent source rewrite or second merger.
    source head and current target; changed code/base invalidates affected proof.
    Drafts, unresolved findings/threads, required votes, missing/pending/failed
    checks, unknown mergeability or unmet repository policies block merging.
-3. **Rubber duck, then verify:** the final orchestrator walks through the change,
+3. **Rubber duck, then verify:** the PR coordinator walks through the change,
    intended behavior, failure paths, risks and evidence against the repository
    gate. Record that reasoning and the final criterion verdicts in the packet;
    a worker's "ready" or a green icon is not this step. Unresolved semantics or
    accepted-risk decisions return to the human, not an agent vote.
-4. Recheck the claimed pass's mode/token, human authority, live source/target
+4. Ask PM to record a bounded pending merge operation for this exact candidate.
+   PM serializes board writes; the coordinator returns receipts, never takes
+   PM's lease or writes the board directly. Hold that short operation's lease
+   until its outcome is reconciled; do not hold it during deep review.
+   Recheck the claimed pass's mode/token, human authority, live source/target
    refs and provider eligibility immediately before the merge. Follow
    [current-base readiness](../ship/DELIVERY.md#current-base-readiness-and-real-custody).
    If refs or policy changed, return to maintenance and refresh affected Roast,
@@ -69,5 +84,5 @@ there is no concurrent source rewrite or second merger.
    Return the verified outcome to the existing Shepherd/owner for duty settlement.
 
 Human mode still returns ready PRs for human signoff. This exception delegates
-merge execution to the final orchestrator under the agreed gate; it does not
+merge execution to the requested coordinator under the agreed gate; it does not
 transfer implementation, independent review or provider-required human approvals.
