@@ -51,6 +51,10 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    current eligibility. Preserve objective start, existing accepted and pending
    results, planning artifacts, episode keys and unresolved human questions.
    Missed observations are gaps; never backfill fictional successful ticks.
+   Collect each role/descendant's current human wait: exact question/action,
+   affected work, question revision and verified agent link or locator. An
+   internal Discovery artifact is not proof that the primary chat received
+   its questions. Apply TEAM's human-wait reporting on every pass.
 
 4. **Reconcile known work before new work.** Execute
    [LIFECYCLE](../squadron/LIFECYCLE.md) for returns and ownership; require receiver inspection/acknowledgment, not enqueue success. Use `record`
@@ -133,12 +137,17 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    Discovery reservation only after explicit human end or acknowledged completed
    alignment/handoff with no remaining conversation duty. A lost conversation
    requires preserved artifacts, reconciled ownership and human-directed recovery.
+   Place that conversation in the dedicated **`Discovery`** worktree/workspace
+   under the existing repository project, following TEAM. Do not silently reuse
+   PM's worktree or create another Discovery workspace per question. Existing
+   misplaced roles require human-directed, acknowledged placement transfer.
 
    Use runtime profile notes/discovery, not hardcoded models: inspect current providers, models and profiles; select a current frontier model for each substantive assignment under
    [TEAM](TEAM.md#choose-current-frontier-models). Route owners create
    their bounded implementation workers. [WORKSPACE](../ship/WORKSPACE.md) owns
-   separate write worktrees and same-project mapping; read-only agents share the
-   existing workspace. `create_agent` receives its verified `workspaceId`;
+   separate write worktrees and same-project mapping; bounded read-only helpers
+   may share an appropriate existing workspace, but the persistent Discovery
+   role uses its dedicated worktree/workspace. `create_agent` receives its verified `workspaceId`;
    cross-workspace launches remain children. Record intent before launch and actual returned identity afterward. Use helper `bind` only after the worker's first observation/accepted packet verifies placement and assignment.
    Missing/uncertain identity is a pending reservation, not a free slot.
    Apply RUNTIME's permission-preserving launch/readback for every role, and
@@ -193,6 +202,9 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    the persistent Discovery/worker custody. Human pause must remain in force.
    For an initial human-started pass, include [TEAM's startup outcome](TEAM.md#startup-must-reach-useful-work)
    in this same receipt. No separate startup ledger.
+   Include prepared/presented/resolved human waits and their exact evidence;
+   record only presentations actually observed, never a planned notification
+   as already delivered. Carry pending notification duties into the next pass.
    Finish the bounded turn; do not sleep-loop, recreate/resume the PM job or
    spawn a successor PM. Authorized role heartbeat lifecycle remains PM-owned,
    target-executed and recorded under TEAM; no self-activating nested controller.
@@ -217,6 +229,13 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
 Report only observed progress, pending human decisions, human-merge readiness
 or verified orchestrator merge outcomes under MERGE,
 gaps and ownership. One completed pass/setup does not prove recurring delivery works. No indefinite idle wait inside a bounded pass.
+On every executed pass, surface **all current human waits in the primary
+coordinator chat**, including unchanged waits, using
+[TEAM's concise linked reminder](TEAM.md#surface-every-human-wait). For fresh
+runners, use the recorded human-origin return channel; an unseen run transcript
+does not present questions to the human. If that return path fails, report
+undelivered questions as a communication blocker, not "waiting for your answer."
+Do not send generic "pass completed" updates in place of these requests.
 The pass receipt records goal/path changes, requirements awaiting human intake,
 worker progress/direction, recovery/corrections, new assignments, and the next
 useful action. Quiet queues are allowed; never manufacture work to fill capacity.

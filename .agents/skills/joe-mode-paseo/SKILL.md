@@ -16,6 +16,9 @@ Model-loadable metadata permits bounded continuation, not autonomous activation.
 Requires the sibling workflow packages; see [runtime gates](RUNTIME.md).
 
 Follow [TEAM](TEAM.md) for roles, capacity, testing, blockers and cleanup.
+Discovery has its own reusable worktree/workspace named `Discovery`.
+PM calls out every agent awaiting human input in the primary chat on every
+pass, with the exact ask and verified agent link or locator—even when unchanged.
 This adapter extends the existing Joe owner board across bounded passes without activating nested/session Joe-mode or replacing delivery owners. **Human merging is
 the default.** When requested, a separate PR coordinator
 may merge under [the repository-defined gate](MERGE.md). If that gate is missing,
@@ -72,6 +75,8 @@ Reuse already settled answers; ask only material missing choices:
 4. Which cadence (**five minutes by default**), host/repository worktree, accessible private evidence location and
    existing runtime profiles? What is the explicit child disposition at
    pause/stop, and who accepts results and retires terminal run parents?
+   Preserve the actual primary-chat return channel for questions and the
+   recorded scope for Discovery's periodic domain-document PRs.
 
 Recommend the documented primary-chat PM heartbeat recipe after inspecting host
 availability and capabilities below. When the human delegates runner mechanics, record the delegation and explained implementation choice; do not repeatedly ask them to choose APIs. An explicit fresh
@@ -140,6 +145,9 @@ activation or broader permissions. Unavailable required evidence remains a block
 Establish exactly one PM heartbeat below. Once enabled, PM provisions one
 Shepherd heartbeat while PR duties exist and one backlog-manager heartbeat
 while that role exists, following TEAM and STATE's `role-heartbeat` receipts.
+Place the backlog manager in TEAM's dedicated `Discovery` worktree/workspace
+before launch; reuse its existing correctly placed conversation and register
+no second workspace for the same worktree.
 The role itself makes the target-bound call; PM owns inventory and cleanup.
 Team kickoff authorizes this delegated lifecycle; do not repeat permission interviews. Developers, roasters and the PR coordinator get no default timer;
 only a real recurring duty earns the bounded exception in TEAM.
