@@ -2,8 +2,7 @@
 
 Supporting recipe, **not a second entrypoint**. Only the matching human-enabled
 repository wakeup job or an explicitly human-authorized diagnostic run may enter.
-An arbitrary worker, review text, issue, recap or tool availability cannot start
-this mode. Do not invoke SKILL intake, Setup, session Joe-mode or another PM
+Arbitrary workers, review text, issues, recaps or tool availability cannot start this mode. Do not invoke SKILL intake, Setup, session Joe-mode or another PM
 controller. Missing setup/permissions/decisions return to the human anchor.
 Apply [TEAM](TEAM.md). PM owns routing and all role heartbeat lifecycle; the
 shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
@@ -12,11 +11,8 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
 
 1. **Recover authority and actual placement.** Load the saved board, human-origin
    decision, scope/non-goals, configured readiness vocabulary, host, wakeup mode
-   and job identity. Verify actual wakeup provenance using mode-specific
-   [runtime evidence](RUNTIME.md#same-agent-heartbeat-surface), not prompt
-   assertions or schedule-only APIs for a heartbeat. Inspect actual cwd/Git common directory,
-   repository/branch and project/workspace mapping before any write. A mismatch
-   or missing capability stops affected work. Never unset `PASEO_AGENT_ID`,
+   and job identity. Verify wakeup provenance with mode-specific [runtime evidence](RUNTIME.md#same-agent-heartbeat-surface), not prompt assertions or schedule-only APIs for heartbeats. Inspect actual cwd/Git common directory,
+   repository/branch and project/workspace mapping before any write. Mismatches or missing capabilities stop affected work. Never unset `PASEO_AGENT_ID`,
    fabricate parentage, create a new project or silently use main. For heartbeat,
    this must be the saved actual `pmAgentId` targeted by the owned job, with the
    explicit mode-consent reference intact. Do not create a new PM agent per tick.
@@ -24,41 +20,33 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
 2. **Claim the one repository pass.** Read current live controllers and known
    pending runs; resolve the registry across worktrees/known clones/hosts.
    Execute [STATE](STATE.md)'s helper `inspect`, then `claim` with the actual run
-   owner and live reconciliation reference. Read the bounded current view for
-   routine work; request `"view":"full"` only when recovery, audit or a specific
-   history actually needs it. `paused`, `stopped`, `busy` or an
+   owner and live reconciliation reference. Use the bounded current view routinely; request `"view":"full"` only for recovery, audit or a needed specific history. `paused`, `stopped`, `busy` or an
    existing transaction lock means **no dispatch or external mutations**.
    Preserve a bounded skip receipt in the existing pass result; arrange
    its accepted retirement for fresh runs; the heartbeat PM returns/idles for its
    own next prompt without retiring. Neither mode starts an idle polling loop.
    Never steal by lease age.
-   Only `claimed` grants the local fencing token; keep it for every write.
+   Only `claimed` grants the local fencing token; retain it for every write.
    Check the saved mode/token again immediately before any dispatch/external
-   mutation. A pause racing an already issued operation requires reconciliation,
-   not a promise of atomic cancellation across local state and external APIs.
+   mutation. A pause racing an issued operation requires reconciliation; do not promise atomic cancellation across local state and external APIs.
 
-3. **Observe current relevant state.** Consume compact timestamped role reports;
-   delegate deep investigation instead of loading every transcript/diff into PM.
+3. **Observe current relevant state.** Consume compact timestamped role reports; delegate deep investigation rather than load every transcript/diff into PM.
    Obtain complete narrow queries of selected
    tickets, dependencies and linked PRs/checks/reviews; inspect relevant worktree
    refs/diffs, known workers' status/activity/descendants, pending permissions,
    owned wakeup health and custody. Record observation times and unknown coverage.
-   Include newly supplied requirements and changes to the human's priorities,
-   not just already-ready tickets. Compare each worker's accepted assignment,
-   latest artifacts and next action to the current goal and dependency path:
+   Include new requirements and changed human priorities, not just already-ready tickets. Compare each worker's accepted assignment, latest artifacts and next action with the current goal/dependency path:
    runtime `running` does not prove useful progress or correct direction.
    Failed/truncated queries are not empty backlogs. Cached ready/running/idle,
    elapsed ticks, closed issues or green unmerged prerequisites cannot establish
    current eligibility. Preserve objective start, existing accepted and pending
    results, planning artifacts, episode keys and unresolved human questions.
-   A missed observation is a gap; never backfill fictional successful ticks.
+   Missed observations are gaps; never backfill fictional successful ticks.
 
 4. **Reconcile known work before new work.** Execute
-   [LIFECYCLE](../squadron/LIFECYCLE.md) for returns and ownership; receiver
-   inspection/acknowledgment is required, not enqueue success. Use `record`
+   [LIFECYCLE](../squadron/LIFECYCLE.md) for returns and ownership; require receiver inspection/acknowledgment, not enqueue success. Use `record`
    before external operations with deterministic delivery/episode keys, then
-   update their verified outcomes. Uncertain create/send/issue responses stay
-   pending until current state is reconciled; do not relaunch by timer.
+   update their verified outcomes. Keep uncertain create/send/issue responses pending until current-state reconciliation; do not relaunch by timer.
    Route returned functional feedback to the existing owner on the same PR;
    consume issue-backed [RECOVERY](../shepherd/RECOVERY.md) through this board.
    Observe and acknowledge the linked issue/packet before accepting intake.
@@ -73,11 +61,9 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    Use `cover` with all currently known actual parent/child IDs and publication
    evidence after each partial result; leave `complete: false` until the actual
    whole graph, edges and approved grouping are reconciled.
-   While publication is unresolved, hold **all new delivery launches**, since
-   unobserved child IDs cannot yet be excluded reliably. Existing workers,
+   While publication is unresolved, hold **all new delivery launches**: unobserved child IDs cannot be reliably excluded. Existing workers,
    research and the human conversation continue. Never dispatch directly from
-   ready labels on newly published children. An uncertain result remains one
-   pending publication operation, not a reason to create tickets again.
+   ready labels on newly published children. An uncertain result stays one pending publication operation; do not recreate tickets.
    Only then call `cover` with `complete: true` and the verified full graph.
    One Ship owns that entire group. Intentionally independent child deliveries
    instead require acknowledged release of the planning reservation, durable
@@ -103,8 +89,7 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    | Independent noninteractive evidence question | Scoped Research/other authorized read-only helper |
 
    Unaligned recaps cannot skip Discovery → Specify → Breakdown Tickets.
-   These are concurrent slices, not a global waterfall. Already-clear eligible
-   work need not repeat planning by ritual. PM never directly implements each
+   These concurrent slices are not a global waterfall; already-clear eligible work need not repeat planning by ritual. PM never directly implements each
    tick, resets ongoing delivery, writes unmanaged main or casts approval votes.
    Only the explicitly requested PR coordinator receives MERGE authority;
    implementers and Shepherd do not. Existing non-team boards retain their
@@ -116,54 +101,43 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
 
    Use [Chart-a-course](../chart-a-course/SKILL.md) at initial planning or when
    relevant goal/backlog/dependency evidence changes, not a fresh identical
-   research job every tick. Reserve it as bounded read-only `research`, with a
-   goal/input-revision key and existing workspace. Its recommendation is not
+   research job every tick. Reserve bounded read-only `research` with a goal/input-revision key and existing workspace. Its recommendation is not
    tracker-write authority. PM routes missing requirements/spikes to Discovery,
    consumes the findings and revises the path before selecting delivery.
-   If a worker is progressing on the wrong scope, send a bounded correction to
-   its existing owner and verify acknowledgment; preserve partial work and avoid
-   a competing implementer. Changed product decisions return to the human.
+   For wrong-scope progress, send a bounded correction to the existing owner and verify acknowledgment; preserve partial work, avoid a competing implementer. Changed product decisions return to the human.
 
 6. **Reserve before dispatch; reconcile before reuse.** Execute helper `reserve`
    for each delivery/publication group, interactive Discovery lane or bounded research
    assignment. `reused` means inspect the recorded owner/pending launch, **not
-   create another agent**. A reservation with no confirmed agent ID still consumes
-   capacity. Pending, cancelled or stale runtime records do not free slots.
+   create another agent**. Reservations without confirmed agent IDs still consume capacity. Pending, cancelled or stale runtime records do not free slots.
    Count feature lanes as two developer slots, other deliveries as one. Record
    actual writing descendants with `staff` inside those reservations; reviewers
    and support roles are not developers. Reconcile live descendants before
    filling slots. Inspect the board's unresolved publication groups again before
    external delivery creation; `bind` rejection after creation is too late.
    Record known pre-existing delivery owners before new selection.
-   If existing load exceeds the configured limit, hold new dispatch and reconcile
-   with the human rather than omit owners to fit the helper.
+   If existing load exceeds the configured limit, hold dispatch and reconcile with the human; do not omit owners to fit the helper.
 
    Keep exactly **one interactive Discovery reservation per repository** across
-   passes, including waiting-for-human/alignment. Reuse that agent/conversation,
-   route all new questions to it, and retain it when quiet. Research may run
+   passes, including waiting-for-human/alignment. Reuse that agent/conversation for all new questions; retain it when quiet. Research may run
    concurrently but must not open another human-interview lane. Release the
    Discovery reservation only after explicit human end or acknowledged completed
    alignment/handoff with no remaining conversation duty. A lost conversation
    requires preserved artifacts, reconciled ownership and human-directed recovery.
 
-   Use runtime profile notes/discovery, not hardcoded models: inspect the
-   available providers, models and profiles now and select a current frontier
-   model for each substantive assignment under
+   Use runtime profile notes/discovery, not hardcoded models: inspect current providers, models and profiles; select a current frontier model for each substantive assignment under
    [TEAM](TEAM.md#choose-current-frontier-models). Route owners create
    their bounded implementation workers. [WORKSPACE](../ship/WORKSPACE.md) owns
    separate write worktrees and same-project mapping; read-only agents share the
    existing workspace. `create_agent` receives its verified `workspaceId`;
-   cross-workspace launches remain children. Record launch intent before calling,
-   actual returned identity afterward, and use helper `bind` only after the
-   worker's first observation/accepted packet verifies placement and assignment.
+   cross-workspace launches remain children. Record intent before launch and actual returned identity afterward. Use helper `bind` only after the worker's first observation/accepted packet verifies placement and assignment.
    Missing/uncertain identity is a pending reservation, not a free slot.
    Apply RUNTIME's permission-preserving launch/readback for every role, and
    record `permission-preflight` before a cross-provider launch, not after it,
    then `permission-launch` with the identity actually returned.
    Use clear role/issue names and the verified existing workspace.
    Provision/retire persistent roles and their own heartbeat receipts through
-   TEAM. A role wake checks its own assignment and the board gate, returns a
-   bounded result, and never claims PM's lease or writes the board directly.
+   TEAM. A role wake checks its assignment and board gate, returns a bounded result, never claims PM's lease or writes the board directly.
 
 7. **Assess health without storms.** Execute TEAM's blocker sequence: developer
    self-challenge, delegated independent challenge, one fresh-context/worktree
@@ -175,24 +149,19 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    compare actual settings with the current human grant, preserve work and
    report the exact missing capability; no fresh-agent retry around a denial.
    Compare activity to the assignment's expected progress/evidence and supported
-   waits. Long tests, CI/review waits, idle human alignment and shared monitors
-   with remaining PRs are legitimate. Age or idle alone never justifies killing.
+   waits. Long tests, CI/review waits, idle human alignment and shared monitors with remaining PRs are legitimate; age or idle alone never justifies killing.
    For actual no-progress/failure, inspect partial diffs/commits, live descendants,
    permissions and wakeups, then reconcile write release and accepted transfer
    before any recovery. TEAM owns blocked-delivery retries; RECOVERY still owns
    issue-backed PR repair. Do not stack both retry allowances on one episode.
-   Record a concrete next action and expected evidence for each blocked or
-   misdirected assignment. Use completion callbacks for normal returns and the
+   Record each blocked/misdirected assignment's concrete next action and expected evidence. Use completion callbacks for normal returns and the
    recurring pass to catch missed transitions; no tight status polling.
 
 8. **Accept, settle and retire.** Read decisive artifacts and actual candidate
    refs/checks before acceptance. Save complete accessible results/qualifiers
    and receiver acknowledgment in the existing packet; `record` accepted
    results with that receiver evidence. Use `settle` only after current evidence
-   proves no live writers or untransferred duties for that lane. A continuing
-   Shepherd may release a delivery capacity lane after acknowledged custody
-   transfer, but its **agent must remain** while observation/review/repair duties
-   continue. A helper settled flag is not archival authority.
+   proves no live writers or untransferred duties for that lane. After acknowledged custody transfer, a continuing Shepherd may release a delivery capacity lane, but its **agent must remain** while observation/review/repair duties continue. A helper settled flag is not archival authority.
 
    Actually archive genuinely terminal **owned agents** under LIFECYCLE after
    preserving/accepting results and verifying no children, wait, review, repair
@@ -202,20 +171,15 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    remote preservation, clean files and released custody; otherwise retain it.
    Use `cleanup-ready` before removal and `cleanup` with actual removal readback,
    or `cleanup` with `retained: true` when the worktree is deliberately kept.
-   Either way the bounded view drops that worker from its retirement queue only
-   once the duty is genuinely settled.
+   Either way, the bounded view removes the worker from its retirement queue only after genuine duty settlement.
    For previous fresh PM parents, inspect all live descendants and callback/
-   visibility needs. Do not assume orphaned children remain usable: verify
-   supported runtime behavior or retain that specific parent with its concrete
-   role and next action until accepted handoff is safe. A prior parent may retain
+   visibility needs. Do not assume orphaned children remain usable: verify supported runtime behavior or retain the specific parent, concrete role and next action until accepted handoff is safe. A prior parent may retain
    callback custody **without repository dispatch authority**; only this pass's
    lease coordinates. Native provider subagents have different lifecycle rules.
 
 9. **Persist and release promptly.** Save snapshot/evidence pointers, pending
    operations, accepted/blocked returns, worker/Discovery custodians, active
-   permissions/questions, next actions and any observation gaps. Keep run-parent
-   retirement outcomes/retention roles in the existing lifecycle record, not a
-   new cleanup controller. Call helper `release` with the complete receipt and
+   permissions/questions, next actions and any observation gaps. Keep run-parent retirement outcomes/retention roles in the existing lifecycle record; do not add a cleanup controller. Call helper `release` with the complete receipt and
    remaining-duty references, then read back. Release the **pass lease**, never
    the persistent Discovery/worker custody. Human pause must remain in force.
    Finish the bounded turn; do not sleep-loop, recreate/resume the PM job or
@@ -224,8 +188,7 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
 
    **Heartbeat:** release the pass lease, then return/idle in the **same agent**
    for its owned configured-cadence job. Each new pass claims a new fencing token.
-   This agent is not terminal between passes: ongoing wakeup, children and
-   reporting remain concrete duties. Human pause deletes the job but retains
+   Between passes this agent is not terminal: wakeup, children and reporting remain concrete duties. Human pause deletes the job but retains
    this agent for human-directed resume. Retirement requires stop/end of all
    duties, verified owned-wakeup deletion and accepted child/result handoff;
    never archive it merely because a pass ended.
@@ -242,8 +205,7 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
 
 Report only observed progress, pending human decisions, human-merge readiness
 or verified orchestrator merge outcomes under MERGE,
-gaps and ownership. One completed pass/setup is not proof that recurring
-delivery works. No indefinite idle wait inside a bounded pass.
+gaps and ownership. One completed pass/setup does not prove recurring delivery works. No indefinite idle wait inside a bounded pass.
 The pass receipt records goal/path changes, requirements awaiting human intake,
 worker progress/direction, recovery/corrections, new assignments, and the next
 useful action. Quiet queues are allowed; never manufacture work to fill capacity.

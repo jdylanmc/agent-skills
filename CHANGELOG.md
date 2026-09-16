@@ -65,6 +65,9 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- Compress Joe-mode Paseo guidance and supporting contracts while preserving
+  activation, permissions, ownership, recovery, merge gates, technical examples
+  and acceptance scenarios.
 - Joe's default pool is six developers: features use two slots; bugs, hardening
   and refactors use one. One shared Shepherd and optional backlog manager stay
   outside the pool. PM owns all role heartbeats, delegates blocker investigation,

@@ -1,9 +1,6 @@
 # Local board helper
 
-[RUN](RUN.md) actually calls [scripts/state.mjs](scripts/state.mjs) to serialize
-bounded passes and reserve work. Node is the only dependency. This is a local
-atomic-state seam, not a daemon, external API client, approval system or proof
-that an agent followed the recipe. Preserve the existing Joe/lifecycle evidence
+[RUN](RUN.md) calls [scripts/state.mjs](scripts/state.mjs) to serialize bounded passes and reserve work. Node is the only dependency. This local atomic-state seam is not a daemon, external API client, approval system or proof of agent compliance. Preserve the existing Joe/lifecycle evidence
 in the same board/linked packets; only the `pm` namespace is helper-owned.
 
 Resolve the script from its installed package, not the target repo. Commands
@@ -14,16 +11,11 @@ operations, open blocker episodes and counts of the durable history it omits.
 It also keeps a `retirement` queue: each settled worker whose duties are not
 actually finished, with its key, kind, agent, worktree, `phase`
 (`archive-pending`, `cleanup-pending` or `removal-pending`) and, once recorded,
-the `recovery` branch and head. A worker leaves that queue only when it is
-genuinely terminal: archived with no owned worktree, or with the worktree
-actually removed or deliberately retained. Retirement is a duty, not a deletion
-requirement, so a kept worktree is an explicit recorded outcome rather than an
-omission.
+the `recovery` branch and head. A worker leaves that queue only when genuinely terminal: archived with no owned worktree, or with its worktree actually removed or deliberately retained. Retirement is a duty, not mandatory deletion; record retention explicitly, never as an omission.
 Add `"view":"full"` to any request for the complete `{"status":"…","state":{…}}`
 envelope, including run receipts, settled workers, operation history and wakeup
 or merge history. Unknown view values fail before the board is touched.
-Nothing is discarded: the durable board keeps every record, and the in-process
-`transact` API still returns the full state for callers and tests.
+Nothing is discarded: the durable board keeps every record; the in-process `transact` API still returns full state for callers and tests.
 Failures emit a diagnostic to stderr and exit 1.
 Do not publish output containing private runtime IDs. For example, after
 human-approved initialization:
@@ -34,24 +26,18 @@ node /installed/skills/joe-mode-paseo/scripts/state.mjs /owned/ignored/board.jso
 node /installed/skills/joe-mode-paseo/scripts/state.mjs /owned/ignored/board.json '{"op":"claim","owner":"actual-run-id","reconciliation":"accessible-live-ownership-evidence"}'
 ```
 
-Read the bounded view on a routine pass; request the full view deliberately for
-recovery, audit or reconciliation of a specific history. A bounded view is a
+Use the bounded view routinely; explicitly request full view for recovery, audit or specific-history reconciliation. A bounded view is a
 current-state projection, not proof that omitted history is unimportant.
 
-Replace example paths/IDs with verified values. The containing directory must
-already exist, be owned, ignored and accessible. All repository worktrees and
-known clones must resolve this same authority; do not put an independent board
-in each worktree. Other hosts need reliable shared exclusion or activation
+Replace example paths/IDs with verified values. The containing directory must already exist and be owned, ignored and accessible. All repository worktrees and known clones must resolve this same authority; no independent per-worktree boards. Other hosts need reliable shared exclusion or activation
 blocks. Do not claim the helper is a distributed lock.
 
 While this adapter owns the repository board, serialize **all** board mutations
 through the helper. Workers/retained parents write only their owned receipts and
 return pointers for the claimed pass to record; they must not concurrently
-read/modify/write this JSON through another tool. Preserving unrelated top-level
-fields does not make an unsynchronized external write safe. Adopting an existing
+read/modify/write this JSON through another tool. Preserving unrelated top-level fields cannot make unsynchronized external writes safe. Adopting an existing
 board or changing its legacy fields requires paused, fenced writers and explicit
-custody. If another required writer cannot follow that contract, activation
-blocks instead of running two persistence protocols on the same file.
+custody. If another required writer cannot follow that contract, block activation; never run two persistence protocols on the same file.
 
 ## Request contract
 
@@ -76,17 +62,13 @@ Lease credentials are `owner` and `token` from the successful claim. Old tokens
 cannot mutate after release/recovery. Paused owners can preserve returns/release
 but cannot reserve or bind new work. Changed operation outcomes retain prior
 status/evidence/receiver references in `history`; identical observations do not
-append duplicates. Keep full artifacts accessible behind those references.
-Accepted records name the actual receiving observation, not a sender's assertion;
-a later blocked outcome does not inherit a stale acceptance claim.
+append duplicates. Keep referenced full artifacts accessible.
+Accepted records name actual receiving observations, not sender assertions; later blocked outcomes do not inherit stale acceptance claims.
 
 Before approved Breakdown publication, reserve the real parent identity with
-`graph: true`. The initial assignment stays immutable for idempotent reservation
-replay, but `cover` adds actual returned child IDs to the group's effective
-coverage. Partial receipts persist across passes with `complete: false`.
+`graph: true`. The initial assignment stays immutable for idempotent reservation replay; `cover` adds actual returned child IDs to effective group coverage. Partial receipts persist across passes with `complete: false`.
 Any unresolved active graph blocks new delivery reservations and bindings:
-RUN must also check this before external creation, not create and then discover
-that bind is rejected. Existing work and non-delivery research/Discovery continue.
+RUN must check this before external creation, not discover bind rejection after creating. Existing work and non-delivery research/Discovery continue.
 After complete tracker/edge/grouping reconciliation, `cover` with `complete: true`
 allows the grouped owner to bind. Dropped IDs, overlapping owners, stale tokens
 and changed complete graphs fail; repeated identical receipts do not accumulate.
@@ -101,22 +83,17 @@ abandonment still requires `settle`'s reconciled custody/result acceptance.
 Orchestrator mode requires `mergeGate` with nonempty `source`, `authority`,
 `roast`, `ci`, `lint`, `rubberDuck` and `verification` references under
 [MERGE](MERGE.md). Missing gate information requires human clarification.
-These references describe the repository gate, not completed candidate checks
-or permission to bypass it. Human-mode boards need no gate object and retain
-their existing semantics. For an existing activation use `configure-merge`
-after human-directed pause and reconciliation, not reinitialization or a direct
-JSON edit. A matching update is idempotent; workers, schedule, pending results,
+These references describe the repository gate, not completed candidate checks or bypass permission. Human-mode boards retain existing semantics without needing a gate object. For existing activation, use `configure-merge` after human-directed pause/reconciliation, never reinitialization or direct JSON editing. A matching update is idempotent; workers, schedule, pending results,
 run history and unrelated config remain intact. Positive integer `capacity` defaults to **6**.
 New setups explicitly save `cron`, defaulting to `*/5 * * * *`: supported values
 are `* * * * *` or `*/N * * * *` for integer N from 1 to 59, using Paseo's
-minute-field cron semantics. Omission preserves existing one-minute boards;
-the helper never silently changes an adopted job's cadence. Other cron forms
+minute-field cron semantics. Omission preserves existing one-minute boards; the helper never silently changes an adopted job's cadence. Other cron forms
 are rejected for this bounded frequent-check recipe.
 `wakeupMode` is `fresh` or `heartbeat` (omission preserves legacy fresh configs;
 unknown values fail). New setup records its choice and explicit `wakeupConsent`
 decision reference. Heartbeat requires that nonempty consent reference and
 `pmAgentId`, the actual bound PM agent ID; a fresh config cannot contain
-`pmAgentId`. Reinitializing with another mode/config is not a fallback path.
+`pmAgentId`. Reinitializing with different mode/config is not a fallback.
 These are machine-local activation data, never committed defaults.
 `schedule`: actual `id`, `cron` matching the configured value (legacy omission
 means `* * * * *`), matching `cwd`, `projectId`,
@@ -130,20 +107,16 @@ returned target to actual PM/agent/workspace/Git observations. Verify returned
 prompt, cadence, active status, next run and lifetime against the approved request
 using [RUNTIME](RUNTIME.md#same-agent-heartbeat-surface); no schedule inspection
 API is needed. Fresh mode still requires actual schedule readback.
-The helper checks reference equality,
-not their external truth. Unknown kind, wrong target/mapping/cadence or unapproved
+The helper checks reference equality, not external truth. Unknown kind, wrong target/mapping/cadence or unapproved
 fallback fails. This is **observed state**, not parameters for `create_schedule`
 or `create_heartbeat`; cwd/project/workspace are joined observations, not invented
-heartbeat creation arguments. The stored `enabled` field describes the last
-verified binding, not current external health after pause/deletion.
+heartbeat creation arguments. Stored `enabled` describes the last verified binding, not current external health after pause/deletion.
 
 Heartbeat `claim.owner` must equal the bound actual PM agent ID, including on
 diagnostic passes; fresh claims continue to use each actual fresh run owner.
-Every successful claim mints a new token, even on the same agent. `release`
+Every successful claim mints a new token, even for the same agent. `release`
 clears only that lease: the heartbeat PM returns/idles for its job and is **not
-terminal**. Durable delivery/Discovery IDs and reservations stay intact. This
-helper never launches/archives agents, creates/deletes jobs or proves recurring
-delivery; those are supported runtime operations with separate observations.
+terminal**. Durable delivery/Discovery IDs and reservations stay intact. This helper never launches/archives agents, creates/deletes jobs or proves recurring delivery; these require supported runtime operations and separate observations.
 
 ### Human-only heartbeat recreation
 
@@ -172,9 +145,7 @@ kind/target/cadence and unchanged `settings`, plus:
 ```
 
 These are required evidence references, not self-authenticating approval.
-The caller verifies the actual human origin, acknowledged exact-ID deletion
-(or other supported definitive absence evidence) and grant lifetime;
-a tick cannot supply authority by inventing strings. Preserve original expiry
+The caller verifies actual human origin, acknowledged exact-ID deletion (or other supported definitive absence evidence) and grant lifetime; invented strings cannot give a tick authority. Preserve original expiry
 and remaining run budget, not a fresh grant on recreation. The helper appends
 old job/replacement evidence to `pm.wakeupHistory`, preserves config/workers/
 pending outcomes/run history, and rejects stale tokens. Replaying replacement,
@@ -187,24 +158,21 @@ this exception. A deleted fresh job needs separately reconciled human setup.
 Each mutation exclusively creates `<board>.write-lock`, reads current state,
 validates the transition and writes/fsyncs a private `<board>.next` file before
 atomic rename. Readers see the previous or next complete JSON, not partial
-writes. This does not promise storage power-loss durability on every filesystem.
+writes. This does not guarantee power-loss durability on every filesystem.
 An existing lock or leftover next file fails closed; do not retry a tight loop.
 
 There is **no TTL**, lease extension on heartbeat delivery or automatic lock takeover. For
 an abandoned pass, the human recovery owner must prove the old controller cannot
 act, inspect live descendants/wakeups/partial work, preserve all results and
 sequence acknowledged custody; only then call `recover` with the exact token
-and accessible fencing evidence. Runtime assertions are verified by the caller,
-not by this offline helper. All commands serialize, so an old token fails after
+and accessible fencing evidence. The caller verifies runtime assertions, not this offline helper. All commands serialize, so an old token fails after
 recovery, but an already-issued external operation still needs reconciliation.
 
 An abandoned **transaction** lock or `.next` file instead needs specific
 human-authorized filesystem repair after every possible writer is stopped:
 preserve both candidate files, inspect which complete state committed, restore
 the authoritative board and remove only those exact owned stale artifacts.
-The helper deliberately has no force-unlock/TTL escape. Never delete the whole
-board, erase reservations, kill unrelated processes or reinitialize to bypass
-an uncertainty. Unknown/corrupt state is a blocker.
+The helper deliberately has no force-unlock/TTL escape. Never bypass uncertainty by deleting the board, erasing reservations, killing unrelated processes or reinitializing. Unknown/corrupt state is a blocker.
 
 Unit/CLI tests exercise filesystem exclusion, transitions, custody records and
 capacity. [SCENARIOS](SCENARIOS.md) separately covers actual runtime/agent
@@ -213,16 +181,13 @@ behavior; a passing test is not an activation receipt.
 ## Team mode
 
 New setups explicitly use `config.team: true` with the persistent PM heartbeat.
-Capacity then means **developer slots**, not legacy delivery owners. Keep the
-same board, lease and operation records. There is no separate team daemon.
+Capacity means **developer slots**, not legacy delivery owners. Keep the same board, lease and operation records; no separate team daemon.
 
 Old configs retain old units and behavior. To adopt the team, pause, fence/release
 the pass, settle all old workers and pending operations, reconcile all existing
 jobs, then call `enable-team` with `human` and `reconciliation` references.
-It preserves old settled assignments/history and stays paused. Do not reinterpret
-active reservations or discard them to fit the new limit. A legacy fresh runner
-cannot be converted this way; obtain an explicit stopped, reconciled handoff to
-the persistent PM rather than changing the agent target behind a live job.
+It preserves old settled assignments/history, staying paused. Do not reinterpret
+active reservations or discard them to fit the new limit. A legacy fresh runner cannot be converted this way: obtain an explicit stopped, reconciled handoff to the persistent PM; never change a live job's agent target.
 
 Team `reserve` adds `work` for `kind: "delivery"`:
 `feature` costs two, `bug`, `hardening` and `refactor` cost one.
@@ -266,15 +231,12 @@ At bind or staff time the helper rejects any drift between the recorded plan
 and the observed parent/target snapshots, authority, parent agent or workspace.
 It also requires the recorded launch receipt and rejects any agent or worktree
 other than the planned worktree and the actually launched child, so one plan
-cannot authorize a different developer, worktree or later launch. The mapping
-policy itself may be reused by recording a fresh `launchId` per child. This is
+cannot authorize a different developer, worktree or later launch. Reuse the mapping policy only with a fresh `launchId` per child. This is
 truthful mapping evidence, not proof of transferred approvals, credentials or
 provider policy. Never manufacture matching snapshots or launch receipts, and
-never widen the target policy to launch. Helper evidence strings are pointers;
-they do not prove authority, external settings or filesystem state.
+never widen the target policy to launch. Helper evidence strings point to, but do not prove, authority, external settings or filesystem state.
 
-The following operations use the same PM `owner`/`token`. Roles return receipts
-to PM; they do not write this board.
+These operations use the same PM `owner`/`token`. Roles return receipts to PM, never write this board.
 
 | Operation | Inputs beyond lease and `op` | Meaning |
 | --- | --- | --- |
@@ -291,8 +253,7 @@ to PM; they do not write this board.
 - `action: "plan"` needs approved `settings` reference. Save before the role
   creates its job. An existing pending/active/uncertain job blocks another plan.
 - `action: "created"` needs returned `id` and `targetAgentId` matching that
-  worker, plus complete creation receipt evidence. A late create receipt after
-  pause is still recorded so PM can direct deletion of the exact ID.
+  worker, plus complete creation receipt evidence. Record late create receipts after pause so PM can direct exact-ID deletion.
 - `action: "observed"` records an actual bounded wake. No synthetic health
   from a cron string. `action: "uncertain"` records a failed/unknown operation.
 - `action: "deleted"` needs the exact owned `id` and successful deletion
@@ -300,8 +261,7 @@ to PM; they do not write this board.
   after definite absence, remaining grant and enabled PM are reconciled.
 - `action: "absent"` needs definitive `absence` evidence: creation failed
   without an external effect, or supported reconciliation proves no job exists.
-  Include the exact `id` when one was known. This permits settlement or a new
-  authorized plan without inventing a creation/deletion receipt. Generic
+  Include the exact `id` when one was known. This permits settlement or a new authorized plan without fabricated creation/deletion receipts. Generic
   not-found and transport errors are not proof of absence.
 - After human pause/stop with no pass lease, this operation may instead carry
   `human` and current `reconciliation` references to preserve deletion/late
@@ -311,16 +271,13 @@ to PM; they do not write this board.
   explicitly fenced; stale tokens remain invalid.
 
 PM's heartbeat stays in `pm.schedule`; support jobs stay on their owning worker.
-Together these are the project heartbeat inventory. PM checks every one on
-pause/stop and role retirement. `settle` rejects any unresolved role heartbeat.
+Together they form the project heartbeat inventory; PM checks every one on pause/stop and role retirement. `settle` rejects any unresolved role heartbeat.
 The helper does not verify a provider deletion merely because evidence is text.
 
 Blocker episodes live in `pm.blockers`, keyed by qualified issue, not tick.
 Retry requires the predecessor settled and archived. Each attempt records its
 actual `participants`: the bound role plus every developer it staffed,
-including already retired ones. Binding and staffing refuse **any** prior
-participant's agent or worktree, and confirmation also needs a fresh
-investigator. Changed or missing participant history fails closed.
+including already retired ones. Binding/staffing refuse **any** prior participant's agent or worktree; confirmation also requires a fresh investigator. Changed or missing participant history fails closed.
 After escalation, helper reservation refuses covered blocked issues even if the
 tracker still says ready. PM separately records tag/comment/backlog writes and
 spawns/reuses Discovery under TEAM. Keep uncertain tracker operations pending.
