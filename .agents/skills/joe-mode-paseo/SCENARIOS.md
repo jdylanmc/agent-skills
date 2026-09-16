@@ -5,6 +5,10 @@ These team scenarios supplement legacy scheduler cases. Run against the actual h
 | Team case | Required observation |
 | --- | --- |
 | Primary chat starts Joe | That same agent is PM; one project per repo, one workspace per actual worktree |
+| Human heartbeat startup/resume with eligible work | Same PM resumes, claims and completes one bounded work pass before returning; actual accepted worker identity/assignment, not just a timer or reservation; initial human pass is not counted as a heartbeat wake |
+| Startup with only blocked work or uncertain dispatch | Exact eligibility/blocker or pending-operation evidence, responsible owner and next action in the existing pass receipt; no invented ready work, duplicate launch or successful-team claim |
+| Paused legacy board has settled-ready returns but no lease | Human/reconciliation evidence permits record/settle/archive while still paused; no temporary resume/heartbeat to obtain cleanup authority; missing grants/live lease/unfinished duties reject without mutation |
+| Legacy Discovery survives team conversion | Actual administrative-end acknowledgment and unanswered questions preserved; same agent retained/reassigned, not archived or declared aligned; one final verified heartbeat replacement, team resumes and first eligible work is accepted |
 | Six developer slots | Three features, two features plus two fixes, or six fixes; support roles outside the pool; pending launches still counted |
 | Parent Agent + Auto Accept, or human-selected Allow All | Child mode **and permission features** match before and after bootstrap; no stale-mode "repair" |
 | Verified cross-provider target policy | Preflight recorded before launch with the compared capabilities and rationale; bind/staff rejects any later drift |

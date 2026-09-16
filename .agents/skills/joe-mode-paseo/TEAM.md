@@ -52,6 +52,29 @@ Chart-a-course when the goal or dependency picture changes, not every tick.
 Dispatch through existing ready-for-agent mappings and actual dependencies.
 Blocked tickets do not become eligible just because their ready label remains.
 
+## Startup must reach useful work
+
+Human heartbeat activation/resume includes a first bounded work pass, not just
+timer setup. Reconcile existing owners, then reserve/dispatch eligible work now
+within capacity and authority. Observe the returned identity and accepted
+assignment; for retained roles, verify accepted reassignment instead of spawning
+duplicates. Start Shepherd only for actual PR duties and reuse the backlog
+manager for unresolved questions. Do not create idle roles to fill six slots.
+
+Before returning, the existing pass receipt names accepted initial work and
+owners, or the exact pending launch, missing capability, human decision,
+ownership conflict or evidence that no selected work is eligible. Name its
+responsible owner and next action. Uncertain creation stays pending, not retried;
+a reservation or timer alone is not a running worker. If a result is still
+pending, report startup incomplete and keep its callback/next-pass duty.
+
+Discovery questions block their dependent work, not every independent eligible
+ticket. Preserve real global gates such as unknown ownership or unresolved
+publication coverage; never bypass them to manufacture startup progress.
+Once the outcome is recorded, release the pass and await actual callbacks/wakes.
+
+## Keep inquiry and maintenance scoped
+
 The backlog manager is the single human-facing inquiry lane, retaining full Discovery artifacts, actual human answers and existing recording/publication gates. PM routes new questions there; no competing interrogation chats.
 While awaiting the human, retain the exact question/input revision. Check only changed answers/evidence; do not repeat questions or research on unchanged inputs. A heartbeat costs a turn; it is not free event delivery.
 

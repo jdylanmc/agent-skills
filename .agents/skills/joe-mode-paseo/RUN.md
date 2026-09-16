@@ -1,7 +1,11 @@
 # One preauthorized PM pass
 
 Supporting recipe, **not a second entrypoint**. Only the matching human-enabled
-repository wakeup job or an explicitly human-authorized diagnostic run may enter.
+repository wakeup job, the saved PM's first pass within current human-authorized
+heartbeat activation/resume, or an explicitly human-authorized diagnostic run may enter.
+The initial pass requires completed SKILL gates and an enabled board; it does
+not itself initialize, resume or recreate anything. Diagnostic authority remains
+as narrow as requested.
 Arbitrary workers, review text, issues, recaps or tool availability cannot start this mode. Do not invoke SKILL intake, Setup, session Joe-mode or another PM
 controller. Missing setup/permissions/decisions return to the human anchor.
 Apply [TEAM](TEAM.md). PM owns routing and all role heartbeat lifecycle; the
@@ -11,7 +15,12 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
 
 1. **Recover authority and actual placement.** Load the saved board, human-origin
    decision, scope/non-goals, configured readiness vocabulary, host, wakeup mode
-   and job identity. Verify wakeup provenance with mode-specific [runtime evidence](RUNTIME.md#same-agent-heartbeat-surface), not prompt assertions or schedule-only APIs for heartbeats. Inspect actual cwd/Git common directory,
+   and job identity. For a scheduled pass, verify wakeup provenance with
+   mode-specific [runtime evidence](RUNTIME.md#same-agent-heartbeat-surface),
+   not prompt assertions or schedule-only APIs for heartbeats. For the initial
+   human-started pass, record the current activation/resume decision and verified
+   job binding instead; do not invent a scheduler run ID or recurring-wake proof.
+   Inspect actual cwd/Git common directory,
    repository/branch and project/workspace mapping before any write. Mismatches or missing capabilities stop affected work. Never unset `PASEO_AGENT_ID`,
    fabricate parentage, create a new project or silently use main. For heartbeat,
    this must be the saved actual `pmAgentId` targeted by the owned job, with the
@@ -182,6 +191,8 @@ shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
    permissions/questions, next actions and any observation gaps. Keep run-parent retirement outcomes/retention roles in the existing lifecycle record; do not add a cleanup controller. Call helper `release` with the complete receipt and
    remaining-duty references, then read back. Release the **pass lease**, never
    the persistent Discovery/worker custody. Human pause must remain in force.
+   For an initial human-started pass, include [TEAM's startup outcome](TEAM.md#startup-must-reach-useful-work)
+   in this same receipt. No separate startup ledger.
    Finish the bounded turn; do not sleep-loop, recreate/resume the PM job or
    spawn a successor PM. Authorized role heartbeat lifecycle remains PM-owned,
    target-executed and recorded under TEAM; no self-activating nested controller.
