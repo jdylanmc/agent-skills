@@ -152,6 +152,10 @@ have tagged releases. Current cleanup is tracked in
 
 ### Fixed
 
+- Joe-mode Paseo can reconcile paused legacy returns before team conversion
+  without temporarily resuming dispatch to obtain a cleanup lease. Human
+  heartbeat startup/resume now includes a bounded first work pass and explicit
+  assignment or blocker evidence, rather than stopping at timer creation.
 - Have human-started Joe-mode attempt local Setup for missing/incomplete
   repository configuration under one controller/Setup owner, instead of only
   asking the human to run it. Reuse complete setup, join active runs, and preserve

@@ -88,6 +88,9 @@ A complete creation receipt plus actual initial backlog/ownership observation su
 the same PM conversation, with runtime provenance and bounded-pass receipts,
 establish recurring delivery. A copied prompt or saved cron is not a wakeup.
 Report status from those receipts and current agent state, stating observation gaps; never fabricate a heartbeat-list/inspect API or require one to finish setup.
+Configured also does not prove workers started. Human heartbeat activation/resume
+continues through SKILL's first bounded work pass and TEAM's explicit startup
+outcome; record initial dispatch separately from later recurring-wake evidence.
 
 For adoption/recovery, inspect the saved operation receipt and actual caller
 identity, pending changes and received wakeups. A stale receipt alone cannot prove a heartbeat remains active. For lost creation responses or uncertain current job identity/state, keep the board gated; ask the human or use a separately verified heartbeat-specific runtime surface. Empty schedule lists or schedule-only rejections prove neither heartbeat absence nor failure.
