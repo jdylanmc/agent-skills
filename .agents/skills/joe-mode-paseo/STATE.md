@@ -53,9 +53,9 @@ custody. If another required writer cannot follow that contract, block activatio
 | `reserve` | Lease credentials; `worker: {key, kind, coverage, packet, graph?}` | `reserved` or `reused`; kind `delivery`, `discovery`, `research`; coverage is nonempty unique qualified identities; `graph: true` reserves a delivery's parent before approved ticket publication |
 | `cover` | Lease credentials; publication-group `key`, cumulative actual `coverage`, boolean `complete`, publication `evidence` | `covered`; monotonic, overlap-checked parent/child coverage, preserves original assignment and publication receipts; complete graph becomes immutable |
 | `bind` | Lease credentials; `key`, `agentId`, `evidence` of actual first observation | `bound`; different bound identity rejected |
-| `record` | Lease credentials; `key`, `status`, `evidence`; `receiver` for accepted | `recorded`; status `pending`, `blocked`, `observed`, `accepted`; one entry per stable operation/episode key |
-| `settle` | Lease credentials; `key`, `noLiveWriters: true`, `noUntransferredDuties: true`, `evidence`, `result`, `acceptance`; Discovery also `discoveryEnded: true` | `settled`; frees capacity only after external reconciliation; preserves full result references |
-| `archive` | Lease credentials; settled worker `key`, actual archive readback `evidence` | `archive-recorded`; records completed external archival, does not perform or authorize it |
+| `record` | Lease credentials or paused human management below; `key`, `status`, `evidence`; `receiver` for accepted | `recorded`; status `pending`, `blocked`, `observed`, `accepted`; one entry per stable operation/episode key |
+| `settle` | Lease credentials or paused human management below; `key`, `noLiveWriters: true`, `noUntransferredDuties: true`, `evidence`, `result`, `acceptance`; Discovery also `discoveryEnded: true` | `settled`; frees capacity only after external reconciliation; preserves full result references |
+| `archive` | Lease credentials or paused human management below; settled worker `key`, actual archive readback `evidence` | `archive-recorded`; records completed external archival, does not perform or authorize it |
 | `release` | Lease credentials; preserved `result`, remaining `duties` references | `released`; appends run receipt and clears only pass ownership |
 
 Lease credentials are `owner` and `token` from the successful claim. Old tokens
@@ -64,6 +64,13 @@ but cannot reserve or bind new work. Changed operation outcomes retain prior
 status/evidence/receiver references in `history`; identical observations do not
 append duplicates. Keep referenced full artifacts accessible.
 Accepted records name actual receiving observations, not sender assertions; later blocked outcomes do not inherit stale acceptance claims.
+
+On **legacy or team** boards, `record`, `settle` and `archive` may instead carry
+`human` and current `reconciliation` references when paused/stopped with no live
+pass lease. This cleanup-only path preserves every settlement/acceptance gate;
+it never reserves, binds, dispatches, creates timers or resumes. A live lease
+must release or be explicitly fenced first. Do not temporarily enable a paused
+legacy board or create a heartbeat just to obtain a cleanup lease.
 
 Before approved Breakdown publication, reserve the real parent identity with
 `graph: true`. The initial assignment stays immutable for idempotent reservation replay; `cover` adds actual returned child IDs to effective group coverage. Partial receipts persist across passes with `complete: false`.
@@ -189,6 +196,14 @@ jobs, then call `enable-team` with `human` and `reconciliation` references.
 It preserves old settled assignments/history, staying paused. Do not reinterpret
 active reservations or discard them to fit the new limit. A legacy fresh runner cannot be converted this way: obtain an explicit stopped, reconciled handoff to the persistent PM; never change a live job's agent target.
 
+Use the paused human-management path above for legacy outcomes and settlement.
+Preserve a retained Discovery agent's actual acknowledgment, unanswered questions
+and temporary receiver custody; administrative end is not completed alignment
+or permission to archive that continuing agent. After conversion, verify old
+heartbeat absence, create its replacement once and use the normal human
+`resume` contract. Then claim the initial work pass, reassign retained roles
+and route eligible work under SKILL/TEAM. Conversion itself never enables dispatch.
+
 Team `reserve` adds `work` for `kind: "delivery"`:
 `feature` costs two, `bug`, `hardening` and `refactor` cost one.
 Missing/unknown work fails. `research`, `roast` and `investigator` are bounded
@@ -263,7 +278,7 @@ These operations use the same PM `owner`/`token`. Roles return receipts to PM, n
   without an external effect, or supported reconciliation proves no job exists.
   Include the exact `id` when one was known. This permits settlement or a new authorized plan without fabricated creation/deletion receipts. Generic
   not-found and transport errors are not proof of absence.
-- After human pause/stop with no pass lease, this operation may instead carry
+- On a team board after human pause/stop with no pass lease, this operation may instead carry
   `human` and current `reconciliation` references to preserve deletion/late
   receipts. The same cleanup-only path permits `record`, `settle`, `archive`,
   `retire-developer`, `cleanup-ready` and `cleanup`. It never grants dispatch,

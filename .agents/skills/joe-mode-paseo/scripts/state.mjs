@@ -312,8 +312,9 @@ function apply(state, request) {
     pm.lease = { owner: request.owner, token: randomUUID(), reconciliation: request.reconciliation };
     return 'claimed';
   }
-  const management = pm.config.team && pm.mode !== 'enabled' && !pm.lease && request.human &&
-    ['role-heartbeat', 'record', 'settle', 'archive', 'retire-developer', 'cleanup-ready', 'cleanup'].includes(request.op);
+  const management = pm.mode !== 'enabled' && !pm.lease && request.human &&
+    (['record', 'settle', 'archive'].includes(request.op) ||
+      pm.config.team && ['role-heartbeat', 'retire-developer', 'cleanup-ready', 'cleanup'].includes(request.op));
   if (management) {
     requireText(request.human, 'human management decision');
     requireText(request.reconciliation, 'current custody and pending-operation reconciliation');

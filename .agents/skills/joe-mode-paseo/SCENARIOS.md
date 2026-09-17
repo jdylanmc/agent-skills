@@ -5,6 +5,10 @@ These team scenarios supplement legacy scheduler cases. Run against the actual h
 | Team case | Required observation |
 | --- | --- |
 | Primary chat starts Joe | That same agent is PM; one project per repo, one workspace per actual worktree |
+| Human heartbeat startup/resume with eligible work | Same PM resumes, claims and completes one bounded work pass before returning; actual accepted worker identity/assignment, not just a timer or reservation; initial human pass is not counted as a heartbeat wake |
+| Startup with only blocked work or uncertain dispatch | Exact eligibility/blocker or pending-operation evidence, responsible owner and next action in the existing pass receipt; no invented ready work, duplicate launch or successful-team claim |
+| Paused legacy board has settled-ready returns but no lease | Human/reconciliation evidence permits record/settle/archive while still paused; no temporary resume/heartbeat to obtain cleanup authority; missing grants/live lease/unfinished duties reject without mutation |
+| Legacy Discovery survives team conversion | Actual administrative-end acknowledgment and unanswered questions preserved; same agent retained/reassigned, not archived or declared aligned; one final verified heartbeat replacement, team resumes and first eligible work is accepted |
 | Six developer slots | Three features, two features plus two fixes, or six fixes; support roles outside the pool; pending launches still counted |
 | Parent Agent + Auto Accept, or human-selected Allow All | Child mode **and permission features** match before and after bootstrap; no stale-mode "repair" |
 | Verified cross-provider target policy | Preflight recorded before launch with the compared capabilities and rationale; bind/staff rejects any later drift |
@@ -13,7 +17,14 @@ These team scenarios supplement legacy scheduler cases. Run against the actual h
 | Routine pass reads the board | Bounded current view is enough to route work; settled workers remain in the actionable retirement queue until archived and worktrees removed or deliberately retained; explicitly request full history for recovery/audit; durable records unchanged |
 | PRs and unclear backlog | One shared Shepherd and one backlog manager; each creates its own heartbeat, PM records exact target/ID/settings |
 | Pause with all roles live | Board gate closes first; all owned role timers deleted with receipts; queued effects reconciled; no auto-resume |
-| Discovery waits for human | Same question/input revision retained; no duplicate interview or repeated research |
+| Discovery waits for human | Same question/input revision retained; no duplicate interview or repeated research; PM presents the exact question/link in the primary chat and repeats the outstanding reminder every pass |
+| Discovery placement | One dedicated Git worktree and workspace named `Discovery` under the existing repository project, separate from PM; same inquiry conversation reused across questions/passes, no UI alias masquerading as isolation |
+| Existing Discovery in PM workspace | Human-directed acknowledged placement transfer preserves questions, artifacts, live duties and heartbeat; no silent move, second interviewer or premature archival |
+| Agreed domain knowledge ready to preserve | Within recorded publication scope, meaningful docs-only PR from Discovery's worktree to configured integration branch; canonical domain/context/ADR files, alignment and recording gates, independent review/checks/shared-Shepherd custody; no timer-quota PRs, private transcripts, intent/doctrine edits or self-merge |
+| Any role or descendant awaits the human | Primary coordinator emits one concise Waiting on you list every pass with agent, exact action/question, affected work and verified link/locator; no unchanged-pass suppression or generic completion claim |
+| Questions prepared but not presented | PM tracks its undelivered communication duty, actually presents the questions through the primary return channel and records available evidence; no claim that the human failed to answer an unseen internal artifact |
+| Agent link unavailable / question unchanged / answer arrives | Exact project/workspace/title/ID fallback; repeat the reminder without repeating research; stop or update it only after actual answer/withdrawal/acknowledged reassignment for that question revision |
+| Paused/busy pass or failed wait observation | Preserve dispatch gate, no automatic resume or extra reminder timer; any carried wait explicitly marked last verified with current uncertainty, not falsely fresh |
 | First confirmed work blocker | Self-challenge plus independent investigator; answer guides existing worker, otherwise one retry whose agents and worktrees are fresh for every prior participant, including retired developers |
 | Recurring duty inside a lane | Bounded timer created and deleted by that target agent with PM-recorded intent, ID and removal; developers otherwise run on callbacks and PM continuation, never a default timer |
 | Second confirmed work blocker | Issue blocked/tagged/commented, delivery workers retired, next ready issue dispatched; Discovery takes missing answers |

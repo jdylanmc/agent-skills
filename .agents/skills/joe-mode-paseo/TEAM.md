@@ -8,7 +8,7 @@ Shared Joe team contract, not another entrypoint or controller. The human starts
 | --- | --- | --- |
 | Project manager | Chart the goal, route ready tickets, accept results, watch agents and clean up | Original human chat by default; one PM |
 | Shepherding | Watch all project PRs fairly, rebase and apply small mechanical fixes; requeue real development through PM | One shared agent while PR duties exist |
-| Backlog manager | Interactive Discovery, Research, POC, Specify, ticket breakdown and approved ADR work | One optional conversation; spawn when backlog is unclear, empty or blocked |
+| Backlog manager | Interactive Discovery, Research, POC, Specify, ticket breakdown and approved domain-document PRs | One conversation in the dedicated `Discovery` worktree/workspace; spawn when backlog is unclear, empty or blocked |
 | Ship / Patch / Refactor | Implement the assigned issue or agreed graph | One bounded delivery lane |
 | Roast | Independent review against requirements and selected doctrine | Fresh reviewer per implementation cycle; retire after accepted return |
 | Blocker investigator | Challenge a developer's blocker; return a small answer with evidence | One bounded investigation, not another manager |
@@ -52,8 +52,105 @@ Chart-a-course when the goal or dependency picture changes, not every tick.
 Dispatch through existing ready-for-agent mappings and actual dependencies.
 Blocked tickets do not become eligible just because their ready label remains.
 
-The backlog manager is the single human-facing inquiry lane, retaining full Discovery artifacts, actual human answers and existing recording/publication gates. PM routes new questions there; no competing interrogation chats.
-While awaiting the human, retain the exact question/input revision. Check only changed answers/evidence; do not repeat questions or research on unchanged inputs. A heartbeat costs a turn; it is not free event delivery.
+## Startup must reach useful work
+
+Human heartbeat activation/resume includes a first bounded work pass, not just
+timer setup. Reconcile existing owners, then reserve/dispatch eligible work now
+within capacity and authority. Observe the returned identity and accepted
+assignment; for retained roles, verify accepted reassignment instead of spawning
+duplicates. Start Shepherd only for actual PR duties and reuse the backlog
+manager for unresolved questions. Do not create idle roles to fill six slots.
+
+Before returning, the existing pass receipt names accepted initial work and
+owners, or the exact pending launch, missing capability, human decision,
+ownership conflict or evidence that no selected work is eligible. Name its
+responsible owner and next action. Uncertain creation stays pending, not retried;
+a reservation or timer alone is not a running worker. If a result is still
+pending, report startup incomplete and keep its callback/next-pass duty.
+
+Discovery questions block their dependent work, not every independent eligible
+ticket. Preserve real global gates such as unknown ownership or unresolved
+publication coverage; never bypass them to manufacture startup progress.
+Once the outcome is recorded, release the pass and await actual callbacks/wakes.
+
+## Keep inquiry and maintenance scoped
+
+The backlog manager is the single human-facing inquiry lane, retaining full
+Discovery artifacts, actual human answers and existing recording/publication
+gates. PM routes new questions there; no competing interrogation chats.
+Give it one dedicated Git worktree and registered workspace named **`Discovery`**
+in the existing repository project, separate from PM and delivery worktrees.
+Name its agent `Discovery` or `Backlog manager` so the conversation is identifiable.
+Reuse that workspace and conversation across questions and passes, not one per
+issue. Follow WORKSPACE's actual Git/base/ownership checks; a UI alias of the PM
+worktree is not isolation. Other bounded read-only helpers may share an appropriate
+existing workspace; Discovery's persistent role is the exception.
+
+For an existing Discovery agent in the PM workspace, do not silently relocate
+it or create a second interviewer. Human-directed management must reconcile
+its active work, questions, artifacts and heartbeat, then use supported movement
+or an acknowledged handoff to the dedicated workspace. Preserve the old
+conversation until custody transfers; report unavailable relocation explicitly.
+Never spoof placement or archive the primary human chat.
+
+While awaiting the human, retain the exact question/input revision. Recheck
+changed answers/evidence; do not repeat the research or open another interview
+on unchanged inputs. PM's per-pass reminder below is required even when the
+question is unchanged. A heartbeat costs a turn; it is not free event delivery.
+
+### Surface every human wait
+
+On **every executed PM pass**, call out every agent currently waiting on the
+human in the primary coordinator conversation. Do not hide an unchanged wait
+behind quiet-pass rules or a generic "pass completed" message. Consolidate into
+one concise **Waiting on you** list: agent/role, exact question or action needed,
+affected work, and a direct agent/conversation link when the runtime supplies a
+verified one. Otherwise give its exact project, workspace, agent title and ID;
+never invent a URL or block the reminder because links are unavailable.
+
+The waiting agent supplies its question and context; Discovery owns the detailed
+interview. PM makes it findable from the primary chat, including permission,
+approval and product-decision waits from any role or descendant, not only Discovery.
+Consume callbacks promptly, then repeat outstanding reminders on each pass until
+an actual answer, withdrawal or acknowledged reassignment changes that wait.
+Match answers to the question revision; a timer, sent prompt or completed
+monitoring pass is not an answer.
+
+Preserve in the existing assignment/pass evidence: question/input revision,
+waiting agent identity/locator, whether the question is only prepared or has
+actually been presented in the primary chat, the presentation evidence and
+the actual answer/resolution when received. An internal question artifact or
+handoff is not delivery to the human. Do not claim the human saw or answered it
+from a send receipt. A question not yet presented is a PM communication duty,
+not a failure by the human to respond.
+
+If pause, a busy owner or unavailable reads prevent fresh reconciliation,
+respect the dispatch gate and label any carried wait with its last verified
+state and current uncertainty. Never claim fresh waiting/completion evidence.
+This uses existing passes/callbacks, not extra timers or automatic resume.
+Unchanged passes with **no** human waits need no status chatter. Distinguish
+monitoring completed, work blocked, implementation finished, PR ready and merged.
+
+### Preserve agreed knowledge through PRs
+
+Discovery may periodically open scoped documentation PRs for agreed findings,
+domain language/glossaries and architecture decisions within its recorded
+documentation-publication grant. Preserve actual alignment, recording and
+exact-file approval gates; do not present proposals as decisions. Use the
+repository's canonical context/domain/ADR locations, not a competing knowledge
+tree. Human-owned intent/doctrine still require their separate explicit edit
+authorization. Private transcripts, credentials and runtime receipts stay private.
+
+Use its dedicated worktree and the repository's configured integration branch,
+not a hardcoded `main`; clarify unresolved target policy rather than retargeting.
+Serialize document writes with any open PR on that branch; reuse a matching PR
+instead of generating one per heartbeat. Publish only a meaningful agreed delta,
+not on a timer quota. Follow DELIVERY for independent review, relevant checks,
+current-base proof and accepted shared-Shepherd custody. Discovery and Shepherd
+explicitly transfer branch-write ownership; inquiry may continue without source
+writes while maintenance owns the branch. No self-review approval, merge or
+automatic closure. After terminal PR reconciliation, reuse the Discovery
+workspace for the next bounded documentation branch without discarding work.
 
 Shepherd does not implement features, rewrite architecture or debug broken tests.
 It may do mechanical rebases, regeneration and scoped linter fixes under the
@@ -81,7 +178,9 @@ After reviewed repairs, it observes and accepts custody back. Other PRs continue
    the issue's attempt history across workers, ticks and restarts. New answers plus verified readiness close the episode; unchanged ticks never reset it.
 
 Permission denial, missing credentials and explicit human decisions are not
-fresh-context experiments. Surface those once; wait for the real grant or answer, never evade them with another agent/provider. Runtime cancellation is
+fresh-context experiments. Record the exact blocker once and repeat PM's
+human-wait reminder each pass; wait for the real grant or answer, never evade
+it with another agent/provider. Runtime cancellation is
 not automatically a work blocker: reconcile descendants and partial writes first.
 
 Before removing a run-owned worktree, stop writers, preserve relevant tracked,
@@ -131,8 +230,9 @@ same PM conversation** and continues Joe-mode; it never reruns setup or starts
 another controller. Its prompt names Joe-mode continuation, the repository,
 workspace, board path, PM ownership and the pause/stop gates, then one bounded
 pass: check workers, blockers, permissions, PRs and free slots; take authorized
-next steps; reuse existing assignments; record compact progress; notify the
-human only for meaningful changes or decisions.
+next steps; reuse existing assignments; record compact progress; call out every
+human-waiting agent with its question and verified link/locator on every pass,
+even unchanged. Otherwise notify only meaningful changes.
 
 Developers, roasters and the PR coordinator have **no default timer**: they use
 completion notifications and PM's explicit continuation. A bounded developer
@@ -157,6 +257,7 @@ archive its agent and verify active-view removal.
 
 Keep the primary workspace clean. Use names such as `Ship #42 small-search`,
 `Patch #43 empty-result`, `Roast #42 small-search`, `Shepherding`,
-`Backlog manager`, `Project manager`, `PR coordinator`. One project per Git
-repository; one workspace per actual worktree, shared by its read-only agents.
+`Discovery`, `Backlog manager`, `Project manager`, `PR coordinator`. One project per Git
+repository; one workspace per actual worktree, shared by its assigned agents.
+Discovery uses its dedicated named worktree/workspace, not the PM workspace.
 Do not retain stalled developers for hypothetical work. Preserve and transfer actual duties before retirement; quiet persistent roles with live duties are not stale. Never archive a whole project to hide one agent.

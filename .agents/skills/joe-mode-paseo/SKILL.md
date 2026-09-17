@@ -16,6 +16,9 @@ Model-loadable metadata permits bounded continuation, not autonomous activation.
 Requires the sibling workflow packages; see [runtime gates](RUNTIME.md).
 
 Follow [TEAM](TEAM.md) for roles, capacity, testing, blockers and cleanup.
+Discovery has its own reusable worktree/workspace named `Discovery`.
+PM calls out every agent awaiting human input in the primary chat on every
+pass, with the exact ask and verified agent link or locator—even when unchanged.
 This adapter extends the existing Joe owner board across bounded passes without activating nested/session Joe-mode or replacing delivery owners. **Human merging is
 the default.** When requested, a separate PR coordinator
 may merge under [the repository-defined gate](MERGE.md). If that gate is missing,
@@ -28,7 +31,8 @@ No self-approval, blanket auto-merge or provider-policy bypass.
 1. Resolve the repository, existing owners and Setup completeness (§1).
 2. Ask only the unsettled activation questions (§2).
 3. Verify board, permissions and Paseo capabilities, then initialize paused (§3).
-4. Create the PM heartbeat in this chat, observe once, then resume (§4).
+4. Create the PM heartbeat in this chat, observe, resume, then complete the first
+   bounded work pass now (§4); do not wait for cron to start the team.
 5. Each wakeup runs one bounded [RUN](RUN.md) pass; [TEAM](TEAM.md) routes work.
 
 Keep every step's gates. For recovery, replacement, pause/stop, missing or uncertain information, or existing ownership, read §4, [STATE](STATE.md) and [RUNTIME](RUNTIME.md).
@@ -71,6 +75,8 @@ Reuse already settled answers; ask only material missing choices:
 4. Which cadence (**five minutes by default**), host/repository worktree, accessible private evidence location and
    existing runtime profiles? What is the explicit child disposition at
    pause/stop, and who accepts results and retires terminal run parents?
+   Preserve the actual primary-chat return channel for questions and the
+   recorded scope for Discovery's periodic domain-document PRs.
 
 Recommend the documented primary-chat PM heartbeat recipe after inspecting host
 availability and capabilities below. When the human delegates runner mechanics, record the delegation and explained implementation choice; do not repeatedly ask them to choose APIs. An explicit fresh
@@ -95,7 +101,12 @@ The registry locator belongs in the existing owner/handoff record.
 New team setups set `team: true` and `wakeupMode: "heartbeat"`.
 Existing boards keep their old capacity units. Use STATE's paused `enable-team`
 transition only after old owners and pending operations are settled; never reset
-a busy board. Existing fresh scheduling remains legacy and separately consented, not a supported replacement for this persistent team.
+a busy board. Reconcile legacy returns with STATE's paused human-management
+path before creating a replacement heartbeat. Do not resume legacy dispatch
+just to acquire a cleanup lease. A retained Discovery conversation may transfer
+its unanswered questions through an acknowledged administrative end/reassignment;
+that is not alignment or a reason to archive the continuing agent.
+Existing fresh scheduling remains legacy and separately consented, not a supported replacement for this persistent team.
 Prepare the exact activation config; after all following capability gates pass,
 follow [STATE](STATE.md) to call the bundled helper with `init`. It validates required evidence references, defaults capacity to six and initializes **paused**. Matching init is a no-op; changed identity/config blocks. The helper cannot grant authority or establish runtime evidence as true. Do not use fixture values as evidence.
 
@@ -134,6 +145,9 @@ activation or broader permissions. Unavailable required evidence remains a block
 Establish exactly one PM heartbeat below. Once enabled, PM provisions one
 Shepherd heartbeat while PR duties exist and one backlog-manager heartbeat
 while that role exists, following TEAM and STATE's `role-heartbeat` receipts.
+Place the backlog manager in TEAM's dedicated `Discovery` worktree/workspace
+before launch; reuse its existing correctly placed conversation and register
+no second workspace for the same worktree.
 The role itself makes the target-bound call; PM owns inventory and cleanup.
 Team kickoff authorizes this delegated lifecycle; do not repeat permission interviews. Developers, roasters and the PR coordinator get no default timer;
 only a real recurring duty earns the bounded exception in TEAM.
@@ -173,6 +187,15 @@ receipts: same bound PM agent for heartbeat, safe actual placement for fresh.
 Distinguish **configured / initial observation
 verified / recurring operation verified**. Gaps or permission waits do not prove working unattended monitoring. Use [SCENARIOS](SCENARIOS.md) for acceptance.
 
+For heartbeat mode, the same PM now executes one bounded [RUN](RUN.md) pass
+under this human activation, including claim and release. This is an initial
+human-started pass, not a fabricated heartbeat delivery. Follow
+[TEAM's startup outcome](TEAM.md#startup-must-reach-useful-work): complete actual
+assignment/reassignment or report the precise blocked/pending outcome before
+returning. A timer receipt, migrated board or enabled flag alone is not a started
+team. Fresh mode retains its separately consented runner/placement contract;
+report initial worker dispatch unverified until an actual run establishes it.
+
 ## Inspect, pause, resume, stop
 
 - **Change merge policy:** human management only. Resolve the repository gate
@@ -202,6 +225,8 @@ verified / recurring operation verified**. Gaps or permission waits do not prove
   Reconcile an uncertain creation before retrying. Verify the new creation receipt and call
   helper `resume` with [STATE's exact replacement evidence](STATE.md), including
   old ID and human proof. No board reset, automatic tick resume or target change.
+  After successful heartbeat resume, complete the same bounded initial work pass
+  and startup outcome above; do not finish at replacement-timer creation.
 - **Stop:** call `stop` first, then delete the exact owned wakeup and verify
   deletion through its mode-specific evidence, including every role heartbeat.
   Stop is not blanket cancellation: obey

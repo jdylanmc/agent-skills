@@ -292,6 +292,103 @@ test('legacy capacity is never silently reinterpreted; team upgrade requires a p
   assert.equal(transact(b.file, { op: 'inspect' }).state.pm.workers[0].assignment.work, undefined);
 });
 
+test('paused legacy migration reaches the first team assignment without reopening dispatch for cleanup', t => {
+  const { team, ...legacy } = config;
+  const b = board(t, legacy);
+  b.call({ op: 'reserve', worker: { key: 'old-backlog', kind: 'discovery',
+    packet: 'unaligned-findings', coverage: ['needs-human'] } });
+  b.call({ op: 'bind', key: 'old-backlog', agentId: 'retained-backlog', evidence: 'startup' });
+  b.call({ op: 'record', key: 'old-return', status: 'pending', evidence: 'awaiting-custody' });
+  transact(b.file, { op: 'pause', human: 'human/team', disposition: 'retain-backlog-and-questions' });
+  b.call({ op: 'release', result: 'paused-pass', duties: 'transfer-backlog' });
+  const manage = request => transact(b.file, { human: 'human/team',
+    reconciliation: 'actual-backlog-ack-and-no-live-writers', ...request });
+
+  assert.equal(manage({ op: 'record', key: 'old-return', status: 'accepted',
+    evidence: 'preserved-questions', receiver: 'pm-custody-ack' }).status, 'recorded');
+  assert.equal(manage({ op: 'settle', key: 'old-backlog', noLiveWriters: true,
+    noUntransferredDuties: true, discoveryEnded: true, evidence: 'administrative-end-ack',
+    result: 'unaligned-findings', acceptance: 'pm-temporary-custody' }).status, 'settled');
+  const reconciled = transact(b.file, { op: 'inspect' }).state.pm;
+  assert.equal(reconciled.mode, 'paused');
+  assert.equal(reconciled.lease, null);
+  assert.deepEqual(reconciled.schedule, job);
+  assert.equal(reconciled.wakeupHistory, undefined);
+  assert.equal(reconciled.workers[0].archive, undefined);
+  assert.equal(reconciled.pending[0].history.length, 1);
+
+  const upgraded = manage({ op: 'enable-team' }).state.pm;
+  assert.equal(upgraded.mode, 'paused');
+  assert.equal(upgraded.config.team, true);
+  assert.deepEqual(upgraded.workers, reconciled.workers);
+  assert.deepEqual(upgraded.pending, reconciled.pending);
+  assert.deepEqual(upgraded.runs, reconciled.runs);
+  assert.deepEqual(upgraded.config, { ...config, capacity: 6 });
+  assert.throws(() => manage({ op: 'resume', schedule: job }), /replacement/);
+  manage({ op: 'resume', schedule: { ...job, id: 'team-job' },
+    replacement: { oldId: job.id, human: 'human/team',
+      absence: 'exact-old-id-deletion-receipt', reconciliation: 'same-pm-and-settings' } });
+  const lease = transact(b.file, { op: 'claim', owner: 'pm', reconciliation: 'live-owners' }).state.pm.lease;
+  const call = request => transact(b.file, { ...lease, ...request });
+  call({ op: 'reserve', worker: { key: 'backlog', kind: 'discovery',
+    packet: 'same-unaligned-findings-and-questions', coverage: ['needs-human'] } });
+  call({ op: 'bind', key: 'backlog', agentId: 'retained-backlog',
+    permissions: proof, evidence: 'accepted-reassignment' });
+  call({ op: 'reserve', worker: { key: 'independent', kind: 'delivery', work: 'bug',
+    packet: 'ready-independent-issue', coverage: ['independent'] } });
+  call({ op: 'bind', key: 'independent', agentId: 'developer', worktree: '/trees/independent',
+    permissions: proof, evidence: 'accepted-first-assignment' });
+  call({ op: 'release', result: 'initial-pass-with-accepted-workers', duties: 'await-results' });
+  const current = transact(b.file, { op: 'inspect' }).state.pm;
+  assert.equal(current.mode, 'enabled');
+  assert.equal(current.lease, null);
+  assert.equal(current.wakeupHistory.length, 1);
+  assert.deepEqual(current.workers.filter(worker => !worker.settled).map(worker => worker.agentId),
+    ['retained-backlog', 'developer']);
+  assert.equal(current.workers[0].return.result, 'unaligned-findings');
+});
+
+test('legacy human cleanup preserves authority, lease and settlement gates while paused or stopped', t => {
+  for (const mode of ['pause', 'stop']) {
+    const { team, ...legacy } = config;
+    const b = board(t, legacy);
+    b.call({ op: 'reserve', worker: { key: 'old', kind: 'discovery', packet: 'old', coverage: ['old'] } });
+    transact(b.file, { op: mode, human: 'human/manage', disposition: 'preserve' });
+    const grant = { human: 'human/manage', reconciliation: 'observed-current-custody' };
+    const record = { op: 'record', key: 'receipt', status: 'observed', evidence: 'result' };
+    assert.throws(() => transact(b.file, { ...grant, ...record }), /lease/);
+    b.call({ op: 'release', result: 'pass', duties: 'human-cleanup' });
+    const snapshot = readFileSync(b.file, 'utf8');
+    for (const missing of [{ human: undefined }, { human: '' }, { reconciliation: undefined }]) {
+      assert.throws(() => transact(b.file, { ...grant, ...record, ...missing }), /lease|human|reconciliation/);
+      assert.equal(readFileSync(b.file, 'utf8'), snapshot);
+    }
+    for (const op of ['reserve', 'bind', 'cover', 'permission-preflight', 'role-heartbeat']) {
+      assert.throws(() => transact(b.file, { ...grant, op }), /lease/);
+      assert.equal(readFileSync(b.file, 'utf8'), snapshot);
+    }
+    assert.throws(() => b.call(record), /lease/);
+    assert.equal(transact(b.file, { op: 'claim', owner: 'pm', reconciliation: 'live' }).status,
+      mode === 'pause' ? 'paused' : 'stopped');
+    const settlement = { ...grant, op: 'settle', key: 'old', evidence: 'actual-end',
+      result: 'questions-preserved', acceptance: 'receiver', noLiveWriters: true,
+      noUntransferredDuties: true, discoveryEnded: true };
+    for (const missing of [{ noLiveWriters: false }, { noUntransferredDuties: false },
+      { discoveryEnded: false }, { acceptance: '' }]) {
+      assert.throws(() => transact(b.file, { ...settlement, ...missing }), /custody|Discovery|acceptance/);
+      assert.equal(readFileSync(b.file, 'utf8'), snapshot);
+    }
+    assert.throws(() => transact(b.file, { ...grant, op: 'archive', key: 'old', evidence: 'archive' }), /settled/);
+    assert.equal(transact(b.file, settlement).status, 'settled');
+    assert.equal(transact(b.file, { ...grant, op: 'archive', key: 'old', evidence: 'actual-archive' }).status,
+      'archive-recorded');
+    const current = transact(b.file, { op: 'inspect' }).state.pm;
+    assert.equal(current.mode, mode === 'pause' ? 'paused' : 'stopped');
+    assert.equal(current.config.team, undefined);
+    assert.equal(current.lease, null);
+  }
+});
+
 test('corrupt blocker history fails closed instead of resetting the retry budget', t => {
   const b = board(t);
   b.reserve('first');
