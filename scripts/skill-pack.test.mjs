@@ -11,11 +11,11 @@ const installSource = process.env.SKILLS_PACK_SOURCE ?? root;
 const expected = [
   'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts',
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
-  'handoff', 'interrogate', 'joe-mode', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'refactor',
+  'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'specify',
   'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what',
 ];
-const originalNames = expected.filter(name => !['chart-a-course', 'joe-mode-paseo'].includes(name));
+const originalNames = expected.filter(name => !['chart-a-course', 'joe-mode-cmux', 'joe-mode-paseo'].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
 // Changes require explicit human authorization, not automatic fixture regeneration.
@@ -34,6 +34,8 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     .map(filename => path.relative(root, filename).split(path.sep).join('/'))
     .filter(filename => filename.endsWith('/intent.md') || filename.includes('/doctrines/'))
     .filter(filename => filename !== '.agents/skills/chart-a-course/intent.md')
+    // New CMUX adapter intent explicitly authorized separately; pinned below.
+    .filter(filename => filename !== '.agents/skills/joe-mode-cmux/intent.md')
     // New PM intent explicitly authorized separately; pinned below.
     .filter(filename => filename !== '.agents/skills/joe-mode-paseo/intent.md')
     // Only Shepherd intent was authorized for the adaptive/recovery extension.
@@ -61,6 +63,24 @@ test('separately authorized PM intent and entrypoint metadata remain pinned', ()
   assert.match(metadata, /^disable-model-invocation: false$/m);
   assert.match(metadata, /^user-invocable: true$/m);
   for (const support of ['RUN.md', 'RUNTIME.md', 'STATE.md', 'TEAM.md', 'MERGE.md', 'SCENARIOS.md', 'intent.md']) {
+    const text = readFileSync(path.join(directory, support), 'utf8');
+    assert.ok(text.trim(), support);
+    assert.ok(!text.startsWith('---\n'), `${support}: support is not a second skill entry`);
+  }
+});
+
+test('separately authorized CMUX adapter intent and entrypoint metadata remain pinned', () => {
+  const directory = path.join(root, '.agents/skills/joe-mode-cmux');
+  const intent = readFileSync(path.join(directory, 'intent.md'));
+  assert.equal(createHash('sha256').update(intent).digest('hex'),
+    '8e36ca606c7c09eef63e2ddf76cde5ff03e0fdda826483bd48960fc7885907a4');
+  const metadata = readFileSync(path.join(directory, 'SKILL.md'), 'utf8').split('---\n')[1];
+  assert.equal(createHash('sha256').update(metadata).digest('hex'),
+    '03aae606d8aa350017dd9da9bbb9feff926b1c0c30d7396e529c55949a7b5770');
+  assert.match(metadata, /^name: joe-mode-cmux$/m);
+  assert.match(metadata, /^disable-model-invocation: true$/m);
+  assert.match(metadata, /^user-invocable: true$/m);
+  for (const support of ['LAYOUT.md', 'RUNTIME.md', 'intent.md']) {
     const text = readFileSync(path.join(directory, support), 'utf8');
     assert.ok(text.trim(), support);
     assert.ok(!text.startsWith('---\n'), `${support}: support is not a second skill entry`);
@@ -143,7 +163,8 @@ function assertLifecycleSupport(directory) {
 
   for (const entry of [
     'squadron/SKILL.md', 'ship/SKILL.md', 'ship/WORKER.md',
-    'joe-mode/SKILL.md', 'joe-mode/RUNTIME.md', 'joe-mode-paseo/SKILL.md',
+    'joe-mode/SKILL.md', 'joe-mode/RUNTIME.md', 'joe-mode-cmux/SKILL.md',
+    'joe-mode-paseo/SKILL.md',
     'joe-mode-paseo/RUN.md', 'shepherd/SKILL.md',
     'handoff/SKILL.md', 'patch/SKILL.md', 'refactor/SKILL.md', 'setup/INVOCATION.md',
   ]) {
@@ -205,7 +226,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     install();
     const installed = path.join(consumer, '.agents/skills');
-    await t.test('all 34 active names, no archive', () => {
+    await t.test('all 35 active names, no archive', () => {
       assert.deepEqual(readdirSync(installed).sort(), expected);
     });
     await t.test('installation writes only project skill files and installer lock, not Setup outputs', () => {
@@ -227,6 +248,14 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
       rmSync(pm, { recursive: true });
       install('joe-mode-paseo');
       assert.deepEqual(snapshot(pm), snapshot(path.join(root, '.agents/skills/joe-mode-paseo')));
+      assert.deepEqual(readdirSync(installed).sort(), expected);
+      assertPortable(installed);
+    });
+    await t.test('CMUX adapter is separately selectable alongside prerequisites with all support intact', () => {
+      const adapter = path.join(installed, 'joe-mode-cmux');
+      rmSync(adapter, { recursive: true });
+      install('joe-mode-cmux');
+      assert.deepEqual(snapshot(adapter), snapshot(path.join(root, '.agents/skills/joe-mode-cmux')));
       assert.deepEqual(readdirSync(installed).sort(), expected);
       assertPortable(installed);
     });

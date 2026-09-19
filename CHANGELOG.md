@@ -9,6 +9,15 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `joe-mode-cmux`: human-started, session-bound CMUX cockpit for the existing
+  Joe controller. Keep Project Manager, Discovery, stacked developer tabs, and
+  support visible in one repository workspace; require CMUX Maestro's dedicated
+  pinned Copilot account and model before spawning. Preserve direct human
+  interaction, exact surface ownership, separate delivery worktrees, and honest
+  continuity limits without inventing scheduling, merge authority, or success.
+  Same-workspace pane placement requires the CMUX Maestro integration contract
+  that permits owner-controlled post-attach moves; older integrations retain
+  same-pane workers and report the degraded layout.
 - `joe-mode-paseo`: opt-in engineering-team PM for one repository. Use the
   primary chat and role heartbeats, every five minutes by default;
   chart the backlog, intake requirements, assess worker progress and direction,
