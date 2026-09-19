@@ -48,6 +48,7 @@ machine-starts session Joe-mode or inherits authority merely from its name.
 | [handoff](../handoff/SKILL.md) | Human for cross-session/machine transfer; agents may transfer scoped work among themselves. |
 | [interrogate](../interrogate/SKILL.md) | Internal to Discovery or Joe-mode only. |
 | [joe-mode](../joe-mode/SKILL.md) | Human-only activation; one controller per repository, never nested. |
+| [joe-mode-cmux](../joe-mode-cmux/SKILL.md) | Human-only session adapter for the existing Joe controller. Uses the caller's CMUX workspace and pinned Maestro worker settings; no scheduler, heartbeat, or unattended execution. |
 | [joe-mode-paseo](../joe-mode-paseo/SKILL.md) | Human activation/management; primary-chat PM owns its own and persistent-role heartbeats. Matching wake enters RUN, not intake. One repository controller, six developer slots by default. Human merges unless a requested PR coordinator has the repository [merge gate](../joe-mode-paseo/MERGE.md). No merge authority for implementers, Shepherd or session Joe. |
 | [migration](../migration/SKILL.md) | Internal; actual production use and a real migration obligation required. |
 | [patch](../patch/SKILL.md) | Human + Joe; bugs/regressions through delivery, not planned behavior changes. |
@@ -72,15 +73,24 @@ machine-starts session Joe-mode or inherits authority merely from its name.
 
 ## Carry authority, not another controller
 
+The [CMUX adapter](../joe-mode-cmux/SKILL.md) is an explicit human-started,
+session-bound presentation of the same Joe controller. It may launch
+interactive Maestro workers only after dedicated account/model readiness passes
+and may arrange only its exact owned CMUX surfaces. It carries no scheduler,
+heartbeat, merge, tracker, or approval authority. Interactive worker follow-up
+belongs to the human's terminal; the adapter must not inject keystrokes or claim
+it consumed unseen worker output.
+
 The [Paseo PM adapter](../joe-mode-paseo/SKILL.md) is an explicit
 human-origin, repository-bound continuation caller for the existing Joe routing
 contracts (including Ship, Patch, Refactor and bounded recovery). Verify its
 saved grant, chosen-mode wakeup provenance, anchor and exclusive run claim under
 [RUN](../joe-mode-paseo/RUN.md) before accepting its packet. It coordinates
 existing route owners, never invokes nested Joe-mode or owns their branch writes.
-Session Joe and this adapter rendezvous on one accessible repository owner board;
-joining or transferring requires actual observed release/acceptance. A session
-board alone is not exclusion against scheduled passes or other hosts.
+Session Joe, the CMUX cockpit, and the Paseo adapter rendezvous on one accessible
+repository owner board; joining or transferring requires actual observed
+release/acceptance. A session board alone is not exclusion against another CMUX
+run, scheduled passes, or other hosts.
 Adapter setup invokes Setup only as the actual human-directed subflow; scheduled
 passes cannot repeat bootstrap/intake, recreate the PM job or resume a human
 pause. Under [TEAM](../joe-mode-paseo/TEAM.md), kickoff does authorize PM to

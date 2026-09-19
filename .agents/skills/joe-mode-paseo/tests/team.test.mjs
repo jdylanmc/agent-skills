@@ -5,6 +5,11 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { summarize, transact } from '../scripts/state.mjs';
 
+test('session Joe adapters do not extend the session controller lifetime', () => {
+  const joe = readFileSync(new URL('../../joe-mode/SKILL.md', import.meta.url), 'utf8');
+  assert.match(joe, /CMUX cockpit[\s\S]*Paseo PM adapter[\s\S]*do not[\s\S]*extend this session mode's lifetime/i);
+});
+
 const permissions = { provider: 'copilot', modeId: 'agent', features: { auto_accept: true } };
 const proof = { parent: permissions, child: permissions, authority: 'human/current-grant', evidence: 'runtime/readback' };
 const config = {

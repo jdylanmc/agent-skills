@@ -1,6 +1,6 @@
 # Agent Skills
 
-Dylan's editable library of **34 skills** and human-owned engineering doctrine,
+Dylan's editable library of **35 skills** and human-owned engineering doctrine,
 designed for GitHub Copilot. The retired atomic framework remains historical
 material under `archive/atomic-v1/`; it does not govern the active library.
 
@@ -26,7 +26,7 @@ DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill '*
 The environment prefix above is POSIX shell syntax; in PowerShell, set
 `$env:DISABLE_TELEMETRY='1'` before running the `npx` command.
 
-Install **all 34** together for a new consumer. Isolated installs without
+Install **all 35** together for a new consumer. Isolated installs without
 prerequisites are unsupported: workflows
 reference sibling skills, and Setup carries the shared policies, attribution,
 licenses, and historical provenance. The quoted `'*'` selects every active
@@ -50,6 +50,14 @@ global configuration, configure a tracker, start services/hooks, or authorize
 any workflow. Invoke `/setup` separately when you want repository configuration;
 its existing human-choice and exact-file approval gates still apply, including
 the named Joe-mode bootstrap.
+
+**Optional CMUX cockpit:** invoke `/joe-mode-cmux` explicitly to run the
+session Joe controller in the current CMUX workspace. It keeps this conversation
+as Project Manager, gives Discovery and support distinct panes, and stacks
+developer agents as tabs. Managed workers require the installed CMUX Maestro
+integration's dedicated pinned Copilot account and model; missing settings fail
+before terminal creation. CMUX supplies visible interactive sessions, not cron,
+heartbeats, unattended execution, merge authority, or proof of task success.
 
 **Optional Paseo PM:** invoke `/joe-mode-paseo` explicitly to set up or manage
 one repository's engineering team, with six developer slots by default
@@ -100,6 +108,10 @@ Validation keeps telemetry disabled and does not claim directory registration.
 - **Joe-mode:** human-started, one controller per repository, looping until
   paused or stopped. Use Squadron aggressively for independent discovery,
   delivery, and Shepherd assignments without overlapping owners.
+- **Joe-mode CMUX:** human-started session cockpit for the same controller.
+  Project Manager, Discovery, stacked developer tabs, and support remain visible
+  in one repository workspace. Pinned Maestro settings are mandatory; worker
+  conversations stay directly interactive and no scheduler is implied.
 - **Joe-mode Paseo:** separately human-enabled recurring team PM, sharing the
   same repository ownership registry. Primary chat is PM; one shared Shepherd
   and optional backlog manager have their own PM-managed heartbeats.
@@ -238,6 +250,7 @@ material for separately authorized debugging, not install-time hooks.
 
 ```sh
 node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs
+node --test .agents/skills/joe-mode-cmux/tests/*.test.mjs
 node --test .agents/skills/joe-mode-paseo/tests/*.test.mjs
 npm ci --ignore-scripts
 npm run test:pack
