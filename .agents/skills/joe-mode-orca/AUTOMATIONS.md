@@ -1,45 +1,49 @@
 # Opt-in recurring Orca automations
 
-Recurrence is optional and separately authorized. Native automation creation
-must be disabled first, then inspected, owner-bound, observed, and explicitly
-enabled. Configured state, initial observation, and verified recurrence are
-different facts.
+Recurrence is optional and separately human-authorized. Native creation starts
+disabled, uses exact existing `--workspace` and `--workspace-mode existing`,
+and is inspected before any enable. `--repo` creates a worktree per run and is
+not an ongoing PM workspace.
 
-## Safe setup
+## First-run handshake
 
-1. Reconcile the private Joe owner packet and exact existing automation IDs.
-   Never create a second controller or accept an ambiguous match.
-2. Use `orca automations create` with `--disabled`, an exact existing
-   `--workspace`, `--workspace-mode existing`, and the recorded provider,
-   trigger, timezone, prompt, and `--reuse-session` choice. `--repo` creates
-   a new worktree per run and is unsuitable for an ongoing PM tick.
-3. Read back `orca automations show <id>` and verify the owner, repository,
-   workspace, trigger, timezone, provider, disabled state, and reuse-session
-   setting. A create receipt alone is not proof.
-4. Verify owner binding, supported permission transition, and the next wake
-   while disabled. Enable only after the human's explicit recurrence decision,
-   then read back again and observe the first run.
+A disabled automation has no previous automation PM session. If the installed
+CLI supports a disabled/manual first-run probe, use it only to report
+placement and binding; it must not dispatch, claim ownership, release another
+controller, or fabricate a Run. The current human chat is not that session.
+The human explicitly transfers/releases the original PM; the receiver
+acknowledges; native binding, wake provenance, return channel, owner/pass
+serialization, and settings are read back before enabling. If the CLI schema
+cannot prove these facts, recurrence is blocked. A fresh unexpected identity
+fails closed; no new Run or automatic takeover.
 
-`--reuse-session` reuses the automation's previous live session, not
-necessarily the human's current PM chat. If that session is gone, Orca falls
-back to a fresh terminal. That transition must be verified against the owner
-record; an unexpected identity fails closed and must not create another Run or
-controller. If owner binding, permission readback, host mapping, or recurrence
-cannot be proven, leave it disabled and report the exact missing capability.
+## Setup and cadence
 
-## Run and pause
+1. Reconcile exact owned automation IDs and the private owner record.
+2. Create disabled with `--workspace`, `--workspace-mode existing`, recorded
+   provider/prompt/trigger/timezone, and `--reuse-session` only when its
+   binding is verified. Read back all fields and permissions.
+3. Verify the actual owner, workspace, host, next wake, wake provenance, and
+   serialization capability while disabled. Configured, initially observed,
+   and recurring-verified are separate states.
+4. Human enables the same owned job only after transfer acceptance. Each wake
+   loads [RUN.md](RUN.md), not intake; no per-developer/reviewer/coordinator
+   timers. A recurring role earns a separate bounded grant and lifecycle
+   evidence. One Shepherd services scopes fairly.
 
-At each wake, reconcile the same owner, Run, workspace, tasks, dispatches,
-permissions, and pending operations before loading [RUN.md](RUN.md). A wake
-may continue known work; it never repeats intake, starts a duplicate repair,
-or silently revives a stopped team. `orca automations run <id>` is an
-explicit operation, not evidence of successful worker execution; observe the
-run and resulting task/dispatch.
+`--reuse-session` reuses the automation's previous live session, not the
+human's current PM chat, and may fall back to a fresh terminal. Verify that
+transition against owner binding. If native schema cannot prove the mapping,
+leave disabled and report the capability gap.
 
-On human pause, close or settle active dispatches first, disable only exact
-owned automation IDs with `orca automations edit <id> --disabled`, and read
-back the disabled state. Reconcile every issued operation, preserve output,
-worktrees, branches, and history, and record child disposition. On stop,
-remove only an exact unneeded owned automation after preserving its history
-and verifying removal. Never use broad cleanup, reset, timers, or shell
-sleep as a scheduler. No auto-resume after pause or stop.
+## Pause, resume, stop
+
+Pause first closes the new-dispatch gate, then disables exact owned jobs and
+reads back disabled state, then reconciles in-flight work. Existing workers
+follow explicit retain/finish/acknowledged-transfer disposition. Human-only
+resume observes and reconciles, verifies binding/settings, enables the same
+job, and reads back. Stop disables and preserves history by default; removing
+an automation deletes history and requires separate explicit cleanup
+authorization. Never automatically remove, reset, broad-clean, or silently
+resume. `orca automations run <id>` is an issued operation, not proof of a
+successful pass.

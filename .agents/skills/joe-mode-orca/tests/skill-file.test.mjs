@@ -7,73 +7,132 @@ import { test } from "node:test";
 const directory = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFileSync(join(directory, name), "utf8");
 const skill = read("SKILL.md");
-const intent = read("intent.md");
 const runtime = read("RUNTIME.md");
 const run = read("RUN.md");
 const automations = read("AUTOMATIONS.md");
-const policy = `${runtime}\n${run}`;
+const normalized = (text) => text.replace(/\s+/g, " ");
 
-test("entrypoint is human-only and does not activate on install", () => {
-  assert.match(skill, /^name: joe-mode-orca$/m);
-  assert.match(skill, /^disable-model-invocation: true$/m);
-  assert.match(skill, /^user-invocable: true$/m);
-  assert.match(skill, /Installing this skill never activates/i);
-  assert.match(intent, /Joe-mode-Orca is my opt-in, repository-bound engineering team coordinator running on Orca\./);
-});
-
-test("adapter links existing Joe policy instead of cloning it", () => {
-  for (const link of [
+const links = {
+  "SKILL.md": [
+    "SKILL.md",
     "../joe-mode/SKILL.md",
+    "../joe-mode-paseo/TEAM.md",
+    "../ship/WORKSPACE.md",
     "../squadron/LIFECYCLE.md",
     "../ship/DELIVERY.md",
-    "../shepherd/RECOVERY.md",
     "../shepherd/OBSERVATION.md",
-    "../setup/INVOCATION.md",
-  ]) {
-    assert.ok(existsSync(join(directory, link)), `${link} must resolve`);
-    assert.match(skill, new RegExp(link.replaceAll(".", "\\.")));
-  }
-  assert.match(skill, /not another project\s+management policy or controller/i);
+    "../shepherd/RECOVERY.md",
+    "../joe-mode-paseo/MERGE.md",
+    "../doctrine/APPLY.md",
+  ],
+  "RUN.md": [
+    "RUN.md",
+    "../joe-mode-paseo/TEAM.md",
+    "../ship/WORKSPACE.md",
+    "../squadron/LIFECYCLE.md",
+    "../ship/DELIVERY.md",
+    "../shepherd/OBSERVATION.md",
+    "../shepherd/RECOVERY.md",
+    "../joe-mode-paseo/MERGE.md",
+    "../doctrine/APPLY.md",
+    "../joe-mode/SKILL.md",
+  ],
+};
+
+test("entrypoint permits matching machine continuation but guards activation", () => {
+  assert.match(skill, /^name: joe-mode-orca$/m);
+  assert.match(skill, /^disable-model-invocation: false$/m);
+  assert.match(skill, /^user-invocable: true$/m);
+  assert.match(skill, /HUMAN-ONLY ACTIVATION|Human-only activation guard/i);
+  assert.match(skill, /matching preauthorized wake loads.*RUN\.md.*never intake/i);
+  assert.match(normalized(skill), /Installation.*never activates/i);
 });
 
-test("native lifecycle and capacity rules are explicit", () => {
-  for (const text of [
-    "run-create",
-    "worker-start",
-    "worker-release",
+test("standalone entry and pass reach all authority contracts", () => {
+  for (const [file, required] of Object.entries(links)) {
+    const text = read(file);
+    for (const link of required) {
+      assert.ok(existsSync(join(directory, link)), `${link} must resolve`);
+      assert.match(text, new RegExp(link.replaceAll(".", "\\.")));
+    }
+  }
+});
+
+test("runtime loads native guides and resolves one executable safely", () => {
+  for (const phrase of [
+    "orca skills get orchestration --full",
+    "orca skills get orca-cli --full",
+    "references/automations.md",
+    "ORCA_CLI_COMMAND",
+    "ORCA_DEV_REPO_ROOT",
+    "orca-dev",
+    "orca-ide",
+    "bare `orca`",
+    "never a shell variable",
+    "Missing guides",
+    "do not install, start, or silently substitute",
+  ]) assert.match(normalized(runtime), new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+});
+
+test("activation and serialization fail closed without native ownership proof", () => {
+  for (const phrase of [
+    "actual exclusion",
+    "initialize paused",
+    "complete the first pass immediately",
+    "run-use.*not exclusive ownership",
+    "owner JSON file alone is not a lock",
+    "age-based lease stealing",
+    "recurring mutations remain disabled",
+    "release it on every normal exit",
+  ]) assert.match(normalized(runtime), new RegExp(phrase, "i"));
+});
+
+test("bounded pass covers parallel budget, waits, source gates, and worker outcomes", () => {
+  for (const phrase of [
+    "all FIFO Delivery messages",
+    "every human wait",
+    "six-slot budget",
+    "independent work",
+    "publication is unresolved",
+    "missing Discovery role does not block",
+    "worker_done",
     "request-show",
-    "task ID and dispatch ID",
-    /send\s+receipt proves enqueue/i,
-    "six-slot capacity",
-    "features reserve two",
-    "fixes, hardening, and refactors reserve one",
-    "one logical repository controller",
-  ]) assert.match(policy, text instanceof RegExp ? text : new RegExp(text, "i"));
+    "retry-request",
+    "permission denial",
+    "Human merge remains default",
+  ]) assert.match(normalized(`${runtime}\n${run}`), new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
 });
 
-test("recurrence fails closed across setup, reuse, pause, and stop", () => {
-  for (const text of [
-    "--disabled",
-    "--workspace-mode existing",
-    "--reuse-session",
-    "unexpected identity fails closed",
-    "configured state, initial observation, and verified recurrence",
-    /disable only exact\s+owned automation IDs/i,
-    "No auto-resume",
+test("pause preserves workers/history and resume is human-only", () => {
+  for (const phrase of [
+    "new-dispatch gate",
+    "does not blanket-stop",
+    "Human-only resume",
+    "Stop disables and preserves history",
+    "removal is separate explicit cleanup authorization",
   ]) {
-    assert.match(
-      automations,
-      text instanceof RegExp
-        ? text
-        : new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
-    );
+    assert.match(normalized(`${run}\n${automations}`), new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   }
+  assert.ok(run.indexOf("new-dispatch gate") < run.indexOf("disables exact owned automations"));
 });
 
-test("each PM pass observes before routing and preserves human gates", () => {
-  assert.match(run, /Observe and reconcile/);
-  assert.match(run, /Read the oldest FIFO Delivery batch/);
-  assert.match(run, /Route one useful next step/);
-  assert.match(run, /Changed requirements, architecture, or\s+irreducible semantics return to Discovery and the human/);
-  assert.match(run, /Human merging remains the\s+default/);
+test("recurrence handshake rejects unexpected sessions and distinguishes states", () => {
+  for (const phrase of [
+    "disabled/manual first-run probe",
+    "must not dispatch",
+    "fresh unexpected identity fails closed",
+    "no new Run",
+    "configured, initially observed, and recurring-verified",
+    "wake provenance",
+    "return channel",
+    "no per-developer/reviewer/coordinator timers",
+  ]) assert.match(normalized(automations), new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+});
+
+test("permissions and merge coordinator remain explicit gates", () => {
+  assert.match(normalized(runtime), /human-selected modes\/features.*read back/i);
+  assert.match(normalized(runtime), /Unknown cross-provider equivalence blocks launch/i);
+  assert.match(skill, /MERGE/);
+  assert.match(normalized(run), /Roast, CI, lint, rubber-duck, expected-head\/base/);
+  assert.match(normalized(run), /Unknown gates require human clarification/);
 });

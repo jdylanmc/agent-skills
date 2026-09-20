@@ -1,47 +1,64 @@
 # One bounded Orca PM pass
 
-The coordinator owns one short pass, not an endless loop. It may be entered
-by explicit human activation or by a matching preauthorized wake. A wake loads
-this pass and the owner packet; it does not repeat intake or broaden authority.
+This file is standalone authority for a matching machine wake; it links all
+policy gates rather than relying on [SKILL.md](SKILL.md) intake:
+[RUN.md](RUN.md) and
+[TEAM](../joe-mode-paseo/TEAM.md), [WORKSPACE](../ship/WORKSPACE.md),
+[LIFECYCLE](../squadron/LIFECYCLE.md), [DELIVERY](../ship/DELIVERY.md),
+[OBSERVATION](../shepherd/OBSERVATION.md), [RECOVERY](../shepherd/RECOVERY.md),
+[MERGE](../joe-mode-paseo/MERGE.md), [Doctrine](../doctrine/APPLY.md), and
+[Joe routing](../joe-mode/SKILL.md).
 
-## Observe and reconcile
+## Claim and observe
 
-1. Verify the canonical repository, current workspace, Joe owner record, Run,
-   and dedicated Discovery worktree. A missing or conflicting binding blocks
-   writes.
-2. Observe all known tasks/dispatches, workers, worktrees, gates, and exact
-   owned automations. Distinguish accepted, pending, unknown, exited, idle,
-   contact-loss, permission-wait, and unverifiable states.
-3. Read the oldest FIFO Delivery batch. Process every message before
-   acknowledging it. Preserve output and evidence before releasing a settled
-   terminal.
-4. Read the selected backlog through its configured tracker route. Do not
-   sweep, label, assign, close, or create work outside the recorded grant.
+1. Load [RUNTIME.md](RUNTIME.md) and the installed native guides before any
+   command. Verify exact repository/workspace, owner, Run, mode, permissions,
+   and wake provenance.
+2. Claim the same durable owner mechanism used by other Joe surfaces. Require
+   an observed owner/pass token or verified native fence; a JSON record, copied
+   identity, `run-use`, timer, or age is not serialization. If claim cannot be
+   proven, keep recurrence disabled and report the exact human action.
+3. Recheck paused/stopped/current state before every external mutation. Read
+   all FIFO Delivery messages, process results/reviews/recovery first, then ack.
+   Reconcile tasks, dispatches, workers, worktrees, gates, permissions, and
+   exact owned automation IDs.
+4. Surface every human wait, including unchanged waits while other work
+   progresses: exact ask/action, role/agent, affected work, and verified link or
+   exact locator. A gate, question, or send receipt is not a human answer.
 
-## Route one useful next step
+## Route eligible work
 
-Apply existing Joe readiness, dependency, ownership, and review policy. Route
-settled intent to the existing Ship, Patch, Refactor, Discovery, Shepherd, or
-delivery contract. Before a writing dispatch, record the task, owner,
-workspace, capacity reservation, permitted mutations, return owner, and
-acceptance evidence. Start one bounded native worker operation only after
-reconciling possible survivors; all actual writing descendants count.
+Apply [TEAM](../joe-mode-paseo/TEAM.md) and [Joe routing](../joe-mode/SKILL.md):
+preserve graph coverage before publication, hold all launches when publication
+is unresolved, and require dependencies actually present in base. A missing
+Discovery role does not block independent clear delivery; create it only when
+useful. One shared Shepherd services all due scopes fairly. Fill eligible
+independent work up to the actual six-slot budget in this pass: do not
+serialize unrelated tickets behind an arbitrary one-worker limit. Record each
+task, owner, worktree, capacity reservation, permissions, return owner, and
+acceptance evidence before dispatch.
 
-Features reserve two developer slots. Fixes, hardening, and refactors reserve
-one. Do not create workers merely to fill roles. Keep one shared Shepherd and
-one persistent Discovery lane. Changed requirements, architecture, or
-irreducible semantics return to Discovery and the human.
+Every writing descendant counts. Features reserve two slots; fixes, hardening,
+and refactors reserve one. Existing results/reviews/recovery take precedence.
+Use the native worker contract: matching task+dispatch outcomes, automatic
+settlement, FIFO-before-ack, request-show retry identity, accepted settlement,
+and explicit retain/release evidence. Do not retry permission denial or
+unverifiable worker state.
 
-If no safe next step exists, surface the blocker or question in the
-coordinator conversation with evidence and the smallest required decision.
-Challenge a blocker only through the existing bounded recovery policy; never
-invent retry budgets or a parallel controller.
+## Finish and release
 
-## Close the pass
+Release the claimed pass through the same owner mechanism on normal exit while
+retaining unresolved operation evidence. Record observed state, every human
+wait, operation IDs, acceptance/unknown results, and next action. Human merge
+remains default; any PR coordinator must load [MERGE](../joe-mode-paseo/MERGE.md)
+and meet independent Roast, CI, lint, rubber-duck, expected-head/base, and
+provider readback gates. Unknown gates require human clarification.
 
-Record observed state, issued operation IDs, acceptance/unknown results,
-pending gates, exact next action, and retained resources. A successful
-dispatch is not a successful delivery until output, validation, independent
-review, and Shepherd acceptance are observed. Human merging remains the
-default. Pause closes dispatches before disabling owned recurrence; stop
-preserves evidence and work without silently restarting.
+Pause first closes the **new-dispatch gate** in the durable owner record,
+disables exact owned automations and reads back, then reconciles in-flight
+work. Existing workers follow explicit retain/finish/acknowledged-transfer
+disposition; pause does not blanket-stop them or wait for them before stopping
+recurrence. Resume is human-only: observe, reconcile, verify binding/settings,
+enable the same owned job, and read back. Stop disables and preserves history
+by default; removal is separate explicit cleanup authorization and never
+automatic.

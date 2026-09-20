@@ -1,73 +1,67 @@
-# Orca runtime contract
+# Native Orca runtime contract
 
-This adapter replaces only Paseo's runtime mechanics. It does not copy
-Paseo's state machine or introduce a scheduler, permission ledger, approval
-framework, or second Joe controller. Load the existing Joe, workspace,
-lifecycle, delivery, observation, and recovery contracts for their policy.
+This adapter must load the installed, version-matched native guides before
+running any runtime command:
 
-## Repository controller and ownership
+- `orca skills get orchestration --full`
+- `orca skills get orca-cli --full`, including its `references/automations.md`
+- `orca <command> --help` for the exact installed command
+- [Orca skills](https://www.onorca.dev/docs/cli/skills),
+  [orchestration](https://www.onorca.dev/docs/cli/orchestration), and
+  [automations](https://www.onorca.dev/docs/cli/automations)
 
-Record a private owner packet before the first authorized pass:
+Resolve the executable once for the actual stub and record it in the private
+owner packet: `ORCA_CLI_COMMAND` if explicitly supplied; development
+`ORCA_DEV_REPO_ROOT` resolves `orca-dev`; Linux outside a managed terminal
+resolves `orca-ide`; otherwise bare `orca` is selected. `ORCA` in examples is prose, never a
+shell variable, `eval`, spoofed environment, fallback binary, or remembered
+flags. Prefer `--json`; use `--help` when a flag is unsupported. Missing
+guides, executable, version evidence, or runtime blocks the operation: do not
+install, start, or silently substitute.
 
-- canonical repository identity, literal source/target refs, exact workspace
-  and dedicated Discovery worktree;
-- human owner conversation, Joe controller identity, Run ID, and permitted
-  actions/lifetime;
-- backlog source, goal, six-slot capacity and reservations, active workers,
-  tasks/dispatches, Shepherd, and pending questions/gates;
-- exact automation IDs, desired/observed state, trigger/timezone, workspace,
-  provider, reuse-session setting, and next wake;
-- pause/stop disposition and every uncertain operation requiring reconciliation.
+## Activation and owner packet
 
-An Orca Run is a durable namespace and inbox, not a scheduler, lock, or
-repository-wide exclusion. One Run does not fence another Run, clone, host, or
-runtime. Reconcile the same private Joe owner record and require observed
-owner binding and acceptance before dispatching. Local state cannot fence a
-remote writer. Unknown identity or an existing possible controller blocks a
-new controller.
+Human kickoff must reconcile repository identity, existing controllers, Setup,
+and active worktrees first. Ask only unset decisions: scope/readiness,
+permissions and feature modes, merge gate, cadence/timezone/lifetime, and
+child disposition. Invoke current [Setup](../setup/SKILL.md) completeness or
+bootstrap only under that kickoff, preserving exact-file approvals.
 
-The one logical repository controller may be represented by session, CMUX,
-Paseo, or Orca surfaces, but those surfaces must transfer authority through
-the supported runtime and owner record. Do not infer authority from a title,
-cwd, restored pane, or automation name.
+Use a private durable owner record accessible across worktrees and hosts.
+Verify access, readback, owner identity, repository/workspace mapping, and
+actual exclusion; committed files and runtime IDs are not the owner record.
+Initialize paused with the actual coordinator identity and selected mode.
+Create or reuse one Run only after current native evidence, release/accept an
+existing controller before binding, and complete the first pass immediately:
+dispatch eligible work or report a precise blocker. An explicitly requested
+unsupported recurrence must remain blocked, not become session-only.
 
-## Worker lifecycle
+An Orca Run is a namespace/inbox, not a scheduler, lock, or repository-wide
+fence. `run-use` changes binding, not exclusive ownership. A bounded pass
+must claim and serialize through the same existing owner mechanism, observe an
+owner/pass token or verified native fence, and release it on every normal exit.
+An owner JSON file alone is not a lock. Before each external mutation recheck
+paused/stopped/current ownership. Without a real fence, recurring mutations
+remain disabled and the packet records the capability gap and human recovery.
+No age-based lease stealing.
 
-Use native `run-create`/`run-use`, `task-create`/`task-update`,
-`worker-start`, `worker-show`, `worker-read`, `worker-stop` or
-`worker-abandon`, and `worker-release` operations. Use the current injected
-terminal and dispatch identity; never fabricate a worker handle, task ID,
-dispatch ID, repository identity, or completion receipt.
+## Worker and permissions
 
-Before starting, reconcile surviving tasks, dispatches, worktrees, and
-permissions. Start only bounded work with the selected placement and existing
-Joe route. All writing descendants count against capacity: features reserve
-two developer slots; fixes, hardening, and refactors reserve one; support
-roles remain separate. The shared Shepherd and persistent Discovery lane have
-one owner each. Timers never create a new controller or fill an empty role.
+Use only native `run-create`/`run-use`, task and worker operations, and current
+injected task/dispatch identities. Load the native worker contract first.
+`worker_done` with matching task and dispatch IDs and outcome succeeded/failed
+settles automatically; do not task-update it completed. Process every FIFO
+Delivery message before ack. Use `request-show` and the exact
+`--retry-request` identity after unknown mutations. Accepted settlement comes
+before reuse/retain/release; recover `release_pending`/unknown explicitly, never
+with broad close/reset. Do not stop or abandon idle, timeout, null-status,
+remote-loss, or unverifiable workers. Distinguish alive from useful progress,
+and exact dispatch/host from a copied terminal handle. Apply the native
+circuit breaker and Joe's one-fresh-work-attempt rule; permission denial is not
+a retry.
 
-Read and process every FIFO Delivery before acknowledging it. A
-`worker_done` is accepted only when its task ID and dispatch ID match the
-active assignment; preserve its inspectable output before release. A send
-receipt proves enqueue, not receiver acceptance. Exited, idle, contact loss,
-permission wait, and unverifiable are distinct states. Unknown mutation
-results are recovered with `request-show` and the exact retry request, never
-by blindly repeating a start, stop, release, or dispatch.
-
-Retire only the exact settled owned terminal with `worker-release`. It is not
-a generic terminal close and does not delete worktrees, branches, evidence,
-or other workers. Preserve remote work before local cleanup. If fencing,
-owner binding, or permission readback is unsupported, stop the affected
-operation and report the exact next human action.
-
-## Run pass
-
-Every PM pass observes first, reconciles the owner packet, reads the backlog
-and pending deliveries, and then either dispatches one bounded useful next
-step or records a concrete blocker/question. It waits for human decisions at
-the same Joe gates as other adapters. A pass must not manufacture activity,
-re-dispatch an unresolved failure, or claim recurrence from configured state.
-
-No model, provider, or effort override is hardcoded. Use configured runtime
-defaults unless the human explicitly selected an override. Optional provider
-skills are not implicit setup dependencies.
+Human-selected modes/features must propagate to every launch and be read back.
+Prompt text, “inherit”, or a launch receipt without settings is not proof.
+Unknown cross-provider equivalence blocks launch. Use runtime defaults for
+model/effort unless explicitly selected; never add global settings or hidden
+permissions.
