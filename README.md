@@ -70,6 +70,9 @@ fresh terminal: verified coordinator transfer and ownership are required before
 that terminal acts. Installation never starts a team or timer. Human merging
 is the default; a separately requested PR coordinator needs an explicit
 repository merge gate.
+The bundled owner helper serializes local passes on one control host and one
+shared private board. It does not fence another clone, remote control host or
+external API; those boundaries require reconciliation, not a copied token.
 
 **Optional Paseo PM:** invoke `/joe-mode-paseo` explicitly to set up or manage
 one repository's engineering team, with six developer slots by default
@@ -269,6 +272,7 @@ material for separately authorized debugging, not install-time hooks.
 ```sh
 node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs
 node --test .agents/skills/joe-mode-cmux/tests/*.test.mjs
+node --test .agents/skills/joe-mode-orca/tests/*.test.mjs
 node --test .agents/skills/joe-mode-paseo/tests/*.test.mjs
 npm ci --ignore-scripts
 npm run test:pack
@@ -278,8 +282,10 @@ CI retains the 80 doctrine/selector/Scout checks and adds an actual released
 CLI copy install from the local candidate into an owned `.test-sandbox/`
 consumer. PM tests cover local atomic claims, persistent capacity/Discovery
 reservations, control gates and accepted-result preservation; they do not prove
-Paseo scheduling or agent compliance. Pack tests check exact membership,
-separate PM selection with prerequisites, complete copied support, portable
+Paseo scheduling or agent compliance. Orca tests cover package contracts and
+single-host owner-helper behavior, not live automation, permission propagation
+or cross-host fencing. Pack tests check exact membership,
+separate adapter selection with prerequisites, complete copied support, portable
 Markdown links, bundled resources, installed Doctrine loading, protected
 source bytes/metadata, repeat installation, and unrelated-file preservation.
 After successful validation on a push to `main` (or a manual run on `main`),

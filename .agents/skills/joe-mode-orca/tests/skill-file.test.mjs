@@ -15,7 +15,9 @@ const normalized = (text) => text.replace(/\s+/g, " ");
 
 const links = {
   "SKILL.md": [
-    "SKILL.md",
+    "RUNTIME.md",
+    "RUN.md",
+    "STATE.md",
     "../joe-mode/SKILL.md",
     "../joe-mode-paseo/TEAM.md",
     "../ship/WORKSPACE.md",
@@ -27,7 +29,9 @@ const links = {
     "../doctrine/APPLY.md",
   ],
   "RUN.md": [
-    "RUN.md",
+    "SKILL.md",
+    "RUNTIME.md",
+    "STATE.md",
     "../joe-mode-paseo/TEAM.md",
     "../ship/WORKSPACE.md",
     "../squadron/LIFECYCLE.md",
@@ -52,9 +56,10 @@ test("entrypoint permits matching machine continuation but guards activation", (
 test("standalone entry and pass reach all authority contracts", () => {
   for (const [file, required] of Object.entries(links)) {
     const text = read(file);
+    const targets = [...text.matchAll(/\]\(([^)#]+)(?:#[^)]*)?\)/g)].map(match => match[1]);
     for (const link of required) {
       assert.ok(existsSync(join(directory, link)), `${link} must resolve`);
-      assert.match(text, new RegExp(link.replaceAll(".", "\\.")));
+      assert.ok(targets.includes(link), `${file} must link ${link}`);
     }
   }
 });
@@ -144,6 +149,6 @@ test("workflow names the concrete local owner helper and its boundary", () => {
     assert.match(text, /STATE\.md/);
   }
   assert.match(state, /scripts\/owner\.mjs/);
-  assert.match(state, /single-control-host|local atomic exclusion/i);
-  assert.match(state, /not\s+proof\s+that\s+a\s+remote\s+process\s+stopped/i);
+  assert.match(normalized(state), /one control host/);
+  assert.match(normalized(state), /A local token never cancels an external process/);
 });

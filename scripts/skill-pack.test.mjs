@@ -97,7 +97,7 @@ test('authorized Orca intent and bounded-continuation entry remain preserved', (
   assert.match(metadata, /^name: joe-mode-orca$/m);
   assert.match(metadata, /^disable-model-invocation: false$/m);
   assert.match(metadata, /^user-invocable: true$/m);
-  for (const support of ['RUN.md', 'RUNTIME.md', 'AUTOMATIONS.md', 'intent.md']) {
+  for (const support of ['RUN.md', 'RUNTIME.md', 'AUTOMATIONS.md', 'STATE.md', 'intent.md']) {
     const text = readFileSync(path.join(directory, support), 'utf8');
     assert.ok(text.trim(), support);
     assert.ok(!text.startsWith('---\n'), `${support}: support is not a second skill entry`);
@@ -294,6 +294,16 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
       assert.deepEqual(JSON.parse(inspect('{"op":"inspect","view":"full"}')),
         { status: 'observed', state: {} });
       assert.ok(!existsSync(path.join(consumer, 'absent-board.json')));
+    });
+    await t.test('installed Orca helper inspects without a checkout or runtime activation', () => {
+      const commonDir = path.join(consumer, 'private-control');
+      mkdirSync(commonDir);
+      const output = execFileSync(process.execPath, [
+        path.join(installed, 'joe-mode-orca/scripts/owner.mjs'), 'inspect',
+        JSON.stringify({ commonDir }),
+      ], { cwd: consumer, encoding: 'utf8', timeout: 10_000 });
+      assert.equal(JSON.parse(output).status, 'uninitialized');
+      assert.deepEqual(readdirSync(commonDir), []);
     });
     await t.test('required policies, provenance and licenses travel with the pack', () => {
       for (const name of [

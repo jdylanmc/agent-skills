@@ -1,8 +1,8 @@
 # One bounded Orca PM pass
 
-This file is standalone authority for a matching machine wake; it links all
-policy gates rather than relying on [SKILL.md](SKILL.md) intake:
-[RUN.md](RUN.md) and
+This file is the standalone procedure for a matching human-authorized wake,
+not its source of authority. It links all policy gates rather than relying on
+[SKILL.md](SKILL.md) intake:
 [TEAM](../joe-mode-paseo/TEAM.md), [WORKSPACE](../ship/WORKSPACE.md),
 [LIFECYCLE](../squadron/LIFECYCLE.md), [DELIVERY](../ship/DELIVERY.md),
 [OBSERVATION](../shepherd/OBSERVATION.md), [RECOVERY](../shepherd/RECOVERY.md),
@@ -45,6 +45,10 @@ independent work up to the actual six-slot budget in this pass: do not
 serialize unrelated tickets behind an arbitrary one-worker limit. Record each
 task, owner, worktree, capacity reservation, permissions, return owner, and
 acceptance evidence before dispatch.
+Persist those facts through STATE's token-bound `note`, not unsynchronized
+edits to the board. Use `record` before each external effect; only `recorded`
+permits a new issue after `assert`. Replayed or unknown operations reconcile
+the original native request, not a duplicate worker or tracker mutation.
 
 Every writing descendant counts. Features reserve two slots; fixes, hardening,
 and refactors reserve one. Existing results/reviews/recovery take precedence.

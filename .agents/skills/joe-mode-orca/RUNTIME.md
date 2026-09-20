@@ -7,9 +7,9 @@ Orca identity and human authority remain separate acceptance gates.
 This adapter must load the installed, version-matched native guides before
 running any runtime command:
 
-- `orca skills get orchestration --full`
-- `orca skills get orca-cli --full`, including its `references/automations.md`
-- `orca <command> --help` for the exact installed command
+- `ORCA skills get orchestration --full`
+- `ORCA skills get orca-cli --full`, including its `references/automations.md`
+- `ORCA <command> --help` for the exact installed command
 - [Orca skills](https://www.onorca.dev/docs/cli/skills),
   [orchestration](https://www.onorca.dev/docs/cli/orchestration), and
   [automations](https://www.onorca.dev/docs/cli/automations)
@@ -31,9 +31,11 @@ permissions and feature modes, merge gate, cadence/timezone/lifetime, and
 child disposition. Invoke current [Setup](../setup/SKILL.md) completeness or
 bootstrap only under that kickoff, preserving exact-file approvals.
 
-Use a private durable owner record accessible across worktrees and hosts.
+Use one private durable owner record accessible to worktrees on the control host.
 Verify access, readback, owner identity, repository/workspace mapping, and
-actual exclusion; committed files and runtime IDs are not the owner record.
+actual exclusion; runtime identities belong in this private record, never
+committed configuration. Remote workers report to its sole controller; do not
+claim cross-host PM exclusion from a local file.
 Initialize paused with the actual coordinator identity and selected mode.
 Create or reuse one Run only after current native evidence, release/accept an
 existing controller before binding, and complete the first pass immediately:
