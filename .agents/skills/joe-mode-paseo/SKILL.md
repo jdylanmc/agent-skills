@@ -9,7 +9,8 @@ user-invocable: true
 
 Move the engineering team toward the human's goal, not merely keep a chat alive. Paseo supplies recurring execution and worker lifecycle; Joe-mode prioritizes and routes through existing skills. Each bounded pass checks whether agents are progressing **and working on the right thing**, consumes results, unblocks authorized work and dispatches the next useful assignments.
 
-**Entry:** Human activation and management only. A matching, previously
+**Entry:** Human activation and policy changes only; RUN may perform the
+preauthorized idle shutdown below, never automatic resume. A matching, previously
 human-authorized wakeup job may load only [RUN](RUN.md), not repeat this intake.
 Model-loadable metadata permits bounded continuation, not autonomous activation. Follow [INVOCATION](../setup/INVOCATION.md) and the human-approved
 [intent](intent.md). Installing/discovering the package does not start anything.
@@ -17,8 +18,10 @@ Requires the sibling workflow packages; see [runtime gates](RUNTIME.md).
 
 Follow [TEAM](TEAM.md) for roles, capacity, testing, blockers and cleanup.
 Discovery has its own reusable worktree/workspace named `Discovery`.
-PM calls out every agent awaiting human input in the primary chat on every
-pass, with the exact ask and verified agent link or locator—even when unchanged.
+PM presents new or changed human waits in the primary chat with the exact ask
+and verified agent link or locator; unchanged waits are not heartbeat updates.
+Kickoff includes preauthorized idle shutdown: do useful work or suspend and
+remove owned timers, not spend the night polling a known blocker.
 This adapter extends the existing Joe owner board across bounded passes without activating nested/session Joe-mode or replacing delivery owners. **Human merging is
 the default.** When requested, a separate PR coordinator
 may merge under [the repository-defined gate](MERGE.md). If that gate is missing,
@@ -90,6 +93,19 @@ Count actual writing descendants inside each lane's reservation, not unlimited
 nested workers or an extra slot for the same red/green pair.
 Do not hardcode users, repositories, labels, providers or models.
 
+Explain the default idle-shutdown contract with these choices: when no useful
+authorized next action remains, close dispatch, remove all owned recurring
+jobs, preserve work/custody and report once. Record kickoff's authority and
+child disposition as `idleShutdown`; human-directed resume is required.
+No additional approval interview when that condition occurs. An explicit
+narrower human choice wins; older activations without the grant are not
+silently upgraded. Do not promise unattended operation without an agreed
+bounded waiting/shutdown policy.
+For an existing board, human kickoff/resume can record this grant through
+STATE's `configure-idle-shutdown` while paused with the previous lease
+released/fenced. Preserve owners and pending work; no reset or separate
+permission interview is needed beyond the actual kickoff decision.
+
 ## 3. Establish durable continuity and capabilities
 
 Load [Doctrine](../doctrine/SKILL.md) using [APPLY](../doctrine/APPLY.md);
@@ -104,6 +120,8 @@ and cross-worktree discovery of this **same path**, never a new board per tick.
 The registry locator belongs in the existing owner/handoff record.
 
 New team setups set `team: true` and `wakeupMode: "heartbeat"`.
+Also set `idleShutdown` to the actual kickoff decision covering TEAM's bounded
+waiting, timer removal and retained-child disposition, not fixture text.
 Existing boards keep their old capacity units. Use STATE's paused `enable-team`
 transition only after old owners and pending operations are settled; never reset
 a busy board. Reconcile legacy returns with STATE's paused human-management
@@ -148,8 +166,10 @@ activation or broader permissions. Unavailable required evidence remains a block
 ## 4. Establish PM, then its role heartbeats
 
 Establish exactly one PM heartbeat below. Once enabled, PM provisions one
-Shepherd heartbeat while PR duties exist and one backlog-manager heartbeat
-while that role exists, following TEAM and STATE's `role-heartbeat` receipts.
+Shepherd heartbeat while actionable recurring PR duties exist and one
+backlog-manager heartbeat while it has an actionable recurring duty, following
+TEAM and STATE's `role-heartbeat` receipts. An unanswered question or human
+merge wait alone retains the role, not its timer.
 Place the backlog manager in TEAM's dedicated `Discovery` worktree/workspace
 before launch; reuse its existing correctly placed conversation and register
 no second workspace for the same worktree.
@@ -219,6 +239,11 @@ report initial worker dispatch unverified until an actual run establishes it.
   acknowledgement as deletion evidence. No `pause_heartbeat` or heartbeat resume MCP operation exists. Reconcile an already dispatched prompt/run;
   it must not start new work. Existing scoped workers remain owned, not killed.
   Record outcomes, including failure, in the human management record.
+- **Idle shutdown:** the claimed PM uses helper `suspend` under the saved
+  kickoff `idleShutdown` grant and follows TEAM's useful-work-or-shutdown
+  decision. This closes dispatch as paused before owned timer removal; it does
+  not stop external jobs itself. Preserve duties and accept late cleanup
+  callbacks without recurring polling. Resume remains human-only.
 - **Resume:** human only, never a tick/recovery wake. Reconcile ownership,
   children, partial work, mapping, access and job first; observe now. Fresh mode
   uses supported `resume_schedule` on the same verified ID; a deleted fresh job needs separately reconciled setup, never heartbeat replacement.
