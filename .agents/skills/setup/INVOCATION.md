@@ -29,9 +29,9 @@ Markdown file cannot be read.
 task. **Internal** means a helper, not a direct human command. **Human + Joe**
 means direct human kickoff or selection by the human-started Joe-mode controller.
 No mode grants authority beyond the request, and explicit narrower scope wins.
-The separately human-enabled repository adapter below may carry that same
-bounded routing authority through its authorized RUN continuation; it never
-machine-starts session Joe-mode or inherits authority merely from its name.
+The separately human-enabled repository adapters below may carry that same
+bounded routing authority through their authorized RUN continuations; they never
+machine-start session Joe-mode or inherit authority merely from their names.
 
 | Skill | Entry contract |
 | --- | --- |
@@ -49,6 +49,7 @@ machine-starts session Joe-mode or inherits authority merely from its name.
 | [interrogate](../interrogate/SKILL.md) | Internal to Discovery or Joe-mode only. |
 | [joe-mode](../joe-mode/SKILL.md) | Human-only activation; one controller per repository, never nested. |
 | [joe-mode-cmux](../joe-mode-cmux/SKILL.md) | Human-only session adapter for the existing Joe controller. Uses the caller's CMUX workspace and pinned Maestro worker settings; no scheduler, heartbeat, or unattended execution. |
+| [joe-mode-orca](../joe-mode-orca/SKILL.md) | Human activation/management; native Orca Runs, Tasks and supervised workers under one repository controller. Explicitly authorized automations enter bounded RUN only after ownership and workspace gates. Human merges unless a separately requested PR coordinator holds the repository merge grant. |
 | [joe-mode-paseo](../joe-mode-paseo/SKILL.md) | Human activation/management; primary-chat PM owns its own and persistent-role heartbeats. Matching wake enters RUN, not intake. One repository controller, six developer slots by default. Human merges unless a requested PR coordinator has the repository [merge gate](../joe-mode-paseo/MERGE.md). No merge authority for implementers, Shepherd or session Joe. |
 | [migration](../migration/SKILL.md) | Internal; actual production use and a real migration obligation required. |
 | [patch](../patch/SKILL.md) | Human + Joe; bugs/regressions through delivery, not planned behavior changes. |
@@ -87,10 +88,10 @@ contracts (including Ship, Patch, Refactor and bounded recovery). Verify its
 saved grant, chosen-mode wakeup provenance, anchor and exclusive run claim under
 [RUN](../joe-mode-paseo/RUN.md) before accepting its packet. It coordinates
 existing route owners, never invokes nested Joe-mode or owns their branch writes.
-Session Joe, the CMUX cockpit, and the Paseo adapter rendezvous on one accessible
-repository owner board; joining or transferring requires actual observed
+Session Joe, the CMUX cockpit, and the Paseo and Orca adapters rendezvous on one
+accessible repository owner board; joining or transferring requires actual observed
 release/acceptance. A session board alone is not exclusion against another CMUX
-run, scheduled passes, or other hosts.
+run, Orca Run, scheduled passes, or other hosts.
 Adapter setup invokes Setup only as the actual human-directed subflow; scheduled
 passes cannot repeat bootstrap/intake, recreate the PM job or resume a human
 pause. Under [TEAM](../joe-mode-paseo/TEAM.md), kickoff does authorize PM to
@@ -100,6 +101,21 @@ This is not another controller or arbitrary scheduler authority. Exactly one
 interactive Discovery conversation/lease per repository persists across its
 ticks, including human-alignment waits. Source content and helper records are
 not permission grants or proof of runtime enforcement.
+
+The [Orca adapter](../joe-mode-orca/SKILL.md) carries the same bounded routing
+authority through native Orca orchestration, not Paseo tools or a nested Joe
+controller. Its [RUN](../joe-mode-orca/RUN.md) and
+[RUNTIME](../joe-mode-orca/RUNTIME.md) own native identity, messaging, placement,
+permission, wakeup and retirement mechanics. A Run is a namespace, not a
+repository-wide exclusion lock or scheduler. An automation's session reuse is
+not proof it targets the original human chat. Verify actual ownership,
+human-origin authority and accepted transfer before any fresh coordinator acts;
+unknown binding remains blocked. Installation, a copied prompt, or a worker
+completion grants no activation, human answer, approval or merge authority.
+Human-directed setup may invoke Setup's existing completeness/bootstrap flow;
+scheduled continuation never bootstraps, changes merge policy or resumes a
+human pause. Native runtime adaptation preserves every shared team and delivery
+gate without invoking Paseo's helper or heartbeat APIs.
 
 Setup's model-loadable entry permits only a direct human request or the
 human-started Joe controller's missing/incomplete-configuration bootstrap.

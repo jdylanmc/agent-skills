@@ -11,11 +11,11 @@ const installSource = process.env.SKILLS_PACK_SOURCE ?? root;
 const expected = [
   'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts',
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
-  'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'refactor',
+  'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'specify',
   'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what',
 ];
-const originalNames = expected.filter(name => !['chart-a-course', 'joe-mode-cmux', 'joe-mode-paseo'].includes(name));
+const originalNames = expected.filter(name => !['chart-a-course', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo'].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
 // Changes require explicit human authorization, not automatic fixture regeneration.
@@ -36,6 +36,8 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     .filter(filename => filename !== '.agents/skills/chart-a-course/intent.md')
     // New CMUX adapter intent explicitly authorized separately; pinned below.
     .filter(filename => filename !== '.agents/skills/joe-mode-cmux/intent.md')
+    // New Orca adapter intent explicitly approved separately; pinned below.
+    .filter(filename => filename !== '.agents/skills/joe-mode-orca/intent.md')
     // New PM intent explicitly authorized separately; pinned below.
     .filter(filename => filename !== '.agents/skills/joe-mode-paseo/intent.md')
     // Only Shepherd intent was authorized for the adaptive/recovery extension.
@@ -81,6 +83,21 @@ test('separately authorized CMUX adapter intent and entrypoint metadata remain p
   assert.match(metadata, /^disable-model-invocation: true$/m);
   assert.match(metadata, /^user-invocable: true$/m);
   for (const support of ['LAYOUT.md', 'RUNTIME.md', 'intent.md']) {
+    const text = readFileSync(path.join(directory, support), 'utf8');
+    assert.ok(text.trim(), support);
+    assert.ok(!text.startsWith('---\n'), `${support}: support is not a second skill entry`);
+  }
+});
+
+test('authorized Orca intent and bounded-continuation entry remain preserved', () => {
+  const directory = path.join(root, '.agents/skills/joe-mode-orca');
+  assert.equal(createHash('sha256').update(readFileSync(path.join(directory, 'intent.md'))).digest('hex'),
+    '206acf554a449bc423f9bf0618176126cce939e5add6868c866ee42be97034fb');
+  const metadata = readFileSync(path.join(directory, 'SKILL.md'), 'utf8').split('---\n')[1];
+  assert.match(metadata, /^name: joe-mode-orca$/m);
+  assert.match(metadata, /^disable-model-invocation: false$/m);
+  assert.match(metadata, /^user-invocable: true$/m);
+  for (const support of ['RUN.md', 'RUNTIME.md', 'AUTOMATIONS.md', 'STATE.md', 'intent.md']) {
     const text = readFileSync(path.join(directory, support), 'utf8');
     assert.ok(text.trim(), support);
     assert.ok(!text.startsWith('---\n'), `${support}: support is not a second skill entry`);
@@ -164,7 +181,7 @@ function assertLifecycleSupport(directory) {
   for (const entry of [
     'squadron/SKILL.md', 'ship/SKILL.md', 'ship/WORKER.md',
     'joe-mode/SKILL.md', 'joe-mode/RUNTIME.md', 'joe-mode-cmux/SKILL.md',
-    'joe-mode-paseo/SKILL.md',
+    'joe-mode-orca/SKILL.md', 'joe-mode-orca/RUN.md', 'joe-mode-paseo/SKILL.md',
     'joe-mode-paseo/RUN.md', 'shepherd/SKILL.md',
     'handoff/SKILL.md', 'patch/SKILL.md', 'refactor/SKILL.md', 'setup/INVOCATION.md',
   ]) {
@@ -226,7 +243,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     install();
     const installed = path.join(consumer, '.agents/skills');
-    await t.test('all 35 active names, no archive', () => {
+    await t.test('all 36 active names, no archive', () => {
       assert.deepEqual(readdirSync(installed).sort(), expected);
     });
     await t.test('installation writes only project skill files and installer lock, not Setup outputs', () => {
@@ -259,6 +276,14 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
       assert.deepEqual(readdirSync(installed).sort(), expected);
       assertPortable(installed);
     });
+    await t.test('Orca adapter is separately selectable alongside prerequisites with all support intact', () => {
+      const adapter = path.join(installed, 'joe-mode-orca');
+      rmSync(adapter, { recursive: true });
+      install('joe-mode-orca');
+      assert.deepEqual(snapshot(adapter), snapshot(path.join(root, '.agents/skills/joe-mode-orca')));
+      assert.deepEqual(readdirSync(installed).sort(), expected);
+      assertPortable(installed);
+    });
     await t.test('installed PM helper runs read-only from the consumer without activating anything', () => {
       const inspect = request => execFileSync(process.execPath, [
         path.join(installed, 'joe-mode-paseo/scripts/state.mjs'),
@@ -269,6 +294,16 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
       assert.deepEqual(JSON.parse(inspect('{"op":"inspect","view":"full"}')),
         { status: 'observed', state: {} });
       assert.ok(!existsSync(path.join(consumer, 'absent-board.json')));
+    });
+    await t.test('installed Orca helper inspects without a checkout or runtime activation', () => {
+      const commonDir = path.join(consumer, 'private-control');
+      mkdirSync(commonDir);
+      const output = execFileSync(process.execPath, [
+        path.join(installed, 'joe-mode-orca/scripts/owner.mjs'), 'inspect',
+        JSON.stringify({ commonDir }),
+      ], { cwd: consumer, encoding: 'utf8', timeout: 10_000 });
+      assert.equal(JSON.parse(output).status, 'uninitialized');
+      assert.deepEqual(readdirSync(commonDir), []);
     });
     await t.test('required policies, provenance and licenses travel with the pack', () => {
       for (const name of [

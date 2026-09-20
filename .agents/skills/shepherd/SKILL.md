@@ -11,8 +11,10 @@ Own one published pull request (PR) beyond a green snapshot. Follow the common [
 
 One PR scope per ordinary invocation. Under Joe's
 [TEAM](../joe-mode-paseo/TEAM.md), one shared Shepherd accepts all project PR
-scopes, with separate owners, observations and due times. PM owns its heartbeat
-lifecycle; the bound Shepherd executes create/delete and returns receipts.
+scopes, with separate owners, observations and due times. PM owns its wakeup
+lifecycle: in Paseo the bound Shepherd executes heartbeat create/delete and
+returns receipts; in Orca use the adapter's
+[native recurring contract](../joe-mode-orca/RUNTIME.md), not Paseo APIs.
 Runtime sharing preserves explicit assignments,
 sole owners and per-PR cadence. Load/execute [LIFECYCLE](../squadron/LIFECYCLE.md)
 for accepted custody/recovery/retirement; idle proves no end of maintenance.
@@ -117,7 +119,9 @@ In the shared Joe team, PM's explicit role cadence (five minutes by default)
 overrides the standalone adaptive schedule below. Keep per-PR due/coverage
 records and notify PM of urgency or gaps. Do not create a timer per PR or
 change the PM timer. Retire the shared agent only when all scopes end and PM
-has recorded successful deletion of its exact role heartbeat.
+has verified retirement of its exact owned wakeup under the runtime contract,
+including reconciliation of in-flight runs. A disabled Orca automation is
+retained history, not permission for a pending run to continue.
 
 Execute [OBSERVATION](OBSERVATION.md), never an age table: observe immediately;
 default 1 minute, then 5 and 15 only after each stage's 30 consecutive successful,

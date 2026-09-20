@@ -1,6 +1,6 @@
 # Agent Skills
 
-Dylan's editable library of **35 skills** and human-owned engineering doctrine,
+Dylan's editable library of **36 skills** and human-owned engineering doctrine,
 designed for GitHub Copilot. The retired atomic framework remains historical
 material under `archive/atomic-v1/`; it does not govern the active library.
 
@@ -26,7 +26,7 @@ DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill '*
 The environment prefix above is POSIX shell syntax; in PowerShell, set
 `$env:DISABLE_TELEMETRY='1'` before running the `npx` command.
 
-Install **all 35** together for a new consumer. Isolated installs without
+Install **all 36** together for a new consumer. Isolated installs without
 prerequisites are unsupported: workflows
 reference sibling skills, and Setup carries the shared policies, attribution,
 licenses, and historical provenance. The quoted `'*'` selects every active
@@ -58,6 +58,21 @@ developer agents as tabs. Managed workers require the installed CMUX Maestro
 integration's dedicated pinned Copilot account and model; missing settings fail
 before terminal creation. CMUX supplies visible interactive sessions, not cron,
 heartbeats, unattended execution, merge authority, or proof of task success.
+
+**Optional Orca team:** invoke `/joe-mode-orca` explicitly for the same Joe
+team policy on Orca's native Runs, Tasks, supervised Dispatches and worker
+messages. Use installed `orca-cli` and `orchestration` guides from the running
+CLI; no Paseo runtime is required. Session coordination and explicitly enabled
+recurring automations have separate gates. Recurrence uses an exact existing
+workspace, never a new worktree per tick. Orca's `--reuse-session` reuses the
+automation's session, not necessarily this human chat, and can fall back to a
+fresh terminal: verified coordinator transfer and ownership are required before
+that terminal acts. Installation never starts a team or timer. Human merging
+is the default; a separately requested PR coordinator needs an explicit
+repository merge gate.
+The bundled owner helper serializes local passes on one control host and one
+shared private board. It does not fence another clone, remote control host or
+external API; those boundaries require reconciliation, not a copied token.
 
 **Optional Paseo PM:** invoke `/joe-mode-paseo` explicitly to set up or manage
 one repository's engineering team, with six developer slots by default
@@ -112,6 +127,11 @@ Validation keeps telemetry disabled and does not claim directory registration.
   Project Manager, Discovery, stacked developer tabs, and support remain visible
   in one repository workspace. Pinned Maestro settings are mandatory; worker
   conversations stay directly interactive and no scheduler is implied.
+- **Joe-mode Orca:** native supervised team adapter, sharing the same owner
+  board and existing delivery routes. Preserve six developer slots, one
+  Discovery lane, shared Shepherd, independent review and human waits.
+  Optional automations require explicit activation, verified Run ownership and
+  existing-workspace placement; session reuse is not a same-chat guarantee.
 - **Joe-mode Paseo:** separately human-enabled recurring team PM, sharing the
   same repository ownership registry. Primary chat is PM; one shared Shepherd
   and optional backlog manager have their own PM-managed heartbeats.
@@ -209,7 +229,8 @@ sources and the root intent remain unchanged.
 
 ## Provenance and licenses
 
-There are **26 imported/adapted packages** plus seven local/restored packages:
+There are **26 imported/adapted packages**, three locally authored Joe adapters
+(`joe-mode-cmux`, `joe-mode-orca`, `joe-mode-paseo`), and seven local/restored packages:
 `shepherd`, `synthesize`, `doctrine`, `eli5`, `changelog`, `status-report`, and
 `chart-a-course`.
 
@@ -251,6 +272,7 @@ material for separately authorized debugging, not install-time hooks.
 ```sh
 node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs
 node --test .agents/skills/joe-mode-cmux/tests/*.test.mjs
+node --test .agents/skills/joe-mode-orca/tests/*.test.mjs
 node --test .agents/skills/joe-mode-paseo/tests/*.test.mjs
 npm ci --ignore-scripts
 npm run test:pack
@@ -260,8 +282,10 @@ CI retains the 80 doctrine/selector/Scout checks and adds an actual released
 CLI copy install from the local candidate into an owned `.test-sandbox/`
 consumer. PM tests cover local atomic claims, persistent capacity/Discovery
 reservations, control gates and accepted-result preservation; they do not prove
-Paseo scheduling or agent compliance. Pack tests check exact membership,
-separate PM selection with prerequisites, complete copied support, portable
+Paseo scheduling or agent compliance. Orca tests cover package contracts and
+single-host owner-helper behavior, not live automation, permission propagation
+or cross-host fencing. Pack tests check exact membership,
+separate adapter selection with prerequisites, complete copied support, portable
 Markdown links, bundled resources, installed Doctrine loading, protected
 source bytes/metadata, repeat installation, and unrelated-file preservation.
 After successful validation on a push to `main` (or a manual run on `main`),
