@@ -47,6 +47,8 @@ custody. If another required writer cannot follow that contract, block activatio
 | `inspect` | None | `observed`, read-only board; empty object means not initialized |
 | `resume` | `human` decision reference; `schedule` observation below; heartbeat replacement requires `replacement` below | `enabled` only after actual human-authorized job verification; never called by a tick |
 | `pause`, `stop` | `human`, `disposition` reference for every active child | `paused` / `stopped`; local dispatch gate first, **not** proof of external operation |
+| `suspend` | Lease credentials; configured `idleShutdown` grant; `reason` (`waiting-for-human`, `no-useful-work`, `runtime-blocked`), `evidence`, `disposition` | `paused`; preauthorized idle shutdown closes dispatch, preserves lease/custody for timer cleanup and release; no external deletion or automatic resume |
+| `configure-idle-shutdown` | `human`, `idleShutdown` grant reference, `reconciliation` covering owners and child disposition | Human setup/management only, paused/stopped with released/fenced lease; records grant without resetting work or resuming |
 | `configure-merge` | `human`, `reconciliation` of authority/owners/pending operations, `merge`, and `mergeGate` for orchestrator mode | Human management only, paused/stopped with released/fenced lease; changes only merge config, retains prior policy in `pm.mergeHistory`, never resumes or merges |
 | `claim` | `owner`, `reconciliation` live ownership reference | `claimed` with new `state.pm.lease.token`, or `busy` / `paused` / `stopped` without dispatch authority |
 | `recover` | `human`, exact old `token`, `fencing`, `reconciliation` | Clears only that stopped/fenced pass; preserves workers, records and mode |
@@ -102,6 +104,17 @@ decision reference. Heartbeat requires that nonempty consent reference and
 `pmAgentId`, the actual bound PM agent ID; a fresh config cannot contain
 `pmAgentId`. Reinitializing with different mode/config is not a fallback.
 These are machine-local activation data, never committed defaults.
+`idleShutdown`, when present, is a nonempty reference to the actual human kickoff
+decision covering TEAM's useful-work-or-shutdown policy, exact owned timer
+removal and preserved-child disposition. New activations record it; omission
+preserves older boards without silently granting autonomous suspension.
+Reinitialization cannot change an existing grant. During human kickoff/resume
+of an older board, explain this policy and use `configure-idle-shutdown` while
+paused and lease-free to record the actual decision, preserving all work.
+Changed grants retain previous authority in `pm.idleShutdownHistory`; identical
+replay is a no-op. This does not resume or change merge authority. A tick on an
+older activation without this grant requests human pause/stop instead of
+fabricating consent or editing the board directly.
 `schedule`: actual `id`, `cron` matching the configured value (legacy omission
 means `* * * * *`), matching `cwd`, `projectId`,
 `workspaceId`, `enabled: true`, `evidence` for mode-specific verification and `observation`
@@ -124,6 +137,31 @@ diagnostic passes; fresh claims continue to use each actual fresh run owner.
 Every successful claim mints a new token, even for the same agent. `release`
 clears only that lease: the heartbeat PM returns/idles for its job and is **not
 terminal**. Durable delivery/Discovery IDs and reservations stay intact. This helper never launches/archives agents, creates/deletes jobs or proves recurring delivery; these require supported runtime operations and separate observations.
+
+### Preauthorized idle shutdown
+
+The claimed PM calls `suspend` only after TEAM's bounded eligibility/progress
+check establishes no useful authorized next action or an unrecoverable runtime
+gap. It requires `config.idleShutdown`, the current lease, an allowed `reason`,
+and accessible `evidence` and child `disposition` references. It sets
+`pm.mode: "paused"` and saves the reason/authority/evidence in `pm.control`,
+also exposed as `suspension` in the bounded view. There is no new waiting mode.
+The helper validates references and fencing, not the truth of an idle claim.
+
+The lease, workers, pending operations and last observed schedule are unchanged.
+New claims return `paused`; reservations, bindings and new timer plans fail.
+The holder records exact timer deletions and accepted results, then releases
+normally. Delete PM and role/descendant timers externally even when a different
+deletion fails. A saved enabled job binding is historical, never proof of live
+monitoring or completed shutdown.
+
+After release, late cleanup-only callbacks may use the existing paused
+management path with the saved kickoff decision as `human` and current
+`reconciliation`, strictly within that grant. Never manufacture a new human
+decision, revive dispatch or create a timer to collect a deletion receipt.
+Unknown deletion remains a reported cleanup gap with retained custody.
+Actual human-directed resume still requires the exact replacement/absence
+evidence below; an answer, green check or queued wake cannot resume the board.
 
 ### Human-only heartbeat recreation
 

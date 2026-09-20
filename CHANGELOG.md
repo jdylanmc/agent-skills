@@ -83,6 +83,11 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- Joe-mode Paseo now continues useful authorized work or suspends under its
+  recorded kickoff grant, removing owned timers instead of repeatedly polling
+  human blockers. Preserve work and human-only resume; deduplicate questions,
+  bound runtime recovery, reuse Shepherd observations and carry existing
+  approvals through handoffs without adding another interview.
 - Compress Joe-mode Paseo guidance and supporting contracts while preserving
   activation, permissions, ownership, recovery, merge gates, technical examples
   and acceptance scenarios.
