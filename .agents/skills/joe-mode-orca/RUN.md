@@ -8,17 +8,26 @@ not its source of authority. It links all policy gates rather than relying on
 [OBSERVATION](../shepherd/OBSERVATION.md), [RECOVERY](../shepherd/RECOVERY.md),
 [MERGE](../joe-mode-paseo/MERGE.md), [Doctrine](../doctrine/APPLY.md), and
 [Joe routing](../joe-mode/SKILL.md).
-Use the concrete local control operations in [STATE.md](STATE.md): inspect,
-init paused, human resume, claim, assert, record/reconcile effects, and
-release.
+Use the concrete local control operations in [STATE.md](STATE.md). Human setup
+must already have completed paused initialization and authorized resume.
+A scheduled pass never calls `init`, `resume`, `recover` or `bind`, never
+repeats intake, and never supplies human-management fields from an old decision.
 
 ## Claim and observe
 
 1. Load [RUNTIME.md](RUNTIME.md) and the installed native guides before any
-   command. Verify exact repository/workspace, owner, Run, mode, permissions,
-   and wake provenance.
-2. Use `owner.mjs init`/`resume`/`claim` against the exact common-dir board,
-   then retain its returned pass token. Require native identity and human
+   command. Recover the established board locator from existing custody,
+   including any alternate path outside commonDir. Call `owner.mjs inspect`
+   with canonical `commonDir` and that recorded `boardPath` before any claim.
+   Carry the returned canonical absolute `boardPath` into **every** subsequent
+   helper call. An absent default board does not prove there is no alternate:
+   missing or ambiguous custody blocks the pass, never creates another board.
+   Only human setup may choose `<commonDir>/joe-owner.json` after establishing
+   that no prior board/controller exists. Verify exact repository/workspace,
+   owner, Run, active mode, permissions and wake provenance.
+2. Use `owner.mjs claim` against that same inspected `boardPath`, then retain
+   its returned pass token. Paused, stopped or uninitialized state returns to
+   the human without management mutations. Require native identity and human
    authority in addition to the local token; a JSON record, copied identity,
    `run-use`, timer, or age alone is not serialization. If the helper reports
    `busy`, `blocked`, `conflict`, or unsupported host/filesystem, keep

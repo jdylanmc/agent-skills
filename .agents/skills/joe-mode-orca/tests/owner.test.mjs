@@ -6,7 +6,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { afterEach, test } from "node:test";
 import * as owner from "../scripts/owner.mjs";
 
@@ -81,6 +81,40 @@ test("explicit existing board outside commonDir is reused; relative locators fai
   assert.equal(owner.inspect(input).status, "initialized");
   assert.throws(() => owner.inspect({ ...input, boardPath: "relative.json" }), /absolute/);
   assert.throws(() => owner.inspect({ ...input, commonDir: "." }), /absolute/);
+});
+
+test("two real Git worktrees reuse the recorded alternate board without creating a default", () => {
+  const input = fixture();
+  const root = roots.at(-1);
+  const primary = join(root, "repository");
+  const secondary = join(root, "second-worktree");
+  mkdirSync(primary);
+  const git = (...args) => execFileSync("git", [
+    "-c", `core.hooksPath=${join(root, "unused-hooks")}`,
+    "-c", "commit.gpgsign=false", "-c", "user.name=Fixture",
+    "-c", "user.email=fixture@example.invalid", "-C", primary, ...args,
+  ], { encoding: "utf8", stdio: "pipe" });
+  git("init", "--quiet");
+  git("commit", "--quiet", "--allow-empty", "-m", "fixture");
+  git("worktree", "add", "--quiet", "--detach", secondary, "HEAD");
+  input.commonDir = git("rev-parse", "--path-format=absolute", "--git-common-dir").trim();
+  input.boardPath = join(root, "established-owner.json");
+  active(input);
+  for (const cwd of [primary, secondary]) {
+    const inspected = spawnSync(process.execPath, [script, "inspect",
+      JSON.stringify({ commonDir: input.commonDir, boardPath: input.boardPath })],
+    { cwd, encoding: "utf8" });
+    assert.equal(inspected.status, 0, inspected.stderr);
+    assert.equal(JSON.parse(inspected.stdout).path, input.boardPath);
+  }
+  const first = spawnSync(process.execPath, [script, "claim", JSON.stringify(input)],
+    { cwd: primary, encoding: "utf8" });
+  const second = spawnSync(process.execPath, [script, "claim", JSON.stringify(input)],
+    { cwd: secondary, encoding: "utf8" });
+  assert.equal(first.status, 0, first.stderr);
+  assert.notEqual(second.status, 0);
+  assert.match(second.stderr, /busy/);
+  assert.equal(existsSync(join(input.commonDir, "joe-owner.json")), false);
 });
 
 test("directory aliases converge on one board and the CLI works from paths containing spaces", () => {

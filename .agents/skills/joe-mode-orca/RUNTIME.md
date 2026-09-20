@@ -39,7 +39,9 @@ claim cross-host PM exclusion from a local file.
 Initialize paused with the actual coordinator identity and selected mode.
 Create or reuse one Run only after current native evidence, release/accept an
 existing controller before binding, and complete the first pass immediately:
-dispatch eligible work or report a precise blocker. An explicitly requested
+finish STATE's human initialization/resume, then enter RUN to dispatch eligible
+work or report a precise blocker. RUN never initializes or resumes a board.
+An explicitly requested
 unsupported recurrence must remain blocked, not become session-only.
 
 An Orca Run is a namespace/inbox, not a scheduler, lock, or repository-wide

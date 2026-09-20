@@ -93,6 +93,15 @@ test("activation and serialization fail closed without native ownership proof", 
   ]) assert.match(normalized(runtime), new RegExp(phrase, "i"));
 });
 
+test("scheduled passes inspect and reuse custody without initializing or resuming", () => {
+  const pass = normalized(run);
+  assert.match(pass, /scheduled pass never calls `init`, `resume`, `recover` or `bind`/);
+  assert.match(pass, /inspect` with canonical `commonDir` and that recorded `boardPath` before any claim/);
+  assert.match(pass, /Carry the returned canonical absolute `boardPath` into \*\*every\*\* subsequent helper call/);
+  assert.match(pass, /absent default board does not prove there is no alternate/);
+  assert.ok(pass.indexOf("owner.mjs inspect") < pass.indexOf("owner.mjs claim"));
+});
+
 test("bounded pass covers parallel budget, waits, source gates, and worker outcomes", () => {
   for (const phrase of [
     "all FIFO Delivery messages",
