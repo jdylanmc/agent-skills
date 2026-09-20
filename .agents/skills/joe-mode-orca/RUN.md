@@ -8,17 +8,25 @@ policy gates rather than relying on [SKILL.md](SKILL.md) intake:
 [OBSERVATION](../shepherd/OBSERVATION.md), [RECOVERY](../shepherd/RECOVERY.md),
 [MERGE](../joe-mode-paseo/MERGE.md), [Doctrine](../doctrine/APPLY.md), and
 [Joe routing](../joe-mode/SKILL.md).
+Use the concrete local control operations in [STATE.md](STATE.md): inspect,
+init paused, human resume, claim, assert, record/reconcile effects, and
+release.
 
 ## Claim and observe
 
 1. Load [RUNTIME.md](RUNTIME.md) and the installed native guides before any
    command. Verify exact repository/workspace, owner, Run, mode, permissions,
    and wake provenance.
-2. Claim the same durable owner mechanism used by other Joe surfaces. Require
-   an observed owner/pass token or verified native fence; a JSON record, copied
-   identity, `run-use`, timer, or age is not serialization. If claim cannot be
-   proven, keep recurrence disabled and report the exact human action.
-3. Recheck paused/stopped/current state before every external mutation. Read
+2. Use `owner.mjs init`/`resume`/`claim` against the exact common-dir board,
+   then retain its returned pass token. Require native identity and human
+   authority in addition to the local token; a JSON record, copied identity,
+   `run-use`, timer, or age alone is not serialization. If the helper reports
+   `busy`, `blocked`, `conflict`, or unsupported host/filesystem, keep
+   recurrence disabled and report the exact human action.
+3. Run `owner.mjs assert` immediately before every external mutation and
+   `record` its stable intent first; reconcile accepted, failed, or unknown
+   effects by operation ID. Recheck paused/stopped/current state before every
+   external mutation. Read
    all FIFO Delivery messages, process results/reviews/recovery first, then ack.
    Reconcile tasks, dispatches, workers, worktrees, gates, permissions, and
    exact owned automation IDs.
@@ -47,7 +55,7 @@ unverifiable worker state.
 
 ## Finish and release
 
-Release the claimed pass through the same owner mechanism on normal exit while
+Release the claimed pass with `owner.mjs release` on normal exit while
 retaining unresolved operation evidence. Record observed state, every human
 wait, operation IDs, acceptance/unknown results, and next action. Human merge
 remains default; any PR coordinator must load [MERGE](../joe-mode-paseo/MERGE.md)

@@ -10,6 +10,7 @@ const skill = read("SKILL.md");
 const runtime = read("RUNTIME.md");
 const run = read("RUN.md");
 const automations = read("AUTOMATIONS.md");
+const state = read("STATE.md");
 const normalized = (text) => text.replace(/\s+/g, " ");
 
 const links = {
@@ -135,4 +136,14 @@ test("permissions and merge coordinator remain explicit gates", () => {
   assert.match(skill, /MERGE/);
   assert.match(normalized(run), /Roast, CI, lint, rubber-duck, expected-head\/base/);
   assert.match(normalized(run), /Unknown gates require human clarification/);
+});
+
+test("workflow names the concrete local owner helper and its boundary", () => {
+  assert.ok(existsSync(join(directory, "scripts/owner.mjs")));
+  for (const text of [skill, runtime, run, automations]) {
+    assert.match(text, /STATE\.md/);
+  }
+  assert.match(state, /scripts\/owner\.mjs/);
+  assert.match(state, /single-control-host|local atomic exclusion/i);
+  assert.match(state, /not\s+proof\s+that\s+a\s+remote\s+process\s+stopped/i);
 });

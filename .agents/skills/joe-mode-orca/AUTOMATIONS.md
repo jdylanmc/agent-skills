@@ -1,5 +1,8 @@
 # Opt-in recurring Orca automations
 
+Load [STATE.md](STATE.md) before setup. Disabled/manual probes must not bypass
+the local paused -> human resume -> claim sequence or its exact owner board.
+
 Recurrence is optional and separately human-authorized. Native creation starts
 disabled, uses exact existing `--workspace` and `--workspace-mode existing`,
 and is inspected before any enable. `--repo` creates a worktree per run and is

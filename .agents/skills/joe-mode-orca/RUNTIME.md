@@ -1,5 +1,9 @@
 # Native Orca runtime contract
 
+Load [STATE.md](STATE.md) before activation or a pass. Its owner board and
+atomic control operations are the only local serialization mechanism; native
+Orca identity and human authority remain separate acceptance gates.
+
 This adapter must load the installed, version-matched native guides before
 running any runtime command:
 

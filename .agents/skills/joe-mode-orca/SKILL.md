@@ -14,6 +14,7 @@ It carries the shared [TEAM](../joe-mode-paseo/TEAM.md), [WORKSPACE](../ship/WOR
 [OBSERVATION](../shepherd/OBSERVATION.md), [RECOVERY](../shepherd/RECOVERY.md),
 [MERGE](../joe-mode-paseo/MERGE.md), and [Doctrine application](../doctrine/APPLY.md)
 contracts. Orca replaces only Paseo runtime mechanics.
+The local claim/operation control seam is [STATE.md](STATE.md).
 
 ## Human-only activation guard
 
