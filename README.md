@@ -1,6 +1,6 @@
 # Agent Skills
 
-Dylan's editable library of **35 skills** and human-owned engineering doctrine,
+Dylan's editable library of **36 skills** and human-owned engineering doctrine,
 designed for GitHub Copilot. The retired atomic framework remains historical
 material under `archive/atomic-v1/`; it does not govern the active library.
 
@@ -26,7 +26,7 @@ DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill '*
 The environment prefix above is POSIX shell syntax; in PowerShell, set
 `$env:DISABLE_TELEMETRY='1'` before running the `npx` command.
 
-Install **all 35** together for a new consumer. Isolated installs without
+Install **all 36** together for a new consumer. Isolated installs without
 prerequisites are unsupported: workflows
 reference sibling skills, and Setup carries the shared policies, attribution,
 licenses, and historical provenance. The quoted `'*'` selects every active
@@ -58,6 +58,18 @@ developer agents as tabs. Managed workers require the installed CMUX Maestro
 integration's dedicated pinned Copilot account and model; missing settings fail
 before terminal creation. CMUX supplies visible interactive sessions, not cron,
 heartbeats, unattended execution, merge authority, or proof of task success.
+
+**Optional Orca team:** invoke `/joe-mode-orca` explicitly for the same Joe
+team policy on Orca's native Runs, Tasks, supervised Dispatches and worker
+messages. Use installed `orca-cli` and `orchestration` guides from the running
+CLI; no Paseo runtime is required. Session coordination and explicitly enabled
+recurring automations have separate gates. Recurrence uses an exact existing
+workspace, never a new worktree per tick. Orca's `--reuse-session` reuses the
+automation's session, not necessarily this human chat, and can fall back to a
+fresh terminal: verified coordinator transfer and ownership are required before
+that terminal acts. Installation never starts a team or timer. Human merging
+is the default; a separately requested PR coordinator needs an explicit
+repository merge gate.
 
 **Optional Paseo PM:** invoke `/joe-mode-paseo` explicitly to set up or manage
 one repository's engineering team, with six developer slots by default
@@ -112,6 +124,11 @@ Validation keeps telemetry disabled and does not claim directory registration.
   Project Manager, Discovery, stacked developer tabs, and support remain visible
   in one repository workspace. Pinned Maestro settings are mandatory; worker
   conversations stay directly interactive and no scheduler is implied.
+- **Joe-mode Orca:** native supervised team adapter, sharing the same owner
+  board and existing delivery routes. Preserve six developer slots, one
+  Discovery lane, shared Shepherd, independent review and human waits.
+  Optional automations require explicit activation, verified Run ownership and
+  existing-workspace placement; session reuse is not a same-chat guarantee.
 - **Joe-mode Paseo:** separately human-enabled recurring team PM, sharing the
   same repository ownership registry. Primary chat is PM; one shared Shepherd
   and optional backlog manager have their own PM-managed heartbeats.

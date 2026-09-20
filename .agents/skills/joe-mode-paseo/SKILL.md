@@ -48,11 +48,13 @@ workspace per Git worktree, shared by all agents on that worktree.
 
 Inspect existing controller/Setup ownership, current PM configuration, matching
 wakeup job and active/pending runs. Reuse the one compatible board, project and
-workspace. If session Joe or the human-enabled
-[CMUX cockpit](../joe-mode-cmux/SKILL.md) owns the repository, join it or obtain
+workspace. If session Joe, the human-enabled
+[CMUX cockpit](../joe-mode-cmux/SKILL.md), or the
+[Orca adapter](../joe-mode-orca/SKILL.md) owns the repository, join it or obtain
 its explicit release and acknowledged transfer into this adapter before
-enabling. Reconcile CMUX's exact managed run rather than treating an idle or
-restored tab as release. Preserve the anchor, objective clock, coverage,
+enabling. Reconcile CMUX's exact managed run, or Orca's actual Run, coordinator,
+Dispatches and automations, rather than treating an idle or restored tab as
+release. Preserve the anchor, objective clock, coverage,
 planning artifacts and pending recovery episodes. An unresolved other
 host/clone/owner blocks activation; local locks cannot fence an independent
 remote controller.

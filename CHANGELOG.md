@@ -9,6 +9,13 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `joe-mode-orca`: opt-in native Orca team coordination through the existing
+  Joe workflows, with supervised workers, capacity accounting, one Discovery
+  lane and shared Shepherd. Reconcile repository ownership across adapters;
+  preserve independent review, human decisions and gated merge delegation.
+  Optional recurring automations require verified existing-workspace and
+  coordinator binding, including fresh-terminal fallback. Pause and stop
+  preserve work and reconcile pending effects; installation activates nothing.
 - `joe-mode-cmux`: human-started, session-bound CMUX cockpit for the existing
   Joe controller. Keep Project Manager, Discovery, stacked developer tabs, and
   support visible in one repository workspace; require CMUX Maestro's dedicated

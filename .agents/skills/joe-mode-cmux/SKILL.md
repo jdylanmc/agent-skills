@@ -29,8 +29,9 @@ Joe-mode presentation until the human pauses, stops, or re-anchors it.
 Resolve the repository, anchor, selected backlog, scope, exclusions, tracker,
 and human authority exactly as Joe-mode requires. Reconcile the same repository
 owner board with session Joe-mode and
-[Joe-mode Paseo](../joe-mode-paseo/SKILL.md) before registering CMUX or
-dispatching. There is one logical controller per repository across all three
+[Joe-mode Paseo](../joe-mode-paseo/SKILL.md) and
+[Joe-mode Orca](../joe-mode-orca/SKILL.md) before registering CMUX or
+dispatching. There is one logical controller per repository across these
 entrypoints. Join the existing controller or obtain observed release and
 acknowledged transfer. Unknown ownership blocks activation.
 
@@ -120,7 +121,7 @@ supported channel or the human before claiming it was consumed.
 Continue bounded Joe-mode passes while this human conversation remains active.
 Do not promise work between turns or after the session ends. If unattended
 recurring operation is requested, stop and offer the separately authorized
-Paseo adapter or another verified wake runtime; never invent CMUX scheduling.
+Paseo or Orca adapter with its own verified wake contract; never invent CMUX scheduling.
 
 On pause or stop, follow Joe-mode ownership transfer and Maestro lifecycle
 rules. Preserve active deliveries and Shepherd custody. Close interactive
