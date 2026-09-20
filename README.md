@@ -226,7 +226,8 @@ sources and the root intent remain unchanged.
 
 ## Provenance and licenses
 
-There are **26 imported/adapted packages** plus seven local/restored packages:
+There are **26 imported/adapted packages**, three locally authored Joe adapters
+(`joe-mode-cmux`, `joe-mode-orca`, `joe-mode-paseo`), and seven local/restored packages:
 `shepherd`, `synthesize`, `doctrine`, `eli5`, `changelog`, `status-report`, and
 `chart-a-course`.
 
