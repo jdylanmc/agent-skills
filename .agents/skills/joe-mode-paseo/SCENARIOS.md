@@ -44,6 +44,33 @@ These team scenarios supplement legacy scheduler cases. Run against the actual h
 
 Local tests prove only implemented helper and shipped package contracts. These scenarios need a separately authorized compatible runtime and actual observations; never activate anything to make a library PR appear green. Record each as observed, blocked or unverified with exact evidence.
 
+## Transport diagnosis and receipt scenarios
+
+Apply [TRANSPORT](TRANSPORT.md) within the existing adapter gates. The focused
+prose/package checks guard this written contract, **not live transport behavior**.
+Public source verification is not a mutation probe; runtime scenarios below
+remain unverified until separately authorized observations establish them.
+
+| Scenario | Required observation |
+| --- | --- |
+| Same authenticated server advertises heartbeat/status/send; chat discovery returns none | Catalog-exposure mismatch; target session/harness exposure next, not daemon outage, OS grant or a proven cache fix |
+| Exact provider intentionally disables a tool, or human requires MCP-only | Hold that operation; no CLI/SDK/raw RPC bypass even when technically available |
+| MCP inspection absent; verified read-only CLI works | Inspect only the same existing caller/daemon/workspace under read authority; no agents, timers, permission or configuration changes |
+| Shell CLI 0.7.2 differs from Desktop/daemon 0.8.0 | Verify existing PASEO_CLI/bundled provenance, executable/version/host/home/caller and installed help; skew is not root-cause proof; no install, PATH change, update or restart |
+| Executable provenance or actual caller/host/home/workspace mismatches | Hold that route; no arbitrary executable, caller spoofing, host switch or replacement PM |
+| Existing authenticated catalog connection denied/unavailable or pagination incomplete | Preserve exact safe error and partial coverage; no token search, hidden tools/call or broad private dumps |
+| Same failure episode arrives again with no changed evidence | Reuse bounded result; no repeat ladder, repair churn, timer or permission interview |
+| CLI create has seven-character target and omits prompt/full ID/expiry/maxRuns | Creation remains blocked; no synthesized readback, probe create or helper resume on incomplete proof |
+| Owned CLI delete returns exact full ID and status deleted | After affected dispatch gate closes, actual target caller/version/binding and exact inventory match permit recording that external receipt, distinct from MCP success true |
+| Delete returns wrong ID, wrong owner, not-found, timeout or transport failure | No acknowledged deletion or automatic replacement; preserve uncertainty and reconcile without blind retry |
+| Public schedule inspect rejects heartbeat or list omits it | Not absence evidence; do not use public schedule APIs for heartbeat verification or internal RPC as a workaround |
+| Mutation fallback lacks verified acceptance/completion semantics | Hold operation/reservation; no universal CLI equivalence, new follow-up handling, promised callback or duplicate dispatch |
+| OS Settings toggle visible; earlier executing-process check false | Visible grant, effective process access, provider approval and native acceptance stay separate; no implicit post-grant success or new permission prompt |
+| Paused board receives a diagnostic request or queued wake | Existing claim/dispatch gates remain; no timerless diagnostic route, hidden cleanup-path launch or automatic resume |
+| Heartbeat recreation after verified deletion | Same PM and board, released/fenced lease, exact old absence, intent-before-create and preserved cadence/remaining lifetime required; CLI deletion does not unblock CLI creation |
+
+## Existing scheduler and lifecycle scenarios
+
 | Scenario | Required observation |
 | --- | --- |
 | Install or individually select PM alongside prerequisites | Entrypoint/support copied, no setup output, schedule, workspace or activation |

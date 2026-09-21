@@ -15,6 +15,9 @@ human-authorized wakeup job may load only [RUN](RUN.md), not repeat this intake.
 Model-loadable metadata permits bounded continuation, not autonomous activation. Follow [INVOCATION](../setup/INVOCATION.md) and the human-approved
 [intent](intent.md). Installing/discovering the package does not start anything.
 Requires the sibling workflow packages; see [runtime gates](RUNTIME.md).
+For missing controls or transport selection, load [TRANSPORT](TRANSPORT.md):
+separate daemon/caller, server catalog, harness discovery and intentional policy
+before one bounded read-only diagnosis. Transport availability grants no authority.
 
 Follow [TEAM](TEAM.md) for roles, capacity, testing, blockers and cleanup.
 Discovery has its own reusable worktree/workspace named `Discovery`.
@@ -235,7 +238,8 @@ report initial worker dispatch unverified until an actual run establishes it.
   its exact owned heartbeat and record each receipt, not just PM's.
   For fresh mode, use supported `pause_schedule` and
   inspect actual paused state/next-run behavior. For heartbeat, have the bound PM
-  agent call `delete_heartbeat` for its exact owned ID and preserve its successful
+  agent delete its exact owned ID through MCP `delete_heartbeat` or the
+  verified CLI route in TRANSPORT, preserving that route's successful external
   acknowledgement as deletion evidence. No `pause_heartbeat` or heartbeat resume MCP operation exists. Reconcile an already dispatched prompt/run;
   it must not start new work. Existing scoped workers remain owned, not killed.
   Record outcomes, including failure, in the human management record.
@@ -267,8 +271,11 @@ report initial worker dispatch unverified until an actual run establishes it.
   Keep the heartbeat PM alive while deletion, children or reporting remain unresolved. Retire it only after verified owned-wakeup absence and accepted
   end/transfer of all duties; pausing alone is not terminal.
 
-Heartbeat control uses MCP **create/delete only**. A CLI period-only update is
-not a pause/resume API. Keep the approved cadence on recreation; a cadence change
+Heartbeat control follows [operation-specific transport gates](TRANSPORT.md).
+Prefer MCP creation; CLI creation remains blocked on 0.8.0's incomplete receipt.
+Deletion may use the verified exact-owner CLI receipt under those gates, not
+an MCP-only blanket rule. A CLI period-only update is not a pause/resume API.
+Keep the approved cadence on recreation; a cadence change
 requires human-authorized paused/fenced reconfiguration, not a tick adjustment. If supported verification of pending creation/deletion is unavailable, keep the local gate closed, report uncertainty; do not recreate or claim successful pause/stop.
 No wakeup operation automatically cleans Git/UI resources. No automatic
 resumption after a human pause. Every modifying owner consults

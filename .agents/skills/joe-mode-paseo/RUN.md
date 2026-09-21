@@ -11,6 +11,12 @@ controller. Missing setup/permissions/decisions return to the human anchor.
 Apply [TEAM](TEAM.md). PM owns routing and all role heartbeat lifecycle; the
 shared Shepherd owns PR inspection, the backlog manager owns deep inquiry.
 
+Missing controls follow [TRANSPORT](TRANSPORT.md)'s bounded read-only ladder
+within these same gates, not a new timerless route. An empty deferred search
+does not prove daemon outage or OS denial. A verified read-only CLI inspection
+may help; unsupported mutation/completion equivalence holds that operation.
+Never bypass intentional policy or a human MCP-only restriction.
+
 ## Claim, observe, route, persist, release
 
 For a queued wake after pause/stop/suspension, read the known board's bounded
