@@ -175,6 +175,11 @@ have tagged releases. Current cleanup is tracked in
 
 ### Fixed
 
+- `joe-mode-paseo`: distinguish missing chat tools from daemon and permission
+  failures with bounded diagnosis and verified CLI selection. Allow scoped
+  read-only inspection and exact-owner heartbeat deletion through verified
+  transports; keep CLI creation blocked when its receipt cannot prove the
+  required configuration. Generic Joe-mode and paused dispatch remain unchanged.
 - Joe-mode Paseo can reconcile paused legacy returns before team conversion
   without temporarily resuming dispatch to obtain a cleanup lease. Human
   heartbeat startup/resume now includes a bounded first work pass and explicit

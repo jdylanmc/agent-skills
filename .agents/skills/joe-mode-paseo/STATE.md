@@ -3,6 +3,10 @@
 [RUN](RUN.md) calls [scripts/state.mjs](scripts/state.mjs) to serialize bounded passes and reserve work. Node is the only dependency. This local atomic-state seam is not a daemon, external API client, approval system or proof of agent compliance. Preserve the existing Joe/lifecycle evidence
 in the same board/linked packets; only the `pm` namespace is helper-owned.
 
+Use [TRANSPORT](TRANSPORT.md) for external evidence and transport selection.
+The helper accepts evidence references, not CLI/MCP receipt parsers; passing
+local validation cannot certify an external operation or enable a fallback.
+
 Resolve the script from its installed package, not the target repo. Commands
 accept the same private board path and one JSON request. The CLI returns the
 **bounded current board** by default: `{"status":"…","view":{…}}` with mode,
@@ -126,7 +130,9 @@ For heartbeat, preserve the successful `create_heartbeat` receipt and join its
 returned target to actual PM/agent/workspace/Git observations. Verify returned
 prompt, cadence, active status, next run and lifetime against the approved request
 using [RUNTIME](RUNTIME.md#same-agent-heartbeat-surface); no schedule inspection
-API is needed. Fresh mode still requires actual schedule readback.
+API is needed. CLI creation remains blocked on 0.8.0's lossy row; never populate
+these observations from intended request fields to make `resume` pass.
+Fresh mode still requires actual schedule readback.
 The helper checks reference equality, not external truth. Unknown kind, wrong target/mapping/cadence or unapproved
 fallback fails. This is **observed state**, not parameters for `create_schedule`
 or `create_heartbeat`; cwd/project/workspace are joined observations, not invented
@@ -166,8 +172,12 @@ evidence below; an answer, green check or queued wake cannot resume the board.
 ### Human-only heartbeat recreation
 
 `pause`/`stop` first closes the local gate and preserves the active lease/children.
-Then the bound agent deletes its owned heartbeat through MCP and preserves the
-successful acknowledgement for that exact ID as deletion evidence. Schedule
+Then the bound agent deletes its owned heartbeat through MCP or the
+version-verified CLI route in [TRANSPORT](TRANSPORT.md#heartbeat-evidence-at-paseo-080).
+Preserve MCP `{success: true}` joined to its exact request, or CLI
+`{id, status: "deleted"}` with the full returned ID matching that owned request
+and caller, as distinct external deletion evidence. Missing/mismatched receipts,
+not-found and timeout are not acknowledged deletion. Schedule
 listing/inspection cannot verify heartbeat absence. No heartbeat pause/resume
 API is assumed. Uncertain deletion stays gated; reconcile through a supported
 heartbeat-specific surface or the human, never duplicate. A resumed heartbeat uses a **new** verified ID
@@ -310,7 +320,8 @@ These operations use the same PM `owner`/`token`. Roles return receipts to PM, n
 - `action: "observed"` records an actual bounded wake. No synthetic health
   from a cron string. `action: "uncertain"` records a failed/unknown operation.
 - `action: "deleted"` needs the exact owned `id` and successful deletion
-  evidence. Uncertain deletion does not settle the role. Plan recreation only
+  evidence under TRANSPORT's distinct MCP/CLI receipt gates above.
+  Uncertain deletion does not settle the role. Plan recreation only
   after definite absence, remaining grant and enabled PM are reconciled.
 - `action: "absent"` needs definitive `absence` evidence: creation failed
   without an external effect, or supported reconciliation proves no job exists.
