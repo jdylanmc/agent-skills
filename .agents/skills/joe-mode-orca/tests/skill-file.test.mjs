@@ -165,9 +165,9 @@ test("workflow names the concrete local owner helper and its boundary", () => {
 
 test("small fixes use core swarm policy without a mandatory roster", () => {
   const policy = normalized(joe);
-  assert.match(policy, /one visible delivery home, one accountable delivery owner/);
-  assert.match(policy, /small fix needs an implementer and required independent review/);
-  assert.match(policy, /Grow by need, not ceremony/);
+  assert.match(policy, /one visible home, one accountable owner/);
+  assert.match(policy, /Small fix: implementer plus independent review, not a full roster/);
+  assert.match(policy, /Add bounded specialists only when useful/);
   for (const text of [skill, run, runtime]) {
     assert.match(text, /\.\.\/joe-mode\/SKILL\.md#issue-centered-swarms/);
   }
@@ -188,8 +188,7 @@ test("complex delivery binds useful specialists and direct peers to native ident
 });
 
 test("parallel swarms retain isolated writers, capacity and shared repository roles", () => {
-  assert.match(normalized(joe), /every writer counts, including test and specialist writers/);
-  assert.match(normalized(joe), /reservation or staffing-policy change explicitly before launch/);
+  assert.match(normalized(joe), /Keep TEAM's budget, reservations, shared roles and gates; every writer counts/);
   assert.match(normalized(runtime), /Additional writers use separately owned worktrees/);
   assert.match(normalized(runtime), /swarm does not create another Run or controller per issue/);
   assert.match(normalized(run), /Shared Shepherd and Discovery remain repository-wide/);
