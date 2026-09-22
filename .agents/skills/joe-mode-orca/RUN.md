@@ -38,7 +38,10 @@ repeats intake, and never supplies human-management fields from an old decision.
    external mutation. Read
    all FIFO Delivery messages, process results/reviews/recovery first, then ack.
    Reconcile tasks, dispatches, workers, worktrees, gates, permissions, and
-   exact owned automation IDs.
+   exact owned automation IDs. Reconcile each delivery's
+   [associations](STATE.md#delivery-associations), pending peer handoffs,
+   candidate commit and questions against native/provider observations before
+   any new dispatch; saved membership is not liveness or accepted transfer.
 4. Surface every human wait, including unchanged waits while other work
    progresses: exact ask/action, role/agent, affected work, and verified link or
    exact locator. A gate, question, or send receipt is not a human answer.
@@ -55,7 +58,15 @@ serialize unrelated tickets behind an arbitrary one-worker limit. Record each
 task, owner, worktree, capacity reservation, permissions, return owner, and
 acceptance evidence before dispatch.
 Persist those facts through STATE's token-bound `note`, not unsynchronized
-edits to the board. Use `record` before each external effect; only `recorded`
+edits to the board. Follow core Joe's
+[issue-centered swarm policy](../joe-mode/SKILL.md#issue-centered-swarms) and
+[Orca placement/readback](RUNTIME.md#issue-placement-and-peer-handoffs):
+reuse one primary delivery home and owner, bind every participant to it, and
+grow only for bounded useful work. Record current stage (`coding`, `awaiting peer`,
+`awaiting PM` or `awaiting human`), next action/owner and blocking question on
+the existing board. Direct peer handoffs retain exact Task/Dispatch identity
+and immutable commits; PM does not relay every test/commit exchange.
+Use `record` before each external effect; only `recorded`
 permits a new issue after `assert`. Replayed or unknown operations reconcile
 the original native request, not a duplicate worker or tracker mutation.
 
@@ -66,7 +77,18 @@ settlement, FIFO-before-ack, request-show retry identity, accepted settlement,
 and explicit retain/release evidence. Do not retry permission denial or
 unverifiable worker state.
 
+Return review corrections to the existing delivery owner and PR with the
+reviewed candidate and findings, not a disconnected replacement effort.
+Require fresh candidate evidence and applicable independent review after repair.
+Shared Shepherd and Discovery remain repository-wide, not per-swarm services.
+
 ## Finish and release
+
+On completion or explicit suspension, preserve the delivery's inspectable
+history and evidence. Retire accepted terminal agents without concrete duties
+through the existing lifecycle; record exact receipts or a concrete retained
+duty and next owner. Pending peer/human waits must be reconciled, not erased to
+free a slot. Agent retirement never implicitly removes branches or worktrees.
 
 Release the claimed pass with `owner.mjs release` on normal exit while
 retaining unresolved operation evidence. Record observed state, every human

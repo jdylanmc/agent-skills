@@ -73,3 +73,39 @@ Prompt text, “inherit”, or a launch receipt without settings is not proof.
 Unknown cross-provider equivalence blocks launch. Use runtime defaults for
 model/effort unless explicitly selected; never add global settings or hidden
 permissions.
+
+## Issue placement and peer handoffs
+
+Apply core Joe's [issue-centered swarms](../joe-mode/SKILL.md#issue-centered-swarms)
+within the existing repository Run. A swarm does not create another Run or
+controller per issue. Before launch, use the installed guides to inspect actual
+placement, title and lineage capabilities; do not invent a grouping command,
+workspace relationship or UI guarantee.
+
+Choose the delivery owner's verified workspace as the primary delivery home.
+Place read-only specialists there when supported and appropriate; pin their
+candidate/evidence so a moving checkout cannot masquerade as the reviewed
+commit. Additional writers use separately owned worktrees, explicitly associated
+with this home. For every participant read back the actual execution host,
+workspace/full worktree selector, Git path/branch/base, terminal, Task and
+Dispatch IDs. Missing placement proof blocks writes, not permission to share
+an index. Apply [WORKSPACE](../ship/WORKSPACE.md#orca-placement-when-used).
+
+Use recognizable issue-and-role names, such as `<issue> Design`, `<issue> RED`,
+`<issue> GREEN/Patch`, `<issue> Roast` and `<issue> Final verification`, only for
+roles actually needed. Verify supported titles/lineage through native readback.
+Where native grouping or naming is unavailable, retain exact explicit
+associations on the [existing board](STATE.md#delivery-associations) and report
+the UI limitation; do not claim agents were moved or grouped. Link shared
+Shepherd/Discovery participation without relocating or cloning their services.
+
+Use supported native messages for direct peer exchanges, including RED/GREEN
+handoffs. Each exchange carries the delivery identity, sender and receiver's
+exact Task/Dispatch IDs, immutable candidate commit and evidence references,
+requested next action and integration owner. Preserve pending messages and
+receiver-observed acknowledgment on the board; a send receipt is not acceptance
+or Task settlement. PM receives boundary/decision escalations and coordinates
+publication rather than relaying every test/commit exchange. Unsupported peer
+messaging is an explicit capability gap routed through the existing owner, not
+an invented terminal interaction. Peers cannot bypass the native settlement,
+permissions, capacity, independent review or publication gates above.

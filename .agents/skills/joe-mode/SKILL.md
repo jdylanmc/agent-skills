@@ -114,6 +114,29 @@ Do not delegate this controller. The optional PR coordinator requires the
 separately human-enabled adapter's repository merge contract; session Joe grants
 no merge power.
 
+### Issue-centered swarms
+
+Default: one issue-centered swarm per delivery group; one visible home, one
+accountable owner. Add bounded specialists only when useful. Small fix:
+implementer plus independent review, not a full roster. Keep TEAM's budget,
+reservations, shared roles and gates; every writer counts.
+
+On the existing board, bind members, assignments, worktrees/branches, evidence
+and handoffs to the group's full coverage. Track stage (`coding`, `awaiting peer`,
+`awaiting PM`, `awaiting human`), candidate commit, next action/owner and blocking
+question. Runtime adapters own verified placement, naming and identity readback.
+
+Peers hand off directly, including RED/GREEN when selected: exact assignment
+identities, immutable commits/evidence, receiver acknowledgment, named integrator.
+PM handles boundaries, decisions and publication coordination, not every exchange.
+The delivery owner retains integration; peer exchange grants no extra authority.
+
+Keep corrections with the same owner/PR and independent review. Reconcile
+surviving members, handoffs and questions before restart; retain history through
+completion or suspension. Follow existing isolation and LIFECYCLE rules: retire
+finished agents without concrete duties, not branches/worktrees. No extra
+controller, approval system or per-issue shared service.
+
 ## 3. Refresh the relevant backlog
 
 Query only the anchored selection, with the configured `ready-for-agent` role mapping. It may be a GitHub label, an Azure DevOps tag, or a configured local equivalent. Do not invent a second readiness checklist, hardcode a replacement label, or silently mark existing issues ready.

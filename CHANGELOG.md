@@ -83,6 +83,11 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- Core Joe defines issue-centered swarms with one delivery home and owner,
+  need-based specialists, direct peer handoffs and retained correction history.
+  Orca binds participants and isolated writer worktrees to that delivery on the
+  existing board, with verified runtime identities and explicit UI limitations.
+  Preserve staffing limits, shared roles and independent review/publication gates.
 - Joe-mode Paseo now continues useful authorized work or suspends under its
   recorded kickoff grant, removing owned timers instead of repeatedly polling
   human blockers. Preserve work and human-only resume; deduplicate questions,

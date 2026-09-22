@@ -41,6 +41,13 @@ Preserve independent review, useful TDD, capacity, permissions, bounded
 recovery, and human waits. Human merging is default; an optional PR
 coordinator requires a separately requested explicit repository gate.
 
+Use core Joe's [issue-centered swarms](../joe-mode/SKILL.md#issue-centered-swarms)
+as the default delivery organization, not a fixed roster. Keep one visible
+delivery home and owner through review corrections, completion or suspension.
+[RUNTIME](RUNTIME.md#issue-placement-and-peer-handoffs) owns Orca placement and
+peer identity; [STATE](STATE.md#delivery-associations) keeps associations on the
+existing board. Native grouping never replaces isolated writer worktrees.
+
 ## Changelog
 
 Consult the shared [Changelog helper](../changelog/SKILL.md); this package
