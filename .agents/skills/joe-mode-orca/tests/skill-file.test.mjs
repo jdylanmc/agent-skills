@@ -11,6 +11,7 @@ const runtime = read("RUNTIME.md");
 const run = read("RUN.md");
 const automations = read("AUTOMATIONS.md");
 const state = read("STATE.md");
+const joe = read("../joe-mode/SKILL.md");
 const normalized = (text) => text.replace(/\s+/g, " ");
 
 const links = {
@@ -160,4 +161,70 @@ test("workflow names the concrete local owner helper and its boundary", () => {
   assert.match(state, /scripts\/owner\.mjs/);
   assert.match(normalized(state), /one control host/);
   assert.match(normalized(state), /A local token never cancels an external process/);
+});
+
+test("small fixes use core swarm policy without a mandatory roster", () => {
+  const policy = normalized(joe);
+  assert.match(policy, /one visible delivery home, one accountable delivery owner/);
+  assert.match(policy, /small fix needs an implementer and required independent review/);
+  assert.match(policy, /Grow by need, not ceremony/);
+  for (const text of [skill, run, runtime]) {
+    assert.match(text, /\.\.\/joe-mode\/SKILL\.md#issue-centered-swarms/);
+  }
+  assert.match(joe, /^### Issue-centered swarms$/m);
+});
+
+test("complex delivery binds useful specialists and direct peers to native identities", () => {
+  const contract = normalized(runtime);
+  assert.match(contract, /roles actually needed/);
+  for (const role of ["Design", "RED", "GREEN/Patch", "Roast", "Final verification"]) {
+    assert.ok(runtime.includes(`<issue> ${role}`), `recognizable ${role} role`);
+  }
+  assert.match(contract, /read back the actual execution host.*Task and Dispatch IDs/);
+  assert.match(contract, /exact Task\/Dispatch IDs, immutable candidate commit/);
+  assert.match(contract, /send receipt is not acceptance or Task settlement/);
+  assert.match(contract, /Unsupported peer messaging is an explicit capability gap/);
+  assert.match(normalized(run), /PM does not relay every test\/commit exchange/);
+});
+
+test("parallel swarms retain isolated writers, capacity and shared repository roles", () => {
+  assert.match(normalized(joe), /every writer counts, including test and specialist writers/);
+  assert.match(normalized(joe), /reservation or staffing-policy change explicitly before launch/);
+  assert.match(normalized(runtime), /Additional writers use separately owned worktrees/);
+  assert.match(normalized(runtime), /swarm does not create another Run or controller per issue/);
+  assert.match(normalized(run), /Shared Shepherd and Discovery remain repository-wide/);
+  assert.match(normalized(runtime), /native grouping or naming is unavailable.*explicit associations/);
+  assert.match(normalized(runtime), /Missing placement proof blocks writes/);
+});
+
+test("review corrections stay on the original delivery and identify the candidate", () => {
+  const pass = normalized(run);
+  assert.match(pass, /review corrections to the existing delivery owner and PR/);
+  assert.match(pass, /reviewed candidate and findings/);
+  assert.match(pass, /fresh candidate evidence and applicable independent review after repair/);
+  assert.match(normalized(runtime), /pin their candidate\/evidence/);
+  assert.match(normalized(state), /review\/correction history/);
+});
+
+test("restart reconciles durable membership and pending handoffs before dispatch", () => {
+  const facts = normalized(state);
+  assert.match(facts, /stable key.*delivery:<provider-qualified-anchor>/);
+  assert.match(facts, /not a new helper-enforced schema/);
+  assert.match(facts, /Reuse the same key when a PR is published/);
+  assert.match(facts, /note` replaces a value: read and preserve.*prior history/);
+  assert.match(facts, /pending handoffs with native and provider observations before new dispatch/);
+  assert.match(facts, /lost questions or unresolved effects remain explicit waits/);
+  assert.match(normalized(run), /saved membership is not liveness or accepted transfer/);
+  for (const stage of ["coding", "awaiting peer", "awaiting PM", "awaiting human"]) {
+    assert.ok(run.includes(`\`${stage}\``), `explicit ${stage} stage`);
+  }
+});
+
+test("completion and suspension retain history without idle expense or implicit cleanup", () => {
+  const pass = normalized(run);
+  assert.match(pass, /completion or explicit suspension.*inspectable history and evidence/);
+  assert.match(pass, /Retire accepted terminal agents without concrete duties/);
+  assert.match(pass, /concrete retained duty and next owner/);
+  assert.match(pass, /Pending peer\/human waits must be reconciled, not erased/);
+  assert.match(pass, /Agent retirement never implicitly removes branches or worktrees/);
 });

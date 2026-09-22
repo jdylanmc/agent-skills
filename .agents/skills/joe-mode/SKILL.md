@@ -114,6 +114,48 @@ Do not delegate this controller. The optional PR coordinator requires the
 separately human-enabled adapter's repository merge contract; session Joe grants
 no merge power.
 
+### Issue-centered swarms
+
+Organize every delivery as an issue-centered swarm: one visible delivery home,
+one accountable delivery owner, and bounded specialists added as needed. A
+swarm is the existing delivery group, not another controller or approval
+system. Use its provider-qualified issue/PR identity, or the agreed spec anchor
+until publication; preserve the group's full coverage rather than creating
+competing swarms for its children.
+
+Associate every participant, assignment, branch, isolated writer worktree,
+evidence packet and handoff with that delivery on the existing owner board.
+Record its primary workspace, current stage, candidate commit, next action and
+owner, and blocking question. Distinguish `coding`, `awaiting peer`, `awaiting PM`
+and `awaiting human`; a generic `Working` status is not enough. Runtime adapters
+own concrete placement, naming and identity readback; UI grouping never proves
+isolation, liveness or authority.
+
+Grow by need, not ceremony. A small fix needs an implementer and required
+independent review, not a standing committee. Add design help for an unresolved
+question, investigators for concrete blockers, test partners for useful coverage,
+and final verification for a candidate. Preserve the existing developer budget
+and lane reservations; every writer counts, including test and specialist
+writers. A swarm label does not expand capacity or authorize extra writers.
+Resolve any reservation or staffing-policy change explicitly before launch.
+Shared Shepherd and the Discovery/backlog lane remain repository-wide roles;
+link their issue-specific work without duplicating those services.
+
+Keep direct peer handoffs, including RED/GREEN when TDD is selected: carry exact
+assignment identities, immutable commit/evidence references, the receiving
+owner's acknowledgment and explicit integration ownership. Writers keep separate
+writable indices. PM handles boundaries, decisions and publication coordination,
+not every test/commit exchange; the delivery owner retains branch integration.
+Peer exchange grants neither self-review nor approval/publication authority.
+
+Return review findings and corrections to the same delivery owner and PR,
+identifying the reviewed candidate and returning repaired evidence for independent
+review. On restart, reconcile membership, surviving owners, pending handoffs and
+questions before dispatch; never infer liveness or transfer from saved status.
+Keep inspectable history through verified completion or explicit suspension.
+Retire accepted terminal agents without concrete duties under LIFECYCLE, preserving
+evidence and recorded custody; retirement does not delete branches or worktrees.
+
 ## 3. Refresh the relevant backlog
 
 Query only the anchored selection, with the configured `ready-for-agent` role mapping. It may be a GitHub label, an Azure DevOps tag, or a configured local equivalent. Do not invent a second readiness checklist, hardcode a replacement label, or silently mark existing issues ready.

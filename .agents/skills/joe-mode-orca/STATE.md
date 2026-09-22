@@ -89,6 +89,32 @@ automation creation -> native create/readback -> human `reconcile` -> the
 Keep it disabled if any gate is unmet. A setup management record is not
 permission for a scheduled caller to enter intake.
 
+## Delivery associations
+
+Use the existing `note` operation with a stable key such as
+`delivery:<provider-qualified-anchor>` under `orca.facts`; do not create another
+board, approval ledger or controller. These are caller-maintained policy facts,
+not a new helper-enforced schema or proof of live runtime state. Reuse the same
+key when a PR is published; add its identity to the original delivery coverage.
+
+For each delivery retain the accountable owner, primary workspace, covered
+issue/spec/PR identities, current stage, candidate commit, next action and owner,
+and blocking question. Membership records bind each role and bounded assignment
+to its execution host, workspace/worktree selector, Git path/branch/base,
+terminal, exact Task/Dispatch IDs, capacity reservation and evidence references.
+Shared roles are references to their existing owners, not new issue-local leases.
+Carry pending peer handoffs with sender/receiver identities, immutable commit,
+requested action and acknowledgment evidence, plus review/correction history
+and actual retirement/retention receipts.
+
+`note` replaces a value: read and preserve that delivery's prior history when
+updating it under the current pass token. Use `record`/`reconcile` for external
+effects as before; membership notes cannot authorize or prove a launch, peer
+acceptance, transfer or publication. On restart reconcile saved associations and
+pending handoffs with native and provider observations before new dispatch.
+Unknown identities, lost questions or unresolved effects remain explicit waits,
+never a reason to silently transfer ownership or create replacement workers.
+
 ## Pause races and bounded recovery
 
 `pause`/`stop` keeps the old pass: a delayed assertion fails, but an already
