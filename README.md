@@ -51,16 +51,20 @@ any workflow. Invoke `/setup` separately when you want repository configuration;
 its existing human-choice and exact-file approval gates still apply, including
 the named Joe-mode bootstrap.
 
-**Optional CMUX cockpit:** invoke `/joe-mode-cmux` explicitly to run the
-session Joe controller in the current CMUX workspace. It keeps this conversation
-as Project Manager, gives Discovery and support distinct panes, and stacks
-developer agents as tabs. Managed workers require the installed CMUX Maestro
-integration's dedicated pinned Copilot account and model; missing settings fail
-before terminal creation. CMUX supplies visible interactive sessions, not cron,
+**Optional CMUX cockpit:** invoke `/joe-mode-cmux` explicitly from a
+Maestro-enabled, managed coordinator in the current CMUX workspace. It keeps
+that conversation as Project Manager and launches all roles as visible native
+sessions. Managed workers inherit the invoking Copilot account through
+`maestro_spawn`, with explicit model selection. Missing native tools block
+activation; SDK helpers and human relay are not operational fallbacks.
+Maestro supplies the generic runtime; Joe policy stays independent of its
+internals. CMUX supplies visible interactive sessions, not cron,
 heartbeats, unattended execution, merge authority, or proof of task success.
 Maestro's separately installed `/maestro` guide handles native fire-and-forget
 peer messaging; registering the existing PM does not give it a messaging
-address, and missing tools never permit terminal-input injection. Optional
+address, and missing tools never permit terminal-input injection. Use Maestro's
+new managed-coordinator entry rather than adopting an arbitrary conversation.
+Optional
 four-area placement requires a compatible lifecycle contract; the current
 same-pane contract is a valid degraded layout.
 

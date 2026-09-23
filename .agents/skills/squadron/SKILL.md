@@ -76,6 +76,11 @@ schemas. Issue independent launches together where supported. Multiple calls
 are not proof of parallel execution; confirm returned IDs and runtime states.
 Use configured model preferences and defaults, never invented model names.
 
+An inherited runtime-adapter contract takes precedence over generic dispatch
+examples. Keep every role and nested specialist on that runtime. Missing
+adapter launch or communication capability blocks the assignment; it does not
+authorize an invisible helper, another provider, or a different controller.
+
 Keep bounded capacity for integration, independent review, human questions,
 and existing monitors. Do not launch a second monitor for an already-owned PR
 or a nested Joe-mode. Missing concurrency is an explicit capability limit;

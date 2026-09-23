@@ -20,8 +20,8 @@ have tagged releases. Current cleanup is tracked in
   preserve work and reconcile pending effects; installation activates nothing.
 - `joe-mode-cmux`: human-started, session-bound CMUX cockpit for the existing
   Joe controller. Keep Project Manager, Discovery, stacked developer tabs, and
-  support visible in one repository workspace; require CMUX Maestro's dedicated
-  pinned Copilot account and model before spawning. Preserve direct human
+  support visible in one repository workspace; require a managed coordinator,
+  invoking-session account inheritance and explicit model selection. Preserve direct human
   interaction, exact surface ownership, separate delivery worktrees, and honest
   continuity limits without inventing scheduling, merge authority, or success.
   Same-workspace pane placement requires the CMUX Maestro integration contract
@@ -186,6 +186,12 @@ have tagged releases. Current cleanup is tracked in
 - Remove active `openai.yaml` metadata and unsupported GitLab setup.
 
 ### Fixed
+
+- Require a messaging-enabled Maestro coordinator for `joe-mode-cmux`, use
+  session-account-inheriting native child launch, and retain the visible
+  runtime through every nested role. Block failed activation instead of
+  substituting invisible helpers or presenting supervisor startup as readiness.
+  Keep Joe policy runtime-independent and reject stale archived skill routes.
 
 - `joe-mode-paseo`: distinguish missing chat tools from daemon and permission
   failures with bounded diagnosis and verified CLI selection. Allow scoped
