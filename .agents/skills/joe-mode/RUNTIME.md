@@ -6,7 +6,7 @@ Joe-mode targets GitHub Copilot using tools exposed by the current harness. Tool
 
 - Use [Doctrine's catalog and metadata selection](../doctrine/SKILL.md) to assign standards without reading full bodies in the orchestrator. Follow [the common packet contract](../doctrine/APPLY.md): preserve scoped operator choices, add required IDs, and send work plus ID/reason/path/digest metadata. The applying sub-agent loads the full text and reports what it actually used.
 - Invoke available skills through the harness's skill tool. If a local skill is unregistered and repository instructions permit direct loading, read its local `SKILL.md` and required references; do not substitute an upstream version or search a Claude plugin installation.
-- Use the exposed agent-dispatch tool for bounded workers. In a Copilot session exposing `task`, `read_agent`, and `write_agent`, use those tools according to their current schemas. Under the explicit [Orca adapter](../joe-mode-orca/RUNTIME.md), use native supervised Orca Dispatches instead; generic subagents do not establish Orca lifecycle provenance. Other installations may expose different names or no worker support.
+- Use the exposed agent-dispatch tool for bounded workers. In a Copilot session exposing `task`, `read_agent`, and `write_agent`, use those tools according to their current schemas. Under the explicit [CMUX adapter](../joe-mode-cmux/RUNTIME.md), managed role workers launch through Maestro and participating peers communicate through its native `/maestro` tools; generic harness agents do not establish a managed CMUX tab or address. Under the explicit [Orca adapter](../joe-mode-orca/RUNTIME.md), use native supervised Orca Dispatches instead; generic subagents do not establish Orca lifecycle provenance. Other installations may expose different names or no worker support.
 - Use background agents for genuinely concurrent discovery, planning, and delivery. Coordinate independent work meanwhile; consume notifications rather than polling for reassurance. Resume the known worker for follow-up when supported.
 - Respect configured model preferences and runtime defaults. Do not hardcode model IDs, reasoning effort, or unverified context-window sizes from imported skills.
 - Track work with session state/todo tools when available, otherwise a unique artifact in the session workspace or OS temporary directory. Do not create `TODO.md` in the repository as a silent fallback.
@@ -47,10 +47,18 @@ conversation/stop gates; issues grant no startup authority.
 
 ## Isolation and shared resources
 
+Apply [role placement and main advancement](WORKTREES.md): Project Manager on
+`main`, Discovery on `discovery/<feat>`, and any authorized PR/auto-merge
+coordinator on `pr-sniper`. Advance clean main from the resolved remote before
+dispatch passes and after confirmed merges, using fast-forward only. Worker
+branch refresh remains with its owner.
+
 Give each independent writer its own authorized Git worktree. Follow
 [WORKSPACE](../ship/WORKSPACE.md) for placement: with Paseo, one repository
 project and one workspace per worktree; agents sharing a worktree reuse its
-registration. Read-only dispatch alone creates no new worktree/project/workspace.
+registration. Ordinary read-only research dispatch alone creates no new
+worktree/project/workspace; the explicit Discovery role placement above is
+the exception for Joe-mode and CMUX.
 Discovery/research sources stay read-only; POC writes stay in its agreed scratch
 environment. Domain/ADR writers must not edit an active implementer's checkout.
 

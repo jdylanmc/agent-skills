@@ -58,6 +58,18 @@ developer agents as tabs. Managed workers require the installed CMUX Maestro
 integration's dedicated pinned Copilot account and model; missing settings fail
 before terminal creation. CMUX supplies visible interactive sessions, not cron,
 heartbeats, unattended execution, merge authority, or proof of task success.
+Maestro's separately installed `/maestro` guide handles native fire-and-forget
+peer messaging; registering the existing PM does not give it a messaging
+address, and missing tools never permit terminal-input injection. Optional
+four-area placement requires a compatible lifecycle contract; the current
+same-pane contract is a valid degraded layout.
+
+Session Joe and its CMUX cockpit keep the orchestrator on `main`, refresh it
+with guarded fast-forward updates when remote main advances, place Discovery
+in `discovery/<feat>` worktrees, and use a separate `pr-sniper` worktree for an
+explicitly authorized merge coordinator. See the
+[role worktree contract](.agents/skills/joe-mode/WORKTREES.md); placement does
+not grant merge authority or permit overwriting dirty work.
 
 **Optional Orca team:** invoke `/joe-mode-orca` explicitly for the same Joe
 team policy on Orca's native Runs, Tasks, supervised Dispatches and worker

@@ -3,6 +3,12 @@
 Use one existing repository workspace. Never create a window or a second
 workspace for the same repository controller.
 
+Git placement is separate: the Project Manager stays on `main`, Discovery
+uses `discovery/<feat>`, and an explicitly authorized PR/auto-merge coordinator
+uses `pr-sniper`, under [Joe's worktree contract](../joe-mode/WORKTREES.md).
+Pass the role's exact worktree to Maestro `spawn --cwd`. Shared CMUX pane
+placement never permits a shared writing checkout.
+
 ```text
 ┌─────────────────────────────┬─────────────────────────────┐
 │ Project Manager             │ Discovery                   │
@@ -60,6 +66,11 @@ leave the surface beside its actor. Never find the worker by its display name
 or move a Maestro-owned surface to another workspace/window. A new developer
 joins the existing developer pane with `move-surface`, preserving its tab
 stack.
+
+The current established main lifecycle guide does not advertise that placement
+extension. Same-pane tabs are therefore a valid degraded cockpit; do not patch
+the installed guide or bypass its rule merely to draw the four-area layout.
+Peer messaging needs no pane move or focus change.
 
 ## Workspace metadata
 

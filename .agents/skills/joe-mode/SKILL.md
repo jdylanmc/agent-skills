@@ -66,6 +66,14 @@ Reconcile any prior board with live agents and provider state before reusing it.
 
 Read [runtime guidance](RUNTIME.md) and execute [LIFECYCLE](../squadron/LIFECYCLE.md) before dispatch, transfer, recovery, or retirement. Keep its placement, delivery, custody, and runtime evidence on this board. Confirm the harness supports the requested agents and background work. Use a bounded capacity appropriate to available tools and resources; retain capacity for the human-facing discovery path and for completion/review work rather than filling every slot with new implementation.
 
+Apply [role worktree placement](WORKTREES.md): the orchestrator stays on
+`main`, every repository-backed Discovery agent uses `discovery/<feat>`, and
+any explicitly authorized PR/auto-merge coordinator uses `pr-sniper`. Fetch and
+fast-forward a clean owned main when remote main advances, including after
+each confirmed merge. Dirty, ahead, diverged, or unobserved main blocks that
+update; preserve work rather than forcing it. These Git roles do not create
+extra logical controllers or grant merge authority.
+
 ### Bootstrap missing setup under this owner
 
 Before invoking Setup, reconcile repository-wide Setup and Joe controller

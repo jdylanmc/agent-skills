@@ -20,6 +20,12 @@ still follow [worktree placement](../ship/WORKSPACE.md), and pull-request
 handoffs still follow [delivery readiness](../ship/DELIVERY.md) and
 [Shepherd observation](../shepherd/OBSERVATION.md).
 
+Use [Joe role worktrees](../joe-mode/WORKTREES.md): Project Manager stays on
+`main`, Discovery uses `discovery/<feat>`, and an explicitly authorized
+PR/auto-merge coordinator uses `pr-sniper`. Fast-forward clean owned main
+when remote main changes and after each confirmed merge. All role worktrees
+remain in the same CMUX workspace; pass their exact paths to Maestro.
+
 ## Entry and ownership
 
 **Human activation only.** Installing, discovering, restoring, or mentioning
@@ -41,8 +47,10 @@ local routing sections directly under this adapter's human grant.
 
 ## Activate the cockpit
 
-1. Verify the current directory is the selected repository root or resolve it
-   explicitly. Read its guidance and current owner board.
+1. Verify the Project Manager is in the selected repository's owned `main`
+   checkout and reconcile remote main using the guarded worktree procedure.
+   Read its guidance and current owner board. Never switch or reset a dirty
+   delivery checkout to manufacture main placement.
 2. Verify exact caller identity with CMUX, then run the Maestro
    `launch-settings` preflight from [RUNTIME](RUNTIME.md). Any missing,
    unavailable, or unpinned setting stops activation before terminal creation.
@@ -56,7 +64,10 @@ local routing sections directly under this adapter's human grant.
    Project Manager and report the degraded layout.
 5. Rename the repository workspace and publish an `active` Joe status only
    after ownership, CMUX identity, and Maestro readiness are verified.
-6. Complete one useful bounded Joe-mode pass now: refresh the selected work,
+6. Check this session's native messaging participation separately from launch
+   readiness. Registration does not make the Project Manager a recipient.
+   Follow [RUNTIME](RUNTIME.md)'s degraded-channel behavior when tools are absent.
+7. Complete one useful bounded Joe-mode pass now: refresh the selected work,
    launch needed roles, and report actual dispatch, blockers, or human waits.
    A layout alone is not an activated team.
 
@@ -112,11 +123,14 @@ Keep routine chatter in role surfaces.
 ## Reconcile and continue
 
 Use Maestro `status`, the Joe owner board, Git/provider state, and actual
-artifacts to reconcile outcomes. Follow [RUNTIME](RUNTIME.md)'s interactive
-boundary: the Project Manager cannot inject worker follow-ups or silently read
-their conversations. When a worker needs human input, identify its exact tab
-and surface. When its result must affect routing, obtain that result through a
-supported channel or the human before claiming it was consumed.
+artifacts to reconcile outcomes. Use the separately installed `/maestro`
+guide for native peer discovery, one fire-and-forget follow-up, and ordinary
+replies when this session participates. The Project Manager cannot inject
+terminal input or silently read worker conversations. A send is not a receipt,
+custody transfer, or task completion; verify the returned evidence and artifacts
+under the selected Joe route. When a worker needs human input, identify its
+exact tab and surface. Missing native tools do not permit route-file inspection
+or a keystroke fallback.
 
 Continue bounded Joe-mode passes while this human conversation remains active.
 Do not promise work between turns or after the session ends. If unattended

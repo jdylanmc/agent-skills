@@ -78,9 +78,14 @@ The [CMUX adapter](../joe-mode-cmux/SKILL.md) is an explicit human-started,
 session-bound presentation of the same Joe controller. It may launch
 interactive Maestro workers only after dedicated account/model readiness passes
 and may arrange only its exact owned CMUX surfaces. It carries no scheduler,
-heartbeat, merge, tracker, or approval authority. Interactive worker follow-up
-belongs to the human's terminal; the adapter must not inject keystrokes or claim
-it consumed unseen worker output.
+heartbeat, merge, tracker, or approval authority. Interactive terminal input
+belongs to the human; participating sessions may coordinate through Maestro's
+separate native `/maestro` discovery/send/reply channel. Registration alone does
+not make a coordinator a messaging recipient. The adapter must not inject
+keystrokes, infer delivery/completion from a send, or claim it consumed unseen
+worker output. Joe and CMUX role placement keeps PM on current `main`,
+Discovery on `discovery/<feat>`, and an explicitly authorized merge coordinator
+on `pr-sniper`; placement itself grants no merge permission.
 
 The [Paseo PM adapter](../joe-mode-paseo/SKILL.md) is an explicit
 human-origin, repository-bound continuation caller for the existing Joe routing
