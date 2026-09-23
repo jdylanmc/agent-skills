@@ -83,6 +83,13 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- Align Joe-mode CMUX with Maestro's native peer messaging and pinned messaging
+  readiness, separating lifecycle ownership from fire-and-forget communication.
+  Preserve the existing PM when it lacks a messaging adapter, human input, and
+  same-pane fallback when the installed lifecycle contract lacks placement.
+  Keep Joe's PM on safely fast-forwarded `main`, Discovery on
+  `discovery/<feat>`, and explicitly authorized merge coordination on
+  `pr-sniper`; never move worker writes onto main.
 - Core Joe defines issue-centered swarms with one delivery home and owner,
   need-based specialists, direct peer handoffs and retained correction history.
   Orca binds participants and isolated writer worktrees to that delivery on the
