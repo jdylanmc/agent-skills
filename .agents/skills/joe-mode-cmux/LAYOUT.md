@@ -6,13 +6,13 @@ workspace for the same repository controller.
 Git placement is separate: the Project Manager stays on `main`, Discovery
 uses `discovery/<feat>`, and an explicitly authorized PR/auto-merge coordinator
 uses `pr-sniper`, under [Joe's worktree contract](../joe-mode/WORKTREES.md).
-Pass the role's exact worktree to Maestro `spawn --cwd`. Shared CMUX pane
+Pass the role's exact worktree to native `maestro_spawn` as `cwd`. Shared CMUX pane
 placement never permits a shared writing checkout.
 
 ```text
 ┌─────────────────────────────┬─────────────────────────────┐
 │ Project Manager             │ Discovery                   │
-│ current human conversation  │ one interactive owner       │
+│ managed human conversation  │ one interactive owner       │
 ├─────────────────────────────┼─────────────────────────────┤
 │ Developers                  │ Support                     │
 │ delivery surfaces as tabs   │ Shepherd/review/tests/logs  │
@@ -58,7 +58,7 @@ no execution state.
 8. Do not close, move, rename, or reuse an unowned surface. A conflicting
    surface blocks that part of the layout and is reported to the human.
 
-Maestro's no-window/no-split rule governs the `spawn` call itself: it creates
+Maestro's no-window/no-split rule governs the `maestro_spawn` call itself: it creates
 the worker beside its actor. Only after [RUNTIME](RUNTIME.md)'s installed
 placement capability passes may this adapter use the returned exact `surfaceId`
 with CMUX `split-off` or `move-surface` inside the same workspace; otherwise

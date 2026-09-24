@@ -51,12 +51,12 @@ local routing sections directly under this adapter's human grant.
    checkout and reconcile remote main using the guarded worktree procedure.
    Read its guidance and current owner board. Never switch or reset a dirty
    delivery checkout to manufacture main placement.
-2. Verify exact caller identity with CMUX, then run the Maestro
-   `launch-settings` preflight from [RUNTIME](RUNTIME.md). Any missing,
-   unavailable, or unpinned setting stops activation before terminal creation.
-3. Register the exact caller workspace and surface as `PM · Joe Mode`, using
-   `md-meditation` (`󱅻`) in teal. Keep the returned controller identity and
-   token private.
+2. Verify exact caller identity and all blocking checks in [RUNTIME](RUNTIME.md):
+   this conversation must already be a managed coordinator with native peer
+   and launch tools. Missing communication blocks activation, not merely layout.
+3. Reuse its exact managed identity; do not register another owner. Present it
+   as `PM · Joe Mode` with `md-meditation` (`󱅻`) in teal only through supported
+   owned metadata operations. Keep control tokens private.
 4. Inspect the existing workspace tree. Reconcile the four areas from
    [LAYOUT](LAYOUT.md) additively when [RUNTIME](RUNTIME.md)'s placement
    capability passes, without creating a new workspace/window, stealing focus,
@@ -64,9 +64,9 @@ local routing sections directly under this adapter's human grant.
    Project Manager and report the degraded layout.
 5. Rename the repository workspace and publish an `active` Joe status only
    after ownership, CMUX identity, and Maestro readiness are verified.
-6. Check this session's native messaging participation separately from launch
-   readiness. Registration does not make the Project Manager a recipient.
-   Follow [RUNTIME](RUNTIME.md)'s degraded-channel behavior when tools are absent.
+6. Verify that the peer tools actually work in this session. Registration does
+   not make the Project Manager a recipient. Do not replace missing native
+   communication with human relay or generic harness helpers.
 7. Complete one useful bounded Joe-mode pass now: refresh the selected work,
    launch needed roles, and report actual dispatch, blockers, or human waits.
    A layout alone is not an activated team.
@@ -80,7 +80,8 @@ supported; otherwise it remains beside the Project Manager. Do not create
 several workers asking competing questions.
 
 Launch developers only for selected non-overlapping delivery assignments.
-Every launch uses Maestro's required pinned settings and a complete first task.
+Every launch uses native `maestro_spawn`, verified parent-account inheritance,
+explicit model selection, and a complete first task.
 When [RUNTIME](RUNTIME.md)'s placement capability is verified, move the
 returned exact surface into the developer pane and stack additional developers
 there as tabs. Otherwise leave workers beside the Project Manager and report
@@ -93,8 +94,8 @@ the Project Manager. Support may also display review, test, log, or preview
 surfaces. Do not create an idle Shepherd merely to fill the pane.
 
 Respect Joe-mode's six developer slots by default and Maestro's stricter
-eight-live-worker workspace bound. Effective developer capacity is the smaller
-of six and `8 - live managed non-developer workers - retained worker
+eight-live-session workspace bound. Effective developer capacity is the smaller
+of six and `8 - live managed non-developer sessions (including PM) - retained
 resources`. Reserve capacity for Discovery, Shepherd, and any required
 interactive reviewer before filling the developer pane. Non-agent test, log,
 and preview surfaces do not consume the Maestro worker bound. Finishing an
@@ -106,6 +107,11 @@ Use Joe-mode's backlog, Discovery, planning, Ship, Patch, Refactor, Roast,
 Verify, and Shepherd routes without duplicating them here. Preserve their human
 decisions, publication gates, independent review, permissions, ownership,
 worktrees, and merge boundaries.
+
+Every nested role retains the Maestro runtime contract, including support and
+blocker investigation. Never substitute an SDK/task agent, even after native
+launch failure. Report truthful prepared/launching/failed states instead of
+counting those assignments as a running visible team.
 
 The cockpit changes presentation, not authority:
 

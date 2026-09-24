@@ -1,228 +1,163 @@
 # Joe-mode CMUX runtime
 
-On macOS, CMUX Maestro supplies interactive Copilot worker tabs and authenticated
-ownership metadata. Its managed native adapter also supplies fire-and-forget
-peer messaging. It does not supply a scheduler, delivery receipts, transcript
-access, or task-completion tracking.
+This adapter consumes CMUX Maestro's public lifecycle and native messaging
+interface. Joe-mode owns repository policy; Maestro owns launching, account
+inheritance, runtime ownership, and transport. Neither implements the other.
 
 ## Framework ownership
 
-- `/cmux-maestro-native:cmux-maestro-orchestrate` owns registration, pinned
-  launch settings, spawn, status, focus, archive, and recovery.
-- The separately installed global `/maestro` guide owns peer discovery and
-  send/reply through `maestro_peers` and `maestro_send`.
-- Joe owns assignments, isolated Git worktrees, artifact acceptance, and
-  review/merge policy. Neither a native message nor CMUX layout replaces them.
+- `/cmux-maestro-native:cmux-maestro-orchestrate` owns managed coordinator
+  startup, child launch, status, focus, archive, and recovery.
+- The separately installed global `/maestro` guide owns native peer discovery
+  and send/reply through `maestro_peers` and `maestro_send`.
+- Managed assignments use `maestro_spawn`, which reads the invoking session's
+  current Copilot account. The adapter never selects credentials or implements
+  account inheritance.
 
-Read those installed guides before using their operations; do not copy or
-replace the adapter, inspect private route bindings, invoke proof fixtures, or
-launch role agents directly with `copilot`/generic harness dispatch instead of
-Maestro. Generic harness task IDs are not Maestro worker or peer addresses.
+Read the current installed guides before using these public operations. Do not
+inspect private bindings, invoke proof fixtures, patch the runtime, or launch
+roles directly with `copilot` or generic harness dispatch. Generic harness task
+IDs are not Maestro worker or peer addresses.
 
-## Required preflight
+## Blocking activation checks
 
-Require:
+Require all of the following before publishing an active Joe cockpit:
 
-- a live CMUX caller with exact `CMUX_WORKSPACE_ID` and `CMUX_SURFACE_ID`;
-- the installed `cmux-maestro-orchestrate` skill;
-- the installed controller at
-  `$HOME/Library/Application Support/CMUXMaestroPreview/Orchestration/bin/cmux-maestro-orchestrator`;
-- `launch-settings` returning `ok`, `accountPinned`, `modelPinned`,
-  `accountAvailable`, `ready`, and `messagingInstalled` as true.
+- Exact `CMUX_WORKSPACE_ID` and `CMUX_SURFACE_ID`, verified through CMUX.
+- This human conversation is already a Maestro-managed coordinator, not merely
+  a registered caller. Its public lifecycle status must match the injected
+  actor ID, exact workspace/surface, interactive execution, and `coordinator`
+  role.
+- Current-session `maestro_peers`, `maestro_send`, and `maestro_spawn` tools.
+  A guide on disk does not establish tool availability.
+- A successful `maestro_identity({})` query matching this managed session and
+  reporting its current verified account. Never replace a failed query with
+  the account named in saved settings.
+- Installed lifecycle guidance documenting `maestro_spawn` and
+  `launch-coordinator`; `launch-settings` reports `ok`, `modelPinned`, and
+  `messagingInstalled` as true. Saved-account `ready`/`accountPinned` fields are
+  legacy metadata, not evidence of the invoking account.
+- PM's actual runtime working directory is the owned clean `main` checkout
+  under [Joe placement](../joe-mode/WORKTREES.md). Running `git -C` or a shell
+  `cd` does not move the invoking conversation.
 
-Stop before creating a terminal when any requirement fails. Never substitute
-the coordinator account, active GitHub CLI account, ambient credentials,
-Copilot defaults, or a hardcoded model.
+Set the public controller path:
 
-`messagingInstalled` proves installation readiness, not this session's
-participation, peer liveness, or delivery. The global `/maestro` guide is
-distributed separately from runtime setup:
+```sh
+CMUX_MAESTRO_ORCHESTRATOR="${CMUX_MAESTRO_ORCHESTRATOR:-$HOME/Library/Application Support/CMUXMaestroPreview/Orchestration/bin/cmux-maestro-orchestrator}"
+"$CMUX_MAESTRO_ORCHESTRATOR" launch-settings
+"$CMUX_MAESTRO_ORCHESTRATOR" status \
+  --actor-id "$CMUX_MAESTRO_WORKER_ID" --token "$CMUX_MAESTRO_CONTROL_TOKEN"
+```
+
+The injected control token stays private. Never put it in tasks, logs, board
+exports, or human-visible output. Do not inspect private route files to replace
+missing status or tools.
+
+Missing checks stop activation before worker creation. Registration alone does
+not make a coordinator a messaging recipient. Do not continue through human
+relay, hidden SDK helpers, or a second PM and call the cockpit operational.
+Direct the human to Maestro's supported new managed-coordinator entry. Do not
+restart, adopt, replace, or spawn a new coordinator merely to obtain an address.
+Starting a new root requires the human's separate direction and preservation of
+this conversation.
+
+If the global guide is missing, report it; this human-run reference installs
+only the guide, not runtime capabilities:
 
 ```sh
 npx skills add jdylanmc/cmux-maestro --skill maestro --agent github-copilot --global --copy
 ```
 
-This is a human-run installation reference, not an activation step. Do not
-install or refresh global skills automatically. If the guide is missing,
-report that dependency for messaging; runtime registration/launch capability
-is not created or removed by installing a guide.
+Do not install or refresh global skills automatically. Resolve stale registered
+skill routes against the target repository's current packages and invocation
+policy; do not run retired archive workflows merely because a tool lists them.
 
-Separately check the placement capability in the installed skill:
+## Launch and retain the runtime contract
 
-```sh
-CMUX_MAESTRO_SKILL="$HOME/Library/Application Support/CMUXMaestroPreview/Copilot/plugin/skills/cmux-maestro-orchestrate/SKILL.md"
-grep -F "owning coordinator may arrange the exact returned worker" \
-  "$CMUX_MAESTRO_SKILL"
+Every role uses `maestro_spawn`: developer, Discovery, test, reviewer,
+Shepherd, blocker investigator, and authorized PR coordinator. Carry
+`runtime: Maestro`, the public guide references, exact owner/workspace, allowed
+effects, and no-fallback constraint into every nested route's assignment.
+Ship, Squadron, or a generic background example cannot change that runtime.
+If it cannot delegate through Maestro, report the affected path as blocked.
+
+Supply a complete bounded first assignment with repository/anchor, role,
+objective, evidence pointers, exact owned `cwd`, constraints, validation,
+expected artifacts, return owner, and stop condition.
+
+```json
+{"name":"Developer - bounded repair","cwd":"/absolute/owned/worktree","task":"Complete bounded assignment and return verifiable evidence."}
 ```
 
-If that clause is absent, workers may still launch beside the Project Manager,
-but do not move their surfaces; report the degraded layout and direct the human
-to a compatible Maestro integration only if one is verified. The established
-main lifecycle guide currently has no such placement clause: expect same-pane
-workers, not four-pane layout by assertion. A matching sentence alone is not
-runtime proof; also verify supported host operations and the current lifecycle
-contract before any move. This optional placement gate does not weaken the
-blocking identity and launch-settings preflight above.
+Pass the role's supported `icon` and `color` from [LAYOUT](LAYOUT.md) on this
+same launch; do not overwrite human appearance choices afterward.
 
-Set the controller path once:
+Discovery uses `discovery/<feat>` and the authorized merge coordinator uses
+`pr-sniper`; PM stays on `main`. Pass each role's actual worktree as `cwd`.
+All roles remain in the existing CMUX workspace.
 
-```sh
-REPOSITORY_ROOT="$(git rev-parse --show-toplevel)" || exit 1
-[ -n "$REPOSITORY_ROOT" ] || exit 1
-CMUX_MAESTRO_ORCHESTRATOR="${CMUX_MAESTRO_ORCHESTRATOR:-$HOME/Library/Application Support/CMUXMaestroPreview/Orchestration/bin/cmux-maestro-orchestrator}"
-"$CMUX_MAESTRO_ORCHESTRATOR" launch-settings
-```
+The runtime verifies the invoking Copilot account for each launch. Never
+substitute saved settings, an active GitHub CLI account, repository identity,
+ambient credentials, or a hardcoded model. Missing account/API evidence fails
+before terminal creation. Explicit model selection remains separate.
 
-Stop if the repository root cannot be resolved; never pass an empty `--cwd`.
-The installed CMUX Maestro integration is currently a macOS prerequisite.
+Add no tool grants by default. Pass only authorized `allowTools` and `denyTools`
+rules. Native `yolo: true` is the explicit human-approved coordinator-only
+equivalent of legacy `spawn --yolo`, preserving denies. It is never a default,
+inferred permission inheritance, or a fix for a prompt. Worker actors cannot
+request YOLO for descendants.
 
-The Project Manager's `REPOSITORY_ROOT` must be the verified owned `main`
-worktree from [Joe placement](../joe-mode/WORKTREES.md). Every Discovery
-assignment instead uses its own `discovery/<feat>` worktree; a requested
-authorized PR coordinator uses `pr-sniper`. Pass each role's actual worktree
-as spawn `--cwd`, never the Project Manager's path by inheritance. This does
-not move roles into another CMUX workspace.
+Record the exact returned worker/session/surface/generation and launch result.
+A supervisor acknowledgement does not prove provider startup or adapter
+attachment. `messaging: configured` is not messaging readiness. Reconcile
+public lifecycle status, exact host surface ownership, actual native
+participation, and assignment artifacts separately. Prepared worktrees,
+SDK task IDs, labels, idle state, and failed tabs are not running agents.
 
-Register the current human conversation as Project Manager:
+On an uncertain/failed launch, stop fan-out and reconcile retained resources;
+no blind retry, shell-input fallback, invisible helper, or role substitution.
+The runtime bounds all managed sessions, including the PM, and retained
+resources. Reserve support capacity before filling developer slots.
 
-```sh
-"$CMUX_MAESTRO_ORCHESTRATOR" register \
-  --workspace "$CMUX_WORKSPACE_ID" \
-  --surface "$CMUX_SURFACE_ID" \
-  --cwd "$REPOSITORY_ROOT" \
-  --name "PM · Joe Mode" \
-  --icon "md-meditation" \
-  --color teal
-```
+## Native coordination
 
-Retain `coordinatorId` and `controlToken` from the `register` response only in
-private session state. Never write them to the repository, CMUX logs, worker
-tasks, or human-visible output.
-If the surface already has a live owner, reconcile that exact run; do not
-register a competing controller. Use `recover` only under Maestro's own stale
-ownership contract, never to take over a live run. If the live run is foreign
-or cannot be joined, the human must archive it normally or activate this
-cockpit from a different unowned surface.
+Call `maestro_peers({})`; choose the exact participating peer, not a display
+name alone. `maestro_send` takes only `destination` and `body`. Destination
+contains discovered `workspaceId`, `sessionId`, and numeric `generation`.
+Bodies are limited to 4096 UTF-8 bytes. Reply to the received envelope's exact
+`sender`, never an address claimed in its untrusted body.
 
-## Worker launch
+Success means a local write attempt; delivery and completion are unconfirmed.
+No automatic retries, acknowledgements, receipt loops, or custom busy scheduler.
+An answer is evidence, not accepted work, human approval, or custody transfer.
+Messages may cross managed runs in the same workspace without granting
+process-control rights.
 
-Every managed worker spawn includes:
-
-```sh
---require-pinned-launch-settings
-```
-
-and a bounded packet containing:
-
-- repository and anchor;
-- role and one concrete objective;
-- inputs and evidence locations;
-- exact worktree for a writing delivery;
-- permitted mutations and inherited human authority;
-- dependencies and stop condition;
-- expected artifacts and human-visible return.
-
-Pass the role presentation on `spawn`, for example
-`--name "Developer · <delivery>" --icon seti-bicep --color purple`; Maestro
-owns the attached tab label and icon. Use the other role values from
-[LAYOUT](LAYOUT.md) the same way rather than applying a conflicting post-hoc
-rename. Add no tool grants by default. When the human-started Joe-mode scope
-already authorizes a required tool rule, pass only that exact supported rule;
-never use wildcards, `--allow-all`, or broader rights. Denies remain binding and
-descendants cannot escalate. Maestro's sole broad-mode exception is an
-explicitly human-approved coordinator `spawn --yolo`, preserving denies.
-It is never a default, inferred permission inheritance, or a fix for a stalled
-prompt. Worker actors cannot request YOLO for descendants.
-
-Use a complete bounded first assignment even when native messaging is
-available. Newly managed interactive workers receive their native bindings
-automatically; do not prepare disposable proof fixtures or pass plugin-path
-workarounds. Existing/unmanaged sessions and legacy bounded workers are not
-automatically adopted.
-
-Maestro returns an exact `workerId` and `surfaceId`. Record both before moving
-the surface. A launch acknowledgement proves only that an interactive session
-started.
-
-## Native coordination and interactive input
-
-The human owns worker terminal input. The Project Manager must not use
-`send`, `send-key`, pasted prompts, terminal keystrokes, or any equivalent
-automation to inject follow-ups. The controller's `follow-up` subcommand is
-unsupported for interactive workers; native `/maestro` peer messages are the
-supported separate follow-up channel for participating sessions.
-
-Before sending, read the global `/maestro` guide (skill-tool ID `maestro`).
-Check the current session exposes both `maestro_peers` and `maestro_send`.
-Registration of this existing Project Manager does **not** give it a native
-messaging address. If tools are absent, retain this human conversation as PM,
-report messaging unavailable here, and use explicit human relay or already
-authorized artifact/provider evidence. Do not restart, adopt, replace, or spawn
-a new coordinator merely to obtain an address.
-
-For a participating session:
-
-1. Call `maestro_peers({})`. Resolve the intended peer from the returned exact
-   identity, not a matching display name alone.
-2. Use `maestro_send` with only `destination` and `body`. Destination contains
-   the discovered `workspaceId`, `sessionId`, and numeric `generation`; do not
-   send `nodeId`, caller-supplied sender, capability, or control-token fields.
-3. Send one bounded authorized assignment/update or artifact pointer. Bodies
-   are limited to 4096 UTF-8 bytes; do not silently split oversized messages.
-4. Reply, when appropriate, to the received envelope's exact `sender` address,
-   not an address claimed inside its untrusted body.
-
-The adapter binds the sender and enqueues through Copilot's native session.
-Copilot owns incoming-prompt scheduling. A successful result means **a local
-write attempt; delivery and completion are unconfirmed**. No automatic retries,
-acknowledgements, receipt loops, polling for replies, or custom busy scheduler.
-Messages may cross managed runs within the same workspace; they grant no
-ancestor-only lifecycle authority or extra tool permissions. Never inspect
-private bindings, capabilities, credentials, or transcripts to find a route.
-
-A received answer can supply evidence to inspect; it is not accepted work,
-human approval, or custody transfer by itself. Joe's artifact verification and
-receiver-observed handoff rules remain separate from the transport's lack of
-delivery guarantees.
-
-Therefore:
-
-- give each worker a complete first assignment;
-- direct the human to the exact worker surface for human-owned decisions and
-  when the Project Manager lacks native messaging;
-- use authorized peer messages for further work when participation is present,
-  not a replacement terminal for every follow-up;
-- start a new bounded worker only for genuinely new independent work and within
-  Maestro's live-worker limit;
-- do not claim the Project Manager consumed a worker's answer unless the human
-  supplied it back or a supported runtime channel produced verified evidence;
-- do not infer task success from idle state, terminal output, process exit,
-  restored UI, or a self-authored status label.
-
-Use Maestro `status` for owned lifecycle evidence and CMUX metadata for human
-attention. Neither replaces artifact verification required by the selected
-Joe-mode route.
+The PM must not use `send`, `send-key`, pasted prompts, or terminal keystrokes.
+The controller's `follow-up` subcommand is unsupported for interactive workers.
+Use the existing native channel, not a replacement terminal for each follow-up.
+Do not silently read worker conversations or claim to have received an answer
+without an actual supported message or authorized artifact.
 
 Messaging is independent of visual focus, app activation, and sidebar
-visibility. Do not select an app/workspace or inspect/alter a composer to send.
+visibility. Preserve human typing and drafts.
 
-## Session lifecycle
+## Optional layout and lifecycle
+
+The established lifecycle guide does not authorize arbitrary pane placement.
+Same-pane tabs are an honest degraded layout, unlike missing communication.
+Only when the installed guide explicitly permits owner-controlled moves, and
+the actual host operations are verified, may [LAYOUT](LAYOUT.md) arrange exact
+owned surfaces. A matching sentence alone is not runtime proof; do not patch
+the guide to manufacture permission.
 
 This adapter has no cron, heartbeat, recurring wake, or unattended pass.
-Returning a final answer ends active Project Manager execution until the human
-continues the conversation.
+Native incoming messages may initiate further CLI turns, but do not promise
+periodic execution or supervision after runtime loss.
 
-On pause, stop new dispatch and preserve the owner board, exact surfaces,
-worktrees, pull requests, pending questions, and continuing Shepherd duties.
-On stop, close interactive sessions normally. Archive the Maestro run only
-after all interactive sessions and supervisors have ended; archive must be
-allowed to refuse while resources remain live. Never kill a worker, delete a
-terminal, or erase a worktree merely to clear the cockpit.
-
+On pause, stop new dispatch and preserve owners, exact surfaces, worktrees,
+PRs, and pending questions. Close sessions normally before archive. Do not
+kill agents, delete terminals, or erase worktrees to clear the cockpit.
 The proposed Roster/Stage exit-and-close UX is not an installed lifecycle
-command. Do not infer it from a prototype, or treat native adapter shutdown as
-provider-session exit. Stopping this mode stops dispatch; existing human
-sessions and retained work remain protected.
-
-Restored CMUX panes are visual continuity only. Reconcile live Maestro, Git,
-provider, and owner-board evidence before resuming work.
+command. Restored CMUX panes are visual continuity only.

@@ -48,7 +48,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [handoff](../handoff/SKILL.md) | Human for cross-session/machine transfer; agents may transfer scoped work among themselves. |
 | [interrogate](../interrogate/SKILL.md) | Internal to Discovery or Joe-mode only. |
 | [joe-mode](../joe-mode/SKILL.md) | Human-only activation; one controller per repository, never nested. |
-| [joe-mode-cmux](../joe-mode-cmux/SKILL.md) | Human-only session adapter for the existing Joe controller. Uses the caller's CMUX workspace and pinned Maestro worker settings; no scheduler, heartbeat, or unattended execution. |
+| [joe-mode-cmux](../joe-mode-cmux/SKILL.md) | Human-only adapter from a Maestro-managed coordinator. Uses public native launch/messaging and the invoking account; all roles stay visible. No scheduler or hidden-agent fallback. |
 | [joe-mode-orca](../joe-mode-orca/SKILL.md) | Human activation/management; native Orca Runs, Tasks and supervised workers under one repository controller. Explicitly authorized automations enter bounded RUN only after ownership and workspace gates. Human merges unless a separately requested PR coordinator holds the repository merge grant. |
 | [joe-mode-paseo](../joe-mode-paseo/SKILL.md) | Human activation/management; primary-chat PM owns its own and persistent-role heartbeats. Matching wake enters RUN, not intake. One repository controller, six developer slots by default. Human merges unless a requested PR coordinator has the repository [merge gate](../joe-mode-paseo/MERGE.md). No merge authority for implementers, Shepherd or session Joe. |
 | [migration](../migration/SKILL.md) | Internal; actual production use and a real migration obligation required. |
@@ -76,7 +76,8 @@ machine-start session Joe-mode or inherit authority merely from their names.
 
 The [CMUX adapter](../joe-mode-cmux/SKILL.md) is an explicit human-started,
 session-bound presentation of the same Joe controller. It may launch
-interactive Maestro workers only after dedicated account/model readiness passes
+interactive Maestro workers only from a messaging-enabled managed coordinator
+through native account-inheriting launch, with explicit model selection,
 and may arrange only its exact owned CMUX surfaces. It carries no scheduler,
 heartbeat, merge, tracker, or approval authority. Interactive terminal input
 belongs to the human; participating sessions may coordinate through Maestro's
@@ -86,6 +87,9 @@ keystrokes, infer delivery/completion from a send, or claim it consumed unseen
 worker output. Joe and CMUX role placement keeps PM on current `main`,
 Discovery on `discovery/<feat>`, and an explicitly authorized merge coordinator
 on `pr-sniper`; placement itself grants no merge permission.
+Missing communication blocks activation. Propagate the runtime contract through
+all nested role routes; generic harness examples never authorize fallback.
+Joe core remains runtime-independent; only the CMUX adapter depends on Maestro.
 
 The [Paseo PM adapter](../joe-mode-paseo/SKILL.md) is an explicit
 human-origin, repository-bound continuation caller for the existing Joe routing

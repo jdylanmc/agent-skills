@@ -89,7 +89,8 @@ authority, leave final merging to the human.
 
 ## CMUX adaptation
 
-Pass each worker's exact Git worktree through Maestro `spawn --cwd`.
+Pass each worker's exact Git worktree through the active adapter's public
+launch interface; the CMUX adapter supplies native launch `cwd`.
 All cockpit roles remain in the existing CMUX workspace; a Discovery Git
 worktree does not mean a second CMUX workspace. Keep the Project Manager's
 existing surface, with its working directory verified as main. Native messaging
