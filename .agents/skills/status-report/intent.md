@@ -30,6 +30,14 @@ The report is on demand and read-only. It may inspect existing progress and
 runtime information to describe the work, but it does not change tickets,
 direct subagents, or advance the underlying task.
 
+If the agent's last turn actually crashed (a model/provider error, an
+exhausted retry, a disconnect), the report must say so plainly, up front, and
+must not describe that gap as ongoing elapsed work. A user asking for a
+status report after walking away needs to learn the agent silently stopped
+and is waiting on them, not get a snapshot that reads as if things were still
+progressing. This report does not restart anything itself; it exists so the
+human notices the stall instead of assuming the agent is still going.
+
 Use observable timing and activity to make how long the agent has been
 churning understandable. If a time, count, assignment, or ticket title cannot
 be established, explicitly mark that information unavailable rather than

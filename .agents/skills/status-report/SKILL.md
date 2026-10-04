@@ -34,6 +34,29 @@ only with evidence the objective began then. Label an unestablished start or
 cutoff unavailable. A known later observation may yield a labeled lower bound,
 never an invented exact duration.
 
+## Detect a halted turn
+
+Before inspecting history, check whether the objective-owning agent's most
+recent recorded turn ended in a runtime or model failure (an exhausted retry,
+a disconnect, a terminal provider error, or any other abnormal stop) rather
+than a normal completion or a healthy idle/waiting state. A failed last turn
+means no further turn ran afterward; the objective stopped advancing at that
+point and will not resume without a new human or controller turn. This is
+distinct from idle-but-healthy, waiting-on-a-dependency, or Joe-mode's own
+queued continuation, none of which are failures.
+
+When the owning agent's last recorded turn is a failure, report that first and
+plainly: the failure's error class and timestamp, that execution stopped
+there, and that resuming requires a new turn the reporter does not start. Set
+the snapshot cutoff to the failure time, not the report time, and do not
+describe elapsed time or "in progress" work as though the agent kept working
+through a gap where no turn ran.
+
+Absence of a visible failure event is not proof of health when event
+visibility is partial; label execution state unverified rather than asserting
+the agent is actively running. This check never resumes the task; it exists
+only so a stalled objective is never reported as live, ongoing progress.
+
 ## Inspect once, within scope
 
 Read existing progress records and minimum live evidence to distinguish
@@ -65,6 +88,8 @@ Use the human's vocabulary; expand unfamiliar acronyms on first use. Start with
 the objective in no more than three sentences, then short completed/remaining
 bullets. Include:
 
+- **Execution state:** running, idle, halted-by-failure (with error class and
+  timestamp), or unverified; lead with this when halted.
 - **Snapshot / elapsed:** timestamp and objective duration, or explicit limits.
 - **Completed / remaining:** concrete outcomes, blockers, and pending decisions.
 - **Tool calls:** this agent's objective-only count and coverage.

@@ -187,6 +187,13 @@ have tagged releases. Current cleanup is tracked in
 
 ### Fixed
 
+- `status-report`: detect when the objective-owning agent's last recorded turn
+  ended in a runtime/model failure (exhausted retries, disconnect, terminal
+  provider error) instead of a normal completion or healthy idle state, and
+  report that halt plainly and first, with error class, timestamp, and that
+  resuming needs a new human/controller turn. Previously a crashed turn and a
+  healthy idle agent looked the same in the snapshot, so a user could read a
+  report taken after a silent stall as if work were still progressing.
 - Require a messaging-enabled Maestro coordinator for `joe-mode-cmux`, use
   session-account-inheriting native child launch, and retain the visible
   runtime through every nested role. Block failed activation instead of
