@@ -187,6 +187,10 @@ have tagged releases. Current cleanup is tracked in
 
 ### Fixed
 
+- `status-report`: distinguish a failed last turn from normal completion or
+  healthy idle. Lead with the error and time, set the cutoff to the failure,
+  and say a new human/controller turn is needed. Mark partial event history
+  unverified; do not imply work continued after failure.
 - Require a messaging-enabled Maestro coordinator for `joe-mode-cmux`, use
   session-account-inheriting native child launch, and retain the visible
   runtime through every nested role. Block failed activation instead of

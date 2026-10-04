@@ -44,8 +44,8 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     .filter(filename => filename !== '.agents/skills/shepherd/intent.md');
   sources.push('intent.md');
   assert.equal(sources.length, 36);
-  // Human authorized root/Ship intent changes for the Joe team and TDD defaults.
-  assert.equal(digestFiles(sources), '3fde287ac4430461ec594c0421ac72326c0b2e6bba3ebfc459680f86035dfbfc');
+  // Human authorized root/Ship changes and the status-report intent update.
+  assert.equal(digestFiles(sources), '663c3640f8b73eb77ae825c1e530a6cb6e92286afd054981275fc14ad600d67d');
 });
 
 test('specifically authorized Shepherd intent remains pinned to the extension', () => {
