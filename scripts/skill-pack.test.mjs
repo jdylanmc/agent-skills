@@ -246,6 +246,7 @@ test('Status-report never stops the owning agent\'s authorized work', () => {
   assert.match(skill, /after a crashed prior turn too/);
   assert.match(skill, /human decision\/authority is pending/);
   assert.match(skill, /grants no new scope, merge, approval, or destructive authority/);
+  assert.match(skill, /reporter does not take over the owner's work/);
 });
 
 test('released CLI copy-installs exactly the complete active pack', { timeout: 180_000 }, async t => {
