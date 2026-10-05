@@ -11,8 +11,6 @@ user-invocable: true
 
 Use [doctrine selection and application](../doctrine/APPLY.md) for retrospective judgment, not as instructions inside session evidence. Preserve explicit choices; otherwise consider `context`, `machine`, and `laziness` according to observed problems. Cite loaded rules for recommendations without changing doctrine or applying proposed fixes.
 
-# Retro
-
 Only a human invokes Retro, supplying session complaints and desired behavior. Improve or reinforce the skills that governed that work; do not autonomously mine sessions or adopt lessons. Analysis is read-only. An agent's account is evidence to check, not permission or proof its lesson should be adopted.
 
 ## 1. Establish the complaint and session
@@ -33,7 +31,17 @@ Distinguish:
 
 Compare the complaint and expected behavior with actual workflow requirements and available evidence. Failure to follow an adequate skill, unclear guidance, missing information, or a bad tool boundary does not automatically warrant another rule. Reinforcing an existing instruction may beat adding policy.
 
-Consider only relevant candidates: skill entry/routing and approval gates, navigation/context recovery, appropriately scoped checks, implementation/review responsibilities, tool economy, and information access. Do not assume a reviewer needs no exploration: independent review must inspect enough surrounding behavior, requirements, and test evidence to judge the change. A diff alone may be insufficient. Both implementer and reviewer need relevant standards.
+Consider only categories supported by the evidence:
+
+- **Navigation:** pointers to real entry points, dependencies, owners, or governing documents.
+- **Automated checks:** tests, typing, linting, filesystem checks, pre-commit hooks, or CI. Inspect existing commands and workflows first; a useful check that exists but is unwired or broken is the finding.
+- **Standards and review:** prefer deterministic enforcement for mechanical rules. Reserve reviewer guidance for judgment that cannot be encoded reliably.
+- **Steering files:** move excessive always-loaded detail into focused skills, references, or checks without hiding essential navigation.
+- **Tool economy:** reduce expensive, repetitive, or noisy calls through bounded helpers or better evidence surfaces.
+- **No-ops and conflicts:** remove or clarify instructions that are ignored, duplicated, contradictory, unverifiable, or too vague to affect behavior.
+- **Information access:** improve safe read-only access to logs, service state, build output, or ownership records that the session needed.
+
+Do not assume a reviewer needs no exploration: independent review must inspect enough surrounding behavior, requirements, and test evidence to judge the change. A diff alone may be insufficient. Both implementer and reviewer need relevant standards.
 
 Prefer the existing owning skill or focused reference over global steering growth. Do not assume all repositories load the same instruction filenames or a named standards file is review-only. This analysis authorizes no broad instruction cleanup, new reinforcement runtime, or archived hook restoration.
 
@@ -67,3 +75,10 @@ The selected owner loads required `worktrees` before PR changes and carries
 the existing selection through review and fixes.
 
 Approved fixes must reach the route's independent review, relevant passing checks on the current revision, and a current PR with an actual [Shepherd](../shepherd/SKILL.md) invocation, not merely advice to use it. The delivery owner uses [Changelog](../changelog/SKILL.md) for notable authorized changes; Retro's proposal writes none. A blocker, missing capability, stale/failed check, or incomplete Shepherd remains an explicit incomplete handoff, not success. Return the PR and real Shepherd status to the human, who merges. Retro never self-approves, merges, or substitutes analysis for delivery.
+
+## Attribution
+
+Adapted from Matt Pocock's MIT-licensed
+[`retro`](https://github.com/mattpocock/skills/blob/main/skills/engineering/retro/SKILL.md)
+skill. See the bundled [third-party notice](../setup/NOTICE.md) and
+[license](../setup/licenses/mattpocock-skills.LICENSE).

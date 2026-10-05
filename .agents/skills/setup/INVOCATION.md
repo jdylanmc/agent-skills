@@ -40,6 +40,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [caveman](../caveman/SKILL.md) | Human-only session mode. Shared commit and worker-message styles do not activate it. |
 | [changelog](../changelog/SKILL.md) | Internal; every modifying agent consults the same curation helper. |
 | [chart-a-course](../chart-a-course/SKILL.md) | Both; read-only critical task paths, missing work, and research spikes. Recommends targeted Discovery; the caller owns execution. |
+| [create-pull-request](../create-pull-request/SKILL.md) | Both; generic PR-publication fallback only when no repository-specific skill or active delivery owner applies. |
 | [discovery](../discovery/SKILL.md) | Both; material unknowns, with alignment and experiment/write gates. |
 | [doctrine](../doctrine/SKILL.md) | Both; catalog, selection, and verified loading, never approval. |
 | [domain-modeling](../domain-modeling/SKILL.md) | Internal; authorized domain work and separately agreed recording. |

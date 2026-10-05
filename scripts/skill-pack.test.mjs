@@ -9,13 +9,15 @@ import { test } from 'node:test';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const installSource = process.env.SKILLS_PACK_SOURCE ?? root;
 const expected = [
-  'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts',
+  'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts', 'create-pull-request',
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
   'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'specify',
   'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what',
 ];
-const originalNames = expected.filter(name => !['chart-a-course', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo'].includes(name));
+const originalNames = expected.filter(name => ![
+  'chart-a-course', 'create-pull-request', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo',
+].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
 // Changes require explicit human authorization, not automatic fixture regeneration.
@@ -120,7 +122,7 @@ test('original repository and upstream license bytes remain intact', () => {
   const sources = files(path.join(root, 'licenses'))
     .map(filename => path.relative(root, filename).split(path.sep).join('/'));
   sources.push('LICENSE');
-  assert.equal(digestFiles(sources), '48afabe4dc4874b94cd72f6bca7cffc8d31a6aeb84102af0ad91244d8f123636');
+  assert.equal(digestFiles(sources), 'b28dac41bd7cf160bce427a7b6b28ebd6547a7a0c485a3cc56490113677e7064');
 });
 
 function files(directory) {
@@ -220,6 +222,17 @@ test('Chart-a-course is a portable, human- and model-invocable local package', (
   assertPortable(directory);
 });
 
+test('Create-pull-request is the model-invocable generic fallback', () => {
+  const skill = readFileSync(path.join(root, '.agents/skills/create-pull-request/SKILL.md'), 'utf8');
+  const metadata = skill.split('---\n')[1];
+  assert.match(metadata, /^name: create-pull-request$/m);
+  assert.match(metadata, /^disable-model-invocation: false$/m);
+  assert.match(metadata, /^user-invocable: true$/m);
+  assert.match(metadata, /fallback/i);
+  assert.match(metadata, /repository-specific/i);
+  assert.match(skill, /active delivery (?:workflow|owner)/i);
+});
+
 test('released CLI copy-installs exactly the complete active pack', { timeout: 180_000 }, async t => {
   assert.ok(installSource.trim(), 'SKILLS_PACK_SOURCE must not be empty');
   const sandbox = path.join(root, '.test-sandbox');
@@ -243,7 +256,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     install();
     const installed = path.join(consumer, '.agents/skills');
-    await t.test('all 36 active names, no archive', () => {
+    await t.test('all 37 active names, no archive', () => {
       assert.deepEqual(readdirSync(installed).sort(), expected);
     });
     await t.test('installation writes only project skill files and installer lock, not Setup outputs', () => {
@@ -309,6 +322,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
       for (const name of [
         'LICENSE', 'NOTICE.md', 'INVOCATION.md', 'COMMIT-STYLE.md',
         'provenance/skills-lock.json', 'licenses/caveman.LICENSE',
+        'licenses/humanlayer-skills.LICENSE',
         'licenses/caveman.LICENSING.md', 'licenses/mattpocock-skills.LICENSE',
         'licenses/superpowers.LICENSE', 'licenses/anthropic-skills.LICENSE',
       ]) {

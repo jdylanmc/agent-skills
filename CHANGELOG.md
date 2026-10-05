@@ -9,6 +9,11 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `create-pull-request`: model-invocable generic PR-publication fallback when
+  no repository-specific skill or active delivery owner applies. Produce a
+  concise visual summary, concrete evidence and merge-risk notes, then verify
+  provider readback without approving or merging. Adapted from Matt Pocock's
+  `pr` and its credited HumanLayer `show-me` source.
 - `joe-mode-orca`: opt-in native Orca team coordination through the existing
   Joe workflows, with supervised workers, capacity accounting, one Discovery
   lane and shared Shepherd. Reconcile repository ownership across adapters;
@@ -83,6 +88,9 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- `retro`: attribute and align the human-only retrospective with Matt Pocock's
+  upstream environment-improvement categories while preserving evidence,
+  exact-approval and reviewed-delivery gates.
 - Align Joe-mode CMUX with Maestro's native peer messaging and pinned messaging
   readiness, separating lifecycle ownership from fire-and-forget communication.
   Preserve the existing PM when it lacks a messaging adapter, human input, and
