@@ -53,13 +53,6 @@ This is library-local; do not change global Copilot configuration.
   were preselected. Code Roast requires `solid`; every authorized PR-producing
   workflow requires `worktrees`, including documentation-only changes.
 
-## Archive
-
-`archive/atomic-v1/` is a historical snapshot, not an active skill library.
-Do not route to its skills, run its hooks or validators, or apply its archived
-instructions to new work. Consult it only when the task needs historical context.
-Its old repository instructions are preserved as `AGENTS.original.md`.
-
 ## Validation and local files
 
 Run `node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs`
