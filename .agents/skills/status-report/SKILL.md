@@ -11,9 +11,9 @@ user-invocable: true
 under the [invocation contract](../setup/INVOCATION.md). No other automatic
 invocation. Preserve the original [intent](intent.md).
 
-Produce one read-only snapshot. Do not change tickets, files, assignments,
-agents, or task state, or advance the work. The caller may display it and resume
-its workflow; the reporter never starts a loop. Preserve relevant
+Produce one read-only snapshot. The snapshot itself does not change tickets,
+files, assignments, agents, or task state, or advance the work. The reporter
+never starts a new loop, objective, or scope. Preserve relevant
 [doctrine context](../doctrine/APPLY.md) without adding recording or
 source-loading ceremony merely to report status.
 
@@ -42,12 +42,26 @@ normally, or leave the agent healthy but idle/waiting? Do not mistake healthy
 idle, dependency waits, or Joe-mode's queued continuation for failure.
 
 If the latest turn failed, lead with the error class and time. Say work stopped
-and needs a new human/controller turn. Set the snapshot cutoff to the failure,
-not report time. Do not imply work continued after the failure.
+at the failure; set the snapshot cutoff there, not at report time. Do not imply
+work continued during the gap.
 
 Missing failure evidence does not prove the agent is running. If event history
-is partial, mark execution state **unverified**. Report only; never resume the
-task.
+is partial, mark execution state **unverified**.
+
+## Never stop the work
+
+A report is an interruption, not a stop. When the report runs in the session
+that owns an already-authorized objective, deliver the snapshot, then resume
+the next verified in-scope action of that objective in the same turn. This
+applies after a crashed prior turn too: report the crash, then resume. Do not
+end the turn, ask whether to continue, or wait for another prompt.
+
+Stay stopped only when the human explicitly asked to pause or stop (including
+"status only"), or a human decision/authority is pending; name that blocker.
+Resumption grants no new scope, merge, approval, or destructive authority.
+A separate reporter worker or Joe-mode's cycle report returns the snapshot to
+its caller, which continues its own workflow; the reporter does not take over
+the owner's work.
 
 ## Inspect once, within scope
 

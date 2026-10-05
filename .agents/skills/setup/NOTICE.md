@@ -133,8 +133,8 @@ and adapted subject-grounding/explanation guidance. It uses the repository MIT
 license, has no upstream installer record, and does not restore the archived
 atomic framework, recording, or structural-checker machinery.
 
-`status-report` is restored locally from its unchanged archived intent, with
-a new single-snapshot workflow and Joe-mode's approved event callers. It uses
+`status-report` is restored locally from its archived intent, updated with the
+operator-authorized never-stop change, with a new single-snapshot workflow and Joe-mode's approved event callers. It uses
 the repository MIT license, has no upstream installer record, and does not
 restore archived recording or orchestration machinery.
 

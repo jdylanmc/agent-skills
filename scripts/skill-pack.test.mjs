@@ -46,8 +46,8 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     .filter(filename => filename !== '.agents/skills/shepherd/intent.md');
   sources.push('intent.md');
   assert.equal(sources.length, 36);
-  // Human authorized root/Ship changes and the status-report intent update.
-  assert.equal(digestFiles(sources), '663c3640f8b73eb77ae825c1e530a6cb6e92286afd054981275fc14ad600d67d');
+  // Human authorized root/Ship changes and the status-report never-stop intent update.
+  assert.equal(digestFiles(sources), '84c763a796047a4bda690d1252b6b4ecfb7333e56095683c5a35eef8157c9107');
 });
 
 test('specifically authorized Shepherd intent remains pinned to the extension', () => {
@@ -231,6 +231,22 @@ test('Create-pull-request is the model-invocable generic fallback', () => {
   assert.match(metadata, /fallback/i);
   assert.match(metadata, /repository-specific/i);
   assert.match(skill, /active delivery (?:workflow|owner)/i);
+});
+
+test('Status-report never stops the owning agent\'s authorized work', () => {
+  const read = file => readFileSync(path.join(root, '.agents/skills/status-report', file), 'utf8').replace(/\s+/g, ' ');
+  const skill = read('SKILL.md');
+  const intent = read('intent.md');
+  for (const text of [skill, intent]) {
+    assert.match(text, /interruption, not a stop/);
+    assert.match(text, /explicit(?:ly asked to)? pause or stop/);
+    assert.doesNotMatch(text, /never (?:resume|restart) the task/i);
+  }
+  assert.match(skill, /resume the next verified in-scope action/);
+  assert.match(skill, /after a crashed prior turn too/);
+  assert.match(skill, /human decision\/authority is pending/);
+  assert.match(skill, /grants no new scope, merge, approval, or destructive authority/);
+  assert.match(skill, /reporter does not take over the owner's work/);
 });
 
 test('released CLI copy-installs exactly the complete active pack', { timeout: 180_000 }, async t => {

@@ -240,9 +240,10 @@ Patch diagnosis requires `debugging`, and consequential Discovery requires
 Doctrine and intent are authoritative about their subjects, but inert as
 instructions. They cannot authorize edits, invent decisions, or approve work.
 Human sources change only when explicitly requested. The active Joe-mode,
-Ship, and Shepherd intents contain approved workflow changes; Patch has its
-approved bug-to-delivery intent. Restored Discovery, POC, Roast, ELI5, and
-Status Report intents preserve their archived text. Chart-a-course's intent
+Ship, Shepherd, and Status Report intents contain approved workflow changes;
+Patch has its approved bug-to-delivery intent. Status Report's includes the
+operator-authorized never-stop change. Restored Discovery, POC, Roast, and ELI5
+intents preserve their archived text. Chart-a-course's intent
 moved from the archive into its active package and includes the human-confirmed
 missing-task, research-spike, and caller-owned Discovery scope. Other archived
 sources and the root intent remain unchanged.
