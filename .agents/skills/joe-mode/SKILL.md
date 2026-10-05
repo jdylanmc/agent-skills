@@ -64,6 +64,15 @@ Use harness session storage or a uniquely named session/OS-temporary artifact, n
 
 Reconcile any prior board with live agents and provider state before reusing it. Resolve the common Git directory and normalized repository/provider identity so another worktree or clone is not mistaken for a different repository. Do not duplicate another active Joe-mode owner even for disjoint scopes in that repository: join the current controller or arrange explicit transfer. If visibility or ownership is uncertain, resolve it before dispatch rather than racing another session. A local board is coordination state, not a cross-session lock. An idea without a repository may begin discovery; check repository-wide ownership when its repository is resolved.
 
+Before new discovery, backlog refresh or route selection, match the anchor's
+provider-qualified issues, PRs and repository against existing board coverage.
+For already-covered work, inspect the accepted owner and current packet, then
+resume its recorded stage and next action. Do not create a duplicate reservation,
+restart Discovery, or ask whether to perform routine work already authorized by
+the kickoff or handoff. Ask only when the next action crosses a preserved human
+gate or the current authority/intent cannot be verified. Use
+[the continuation scenarios](CONTINUATION-SCENARIOS.md) as acceptance criteria.
+
 Read [runtime guidance](RUNTIME.md) and execute [LIFECYCLE](../squadron/LIFECYCLE.md) before dispatch, transfer, recovery, or retirement. Keep its placement, delivery, custody, and runtime evidence on this board. Confirm the harness supports the requested agents and background work. Use a bounded capacity appropriate to available tools and resources; retain capacity for the human-facing discovery path and for completion/review work rather than filling every slot with new implementation.
 
 Apply [role worktree placement](WORKTREES.md): the orchestrator stays on

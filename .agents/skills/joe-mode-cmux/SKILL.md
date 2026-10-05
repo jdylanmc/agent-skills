@@ -138,6 +138,13 @@ under the selected Joe route. When a worker needs human input, identify its
 exact tab and surface. Missing native tools do not permit route-file inspection
 or a keystroke fallback.
 
+Before backlog discovery or another launch, match named issues and PRs against
+existing board coverage and accepted workers. Reuse the current route and
+perform its verified in-authority next action without asking whether to proceed.
+Do not create a replacement tab for already-owned work. Apply the core
+[continuation scenarios](../joe-mode/CONTINUATION-SCENARIOS.md); unknown
+ownership blocks competing writes and preserved human gates still wait.
+
 Continue bounded Joe-mode passes while this human conversation remains active.
 Do not promise work between turns or after the session ends. If unattended
 recurring operation is requested, stop and offer the separately authorized

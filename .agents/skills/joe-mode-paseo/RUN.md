@@ -51,7 +51,14 @@ cleanup path and existing authority to record its actual result.
    Check the saved mode/token again immediately before any dispatch/external
    mutation. A pause racing an issued operation requires reconciliation; do not promise atomic cancellation across local state and external APIs.
 
-3. **Observe current relevant state.** Consume compact timestamped role reports; delegate deep investigation rather than load every transcript/diff into PM.
+3. **Observe current relevant state.** Before backlog discovery, match the
+   anchor's provider-qualified issues and PRs against board coverage, accepted
+   owners and packets. Reuse already-owned work and identify its verified
+   in-authority next action without asking whether to proceed. Execute only
+   after step 4 reconciles custody and records any external operation. Apply the core
+   [continuation scenarios](../joe-mode/CONTINUATION-SCENARIOS.md). Unknown
+   ownership blocks competing writes; a real human gate still waits.
+   Consume compact timestamped role reports; delegate deep investigation rather than load every transcript/diff into PM.
    Shepherd owns routine PR/check/ref observation; consume its evidence rather
    than duplicate those queries. Refresh changed, missing or action-critical
    facts before acting, not the whole world on an unchanged waiting pass.

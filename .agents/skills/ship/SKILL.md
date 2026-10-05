@@ -24,6 +24,13 @@ For a ticket graph, record each task, its prerequisites, and its acceptance cond
 Inspect local changes and branch state. Preserve unrelated work. Apply the loaded `worktrees` doctrine using the [workspace procedure](WORKSPACE.md), respecting suitable existing isolation and its owner. Do not deliver from the default branch. Record the starting commit for review; it is not a prerequisite packet for resuming a PR.
 
 Keep a short progress record in the harness session workspace: task states, worker identities/worktrees, integrated commits, checks, decisions, and the PR URL when known. Reconcile it with current Git/provider state after interruption rather than replaying completed work.
+When resuming from a handoff, issue or PR, inspect existing ownership and this
+record before fresh discovery or dispatch. If the verified record identifies the
+current stage and an in-scope next action, continue that action without another
+permission prompt. Do not duplicate an accepted owner or restart completed
+grounding. Apply the
+[ownership-first continuation scenarios](../joe-mode/CONTINUATION-SCENARIOS.md);
+unknown ownership still blocks competing writes.
 
 Keep the scoped doctrine selection and per-worker required IDs, source/digest references, and load/application reports with that record. Pass them to fixes, review, and Shepherd; do not lose operator choices at an agent boundary or assume selection means a worker has read the doctrine.
 

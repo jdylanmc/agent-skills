@@ -220,6 +220,41 @@ test('Chart-a-course is a portable, human- and model-invocable local package', (
   assertPortable(directory);
 });
 
+test('ownership-first continuation is reachable from every continuation surface', () => {
+  const skills = path.join(root, '.agents/skills');
+  const scenarios = readFileSync(path.join(skills, 'joe-mode/CONTINUATION-SCENARIOS.md'), 'utf8');
+  assert.match(scenarios, /already-owned issue/i);
+  assert.match(scenarios, /explicit next action/i);
+  assert.match(scenarios, /must not.*ask whether to proceed/is);
+  assert.match(scenarios, /human decision remains human/i);
+  assert.match(scenarios, /ownership cannot be verified/i);
+  for (const gate of [
+    'product', 'scope expansion', 'destructive', 'production access',
+    'approval', 'merge', 'authority',
+  ]) {
+    assert.match(scenarios, new RegExp(gate, 'i'), `preserves ${gate} gate`);
+  }
+  assert.match(scenarios, /blocks competing writes/i);
+  assert.match(scenarios, /must not infer abandonment/i);
+
+  for (const entry of [
+    'handoff/SKILL.md',
+    'ship/SKILL.md',
+    'joe-mode/SKILL.md',
+    'joe-mode-paseo/RUN.md',
+    'joe-mode-orca/RUN.md',
+    'joe-mode-cmux/SKILL.md',
+  ]) {
+    const text = readFileSync(path.join(skills, entry), 'utf8');
+    assert.match(text, /CONTINUATION-SCENARIOS\.md/iu, `${entry}: continuation scenarios`);
+    assert.match(text, /before (?:fresh |new )?(?:backlog )?discovery|before backlog discovery/iu,
+      `${entry}: ownership check precedes discovery`);
+    assert.match(text,
+      /without\s+(?:asking\s+whether\s+to\s+proceed|another\s+permission\s+prompt)|do not[^.]{0,160}ask whether/isu,
+      `${entry}: routine continuation does not reprompt`);
+  }
+});
+
 test('released CLI copy-installs exactly the complete active pack', { timeout: 180_000 }, async t => {
   assert.ok(installSource.trim(), 'SKILLS_PACK_SOURCE must not be empty');
   const sandbox = path.join(root, '.test-sandbox');

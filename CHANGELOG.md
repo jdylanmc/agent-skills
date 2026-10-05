@@ -83,6 +83,10 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- Reinforce Handoff, Ship and every Joe-mode runtime adapter to resolve existing
+  issue/PR ownership before rediscovery, reuse accepted delivery packets, and
+  continue explicit in-scope next actions without redundant permission prompts.
+  Preserve human decisions and block competing writes when ownership is unknown.
 - Align Joe-mode CMUX with Maestro's native peer messaging and pinned messaging
   readiness, separating lifecycle ownership from fire-and-forget communication.
   Preserve the existing PM when it lacks a messaging adapter, human input, and
