@@ -27,13 +27,18 @@ speed without making them reconstruct the conversation.
 ## How it behaves
 
 The report is on demand and read-only. It may inspect existing progress and
-runtime information to describe the work, but it does not change tickets,
-direct subagents, or advance the underlying task.
+runtime information to describe the work, but the report itself does not change
+tickets, direct subagents, or advance the underlying task.
+
+A status report never stops work. When the report is produced in the session
+that owns an already-authorized objective, it is an interruption, not a stop:
+after delivering it, the owning agent returns to that work. Only an explicit
+pause or stop request, or a pending human decision, keeps the agent stopped.
 
 If the agent's last turn crashed (model/provider error, exhausted retries,
-disconnect), say so first. Do not imply work continued afterward. The user
-needs to know the agent stopped and needs a new turn. Report only; never
-restart the task.
+disconnect), say so first. Do not imply work continued during the gap. After
+reporting the crash, the owning agent resumes the authorized work in the
+current turn.
 
 Use observable timing and activity to make how long the agent has been
 churning understandable. If a time, count, assignment, or ticket title cannot

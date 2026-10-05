@@ -88,6 +88,12 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- `status-report`: a report is an interruption, not a stop. In the session that
+  owns an authorized objective, deliver the read-only snapshot, then resume the
+  next verified in-scope action, including after a crashed prior turn. Only an
+  explicit pause/stop or pending human decision keeps work stopped; resumption
+  grants no new authority.
+
 - `retro`: attribute and align the human-only retrospective with Matt Pocock's
   upstream environment-improvement categories while preserving evidence,
   exact-approval and reviewed-delivery gates.
