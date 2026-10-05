@@ -87,6 +87,39 @@ last successful/attempted observation, gaps; override/lifetime; pending repair,
 transfer, cadence-update result. Read back before claiming resumability.
 Ticks resume known work, never restart active repairs.
 
+## Resume work on every wake
+
+The scheduled prompt must **observe, reconcile, then act** within existing
+authority, including first-custody failures. Never encode "if any repair, test,
+or reviewer is active, only observe." Keep one source writer, not an owner that
+can only report. Inspect actual runtime status/results and Git/provider evidence:
+
+| Known work | Next action |
+| --- | --- |
+| Another source writer is running | Observe remote state without competing writes; keep its identity and next return condition. |
+| The same owner has unfinished authorized work | Resume that continuation, including implementation, integration or publication; serialize with any actual child writer. |
+| Worker completed/idle with a result | Read and reconcile artifacts, confirm write release, accept the return and continue. Idle alone proves neither success nor release. |
+| Only read-only review/checks remain | They do not forbid publishing their unchanged committed SHA as draft. Preserve their exact candidate coverage; later edits invalidate affected proof. |
+| `activeRepair` exists but liveness is stale/unknown | Reconcile the known worker, pending operations and local candidate; do not infer a live writer or clear ownership blindly. Unknown ownership blocks mutation explicitly. |
+| Completed local candidate differs from remote | Publish through the existing owner's safe lease/draft gate or record the concrete access/ownership/human blocker. Local green is not remote repair. |
+
+Persist the finding/run identity, continuation owner and actual status, local
+candidate versus expected/published remote head, return/publication evidence,
+remaining proof and next action in the existing record. Logging/dispatch is not
+resolution. Unchanged actionable failures resume this work; do not fetch identical
+logs, reread full history, launch duplicate workers, or emit status-only reports
+each tick. No progress after a bounded remedy is a surfaced blocker, not a retry
+storm. Cheap quiet polls compare compact refs/check/review state; fetch details
+only for diagnosis or reconciliation.
+
+Green clears resolved work, not custody or its wakeup. Continue the same adaptive
+1/5/15-minute schedule; a later failure or target advance resets fast cadence and
+reopens bounded action. A real human/access/ownership blocker safely suspends
+affected duties with the reason and resumption gate, rather than silently stopping
+polling because the last candidate was green.
+
+## Shared wakes and cadence updates
+
 Keep independent per-PR stages/due times, derived from its own observations;
 other PR ticks earn no quiet streak. Schedule earliest due wake or minimum needed
 periodic cadence; observe **all due PRs fairly**, not one per global tick.

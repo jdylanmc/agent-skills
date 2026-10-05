@@ -93,6 +93,27 @@ references only for fully satisfied work. Confirm publication and its actual URL
 Missing access is a blocker. If no change is needed, report the already-satisfied
 result rather than manufacture a PR.
 
+### Publication is not readiness
+
+This also applies to same-PR feedback and Shepherd maintenance: once a meaningful
+repair/rebased candidate is committed, publish it as draft/work-in-progress with
+its exact validation/review gaps while full proof proceeds. Do not indefinitely
+hold completed work locally behind unrelated failures or slow suites/review.
+Required proof is still owed before non-draft readiness, not waived by publication.
+If the PR is already non-draft, convert it to draft and verify provider readback
+before publishing a candidate with unresolved blockers
+(GitHub: `gh pr ready <PR> --repo <REPO> --undo`; Azure DevOps: `isDraft: true`). Unsupported draft
+conversion or policy forbidding the update is an explicit blocker, not permission
+to present incomplete work as ready.
+
+Serialize with real source writers; read-only review/checks may continue on the
+unchanged committed SHA. Preserve independent edits and use Shepherd's
+[expected-head lease and provider readback](../shepherd/SKILL.md#branch-maintenance)
+for maintenance/feedback publication. Confirm the same PR's remote head equals
+the candidate; a local repair or successful push request is not remote recovery.
+Scope, ownership, credential, production-access and human-decision gates still
+apply. Known test/proof gaps must be reported, never relabeled successful.
+
 An internal draft is progress, not a final handoff or readiness claim. The route
 retains custody while implementing; no competing Shepherd repair loop. On Azure
 DevOps, use `isDraft: true` and full source/target refs, then `isDraft: false` only

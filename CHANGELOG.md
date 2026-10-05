@@ -201,6 +201,9 @@ have tagged releases. Current cleanup is tracked in
 
 ### Fixed
 
+- `shepherd`: act on existing remote CI failures and stale targets, resume the
+  actual owner, and publish repaired/rebased draft candidates without waiting
+  for full readiness. Verify remote results and keep polling after green.
 - `status-report`: distinguish a failed last turn from normal completion or
   healthy idle. Lead with the error and time, set the cutoff to the failure,
   and say a new human/controller turn is needed. Mark partial event history

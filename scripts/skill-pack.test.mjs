@@ -209,6 +209,25 @@ test('lifecycle guidance and review scenarios are reachable through local packag
   assertLifecycleSupport(path.join(root, '.agents/skills'));
 });
 
+function assertShepherdReplayInventory(directory) {
+  for (const [file, heading] of [
+    ['shepherd/OBSERVATION.md', '## Resume work on every wake'],
+    ['ship/DELIVERY.md', '### Publication is not readiness'],
+    ['shepherd/SCENARIOS.md', '## Proactive remote repair traces'],
+  ]) {
+    assert.ok(readFileSync(path.join(directory, file), 'utf8').split('\n').includes(heading),
+      `${file}: missing proactive guidance section`);
+  }
+  const scenarios = readFileSync(path.join(directory, 'shepherd/SCENARIOS.md'), 'utf8');
+  // Package inventory only; the scenarios do not execute a live repair or scheduler.
+  assert.deepEqual([...scenarios.matchAll(/^\| (P\d+)\b/gm)].map(match => match[1]),
+    ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8']);
+}
+
+test('Shepherd proactive guidance and replay inventory are present in the source pack', () => {
+  assertShepherdReplayInventory(path.join(root, '.agents/skills'));
+});
+
 test('Chart-a-course is a portable, human- and model-invocable local package', () => {
   const directory = path.join(root, '.agents/skills');
   const skill = readFileSync(path.join(directory, 'chart-a-course/SKILL.md'), 'utf8');
@@ -288,6 +307,9 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     await t.test('installed routes can reach lifecycle, placement, readiness and review guidance', () => {
       assertLifecycleSupport(installed);
+    });
+    await t.test('installed Shepherd includes proactive guidance and replay inventory', () => {
+      assertShepherdReplayInventory(installed);
     });
     await t.test('PM is separately selectable alongside prerequisites with all support intact', () => {
       const pm = path.join(installed, 'joe-mode-paseo');
