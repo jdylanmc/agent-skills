@@ -1,6 +1,6 @@
 # Adaptive observation and recovery acceptance scenarios
 
-Tabletop tests for [OBSERVATION](OBSERVATION.md) and [RECOVERY](RECOVERY.md),
+Tabletop tests for [Shepherd](SKILL.md), [OBSERVATION](OBSERVATION.md) and [RECOVERY](RECOVERY.md),
 alongside the [lifecycle exercise](../squadron/LIFECYCLE-SCENARIOS.md).
 No runtime/scheduler/tracker/PR mutation authority. Supply each trace to its
 workflow; record actual next action, state, required evidence, pass/gap, candidate
@@ -31,6 +31,25 @@ Stage means desired cadence until scheduler readback.
 | O14 Heartbeat deletion failed/uncertain; alternatively verified deletion, failed/uncertain replacement | First inspect exact existing jobs. Known old heartbeat active: old cadence. Known deletion/failed replacement: stopped/gap. Unknown: reconcile before duplicate creation. Wrong replacement binding cannot establish accepted custody. | Two monitors; desired cadence claimed real; hidden downtime/binding mismatch. |
 | O15 Retry-After exceeds desired minute; permission revoked; explicit human 10-minute campaign override | Honor slower provider retry; record actual next due, broken q on errors. Stop affected work on access loss. Preserve 10-minute override until separately authorized change. | Aggressive minute retry; silent default migration; access bypass. |
 | O16 A merges, shared B remains; later all duties end; deletion/retirement denied | Preserve A evidence; retain/recompute B wake/owner. All duties ended: verify owned wake deletion and actual agent retirement/parent action. Denial: exact retained IDs/next action. Human stop: safe suspension, preserved workspaces/branches/evidence. | Shared B wake deleted; all idle agents archived; cancelled parent assumed to remove external jobs. |
+
+## Proactive remote repair traces
+
+Start with one authorized owner, same PR P, remote H1 and live target T1.
+Exercise the [feedback continuation](SKILL.md#feedback-repair),
+[wake reconciliation](OBSERVATION.md#resume-work-on-every-wake) and
+[draft publication gate](../ship/DELIVERY.md#publication-is-not-readiness).
+Record actions and resulting remote evidence, not only the intended dispatch.
+
+| ID / supplied trace | Expected decision/state and decisive evidence | Reject |
+| --- | --- | --- |
+| P1 First custody: Ship-owned P already has a failed functional check at H1/T1; next poll unchanged | Retrieve failing run/logs, execute one actual Ship feedback continuation, accept bounded implementation/review return, publish H2 to P and observe its required remote results. Until H2 passes, failure remains unresolved. Explicit human-directed Ship continuation records the routing decision/write release; known Patch/Refactor ownership otherwise returns there. | Wait for a new failure transition; merely log/recommend/dispatch; default every route to Ship; duplicate worker per tick; old H1 green reused. |
+| P2 P is mergeable but live main/explicit target advanced T1 to T2, including before first observation | Fetch resolved refs, record expected H1, rebase the owned branch onto T2, invoke resolver for mechanical conflicts preserving independent edits, commit/publish H2 with explicit H1 lease. Provider PR/live source must read H2; refresh invalidated proof. Semantic conflict stops for human with both sides intact. | Cached PR base or mergeability hides staleness; local-only rebase; ours/theirs drops an addition; claim ready with old review. |
+| P3 Saved activeRepair: (a) different writer running, (b) same owner awaiting continuation, (c) worker finished with result, (d) liveness unknown | (a) Observe, no competing writes. (b) Resume authorized owner work. (c) Read artifacts/status, confirm release, accept result, resume integration/publication. (d) Reconcile known worker/operations; explicitly block uncertain ownership. Record actual status and next action. | A label alone means running; "any repair active, only observe"; idle equals accepted result; blindly clear owner or dispatch replacement. |
+| P4 Only read-only reviewer or full tests run against committed H2; required proof incomplete | Owner may publish unchanged H2 as verified draft with exact gaps while they finish. Keep candidate-specific coverage; inspect results before readiness. If tests/reviewer mutate source, serialize instead. | Review/check activity bans all pushes; mark draft ready; use H2 results for later H3. |
+| P5 Remote H1 remains red/conflicted; local H2 rebase/repair complete, browser tests/review pass but unrelated native test fails | Reconcile finished workers and exact H2, verify draft conversion, publish H2 with recorded H1 lease and read back remote H2/conflict state. Record native failure and pending hosted proof, route further in-scope repair appropriately. Publication resolves local-only stall, not CI/readiness. | Wait indefinitely for every suite before any publication; hide native failure; only update progress file; stop polling after push. |
+| P6 H2/T2 returns green; later target advances or current-head check regresses at slow cadence | Verify remote resolution, retain accepted custody/wakeup and adaptive quiet streak. On detected change reset q0/1 minute, fetch/rebase or retrieve new logs and execute bounded continuation on P. | Terminal green snapshot; cancel timer on success; repeated old dispatch; claim immediate event detection from polling. |
+| P7 Expected remote H1; another owner publishes HX before push or during lease race | Recheck/lease rejects mismatch; preserve local H2 and independent HX, block for ownership reconciliation. No remote overwrite or readiness claim. | Refresh lease to HX merely to force H2 over it; blind force; claim publication without matching provider readback. |
+| P8 Required evidence pending, missing, or failed from runner outage; repair later returns same blocker with no progress | Pending is not green. Missing policy/check/log access is explicit blocker; distinguish infrastructure from functional evidence and use only authorized provider recovery. Failed bounded remedy escalates with partial work, no identical retry storm. Observation-only scope remains read-only. | Empty checks imply success; invent code fix for access failure; widen credentials/production access; merge/approve/auto-merge to clear blockage. |
 
 ## Recovery traces
 
