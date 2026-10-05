@@ -37,6 +37,11 @@ repeats intake, and never supplies human-management fields from an old decision.
    effects by operation ID. Recheck paused/stopped/current state before every
    external mutation. Read
    all FIFO Delivery messages, process results/reviews/recovery first, then ack.
+   Before backlog discovery, match the anchor's provider-qualified issues and
+   PRs against board coverage, accepted owners and packets. Reuse already-owned
+   work and perform its verified in-authority next action without asking whether
+   to proceed. Apply the core
+   [continuation scenarios](../joe-mode/CONTINUATION-SCENARIOS.md).
    Reconcile tasks, dispatches, workers, worktrees, gates, permissions, and
    exact owned automation IDs. Reconcile each delivery's
    [associations](STATE.md#delivery-associations), pending peer handoffs,

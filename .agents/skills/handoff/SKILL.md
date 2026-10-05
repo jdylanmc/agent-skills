@@ -40,6 +40,14 @@ Keep the existing packet, no new ledger. Sender retains custody until receiver
 inspects actual artifacts/worktree/PR and acknowledges scope, state, duties.
 Sending/self-authored ownership proves none; no two branch writers, PR monitors,
 or repository Joe controllers.
+The receiver first resolves the repository and provider-qualified issue/PR
+identity against the existing owner board and live state. Reuse the accepted
+owner, route and packet before discovery, intake or dispatch. If the verified
+packet records an explicit next action inside the carried authority, acknowledge
+custody and execute it without asking whether to proceed. Ask only at a real
+human boundary: missing or changed requirements, scope expansion, semantic
+conflict, destructive operation, production access, approval/merge, or missing
+authority. Apply the [continuation scenarios](../joe-mode/CONTINUATION-SCENARIOS.md).
 For Shepherd, load/carry [OBSERVATION](../shepherd/OBSERVATION.md):
 per-PR snapshot/streak, exact wakeup/binding, desired/observed cadence, gaps.
 For issue-backed continuation, load [RECOVERY](../shepherd/RECOVERY.md): carry
