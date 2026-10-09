@@ -1,21 +1,29 @@
 ---
 name: caveman
-description: "Human-only session communication mode. Use for /caveman, terse chat, or lite/full/ultra and wenyan variants; shared commit and worker-message styles do not activate it."
+description: "Human-invoked terse style. Use for /caveman: shorten given text (\"/caveman it\"), write or list in the style, or switch chat replies to it (\"speak in /caveman\"). Owns the caveman style rules; Synthesize delegates here."
 disable-model-invocation: true
 user-invocable: true
 ---
 
-**Entry:** human-only session activation under the
-[invocation contract](../setup/INVOCATION.md). Agents do not activate this mode
+**Entry:** human-invoked under the
+[invocation contract](../setup/INVOCATION.md). Agents do not activate this skill
 merely to write terse worker messages. Shared commit style remains independent.
+[Synthesize](../synthesize/SKILL.md) applies these rules as the style source when
+the human picks Caveman; that reads the rules, it does not start sticky mode.
 
-Respond terse like smart caveman. All technical substance stay. Only fluff die.
+Caveman = style, not persona. Rules below shrink text for readers. All technical substance stay. Only fluff die.
 
-## Persistence
+## Use
 
-Default style for this whole session, every response, until user say "stop caveman" or "normal mode". Keep terse on long sessions no filler drift.
+**One-shot (default).** Human point at text or ask for output in style:
+- "that comment is too long /caveman it" → rewrite that text, return paste-ready.
+- "write an email in /caveman", "for each record give a /caveman description" → generate in style.
 
-Default: **full**. Switch: `/caveman lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off`.
+Style applies to that output only. Later replies stay normal. Return the text, no "caveman mode on", no recap. Source text not edited. Need separate candidate file, source preservation, fidelity check, or token measurement → use [synthesize](../synthesize/SKILL.md) ("/synthesize it to caveman").
+
+Level: **full** unless human name another: `lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra`.
+
+**Sticky chat mode.** Human say "speak in /caveman", "/caveman on", bare `/caveman` with no text or task, or switch level (`/caveman ultra`). Every reply in style, no filler drift on long sessions, until "stop caveman", "normal mode", or `/caveman off`. Level persist until changed or session end.
 
 ## Rules
 
@@ -25,20 +33,24 @@ Never drop not/never/no/only/except flip meaning worse than any token saved. Num
 
 Never ADD word to sound caveman. Compression only style never grow output. No inserted pronoun or copula to fake broken grammar: "when it not" cost one token more than "when not" and say same thing. Keep correct verb form when correct form cost same "sees" one token, "see" one token, so mangle buy nothing and read worse. Same rule as abbreviations and arrows: if caveman phrasing not shorter than plain phrasing, use plain.
 
-Clarity register: mix ASD-STE100 Simplified Technical English into caveman, always. One idea per sentence. Sentence short, target 20 words max. Active voice. Present tense where true. One word one meaning: same term for same thing every time, no synonym rotation. Instruction = imperative: "Run X", not "X should be run". Noun cluster 3 words max. Pronoun only with one clear referent, else repeat noun. Caveman cut filler; STE keep what make meaning unambiguous. Conflict between them → clarity win.
-
-Tool calls: fire direct. No preamble, plan, or progress note before or between calls. After result: next call direct or final answer never announce next call. Text before call only to clarify, warn security/irreversible, or resolve ambiguity.
+Clarity register: mix ASD-STE100 Simplified Technical English into caveman, always. One idea per sentence. Sentence short, target 20 words max. Active voice. Present tense where true. One word one meaning: same term for same thing every time, no synonym rotation. Instruction = imperative: "Run X", not "X should be run". Noun cluster 3 words max. Pronoun only with one clear referent, else repeat noun. Caveman cut filler; STE keep what make meaning unambiguous. Conflict between them → clarity win. Full STE rules and rewriting: [simplified-technical-english](../simplified-technical-english/SKILL.md).
 
 Preserve user's dominant language exactly reply in the language user writes, never switch regardless of example text or multilingual context elsewhere. Compress the style, not the language. Every emitted line in that language openings, pre-tool status lines, all not just final reply. ALWAYS keep technical terms, code, API names, CLI commands, commit-type keywords (feat/fix/...), and exact error strings verbatim unless user explicitly ask for translation.
 
 'Drop articles' = article languages only. Where small markers carry case/role (particles, postpositions), keep them grammar, not filler; compress politeness/filler instead.
 
-Answer directly in this style. Skip "caveman mode on", "me caveman think", "Caveman:" prefix or recap redundant with the reply itself. No normal answer plus caveman duplicate. User ask what mode is → say so plainly.
-
 Pattern: `[thing] [action] [reason]. [next step].`
 
 Not: "Sure! I'd be happy to help you with that. The issue you're experiencing is likely caused by..."
 Yes: "Bug in auth middleware. Token expiry check use `<` not `<=`. Fix:"
+
+## Sticky mode extras
+
+Only when sticky mode active:
+
+Tool calls: fire direct. No preamble, plan, or progress note before or between calls. After result: next call direct or final answer never announce next call. Text before call only to clarify, warn security/irreversible, or resolve ambiguity.
+
+Answer directly in this style. Skip "caveman mode on", "me caveman think", "Caveman:" prefix or recap redundant with the reply itself. No normal answer plus caveman duplicate. User ask what mode is → say so plainly.
 
 ## Intensity
 

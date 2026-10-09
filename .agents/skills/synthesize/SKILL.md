@@ -1,6 +1,6 @@
 ---
 name: synthesize
-description: "Human-directed transformation, or an agent sub-flow with supplied sources, output purpose, and altitude. Produce a separate candidate at full, Caveman, micro, nano, or custom depth; preserve sources."
+description: "Human-directed transformation, or an agent sub-flow with supplied sources, output purpose, and altitude. Produce a separate candidate at full, Caveman, micro, nano, or custom depth, or in a named style (Caveman, Simplified Technical English); preserve sources."
 disable-model-invocation: false
 user-invocable: true
 ---
@@ -29,25 +29,30 @@ If the altitude is missing, ask and wait:
 
 > What altitude do you want: Caveman (fewer tokens, same substance), full (complete rewrite), micro (condensed essentials), nano (core meaning), or a custom target?
 
+A named style such as `to caveman` or `to ste` is a complete request: the style gives the expression, and its altitude is full coverage of the source unless the human also names a lower detail level.
+
 Use an already supplied choice without asking again. Clarify the audience, intended use, required meaning, output format, and any size limit only where the answer materially affects the synthesis. Do not impose a word count or turn intake into a fixed questionnaire.
 
-Custom targets are first-class. Agree what must survive and what may be omitted rather than forcing them into the four presets. For combinations, distinguish detail from style: a nano document in terse prose still omits detail and must not be described as lossless Caveman compression.
+Style skills own their rules: Caveman → [caveman](../caveman/SKILL.md), Simplified Technical English (STE) → [simplified-technical-english](../simplified-technical-english/SKILL.md). Synthesize does not copy those rules; load the named skill and apply it to the candidate. Reading a style skill does not start its sticky chat mode.
+
+Custom targets are first-class. Agree what must survive and what may be omitted rather than forcing them into the four presets. For combinations, distinguish detail from style: a nano document in Caveman or STE style still omits detail and must not be described as lossless.
 
 ## 2. Draft at the chosen altitude
 
 | Altitude | What to do | What must not happen |
 | --- | --- | --- |
-| Caveman | Remove filler and redundant wording while retaining all substantive information. Use concise, readable prose. | Dropped constraints, qualifications, uncertainty, or technical content; invented abbreviations or awkward grammar merely to sound terse. |
+| Caveman | Apply the [caveman](../caveman/SKILL.md) rules (level `full` unless the human names another) with all substantive information retained. | Dropped constraints, qualifications, uncertainty, or technical content; invented abbreviations or awkward grammar merely to sound terse. |
+| STE | Apply the [simplified-technical-english](../simplified-technical-english/SKILL.md) rules (mode from the text type) with all substantive information retained. Call the result "STE-style", never "compliant" or "certified". | Dropped hedges, conditions, or technical content; claiming ASD compliance. |
 | Full | Reorganize and completely rewrite for clarity and coherence, preserving substantive meaning and detail. | Summarizing away material because a rewrite was assumed to mean shorter. |
 | Micro | Keep important meaning, decisions, constraints, and the context needed for the agreed use. Omit unnecessary supporting detail. | Removing an exception or dependency that changes a retained claim. |
 | Nano | Express the essential meaning and the qualifications needed to keep it true. | Pretending the result replaces the full source or gains authority by being short. |
 | Custom | Follow the agreed audience, detail, style, format, and retention requirements. | Silently substituting the nearest preset. |
 
-Work directly from the agreed source set; do not repeatedly summarize summaries unless those are the sources the human selected. Full and Caveman require coverage of all substantive material in that set. Micro and nano deliberately select detail, with omissions disclosed.
+Work directly from the agreed source set; do not repeatedly summarize summaries unless those are the sources the human selected. Full, Caveman, and STE require coverage of all substantive material in that set. Micro and nano deliberately select detail, with omissions disclosed.
 
 Preserve facts, source claims, assumptions, open questions, disagreements, and human decisions as distinct things. Do not reconcile a contradiction by choosing a winner without evidence. Ground derived statements and label inferences rather than presenting them as source facts.
 
-Keep quoted code, commands, identifiers, links, numbers, and units exact. Caveman compresses prose, not technical content. Other altitudes may omit examples when the target allows it, but must not silently alter examples that remain. Preserve negation, obligation, permission, conditions, ordering, and exceptions wherever they affect the meaning retained.
+Keep quoted code, commands, identifiers, links, numbers, and units exact. Caveman and STE restyle prose, not technical content. When a style rule would drop meaning, keep the plain wording and say so; the fidelity check below applies to every style. Other altitudes may omit examples when the target allows it, but must not silently alter examples that remain. Preserve negation, obligation, permission, conditions, ordering, and exceptions wherever they affect the meaning retained.
 
 Apply the chosen style to this artifact only. Do not activate a session-wide communication mode or rewrite unrelated files.
 
@@ -56,7 +61,7 @@ Apply the chosen style to this artifact only. Do not activate a session-wide com
 Compare the draft back to the sources before delivering it:
 
 - Is each substantive claim supported, and are conflicting accounts and uncertainty still visible?
-- For full/Caveman, did all substantive meaning survive? For micro/nano/custom, did the agreed essentials and their necessary qualifications survive?
+- For full/Caveman/STE, did all substantive meaning survive? For micro/nano/custom, did the agreed essentials and their necessary qualifications survive?
 - Are quoted technical details exact, and are citations traceable to the actual source locations?
 - Does the result fit the audience and intended use, rather than merely look shorter?
 

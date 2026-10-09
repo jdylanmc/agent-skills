@@ -11,7 +11,13 @@ error strings, and symbols. Result depends on model and workload; no aggregate
 reduction or quality-equivalence claim is published, and mode persists until
 changed or stopped.
 
-Only the human activates this session mode. Shared commit formatting and terse
+Two uses. **One-shot** (default): shorten or generate one piece of text in the
+style, e.g. "that comment is too long /caveman it". **Sticky**: "speak in
+/caveman" keeps chat replies in the style until stopped. This skill owns the
+style rules; `/synthesize <source> to caveman` delegates here for a separate,
+source-preserving candidate.
+
+Only the human activates this skill. Shared commit formatting and terse
 agent-to-agent messages do not activate it or establish factual correctness.
 
 Six intensity levels:
@@ -30,7 +36,9 @@ Auto-clarity rule: caveman drops to normal prose for security warnings, irrevers
 ## How to invoke
 
 ```
-/caveman              # full mode (default)
+/caveman it           # one-shot: shorten the text just discussed
+speak in /caveman     # sticky: all replies until stopped
+/caveman              # bare: sticky, full level (default)
 /caveman lite         # lighter compression
 /caveman ultra        # extreme compression
 /caveman wenyan-full  # classical Chinese
