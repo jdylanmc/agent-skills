@@ -99,7 +99,8 @@ have tagged releases. Current cleanup is tracked in
 
 - `caveman`: now a style that owns the caveman rules. One-shot use shortens or
   generates a single piece of text ("/caveman it"); sticky chat mode ("speak in
-  /caveman") remains. Outbound-text boundaries are unchanged.
+  /caveman") remains. Outbound-text boundaries are unchanged. Remove the
+  `wenyan` classical-Chinese levels; `lite`, `full` and `ultra` remain.
 - `synthesize`: applies a named style (`to caveman`, `to ste`) by delegating to
   the style skill instead of carrying its own copy of the rules; the source
   preservation and fidelity checks stay in Synthesize.
