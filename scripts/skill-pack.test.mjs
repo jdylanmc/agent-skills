@@ -11,12 +11,12 @@ const installSource = process.env.SKILLS_PACK_SOURCE ?? root;
 const expected = [
   'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts', 'create-pull-request',
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
-  'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'refactor',
+  'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'pull-request', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'specify',
   'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what',
 ];
 const originalNames = expected.filter(name => ![
-  'chart-a-course', 'create-pull-request', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo',
+  'chart-a-course', 'create-pull-request', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'pull-request',
 ].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.

@@ -55,6 +55,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [migration](../migration/SKILL.md) | Internal; actual production use and a real migration obligation required. |
 | [patch](../patch/SKILL.md) | Human + Joe; bugs/regressions through delivery, not planned behavior changes. |
 | [poc](../poc/SKILL.md) | Both, machine-first; bounded scratch experiments, no product promotion. |
+| [pull-request](../pull-request/SKILL.md) | Both; writes the PR body (what/why/how visual, evidence, merge danger). No merge, approval, or ready authority. |
 | [refactor](../refactor/SKILL.md) | Internal delivery route selected by Joe; scoped structural work may stay under an existing delivery owner. |
 | [research](../research/SKILL.md) | Both; questions or link batches, evidence-grounded and read-only by default. |
 | [conflicts](../conflicts/SKILL.md) | Internal to Shepherd or an authorized delivery owner; human decisions stay human. |
