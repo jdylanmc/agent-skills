@@ -13,6 +13,7 @@ license does not replace those terms.
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | 2026 Julius Brussee | [MIT for skills](./licenses/caveman.LICENSE) |
 | [anthropics/skills](https://github.com/anthropics/skills), historical `skill-creator` import (removed) | 2026 Anthropic, PBC. | [Apache-2.0](./licenses/anthropic-skills.LICENSE) |
 | [obra/superpowers](https://github.com/obra/superpowers) | 2025 Jesse Vincent | [MIT](./licenses/superpowers.LICENSE) |
+| [danyuchn/asd-ste100-skill](https://github.com/danyuchn/asd-ste100-skill) | 2026 Dustin Yuchen Teng | [MIT](./licenses/danyuchn-asd-ste100-skill.LICENSE) |
 
 `provenance/skills-lock.json` maps imported skills' local names to their primary upstream sources and
 imported content hashes, not hashes of local adaptations. Additional sources
@@ -44,6 +45,14 @@ Modifications to Apache-licensed files must carry prominent change notices.
   visual-summary approach. The Matt Pocock and HumanLayer MIT notices apply.
   This human-directed adoption postdates the frozen installer provenance lock
   and therefore has no original installer record there.
+- `simplified-technical-english` adapts Dustin Yuchen Teng's
+  `asd-ste100-skill`, retaining its rules reference, examples and structural
+  linter, and changing the skill identity, invocation contract and Synthesize
+  delegation. The danyuchn MIT notice applies. ASD-STE100 is owned by ASD; this
+  repository bundles no ASD dictionary or standard text, claims no ASD
+  endorsement, certification or compliance, and calls output "STE-style". This
+  human-directed adoption postdates the frozen installer provenance lock and
+  therefore has no original installer record there.
 - `squadron` renames Jesse Vincent's `dispatching-parallel-agents`, retaining
   its independent-task and worker-packet foundations and original import
   source/hash. Its workflow now covers bounded delivery and Shepherd

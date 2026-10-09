@@ -12,11 +12,12 @@ const expected = [
   'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts', 'create-pull-request',
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
   'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'pull-request', 'refactor',
-  'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'specify',
+  'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'simplified-technical-english', 'specify',
   'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what',
 ];
 const originalNames = expected.filter(name => ![
   'chart-a-course', 'create-pull-request', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'pull-request',
+  'simplified-technical-english',
 ].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
@@ -108,8 +109,10 @@ test('authorized Orca intent and bounded-continuation entry remain preserved', (
 
 test('all original entrypoint metadata, including invocation flags, is preserved', () => {
   const sources = originalNames.map(name => `.agents/skills/${name}/SKILL.md`);
+  // #306 explicitly authorizes the caveman and synthesize description changes (style skills);
+  // the digest was regenerated for that change only.
   assert.equal(digestFiles(sources, bytes => bytes.toString().split('---\n')[1]),
-    '905838679a8cc014523fe647d1e2d25c39db8c3105a921ceca247bce48e77ed2');
+    '52484b045769e6d2a4c5cbe96086f01d25d4d87a7935b08d84d7b292afbf60ff');
 });
 
 test('import provenance bytes survive outside active installer state', () => {
@@ -122,7 +125,24 @@ test('original repository and upstream license bytes remain intact', () => {
   const sources = files(path.join(root, 'licenses'))
     .map(filename => path.relative(root, filename).split(path.sep).join('/'));
   sources.push('LICENSE');
-  assert.equal(digestFiles(sources), 'b28dac41bd7cf160bce427a7b6b28ebd6547a7a0c485a3cc56490113677e7064');
+  assert.equal(digestFiles(sources), '4a3e14e9b3c8a2203e46578812f283645dfa37ebe5d6735a70ae9c766364e13c');
+});
+
+test('style skills own their rules and Synthesize delegates to them', () => {
+  const read = name => readFileSync(path.join(root, `.agents/skills/${name}/SKILL.md`), 'utf8');
+  const synthesize = read('synthesize');
+  assert.match(synthesize, /\]\(\.\.\/caveman\/SKILL\.md\)/);
+  assert.match(synthesize, /\]\(\.\.\/simplified-technical-english\/SKILL\.md\)/);
+  assert.doesNotMatch(synthesize, /Drop: articles|Clarity register/, 'rules live in the style skills');
+  for (const name of ['caveman', 'simplified-technical-english']) {
+    const skill = read(name);
+    assert.match(skill, /disable-model-invocation: true/);
+    assert.match(skill, /\*\*One-shot/);
+    assert.match(skill, /\*\*Sticky/);
+  }
+  const ste = read('simplified-technical-english');
+  assert.match(ste, /Never say "compliant"/);
+  assert.ok(!existsSync(path.join(root, '.agents/skills/simplified-technical-english/references/dictionary.md')));
 });
 
 function files(directory) {
@@ -360,7 +380,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
       for (const name of [
         'LICENSE', 'NOTICE.md', 'INVOCATION.md', 'COMMIT-STYLE.md',
         'provenance/skills-lock.json', 'licenses/caveman.LICENSE',
-        'licenses/humanlayer-skills.LICENSE',
+        'licenses/humanlayer-skills.LICENSE', 'licenses/danyuchn-asd-ste100-skill.LICENSE',
         'licenses/caveman.LICENSING.md', 'licenses/mattpocock-skills.LICENSE',
         'licenses/superpowers.LICENSE', 'licenses/anthropic-skills.LICENSE',
       ]) {

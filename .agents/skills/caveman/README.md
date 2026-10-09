@@ -11,29 +11,33 @@ error strings, and symbols. Result depends on model and workload; no aggregate
 reduction or quality-equivalence claim is published, and mode persists until
 changed or stopped.
 
-Only the human activates this session mode. Shared commit formatting and terse
+Two uses. **One-shot** (default): shorten or generate one piece of text in the
+style, e.g. "that comment is too long /caveman it". **Sticky**: "speak in
+/caveman" keeps chat replies in the style until stopped. This skill owns the
+style rules; `/synthesize <source> to caveman` delegates here for a separate,
+source-preserving candidate.
+
+Only the human activates this skill. Shared commit formatting and terse
 agent-to-agent messages do not activate it or establish factual correctness.
 
-Six intensity levels:
+Three intensity levels:
 
 | Level | What change |
 |-------|-------------|
 | `lite` | Drop filler, preserve uncertainty. Sentences stay full. Professional but tight. |
 | `full` | Default. Drop articles, fragments OK, short synonyms. |
 | `ultra` | Bare fragments where meaning survives. No invented abbreviations or causal arrows. |
-| `wenyan-lite` | Classical Chinese register, light compression. |
-| `wenyan-full` | Maximum 文言文 compression. |
-| `wenyan-ultra` | Extreme classical compression. |
 
 Auto-clarity rule: caveman drops to normal prose for security warnings, irreversible-action confirmations, multi-step sequences where fragment ambiguity risks misread, and when user repeats a question. Resumes after the clear part.
 
 ## How to invoke
 
 ```
-/caveman              # full mode (default)
+/caveman it           # one-shot: shorten the text just discussed
+speak in /caveman     # sticky: all replies until stopped
+/caveman              # bare: sticky, full level (default)
 /caveman lite         # lighter compression
 /caveman ultra        # extreme compression
-/caveman wenyan-full  # classical Chinese
 stop caveman          # back to normal prose
 ```
 

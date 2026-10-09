@@ -9,6 +9,11 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `simplified-technical-english`: human-invoked STE style skill, adapted from
+  danyuchn's MIT `asd-ste100-skill`. Rewrite or write text in Strict or
+  STE-flavored mode, one-shot or sticky, with the upstream structural linter.
+  Output is "STE-style"; it never claims ASD compliance. Upstream license and
+  notice retained.
 - `create-pull-request`: model-invocable generic PR-publication fallback when
   no repository-specific skill or active delivery owner applies. Produce a
   concise visual summary, concrete evidence and merge-risk notes, then verify
@@ -92,6 +97,13 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- `caveman`: now a style that owns the caveman rules. One-shot use shortens or
+  generates a single piece of text ("/caveman it"); sticky chat mode ("speak in
+  /caveman") remains. Outbound-text boundaries are unchanged. Remove the
+  `wenyan` classical-Chinese levels; `lite`, `full` and `ultra` remain.
+- `synthesize`: applies a named style (`to caveman`, `to ste`) by delegating to
+  the style skill instead of carrying its own copy of the rules; the source
+  preservation and fidelity checks stay in Synthesize.
 - `status-report`: a report is an interruption, not a stop. In the session that
   owns an authorized objective, deliver the read-only snapshot, then resume the
   next verified in-scope action, including after a crashed prior turn. Only an

@@ -37,7 +37,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | --- | --- |
 | [automate-this](../automate-this/SKILL.md) | Human only; designs automation, does not run it. |
 | [breakdown-tickets](../breakdown-tickets/SKILL.md) | Both; after Specify, with human approval before publishing the breakdown. |
-| [caveman](../caveman/SKILL.md) | Human-only session mode. Shared commit and worker-message styles do not activate it. |
+| [caveman](../caveman/SKILL.md) | Human-only terse style: one-shot on given or generated text, or sticky chat mode. Owns the style rules; Synthesize reads them. Shared commit and worker-message styles do not activate it. |
 | [changelog](../changelog/SKILL.md) | Internal; every modifying agent consults the same curation helper. |
 | [chart-a-course](../chart-a-course/SKILL.md) | Both; read-only critical task paths, missing work, and research spikes. Recommends targeted Discovery; the caller owns execution. |
 | [create-pull-request](../create-pull-request/SKILL.md) | Both; generic PR-publication fallback only when no repository-specific skill or active delivery owner applies. |
@@ -68,6 +68,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [specify](../specify/SKILL.md) | Both; aligned Discovery artifact to full requirements specification. |
 | [squadron](../squadron/SKILL.md) | Both; parallel independent assignments, aggressively used by Joe-mode. |
 | [status-report](../status-report/SKILL.md) | Human; Joe may request a snapshot at full-cycle completion or confirmed major-feature merge. |
+| [simplified-technical-english](../simplified-technical-english/SKILL.md) | Human-only STE style: one-shot on given or generated text, or sticky chat mode. Owns the STE rules; Synthesize reads them. Never claims ASD compliance. |
 | [synthesize](../synthesize/SKILL.md) | Human; agent sub-flow only with supplied sources, output purpose, and altitude. |
 | [tdd](../tdd/SKILL.md) | Internal; any authorized task may select test-first work. |
 | [triage](../triage/SKILL.md) | Human + Joe; selected backlog scope, preserving tracker-change gates. |
