@@ -16,7 +16,7 @@ have tagged releases. Current cleanup is tracked in
   `pr` and its credited HumanLayer `show-me` source.
 - `pull-request`: terse PR bodies as what/why/how with a show-me style visual
   (pseudocode, call/component/file tree, Mermaid, diff sketch), before/after
-  evidence, and merge danger (door, blast radius). Prose uses Synthesize's
+  evidence, and blast radius (scope, door). Prose uses Synthesize's
   Caveman altitude; grants no ready, approval, or merge authority.
 - `joe-mode-orca`: opt-in native Orca team coordination through the existing
   Joe workflows, with supervised workers, capacity accounting, one Discovery

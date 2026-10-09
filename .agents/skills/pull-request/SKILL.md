@@ -1,6 +1,6 @@
 ---
 name: pull-request
-description: "Both. Write or update a pull request body as a terse what/why/how with a show-me style visual, before/after evidence, and merge danger. Humans review this surface; no prose padding."
+description: "Both. Write or update a pull request body as a terse what/why/how with a show-me style visual, before/after evidence, and blast radius. Humans review this surface; no prose padding."
 disable-model-invocation: false
 user-invocable: true
 ---
@@ -37,15 +37,15 @@ Use the vocabulary in `CONTEXT.md` (via `CONTEXT-MAP.md` if present) when it exi
 - **Before:** <screenshot / output / failing test>
   **After:** <screenshot / output / passing test>
 
-## Merge Danger
+## Blast Radius
+
+**Scope:** <one word>
+
+<optional: ramifications of merging>
 
 **Door:** <one-way | two-way>
 
 <optional: why>
-
-**Blast Radius:** <one word>
-
-<optional: ramifications of merging>
 ```
 
 Omit optional lines when empty. Do not add other sections unless the repository's own PR template requires them; if one exists, keep its required headings and place this content inside them.
@@ -101,24 +101,24 @@ Concrete proof the change works, as before and after. Never fabricate or imply a
 
 For a new behavior with no meaningful before, show the failing test on the base and the passing test on the head. Report only runs on the current head; label any older run.
 
-## Merge Danger
+## Blast Radius
 
+- **Scope.** One word for the scope of impact, then optional lines for ramifications. Consider all possibilities: consumers breaking, layout shift, mobile responsiveness, performance, permissions, rollout order, other repositories or services.
 - **Door.** *Two-way*: cheap to roll back (revert restores state). *One-way*: destructive or hard to reverse, such as data migration or deletion, published API or contract change, external side effects, secrets rotation. Say which, and why in one line when not obvious.
-- **Blast Radius.** One word for the scope of impact, then optional lines for ramifications. Consider all possibilities: consumers breaking, layout shift, mobile responsiveness, performance, permissions, rollout order, other repositories or services.
 - Say `none known` only after checking consumers and call sites. Mark inference as inference.
 
 ## Publish or update
 
 Follow [DELIVERY](../ship/DELIVERY.md) for provider mechanics: reuse any existing PR for the branch, create as draft, query before retrying after an uncertain result, and never mark ready or merge. Use the repository's PR template headings when one exists. Confirm the PR URL and read the stored body back; it must match the intended text.
 
-When updating after new commits, revise What, How, Evidence, and Merge Danger to the current head; do not append history.
+When updating after new commits, revise What, How, Evidence, and Blast Radius to the current head; do not append history.
 
 ## Check before finishing
 
 - What and Why each fit in two lines; nothing restates the diff.
 - How shows structure, with names verified against the change.
 - Evidence is real, current, and labeled before/after, or explicitly `none`.
-- Door and Blast Radius are both stated.
+- Scope and Door are both stated.
 - No required meaning was lost to compression.
 
 ## Relationship and attribution
