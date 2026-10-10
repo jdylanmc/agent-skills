@@ -9,7 +9,7 @@ user-invocable: true
 
 **Entry:** Both, under the [invocation contract](../setup/INVOCATION.md). Human request or agent selection inside an authorized documentation task. Writes only the document the caller named. No commits, publication, or tracker changes.
 
-Restructure one document. STE give the skeleton and word discipline. [Caveman](../caveman/SKILL.md) give the prose density. Conflict between them: clarity win. This skill does not activate session-wide caveman mode.
+Restructure one document. See [intent](intent.md). STE give the skeleton and word discipline. [Caveman](../caveman/SKILL.md) give the prose density. Conflict between them: clarity win. This skill does not activate session-wide caveman mode.
 
 ## 1. Ground
 
