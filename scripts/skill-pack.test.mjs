@@ -12,12 +12,12 @@ const expected = [
   'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts', 'create-pull-request',
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
   'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'pull-request', 'refactor',
-  'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'simplified-technical-english', 'specify',
+  'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'simplified-technical-caveman', 'simplified-technical-english', 'specify',
   'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what',
 ];
 const originalNames = expected.filter(name => ![
   'chart-a-course', 'create-pull-request', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'pull-request',
-  'simplified-technical-english',
+  'simplified-technical-caveman', 'simplified-technical-english',
 ].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
@@ -44,7 +44,9 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     // New PM intent explicitly authorized separately; pinned below.
     .filter(filename => filename !== '.agents/skills/joe-mode-paseo/intent.md')
     // Only Shepherd intent was authorized for the adaptive/recovery extension.
-    .filter(filename => filename !== '.agents/skills/shepherd/intent.md');
+    .filter(filename => filename !== '.agents/skills/shepherd/intent.md')
+    // New simplified-technical-caveman intent explicitly requested by the human; pinned below.
+    .filter(filename => filename !== '.agents/skills/simplified-technical-caveman/intent.md');
   sources.push('intent.md');
   assert.equal(sources.length, 36);
   // Human authorized root/Ship changes and the status-report never-stop intent update.
@@ -55,6 +57,12 @@ test('specifically authorized Shepherd intent remains pinned to the extension', 
   const intent = readFileSync(path.join(root, '.agents/skills/shepherd/intent.md'));
   assert.equal(createHash('sha256').update(intent).digest('hex'),
     '57e4a3bbf91ef2bb561d5067228791b92a1212e700390870a17cb7c01ed06344');
+});
+
+test('human-requested simplified-technical-caveman intent remains pinned', () => {
+  const intent = readFileSync(path.join(root, '.agents/skills/simplified-technical-caveman/intent.md'));
+  assert.equal(createHash('sha256').update(intent).digest('hex'),
+    '93ad3a618cbf8ad150b3cb81b4b08992b46c0c8298a02a4e3d41c690bed826b9');
 });
 
 test('separately authorized PM intent and entrypoint metadata remain pinned', () => {
