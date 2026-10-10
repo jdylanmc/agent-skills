@@ -65,6 +65,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [setup](SKILL.md) | Human-directed; Joe may bootstrap absent/incomplete repository setup under the existing controller, preserving human choices and exact-file approval. |
 | [shepherd](../shepherd/SKILL.md) | Both; one owner maintains the existing PR, reviewed, green, and rebased/current. |
 | [ship](../ship/SKILL.md) | Human + Joe; an issue or scoped graph through delivery. |
+| [simplified-technical-caveman](../simplified-technical-caveman/SKILL.md) | Both; restructures a named document into STE sections with caveman prose. Writes only the named target. |
 | [specify](../specify/SKILL.md) | Both; aligned Discovery artifact to full requirements specification. |
 | [squadron](../squadron/SKILL.md) | Both; parallel independent assignments, aggressively used by Joe-mode. |
 | [status-report](../status-report/SKILL.md) | Human; Joe may request a snapshot at full-cycle completion or confirmed major-feature merge. |
@@ -74,6 +75,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [triage](../triage/SKILL.md) | Human + Joe; selected backlog scope, preserving tracker-change gates. |
 | [verify](../verify/SKILL.md) | Internal; evidence before completion claims. |
 | [wait-what](../wait-what/SKILL.md) | Human only; re-explain, no automatic invocation. |
+| [wrap-up](../wrap-up/SKILL.md) | Human only; checkpoint after ad-hoc work. True-up with main, tests, lint, docs, visual POC, then one undrafted green PR. No merge or approval authority. |
 
 ## Carry authority, not another controller
 
