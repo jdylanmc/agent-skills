@@ -9,6 +9,9 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `wrap-up`: human-only checkpoint after ad-hoc work. Freeze scope, true-up
+  with main, pass tests and lint, reconcile docs and visual POC, then raise one
+  undrafted PR with green CI. Grants no merge or approval authority.
 - `simplified-technical-english`: human-invoked STE style skill, adapted from
   danyuchn's MIT `asd-ste100-skill`. Rewrite or write text in Strict or
   STE-flavored mode, one-shot or sticky, with the upstream structural linter.

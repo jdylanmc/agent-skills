@@ -75,6 +75,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [triage](../triage/SKILL.md) | Human + Joe; selected backlog scope, preserving tracker-change gates. |
 | [verify](../verify/SKILL.md) | Internal; evidence before completion claims. |
 | [wait-what](../wait-what/SKILL.md) | Human only; re-explain, no automatic invocation. |
+| [wrap-up](../wrap-up/SKILL.md) | Human only; checkpoint after ad-hoc work. True-up with main, tests, lint, docs, visual POC, then one undrafted green PR. No merge or approval authority. |
 
 ## Carry authority, not another controller
 
