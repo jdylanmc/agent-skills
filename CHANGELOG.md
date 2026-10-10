@@ -9,11 +9,17 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `wrap-up`: human-only checkpoint after ad-hoc work. Freeze scope, true-up
+  with main, pass tests and lint, reconcile docs and visual POC, then raise one
+  undrafted PR with green CI. Grants no merge or approval authority.
 - `simplified-technical-english`: human-invoked STE style skill, adapted from
   danyuchn's MIT `asd-ste100-skill`. Rewrite or write text in Strict or
   STE-flavored mode, one-shot or sticky, with the upstream structural linter.
   Output is "STE-style"; it never claims ASD compliance. Upstream license and
   notice retained.
+- `simplified-technical-caveman`: restructures a named document into
+  ASD-STE100-style sections (purpose, terms, warnings, description, procedure,
+  verification) with caveman-terse prose. Writes only the named target.
 - `create-pull-request`: model-invocable generic PR-publication fallback when
   no repository-specific skill or active delivery owner applies. Produce a
   concise visual summary, concrete evidence and merge-risk notes, then verify
