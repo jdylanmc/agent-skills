@@ -116,5 +116,20 @@ branches and all local evidence before removing exact owned worktrees. Failed
 preservation means keep the worktree. Role retirement also needs PM-recorded
 heartbeat deletion; an unknown timer remains a concrete unresolved duty.
 
+## Merge close-out (Joe-mode)
+
+PR merged = worker cleans up. No human prompt.
+
+- **Worker:** on observing its PR merged, check worktree clean, branch and
+  evidence preserved on the remote, no open duty. Then remove its own exact
+  worktree and report to PM. Dirty or unpreserved: keep it, report why.
+- **PM:** on that report, verify, then retire the worker under the rules above.
+  Close the session.
+- **One issue, one agent.** Next issue gets a new agent. Never reuse a finished
+  worker.
+
+This is the authorization for owned worktrees only. Never touch another owner's
+worktree, branch, or evidence.
+
 For contract/caller changes, exercise [acceptance scenarios](LIFECYCLE-SCENARIOS.md).
 Package/link tests prove reachability, not runtime compliance.

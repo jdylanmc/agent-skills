@@ -97,6 +97,8 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- `joe-mode`/`squadron`: on PR merge, the worker removes its own worktree and
+  the PM closes its session. New issue, new agent. Evidence preserved first.
 - `caveman`: now a style that owns the caveman rules. One-shot use shortens or
   generates a single piece of text ("/caveman it"); sticky chat mode ("speak in
   /caveman") remains. Outbound-text boundaries are unchanged. Remove the
