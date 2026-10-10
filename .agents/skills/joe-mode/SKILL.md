@@ -228,7 +228,7 @@ On a completion, human answer, PR event, or meaningful backlog change:
 
 1. Read the result; verify decisive artifacts or provider state. A worker's "done" does not prove a published PR, human approval, or completed prerequisite.
 2. Reconcile owned item coverage, dependencies, permissions, and pending questions. Record partial writes before retrying; inspect the provider after uncertain publication to avoid duplicate specs, tickets, or PRs.
-3. Route newly ready work; release capacity only after receiver-observed, acknowledged transfer or accepted work completion. Retain workers for concrete pending follow-up; retire terminal owned agents under LIFECYCLE, preserving evidence and all remaining PR scopes.
+3. Route newly ready work; release capacity only after receiver-observed, acknowledged transfer or accepted work completion. Retain workers for concrete pending follow-up; retire terminal owned agents under LIFECYCLE, preserving evidence and all remaining PR scopes. On merge, the worker removes its worktree and the PM closes its session (LIFECYCLE merge close-out). New issue, new agent; never reuse a finished worker.
 4. Surface review-ready PRs and material human questions; keep unrelated work moving.
 
 If findings contradict an active delivery, notify its owner and pause affected work at a safe boundary. Reconcile scope with the human; do not change requirements underneath a worker or restart the entire backlog. Preserve unrelated progress.
