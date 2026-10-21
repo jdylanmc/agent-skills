@@ -40,7 +40,7 @@ Record configuration paths, Vale version, alerts, and any omitted material.
 Protect code, literal examples, URLs, identifiers, numbers, citations, direct
 quotations, and front matter unless the caller explicitly includes them.
 
-The bundled configuration enables six vendored, pinned style packages (listed
+The bundled configuration enables five vendored style directories (listed
 in [styles/README.md](styles/README.md)); nothing is fetched at run time. When
 the resolved configuration enables no rules for the target, say **"No Vale
 rules configured; editorial review only."** An empty report does not establish

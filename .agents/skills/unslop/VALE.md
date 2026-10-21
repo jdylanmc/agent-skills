@@ -1,10 +1,11 @@
 # Vale configuration
 
 The package owns one [configuration](.vale.ini) and a [styles
-directory](styles/README.md) of six vendored packages pinned to exact releases:
-RedHat, proselint, Readability, ai-tells, AiTells, and write-good. They are
-copied in, so there is no `vale sync` and no download at run time. The built-in
-`Vale` style is not enabled. File sections cover Markdown and plain text.
+directory](styles/README.md) of five vendored styles: RedHat, proselint,
+Readability, write-good, and AiTells (merged and deduplicated from two
+packages). They are copied in from pinned releases, so there is no `vale sync`
+and no download at run time. The built-in `Vale` style is not enabled. File
+sections cover Markdown and plain text.
 
 ## Run
 
@@ -53,9 +54,11 @@ document to satisfy existing checks.
 
 1. Agree on the rule, scope, severity, and exceptions with the human.
 2. Disable a rule in `.vale.ini` under the file section, for example
-   `RedHat.Contractions = NO`, or turn a whole package off by removing it from
-   `BasedOnStyles`. Do not edit vendored files in place; they must stay
-   byte-identical to the pinned release.
+   `RedHat.Contractions = NO`, or turn a whole style off by removing it from
+   `BasedOnStyles`. Do not edit the vendored styles in place: `RedHat`,
+   `proselint`, `Readability` and `write-good` must stay byte-identical to their
+   pinned releases, and `AiTells` changes only through an explicit, tested
+   consolidation (see its README section).
 3. For a new rule of our own, add a YAML file under `styles/Unslop/` with
    examples that should trigger and counterexamples that must remain valid, and
    enable it explicitly.
