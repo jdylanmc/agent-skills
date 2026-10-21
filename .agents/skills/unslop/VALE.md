@@ -1,17 +1,17 @@
 # Vale configuration
 
-The package owns one curated [configuration](.vale.ini) and a local
-[styles directory](styles/README.md). It ships with **zero active rules**,
-no built-in `Vale` style, no third-party styles, and no packages to download.
-The initial file sections cover Markdown and plain text.
+The package owns one [configuration](.vale.ini) and a [styles
+directory](styles/README.md) of six vendored packages pinned to exact releases:
+RedHat, proselint, Readability, ai-tells, AiTells, and write-good. They are
+copied in, so there is no `vale sync` and no download at run time. The built-in
+`Vale` style is not enabled. File sections cover Markdown and plain text.
 
 ## Run
 
-Use an installed [Vale CLI](https://vale.sh/). Empty `BasedOnStyles` support
-requires Vale 3.22.0 or later; check `vale --version` and `vale --help`.
-The commands below also require `--no-global` so unrelated user-level styles
-cannot leak into the curated check. If unsupported, report the limitation
-rather than dropping the flag or changing global configuration.
+Use an installed [Vale CLI](https://vale.sh/). Verified with Vale 3.24.0; check
+`vale --version`. The commands below require `--no-global` so unrelated
+user-level styles cannot leak into the check. If unsupported, report the
+limitation rather than dropping the flag or changing global configuration.
 
 Replace the placeholders with resolved absolute paths. Confirm each input
 file exists: Vale can interpret a nonexistent path as prose instead.
@@ -38,26 +38,29 @@ warnings and suggestions can remain when it exits zero. Parse the JSON alerts
 and report execution or configuration errors separately. Do not use `--no-exit`
 or severity filtering to manufacture a passing result.
 
-**Initially:** Vale may skip files because there are no enabled rules.
-Report **"No Vale rules configured; editorial review only."** Do not describe
-the empty result as lint coverage, even when the command succeeds.
+If the resolved configuration enables no rules for the target, Vale skips the
+file. Report **"No Vale rules configured; editorial review only."** Do not
+describe an empty result as lint coverage, even when the command succeeds.
 
-## Curate later
+Expect noisy first results. Packages overlap (several flag em dashes and
+"not X, but Y"), some contradict each other, and Readability reports every
+long word. Report, do not suppress, what is found.
 
-Rule curation is a separate human-authorized change, not part of rewriting
-a document to satisfy existing checks.
+## Curate
 
-1. Agree on the pattern, scope, severity, and exceptions with the human.
-2. Add a custom YAML rule under `styles/Unslop/`, with examples that should
-   trigger and counterexamples that must remain valid.
-3. Enable the approved rule explicitly, such as `Unslop.RuleName = YES`,
-   under the relevant file section. Do not enable an entire external style
-   as an incidental dependency.
-4. Exercise both examples and counterexamples with Vale, including markup
-   exclusions, and review the alerts before adopting the rule.
+Pruning is a separate human-authorized change, not part of rewriting a
+document to satisfy existing checks.
 
-No example rule is shipped or enabled yet. The intent names possible future
-checks, not a decision about their thresholds or implementation.
+1. Agree on the rule, scope, severity, and exceptions with the human.
+2. Disable a rule in `.vale.ini` under the file section, for example
+   `RedHat.Contractions = NO`, or turn a whole package off by removing it from
+   `BasedOnStyles`. Do not edit vendored files in place; they must stay
+   byte-identical to the pinned release.
+3. For a new rule of our own, add a YAML file under `styles/Unslop/` with
+   examples that should trigger and counterexamples that must remain valid, and
+   enable it explicitly.
+4. Re-run Vale on both kinds of example and review the alerts before adopting.
+
 Do not edit the human-owned intent to accommodate a rule.
 
 References: [configuration](https://docs.vale.sh/topics/.vale.ini),

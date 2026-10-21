@@ -139,8 +139,9 @@ Validation keeps telemetry disabled and does not claim directory registration.
 - **Unslop:** rewrite supplied prose to remove formulaic AI framing, phrasing,
   and sentence patterns without changing its meaning. Check the result with
   the [curated Vale configuration](.agents/skills/unslop/VALE.md).
-  Starts with zero rules; editorial judgment and Vale coverage are reported
-  separately. Rule curation is human-directed.
+  Ships six vendored, pinned Vale packages (RedHat, proselint, Readability,
+  ai-tells, AiTells, write-good), to be pruned by the human; editorial judgment
+  and Vale coverage are reported separately. Rule curation is human-directed.
 - **Joe-mode:** human-started, one controller per repository, looping until
   paused or stopped. Use Squadron aggressively for independent discovery,
   delivery, and Shepherd assignments without overlapping owners.

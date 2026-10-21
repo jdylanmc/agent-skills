@@ -75,7 +75,7 @@ test('human-supplied wrap-up intent remains pinned', () => {
     '78b54e387f4f88770533405ead518b0d5727c8763f54e4eb63719f63267c107c');
 });
 
-test('Unslop preserves human intent and ships zero curated rules', () => {
+test('Unslop preserves human intent and enables exactly the vendored packages', () => {
   const directory = path.join(root, '.agents/skills/unslop');
   assert.equal(readFileSync(path.join(directory, 'intent.md'), 'utf8'),
     'AI wrote some prose, but it reads just like an AI wrote it. It\'s clear in the framing, word choices, and sentence structures. Detect this and strip it. Humanize the content and ensure it passes the vale checks we have configured.  The vale checks find everything from emdash overuse to "It\'s not X, but Y" syle phrases.\n');
@@ -90,11 +90,9 @@ test('Unslop preserves human intent and ships zero curated rules', () => {
     'StylesPath = styles',
     'MinAlertLevel = suggestion',
     '[*.{md,txt}]',
-    'BasedOnStyles =',
+    'BasedOnStyles = RedHat, proselint, Readability, ai-tells, AiTells, write-good',
   ]);
-  assert.deepEqual(files(path.join(directory, 'styles')).map(file => path.relative(directory, file)),
-    [path.join('styles', 'README.md')]);
-  assert.match(skill, /No Vale rules\s+configured; editorial review only/);
+  assert.match(skill, /No Vale\s+rules\s+configured;\s+editorial review only/);
   assert.match(readFileSync(path.join(directory, 'VALE.md'), 'utf8'), /--no-global/);
 });
 
@@ -164,9 +162,55 @@ test('import provenance bytes survive outside active installer state', () => {
 
 test('original repository and upstream license bytes remain intact', () => {
   const sources = files(path.join(root, 'licenses'))
-    .map(filename => path.relative(root, filename).split(path.sep).join('/'));
+    .map(filename => path.relative(root, filename).split(path.sep).join('/'))
+    // Vale package licenses were added with `unslop`; pinned below.
+    .filter(filename => !valeLicenses.has(path.basename(filename)));
   sources.push('LICENSE');
   assert.equal(digestFiles(sources), '4a3e14e9b3c8a2203e46578812f283645dfa37ebe5d6735a70ae9c766364e13c');
+});
+
+const valeLicenses = new Map([
+  ['redhat-documentation-vale-at-red-hat.LICENSE', '7f8ae7549de044f0f338ecd8c9363f0f061c265f8be3c772044eed69fcc8a1f5'],
+  ['vale-cli-proselint.LICENSE', 'b1f23c552b813bb86d87ed697d895a5e03bf80a3882f9ffd87fcdeb176f103c0'],
+  ['vale-cli-readability.LICENSE', 'aa431e1653f927cf92be0fcc77fe388b97780b5f0f541085e30c4abe626b1074'],
+  ['tbhb-vale-ai-tells.LICENSE', 'adf519814a60378fc45fedaa358c6598cde3621154945180569784c79365d4ed'],
+  ['krishnasunkam-vale-ai-tells.LICENSE', '5c1b9768e3367bf8142f1b843fa7c1ed1bd95ccc0039f473d22d10fb6bb5c0ec'],
+  ['vale-cli-write-good.LICENSE', 'b9bb0975e308708b97e4a30c7665c815fe4bd3a1de2ed04d35c0eef03d4eaa69'],
+]);
+
+// Vendored release contents, byte-pinned: edit .vale.ini to curate, never these files.
+const valeStyles = {
+  RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
+  proselint: '02e3fef085a664f0886d77425a91723ed6bb0ecb1921eb59bed4de3749952555',
+  Readability: '8492c6c2e4019002f19249300c5f1911ba2e93296f26cd97c51e58bd7d3c488f',
+  'ai-tells': 'd1745dd5e7cc4a16e747d0b8a7ec4b66684d455b254ca736ab6cde3abbdb23a6',
+  AiTells: 'ca8399b98dc8eb8e8124998d76059fd977d61cc8ba2062b01618d66976169791',
+  'write-good': '505550c45c503cc5e72d06a8286279e2a434d75b31b5505836a4bb40eae32d15',
+  config: '8b4cff82b795ff09057789fe8de2281ba51730356e47a15c11c762ab665787bf',
+};
+
+test('Unslop vendors six pinned Vale packages with one license and notice entry each', () => {
+  const styles = path.join(root, '.agents/skills/unslop/styles');
+  assert.deepEqual(readdirSync(styles).sort(), ['README.md', ...Object.keys(valeStyles)].sort());
+  for (const [name, expectedDigest] of Object.entries(valeStyles)) {
+    const hash = createHash('sha256');
+    for (const filename of files(path.join(styles, name))) {
+      hash.update(`${path.relative(path.join(styles, name), filename).split(path.sep).join('/')}\0`);
+      hash.update(readFileSync(filename));
+      hash.update('\0');
+    }
+    assert.equal(hash.digest('hex'), expectedDigest, `${name} drifted from its pinned release`);
+  }
+  const notice = readFileSync(path.join(root, 'NOTICE.md'), 'utf8');
+  const readme = readFileSync(path.join(styles, 'README.md'), 'utf8');
+  for (const [name, digest] of valeLicenses) {
+    assert.equal(createHash('sha256').update(readFileSync(path.join(root, 'licenses', name))).digest('hex'), digest, name);
+    assert.equal(notice.split(`./licenses/${name}`).length - 1, 1, `${name}: exactly one notice entry`);
+  }
+  for (const name of Object.keys(valeStyles).filter(name => name !== 'config')) {
+    assert.match(readme, new RegExp(`\`${name}\``), `${name} listed in styles README`);
+    assert.ok(!existsSync(path.join(styles, name, 'LICENSE')), `${name}: no second license copy`);
+  }
 });
 
 test('style skills own their rules and Synthesize delegates to them', () => {
@@ -424,6 +468,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
         'licenses/humanlayer-skills.LICENSE', 'licenses/danyuchn-asd-ste100-skill.LICENSE',
         'licenses/caveman.LICENSING.md', 'licenses/mattpocock-skills.LICENSE',
         'licenses/superpowers.LICENSE', 'licenses/anthropic-skills.LICENSE',
+        ...[...valeLicenses.keys()].map(name => `licenses/${name}`),
       ]) {
         assert.ok(readFileSync(path.join(installed, 'setup', name)).length > 0, name);
       }

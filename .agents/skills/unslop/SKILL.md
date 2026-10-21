@@ -40,12 +40,14 @@ Record configuration paths, Vale version, alerts, and any omitted material.
 Protect code, literal examples, URLs, identifiers, numbers, citations, direct
 quotations, and front matter unless the caller explicitly includes them.
 
-The bundled configuration starts with **zero rules**. Say **"No Vale rules
-configured; editorial review only."** An empty report does not establish that
-the prose was checked. Missing Vale, invalid configuration, missing styles,
-unsupported formats, or failed execution are coverage gaps, not clean results.
-An editorial rewrite can proceed, but disclose that Vale verification is
-incomplete. Do not install tools or fetch style packages as a side effect.
+The bundled configuration enables six vendored, pinned style packages (listed
+in [styles/README.md](styles/README.md)); nothing is fetched at run time. When
+the resolved configuration enables no rules for the target, say **"No Vale
+rules configured; editorial review only."** An empty report does not establish
+that the prose was checked. Missing Vale, invalid configuration, missing
+styles, unsupported formats, or failed execution are coverage gaps, not clean
+results. An editorial rewrite can proceed, but disclose that Vale verification
+is incomplete. Do not install tools or fetch style packages as a side effect.
 
 ## 3. Rewrite
 
@@ -55,10 +57,12 @@ Use the author's concrete point instead of replacing one stock phrase with
 another. Preserve useful structure and the writer's voice; leave already
 natural passages alone.
 
-The intent's em-dash and "It's not X, but Y" examples are cues to inspect in
-context, not blanket bans or active Vale rules. A real contrast may need to
-stay. Do not invent punctuation limits, banned-word lists, or a new mandatory
-house style before the human curates them.
+Installed rules flag the intent's em-dash and "It's not X, but Y" examples,
+often several rules per pattern, and some packages disagree with each other
+(for example, one asks for contractions to go, another treats them as natural).
+Judge each alert in context: a real contrast or dash may need to stay. Do not
+invent punctuation limits or banned-word lists beyond the human-curated
+configuration.
 
 Keep facts, logical relationships, conditions, warnings, uncertainty, and
 technical precision intact. Do not add anecdotes, opinions, evidence, slang,

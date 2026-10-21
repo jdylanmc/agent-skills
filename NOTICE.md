@@ -14,6 +14,12 @@ license does not replace those terms.
 | [anthropics/skills](https://github.com/anthropics/skills), historical `skill-creator` import (removed) | 2026 Anthropic, PBC. | [Apache-2.0](./licenses/anthropic-skills.LICENSE) |
 | [obra/superpowers](https://github.com/obra/superpowers) | 2025 Jesse Vincent | [MIT](./licenses/superpowers.LICENSE) |
 | [danyuchn/asd-ste100-skill](https://github.com/danyuchn/asd-ste100-skill) | 2026 Dustin Yuchen Teng | [MIT](./licenses/danyuchn-asd-ste100-skill.LICENSE) |
+| [redhat-documentation/vale-at-red-hat](https://github.com/redhat-documentation/vale-at-red-hat) `RedHat` style, v680, vendored by `unslop` | 2021 Rolfe Dlugy-Hegwer | [MIT](./licenses/redhat-documentation-vale-at-red-hat.LICENSE) |
+| [vale-cli/proselint](https://github.com/vale-cli/proselint) `proselint` style, v0.3.4, vendored by `unslop`; implements [amperser/proselint](https://github.com/amperser/proselint) | 2019 errata.ai | [BSD-3-Clause](./licenses/vale-cli-proselint.LICENSE) |
+| [vale-cli/readability](https://github.com/vale-cli/readability) `Readability` style, v0.2.0, vendored by `unslop` | 2026 Joseph Kato | [MIT](./licenses/vale-cli-readability.LICENSE) |
+| [tbhb/vale-ai-tells](https://github.com/tbhb/vale-ai-tells) `ai-tells` style, v1.37.0, vendored by `unslop` | 2025-2026 Tony Burns | [MIT](./licenses/tbhb-vale-ai-tells.LICENSE) |
+| [krishnasunkam/vale-ai-tells](https://github.com/krishnasunkam/vale-ai-tells) `AiTells` style, v1.0.0, vendored by `unslop` | 2026 Krishna Sunkam | [MIT](./licenses/krishnasunkam-vale-ai-tells.LICENSE) |
+| [vale-cli/write-good](https://github.com/vale-cli/write-good) `write-good` style, v0.4.1, vendored by `unslop` | 2019 errata.ai | [MIT](./licenses/vale-cli-write-good.LICENSE) |
 
 `provenance/skills-lock.json` maps imported skills' local names to their primary upstream sources and
 imported content hashes, not hashes of local adaptations. Additional sources
@@ -115,6 +121,13 @@ Modifications to Apache-licensed files must carry prominent change notices.
   anchored orchestration workflow; Copilot runtime guidance replaces the
   upstream router's other-harness tool mappings. Setup, readiness publishing,
   and delivery references are adapted for GitHub/Azure DevOps coordination.
+
+- `unslop` vendors six unmodified Vale style packages from their pinned
+  releases under `.agents/skills/unslop/styles/`, plus the `ai-tells` agent
+  template it ships. Exact releases, zip digests and the only local differences
+  are in that directory's README. Each package's license above applies to its
+  files; the rest of `unslop` uses the repository MIT license. Vale itself is
+  not bundled.
 
 These workflows and their callers have been adapted locally. Original import
 records and contents remain recoverable from Git history.
