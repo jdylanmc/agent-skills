@@ -73,6 +73,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [synthesize](../synthesize/SKILL.md) | Human; agent sub-flow only with supplied sources, output purpose, and altitude. |
 | [tdd](../tdd/SKILL.md) | Internal; any authorized task may select test-first work. |
 | [triage](../triage/SKILL.md) | Human + Joe; selected backlog scope, preserving tracker-change gates. |
+| [unslop](../unslop/SKILL.md) | Both; rewrite supplied prose and verify configured Vale checks. Writes only named targets; no implicit rule curation, installation, or publication. |
 | [verify](../verify/SKILL.md) | Internal; evidence before completion claims. |
 | [wait-what](../wait-what/SKILL.md) | Human only; re-explain, no automatic invocation. |
 | [wrap-up](../wrap-up/SKILL.md) | Human only; checkpoint after ad-hoc work. True-up with main, tests, lint, docs, visual POC, then one undrafted green PR. No merge or approval authority. |

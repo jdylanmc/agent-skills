@@ -13,11 +13,11 @@ const expected = [
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
   'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'pull-request', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'simplified-technical-caveman', 'simplified-technical-english', 'specify',
-  'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what', 'wrap-up',
+  'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'unslop', 'verify', 'wait-what', 'wrap-up',
 ];
 const originalNames = expected.filter(name => ![
   'chart-a-course', 'create-pull-request', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'pull-request',
-  'simplified-technical-caveman', 'simplified-technical-english', 'wrap-up',
+  'simplified-technical-caveman', 'simplified-technical-english', 'unslop', 'wrap-up',
 ].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
@@ -47,6 +47,8 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     .filter(filename => filename !== '.agents/skills/shepherd/intent.md')
     // New simplified-technical-caveman intent explicitly requested by the human; pinned below.
     .filter(filename => filename !== '.agents/skills/simplified-technical-caveman/intent.md')
+    // Unslop intent supplied verbatim by the human; pinned separately below.
+    .filter(filename => filename !== '.agents/skills/unslop/intent.md')
     // New wrap-up intent explicitly supplied by the human; pinned below.
     .filter(filename => filename !== '.agents/skills/wrap-up/intent.md');
   sources.push('intent.md');
@@ -71,6 +73,29 @@ test('human-supplied wrap-up intent remains pinned', () => {
   const intent = readFileSync(path.join(root, '.agents/skills/wrap-up/intent.md'));
   assert.equal(createHash('sha256').update(intent).digest('hex'),
     '78b54e387f4f88770533405ead518b0d5727c8763f54e4eb63719f63267c107c');
+});
+
+test('Unslop preserves human intent and ships zero curated rules', () => {
+  const directory = path.join(root, '.agents/skills/unslop');
+  assert.equal(readFileSync(path.join(directory, 'intent.md'), 'utf8'),
+    'AI wrote some prose, but it reads just like an AI wrote it. It\'s clear in the framing, word choices, and sentence structures. Detect this and strip it. Humanize the content and ensure it passes the vale checks we have configured.  The vale checks find everything from emdash overuse to "It\'s not X, but Y" syle phrases.\n');
+  const skill = readFileSync(path.join(directory, 'SKILL.md'), 'utf8');
+  const metadata = skill.split('---\n')[1];
+  assert.match(metadata, /^name: unslop$/m);
+  assert.match(metadata, /^disable-model-invocation: false$/m);
+  assert.match(metadata, /^user-invocable: true$/m);
+  const config = readFileSync(path.join(directory, '.vale.ini'), 'utf8')
+    .split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
+  assert.deepEqual(config, [
+    'StylesPath = styles',
+    'MinAlertLevel = suggestion',
+    '[*.{md,txt}]',
+    'BasedOnStyles =',
+  ]);
+  assert.deepEqual(files(path.join(directory, 'styles')).map(file => path.relative(directory, file)),
+    [path.join('styles', 'README.md')]);
+  assert.match(skill, /No Vale rules\s+configured; editorial review only/);
+  assert.match(readFileSync(path.join(directory, 'VALE.md'), 'utf8'), /--no-global/);
 });
 
 test('separately authorized PM intent and entrypoint metadata remain pinned', () => {
@@ -327,7 +352,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     install();
     const installed = path.join(consumer, '.agents/skills');
-    await t.test('all 37 active names, no archive', () => {
+    await t.test('all active names, no archive', () => {
       assert.deepEqual(readdirSync(installed).sort(), expected);
     });
     await t.test('installation writes only project skill files and installer lock, not Setup outputs', () => {

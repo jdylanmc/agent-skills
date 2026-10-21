@@ -9,6 +9,9 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `unslop`: rewrite AI-sounding prose while preserving meaning, then verify
+  the selected Vale checks. Includes the human-supplied intent and an empty,
+  locally curated configuration; no starter rules or external styles.
 - `wrap-up`: human-only checkpoint after ad-hoc work. Freeze scope, true-up
   with main, pass tests and lint, reconcile docs and visual POC, then raise one
   undrafted PR with green CI. Grants no merge or approval authority.
