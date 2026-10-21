@@ -12,7 +12,7 @@ have tagged releases. Current cleanup is tracked in
 - `unslop`: rewrite AI-sounding prose while preserving meaning, then verify
   the selected Vale checks. Includes the human-supplied intent and five
   vendored Vale styles (RedHat, proselint, Readability, write-good, and
-  AiTells, merged from two packages with duplicates removed), enabled in full
+  ai-slop, merged from two packages with duplicates removed), enabled in full
   pending human pruning. Upstream licenses and attribution retained in
   `NOTICE.md`.
 - `wrap-up`: human-only checkpoint after ad-hoc work. Freeze scope, true-up

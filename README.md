@@ -140,7 +140,7 @@ Validation keeps telemetry disabled and does not claim directory registration.
   and sentence patterns without changing its meaning. Check the result with
   the [curated Vale configuration](.agents/skills/unslop/VALE.md).
   Ships five vendored Vale styles (RedHat, proselint, Readability, write-good,
-  and AiTells, merged and deduplicated from two packages), to be pruned by the
+  and ai-slop, merged and deduplicated from two packages), to be pruned by the
   human; editorial judgment and Vale coverage are reported separately. Rule
   curation is human-directed.
 - **Joe-mode:** human-started, one controller per repository, looping until

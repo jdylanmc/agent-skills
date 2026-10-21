@@ -17,8 +17,8 @@ license does not replace those terms.
 | [redhat-documentation/vale-at-red-hat](https://github.com/redhat-documentation/vale-at-red-hat) `RedHat` style, v680, vendored by `unslop` | 2021 Rolfe Dlugy-Hegwer | [MIT](./licenses/redhat-documentation-vale-at-red-hat.LICENSE) |
 | [vale-cli/proselint](https://github.com/vale-cli/proselint) `proselint` style, v0.3.4, vendored by `unslop`; implements [amperser/proselint](https://github.com/amperser/proselint) | 2019 errata.ai | [BSD-3-Clause](./licenses/vale-cli-proselint.LICENSE) |
 | [vale-cli/readability](https://github.com/vale-cli/readability) `Readability` style, v0.2.0, vendored by `unslop` | 2026 Joseph Kato | [MIT](./licenses/vale-cli-readability.LICENSE) |
-| [tbhb/vale-ai-tells](https://github.com/tbhb/vale-ai-tells) `ai-tells` style, v1.37.0, merged by `unslop` into its `AiTells` style | 2025-2026 Tony Burns | [MIT](./licenses/tbhb-vale-ai-tells.LICENSE) |
-| [krishnasunkam/vale-ai-tells](https://github.com/krishnasunkam/vale-ai-tells) `AiTells` style, v1.0.0, merged by `unslop` into its `AiTells` style | 2026 Krishna Sunkam | [MIT](./licenses/krishnasunkam-vale-ai-tells.LICENSE) |
+| [tbhb/vale-ai-tells](https://github.com/tbhb/vale-ai-tells) `ai-tells` style, v1.37.0, merged by `unslop` into its `ai-slop` style | 2025-2026 Tony Burns | [MIT](./licenses/tbhb-vale-ai-tells.LICENSE) |
+| [krishnasunkam/vale-ai-tells](https://github.com/krishnasunkam/vale-ai-tells) `AiTells` style, v1.0.0, merged by `unslop` into its `ai-slop` style | 2026 Krishna Sunkam | [MIT](./licenses/krishnasunkam-vale-ai-tells.LICENSE) |
 | [vale-cli/write-good](https://github.com/vale-cli/write-good) `write-good` style, v0.4.1, vendored by `unslop` | 2019 errata.ai | [MIT](./licenses/vale-cli-write-good.LICENSE) |
 
 `provenance/skills-lock.json` maps imported skills' local names to their primary upstream sources and
@@ -124,7 +124,7 @@ Modifications to Apache-licensed files must carry prominent change notices.
 
 - `unslop` vendors Vale styles under `.agents/skills/unslop/styles/`. `RedHat`,
   `proselint`, `Readability` and `write-good` are unmodified pinned releases.
-  `AiTells` merges the tbhb `ai-tells` and krishnasunkam `AiTells` packages
+  `ai-slop` merges the tbhb `ai-tells` and krishnasunkam `AiTells` packages
   into one style with duplicate rules and patterns removed, keeping the tbhb
   agent output template; both MIT licenses apply to it. Exact releases, zip
   digests and every local difference are in that directory's README. Each

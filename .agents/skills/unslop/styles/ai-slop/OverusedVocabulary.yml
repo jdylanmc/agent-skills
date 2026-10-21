@@ -16,6 +16,8 @@ tokens:
   - intricacies
   - groundbreaking
   - seamlessly
+  - Seamlessly
+  - SEAMLESSLY
   - robust
   - streamline
   - streamlines
@@ -107,8 +109,6 @@ tokens:
   - vital
   - vitally
   - foundational
-  - state-of-the-art
-  - best-in-class
   - world-class
   - next-generation
   - next-level
@@ -159,6 +159,8 @@ tokens:
   - vibrant
   - vibrantly
   - genuinely
+  - Genuinely
+  - GENUINELY
   - genuine
   # Marketing and hype verbs (zeitgeist). Case-sensitive like the rest of this
   # rule, so a sentence-initial form is missed. The -ed forms of super/turbo are

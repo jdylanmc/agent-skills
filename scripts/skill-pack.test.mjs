@@ -90,7 +90,7 @@ test('Unslop preserves human intent and enables exactly the vendored packages', 
     'StylesPath = styles',
     'MinAlertLevel = suggestion',
     '[*.{md,txt}]',
-    'BasedOnStyles = RedHat, proselint, Readability, AiTells, write-good',
+    'BasedOnStyles = RedHat, proselint, Readability, ai-slop, write-good',
   ]);
   assert.match(skill, /No Vale\s+rules\s+configured;\s+editorial review only/);
   assert.match(readFileSync(path.join(directory, 'VALE.md'), 'utf8'), /--no-global/);
@@ -179,14 +179,14 @@ const valeLicenses = new Map([
 ]);
 
 // Vendored style contents, byte-pinned: edit .vale.ini to curate, never these files.
-// RedHat, proselint, Readability and write-good are unmodified releases. AiTells is
+// RedHat, proselint, Readability and write-good are unmodified releases. ai-slop is
 // the deliberate merge of tbhb `ai-tells` and krishnasunkam `AiTells`, deduplicated;
 // changing it requires the same coverage-preservation evidence (see styles/README.md).
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
   proselint: '02e3fef085a664f0886d77425a91723ed6bb0ecb1921eb59bed4de3749952555',
   Readability: '8492c6c2e4019002f19249300c5f1911ba2e93296f26cd97c51e58bd7d3c488f',
-  AiTells: 'a48dc50cbb04a20f08be0ac6802584876d6fc4a36f7b863f508657d475b6b7dc',
+  'ai-slop': 'f601f1c1c1b01a2180245fe1ec78050e4ded7872acb3c716caf98ec813905475',
   'write-good': '505550c45c503cc5e72d06a8286279e2a434d75b31b5505836a4bb40eae32d15',
   config: '8b4cff82b795ff09057789fe8de2281ba51730356e47a15c11c762ab665787bf',
 };
@@ -213,10 +213,14 @@ test('Unslop vendors five Vale styles with one license and notice entry per sour
     assert.match(readme, new RegExp(`\`${name}\``), `${name} listed in styles README`);
     assert.ok(!existsSync(path.join(styles, name, 'LICENSE')), `${name}: no second license copy`);
   }
-  // Merged AiTells: 137 tbhb + 16 surviving krishnasunkam rules; Dash was an exact duplicate of EmDashUsage.
-  const merged = readdirSync(path.join(styles, 'AiTells')).filter(name => name.endsWith('.yml'));
-  assert.equal(merged.length, 153);
-  assert.ok(!merged.includes('Dash.yml') && merged.includes('EmDashUsage.yml'));
+  // Merged ai-slop: 137 tbhb + 14 surviving krishnasunkam rules. Dash duplicated EmDashUsage;
+  // Cliche and CopulaInflation were folded into AICompoundPhrases and PromotionalPuffery.
+  const merged = readdirSync(path.join(styles, 'ai-slop')).filter(name => name.endsWith('.yml'));
+  assert.equal(merged.length, 151);
+  for (const folded of ['Dash.yml', 'Cliche.yml', 'CopulaInflation.yml']) {
+    assert.ok(!merged.includes(folded), `${folded} was merged away`);
+  }
+  assert.ok(merged.includes('EmDashUsage.yml'));
   assert.ok(existsSync(path.join(styles, 'config/templates/ai-tells-agent.tmpl')));
   for (const source of ['tbhb/vale-ai-tells', 'krishnasunkam/vale-ai-tells']) {
     assert.ok(readme.includes(source), `${source} credited in styles README`);

@@ -1,6 +1,0 @@
-extends: existence
-message: "Copula inflation '%s': use a plain verb."
-level: suggestion
-ignorecase: true
-tokens:
-  - 'boasts an?'
