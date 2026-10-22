@@ -186,7 +186,7 @@ const valeLicenses = new Map([
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
   jdylanmc: '5da951ec0ee835bbb02e8247ea1fa6b946524442a5b463d3ed0676f530e10abe',
-  config: '8b4cff82b795ff09057789fe8de2281ba51730356e47a15c11c762ab665787bf',
+  config: 'df80e71026f49e4272995b6d4b491098b788992102b754463eedba5e2e408cf3',
 };
 
 test('Unslop vendors RedHat plus one merged jdylanmc style, one license and notice entry per source package', () => {
@@ -239,7 +239,7 @@ test('Unslop vendors RedHat plus one merged jdylanmc style, one license and noti
   for (const kept of ['EmDashUsage', 'Cliches', 'Passive', 'Apologizing', 'SMOG']) {
     assert.ok(merged.includes(kept), `${kept} is kept`);
   }
-  assert.ok(existsSync(path.join(styles, 'config/templates/ai-tells-agent.tmpl')));
+  assert.ok(existsSync(path.join(styles, 'config/templates/jdylanmc-agent.tmpl')));
   for (const source of ['tbhb/vale-ai-tells', 'krishnasunkam/vale-ai-tells', 'vale-cli/proselint', 'vale-cli/write-good', 'vale-cli/readability']) {
     assert.ok(readme.includes(source), `${source} credited in styles README`);
   }

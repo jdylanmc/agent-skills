@@ -58,8 +58,10 @@ Moving the files into folders changed only the rule IDs. A before/after run over
 ## Where the rules came from
 
 Package metadata (`meta.json`, package READMEs) and `Readability/LICENSE` are
-dropped; each license is kept once in `licenses/`. The tbhb
-`config/templates/ai-tells-agent.tmpl` output template is kept.
+dropped; each license is kept once in `licenses/`. The tbhb agent output
+template is kept, renamed to `config/templates/jdylanmc-agent.tmpl` (content
+unchanged). Use it with `vale --output=<path to that file>` for one
+self-contained line per finding.
 
 | Origin | Source | Release | Release zip sha256 | License | Rules |
 | --- | --- | --- | --- | --- | --- |
