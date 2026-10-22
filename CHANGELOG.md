@@ -10,11 +10,11 @@ have tagged releases. Current cleanup is tracked in
 ### Added
 
 - `unslop`: rewrite AI-sounding prose while preserving meaning, then verify
-  the selected Vale checks. Includes the human-supplied intent and five
-  vendored Vale styles (RedHat, proselint, Readability, write-good, and
-  ai-slop, merged from two packages with duplicates removed), enabled in full
-  pending human pruning. Upstream licenses and attribution retained in
-  `NOTICE.md`.
+  the selected Vale checks. Includes the human-supplied intent and two
+  vendored Vale styles: RedHat as the base, and ai-slop, one deduplicated
+  layer merged from five packages (ai-tells, AiTells, proselint, write-good,
+  Readability), enabled in full pending human pruning. Upstream licenses and
+  attribution retained in `NOTICE.md`.
 - `wrap-up`: human-only checkpoint after ad-hoc work. Freeze scope, true-up
   with main, pass tests and lint, reconcile docs and visual POC, then raise one
   undrafted PR with green CI. Grants no merge or approval authority.

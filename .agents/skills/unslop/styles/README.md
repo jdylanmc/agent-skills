@@ -1,75 +1,95 @@
 # Vale styles
 
-Four styles are copied unmodified from pinned releases and one, `ai-slop`, is
-merged from two packages. Nothing is fetched at run time. Licenses and
-copyright notices live in the repository [NOTICE](../../setup/NOTICE.md) and
-`licenses/`; do not add per-package copies. Enable or disable rules in
-[`.vale.ini`](../.vale.ini), never by editing the unmodified styles.
-See [VALE.md](../VALE.md).
+Two styles. `RedHat` is the base, an unmodified pinned release. `ai-slop` is
+one merged, deduplicated layer built from five other packages. Nothing is
+fetched at run time. Licenses and copyright notices live in the repository
+[NOTICE](../../setup/NOTICE.md) and `licenses/`; do not add per-package copies.
+Enable or disable rules in [`.vale.ini`](../.vale.ini). See [VALE.md](../VALE.md).
 
 | Style | Source | Release | Release zip sha256 | Rules |
 | --- | --- | --- | --- | --- |
 | `RedHat` | [redhat-documentation/vale-at-red-hat](https://github.com/redhat-documentation/vale-at-red-hat) | v680 | `c8bf6824e7f9f4fbbfc29ae017f0f1553922a5d24a3aafd5e3795bca57008992` | 37 |
-| `proselint` | [vale-cli/proselint](https://github.com/vale-cli/proselint) | v0.3.4 | `48b1fb481ba44f6505d44346b283f6cdc74efd234f913bbdb09bf34420fab81c`* | 34 |
-| `Readability` | [vale-cli/readability](https://github.com/vale-cli/readability) | v0.2.0 | `cf8790677bb2ef86458c1d1dbd6e646fd8063c0e9621f81141e5cd85e5e41f81` | 8 |
-| `write-good` | [vale-cli/write-good](https://github.com/vale-cli/write-good) | v0.4.1 | `2960ef10861ddc7dc76292a4967eb3789bf05ca24f862042f6d15f53332887f0`* | 8 |
-| `ai-slop` | merged, see below | | | 151 |
-
-\* The release publishes no digest; recorded from the downloaded asset.
-
-Local differences from the release zips:
-
-- `Readability/LICENSE` is dropped in favor of the single canonical license
-  entry in `licenses/`.
+| `ai-slop` | merged, see below | | | 198 |
 
 ## ai-slop (merged)
 
-One style built from two packages that flag the same kind of problem:
+Rule IDs are `ai-slop.Name`. Package metadata (`meta.json`, package READMEs) and
+`Readability/LICENSE` are dropped; each license is kept once in `licenses/`.
+The tbhb `config/templates/ai-tells-agent.tmpl` output template is kept.
 
-| Origin | Source | Release | Release zip sha256 | Rules |
-| --- | --- | --- | --- | --- |
-| tbhb | [tbhb/vale-ai-tells](https://github.com/tbhb/vale-ai-tells) (`ai-tells`) | v1.37.0 | `f8d1e981abbfbac1aa092d1623a1ac9bc935f0b15e8071e7a072915abddf0570` | 137 |
-| krishnasunkam | [krishnasunkam/vale-ai-tells](https://github.com/krishnasunkam/vale-ai-tells) (`AiTells`) | v1.0.0 | `eee9417ef656b5e9d1aaa76fd850c003c4a99856bcee787b6436a91a3fc1c03c` | 17 |
+| Origin | Source | Release | Release zip sha256 | License | Rules |
+| --- | --- | --- | --- | --- | --- |
+| tbhb | [tbhb/vale-ai-tells](https://github.com/tbhb/vale-ai-tells) (`ai-tells`) | v1.37.0 | `f8d1e981abbfbac1aa092d1623a1ac9bc935f0b15e8071e7a072915abddf0570` | MIT | 137 |
+| krishnasunkam | [krishnasunkam/vale-ai-tells](https://github.com/krishnasunkam/vale-ai-tells) (`AiTells`) | v1.0.0 | `eee9417ef656b5e9d1aaa76fd850c003c4a99856bcee787b6436a91a3fc1c03c` | MIT | 13 |
+| proselint | [vale-cli/proselint](https://github.com/vale-cli/proselint) | v0.3.4 | `48b1fb481ba44f6505d44346b283f6cdc74efd234f913bbdb09bf34420fab81c`* | BSD-3-Clause | 33 |
+| write-good | [vale-cli/write-good](https://github.com/vale-cli/write-good) | v0.4.1 | `2960ef10861ddc7dc76292a4967eb3789bf05ca24f862042f6d15f53332887f0`* | MIT | 7 |
+| Readability | [vale-cli/readability](https://github.com/vale-cli/readability) | v0.2.0 | `cf8790677bb2ef86458c1d1dbd6e646fd8063c0e9621f81141e5cd85e5e41f81` | MIT | 8 |
 
-All 137 tbhb rules and 14 of the 17 krishnasunkam rules survive: 151 rules.
-The tbhb `config/templates/ai-tells-agent.tmpl` output template is kept. Rule
-IDs change from `ai-tells.Name` and `AiTells.Name` to `ai-slop.Name`.
+\* The release publishes no digest; recorded from the downloaded asset.
 
-A fleet of ten analysts compared all 154 rules, and a before/after run over
-every plain token, 114 test files, and sentence-initial and uppercase
-variants confirmed that no span flagged before is unflagged now. Exact
-same-span duplicate alerts on that corpus fell from 307 to 55, and no two
-rules share a pattern.
+Which rule came from where. Anything not listed below is tbhb.
 
-Removed, folded or trimmed, each only where Vale showed the same text is still
-flagged in lowercase, sentence-initial and uppercase form:
+- **krishnasunkam (13):** `AbstractTriad`, `Adverb`, `CodeToken`,
+  `EpigramContrast`, `FilePath`, `HiddenVerb`, `LinkText`, `NegParallel`,
+  `NeverTag`, `SectionCode`, `StatusBracket`, `VirtueHonest`, `WeakResume`.
+- **proselint, BSD-3-Clause (33):** `Airlinese`, `AnimalLabels`, `Annotations`,
+  `Apologizing`, `Archaisms`, `But`, `Cliches`, `CorporateSpeak`, `Currency`,
+  `Cursing`, `DateCase`, `DateMidnight`, `DateRedundancy`, `DateSpacing`,
+  `DenizenLabels`, `Diacritical`, `GenderBias`, `GroupTerms`, `Hedging`,
+  `Hyperbole`, `Jargon`, `LGBTOffensive`, `LGBTTerms`, `Malapropisms`,
+  `Needless`, `Nonwords`, `Oxymorons`, `P-Value`, `RASSyndrome`, `Skunked`,
+  `Spelling`, `Typography`, `Uncomparables`.
+- **write-good (7):** `E-Prime`, `Illusions`, `Passive`, `So`, `ThereIs`,
+  `TooWordy`, `Weasel`.
+- **Readability (8):** `AutomatedReadability`, `ColemanLiau`, `FleschKincaid`,
+  `FleschReadingEase`, `GunningFog`, `LIX`, `Polysyllables`, `SMOG`.
 
-- `Dash` removed. Its tokens were identical to `EmDashUsage`, which now carries
-  `Dash`'s clearer message.
-- `Cliche` folded into `AICompoundPhrases` (its message already says
-  "clichéd phrase"), and `CopulaInflation`'s one unique pattern (`boasts a/an`)
-  into `PromotionalPuffery`. `best-in-class` and `state-of-the-art` were
-  dropped from `OverusedVocabulary` as a result.
-- `seamlessly` and `genuinely` moved from `Adverb` into `OverusedVocabulary`,
-  which is case-sensitive, so their capitalized and uppercase forms were
-  added there. `Adverb` also loses `notably`, `importantly`, `honestly` and
-  `frankly`.
-- `SycophancyMarkers` loses 2 "happy to help" phrases that `ClosingPleasantries`
-  also has. `OverusedVocabulary` loses `notably` and `crucially`, which
-  `FormalTransitions` flags in any case.
+### How it was deduplicated
 
-Severity effects of folding: the `Cliche` and `boasts a/an` patterns were
-`suggestion` and are now `error`, as every tbhb rule is; `seamlessly` and
-`genuinely` keep `error` for all case forms.
+Two passes, each checked with Vale 3.24.0 before and after over thousands of
+test sentences in lowercase, sentence-initial and uppercase form. Priority when
+two rules flag the same text: `ai-slop` rules, then proselint, then write-good.
 
-Kept on purpose:
+**Pass 1, tbhb + krishnasunkam (154 rules, ten analysts):** removed `Dash`
+(identical to `EmDashUsage`); folded `Cliche` into `AICompoundPhrases` and
+`CopulaInflation`'s one unique pattern into `PromotionalPuffery`; moved
+`seamlessly` and `genuinely` from `Adverb` into `OverusedVocabulary`; trimmed
+a few phrases from `Adverb`, `SycophancyMarkers` and `OverusedVocabulary`.
 
-- The regex rules `AbstractTriad`, `EpigramContrast`, `HiddenVerb`,
-  `NegParallel`, `NeverTag`, `Passive` and `VirtueHonest` partly overlap
-  other rules but each flags text nothing else does. Most overlap inside the
-  tbhb rules is deliberate sibling splitting, not duplication.
-- Six unique krishnasunkam rules are spec or document hygiene, not AI tells:
-  `CodeToken`, `FilePath`, `LinkText`, `SectionCode`, `StatusBracket`,
-  `WeakResume`. `StatusBracket` also matches `[covered]` and `[required]`.
-- Other levels are unchanged: every tbhb rule is `error`; the krishnasunkam
-  rules keep their own `suggestion` or `error`.
+**Pass 2, adding proselint, write-good and Readability:**
+
+- `write-good.Cliches` removed. All 697 of its patterns are also in
+  `proselint.Cliches`.
+- `proselint.Very` removed; `ai-slop.Adverb` flags `very` the same way.
+- Trimmed only where another rule flags the complete phrase: `Cliches` 17 of
+  777, `TooWordy` 29 of 216, `CorporateSpeak` 4 of 25, `Weasel` 4 of 24.
+- `Passive` is one rule: write-good's participle list plus the optional adverb
+  ("was quickly fixed") the krishnasunkam rule added. Its message and
+  `warning` level are write-good's.
+- A first pass of this check counted any rule firing on the same line as
+  coverage. That wrongly marked 22 `Cliches`, 5 `TooWordy`, 1 `Oxymorons` and
+  all of `Apologizing` as covered, because another rule flagged only a few of
+  their words. They were restored; coverage now requires the other rule's
+  span to contain the original.
+
+Result of the final check over 116 files: no previously flagged span is lost
+or narrowed; same-span duplicate alerts fell from 7,046 to 2,316. One earlier
+case differs: `CopulaInflation`'s `is/are a testament to` is now flagged by
+`AICompoundPhrases` as `a testament to`, without the verb.
+
+### Overlap kept on purpose
+
+- Regex rules (`AbstractTriad`, `EpigramContrast`, `HiddenVerb`, `NegParallel`,
+  `NeverTag`, `VirtueHonest`) and most overlap inside the tbhb rules are
+  partial, not duplicate; each flags text nothing else does.
+- Severity follows the rule that now owns a pattern. The folded `Cliche` and
+  `boasts a/an` patterns moved from `suggestion` to `error`. `clearly`,
+  `fairly`, `obviously` and `very` moved from write-good `warning` and
+  proselint `error` to `ai-slop.Adverb` `suggestion`.
+- `ai-slop` was not deduplicated against `RedHat`. Known overlaps:
+  `RedHat.EmDash` and `ai-slop.EmDashUsage`; passive voice in
+  `RedHat.PassiveVoice` and `ai-slop.Passive`; `RedHat.ReadabilityGrade` and the
+  Readability metrics.
+- Six krishnasunkam rules are document hygiene, not AI tells: `CodeToken`,
+  `FilePath`, `LinkText`, `SectionCode`, `StatusBracket` (which also matches
+  `[covered]` and `[required]`) and `WeakResume`.

@@ -15,11 +15,11 @@ license does not replace those terms.
 | [obra/superpowers](https://github.com/obra/superpowers) | 2025 Jesse Vincent | [MIT](./licenses/superpowers.LICENSE) |
 | [danyuchn/asd-ste100-skill](https://github.com/danyuchn/asd-ste100-skill) | 2026 Dustin Yuchen Teng | [MIT](./licenses/danyuchn-asd-ste100-skill.LICENSE) |
 | [redhat-documentation/vale-at-red-hat](https://github.com/redhat-documentation/vale-at-red-hat) `RedHat` style, v680, vendored by `unslop` | 2021 Rolfe Dlugy-Hegwer | [MIT](./licenses/redhat-documentation-vale-at-red-hat.LICENSE) |
-| [vale-cli/proselint](https://github.com/vale-cli/proselint) `proselint` style, v0.3.4, vendored by `unslop`; implements [amperser/proselint](https://github.com/amperser/proselint) | 2019 errata.ai | [BSD-3-Clause](./licenses/vale-cli-proselint.LICENSE) |
-| [vale-cli/readability](https://github.com/vale-cli/readability) `Readability` style, v0.2.0, vendored by `unslop` | 2026 Joseph Kato | [MIT](./licenses/vale-cli-readability.LICENSE) |
+| [vale-cli/proselint](https://github.com/vale-cli/proselint) `proselint` style, v0.3.4, merged by `unslop` into its `ai-slop` style; implements [amperser/proselint](https://github.com/amperser/proselint) | 2019 errata.ai | [BSD-3-Clause](./licenses/vale-cli-proselint.LICENSE) |
+| [vale-cli/readability](https://github.com/vale-cli/readability) `Readability` style, v0.2.0, merged by `unslop` into its `ai-slop` style | 2026 Joseph Kato | [MIT](./licenses/vale-cli-readability.LICENSE) |
 | [tbhb/vale-ai-tells](https://github.com/tbhb/vale-ai-tells) `ai-tells` style, v1.37.0, merged by `unslop` into its `ai-slop` style | 2025-2026 Tony Burns | [MIT](./licenses/tbhb-vale-ai-tells.LICENSE) |
 | [krishnasunkam/vale-ai-tells](https://github.com/krishnasunkam/vale-ai-tells) `AiTells` style, v1.0.0, merged by `unslop` into its `ai-slop` style | 2026 Krishna Sunkam | [MIT](./licenses/krishnasunkam-vale-ai-tells.LICENSE) |
-| [vale-cli/write-good](https://github.com/vale-cli/write-good) `write-good` style, v0.4.1, vendored by `unslop` | 2019 errata.ai | [MIT](./licenses/vale-cli-write-good.LICENSE) |
+| [vale-cli/write-good](https://github.com/vale-cli/write-good) `write-good` style, v0.4.1, merged by `unslop` into its `ai-slop` style | 2019 errata.ai | [MIT](./licenses/vale-cli-write-good.LICENSE) |
 
 `provenance/skills-lock.json` maps imported skills' local names to their primary upstream sources and
 imported content hashes, not hashes of local adaptations. Additional sources
@@ -122,14 +122,17 @@ Modifications to Apache-licensed files must carry prominent change notices.
   upstream router's other-harness tool mappings. Setup, readiness publishing,
   and delivery references are adapted for GitHub/Azure DevOps coordination.
 
-- `unslop` vendors Vale styles under `.agents/skills/unslop/styles/`. `RedHat`,
-  `proselint`, `Readability` and `write-good` are unmodified pinned releases.
-  `ai-slop` merges the tbhb `ai-tells` and krishnasunkam `AiTells` packages
-  into one style with duplicate rules and patterns removed, keeping the tbhb
-  agent output template; both MIT licenses apply to it. Exact releases, zip
-  digests and every local difference are in that directory's README. Each
-  package's license above applies to its files; the rest of `unslop` uses the
-  repository MIT license. Vale itself is not bundled.
+- `unslop` vendors Vale styles under `.agents/skills/unslop/styles/`. `RedHat`
+  is an unmodified pinned release. `ai-slop` merges five packages (tbhb
+  `ai-tells`, krishnasunkam `AiTells`, `proselint`, `write-good` and
+  `Readability`) into one style with duplicate rules and patterns removed,
+  keeping the tbhb agent output template. Each rule file keeps the license of
+  the package it came from: MIT for four, BSD-3-Clause for the `proselint`
+  rules. The merged `Passive` rule derives from both `write-good` and
+  `AiTells`. Exact releases, zip digests, which rule came from which package and
+  every local difference are in that directory's README. Each package's license
+  above applies to its files; the rest of `unslop` uses the repository MIT
+  license. Vale itself is not bundled.
 
 These workflows and their callers have been adapted locally. Original import
 records and contents remain recoverable from Git history.

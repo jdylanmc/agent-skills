@@ -1,11 +1,12 @@
 # Vale configuration
 
 The package owns one [configuration](.vale.ini) and a [styles
-directory](styles/README.md) of five vendored styles: RedHat, proselint,
-Readability, write-good, and ai-slop (merged and deduplicated from two
-packages). They are copied in from pinned releases, so there is no `vale sync`
-and no download at run time. The built-in `Vale` style is not enabled. File
-sections cover Markdown and plain text.
+directory](styles/README.md) of two vendored styles. `RedHat` is the base.
+`ai-slop` is everything else, merged and deduplicated from five packages
+(ai-tells, AiTells, proselint, write-good, Readability). They are copied in
+from pinned releases, so there is no `vale sync` and no download at run time.
+The built-in `Vale` style is not enabled. File sections cover Markdown and
+plain text.
 
 ## Run
 
@@ -54,11 +55,11 @@ document to satisfy existing checks.
 
 1. Agree on the rule, scope, severity, and exceptions with the human.
 2. Disable a rule in `.vale.ini` under the file section, for example
-   `RedHat.Contractions = NO`, or turn a whole style off by removing it from
-   `BasedOnStyles`. Do not edit the vendored styles in place: `RedHat`,
-   `proselint`, `Readability` and `write-good` must stay byte-identical to their
-   pinned releases, and `ai-slop` changes only through an explicit, tested
-   consolidation (see its README section).
+   `RedHat.Contractions = NO` or `ai-slop.E-Prime = NO`, or turn a whole style
+   off by removing it from `BasedOnStyles`. Do not edit the vendored styles in
+   place: `RedHat` must stay byte-identical to its pinned release, and
+   `ai-slop` changes only through an explicit, tested consolidation (see its
+   README section).
 3. For a new rule of our own, add a YAML file under `styles/Unslop/` with
    examples that should trigger and counterexamples that must remain valid, and
    enable it explicitly.

@@ -3,14 +3,34 @@ message: "'%s' is a cliche."
 level: error
 ignorecase: true
 tokens:
-  - a chip off the old block
   - a clean slate
+  - a penny saved is a penny earned
+  - beat a dead horse
+  - blessing in disguise
+  - bury the hatchet
+  - fit to be tied
+  - for what it's worth
+  - force to be reckoned with
+  - go against the grain
+  - it's not what you know, it's who you know
+  - just a hop, skip, and a jump
+  - just the ticket
+  - keep it simple, stupid
+  - let sleeping dogs lie
+  - put it in a nutshell
+  - road to hell is paved with good intentions
+  - still waters run deep
+  - stuff that dreams are made of
+  - to make a long story short
+  - too numerous to mention
+  - two cents worth
+  - worth its weight in gold
+  - a chip off the old block
   - a dark and stormy night
   - a far cry
   - a fate worse than death
   - a fine kettle of fish
   - a loose cannon
-  - a penny saved is a penny earned
   - a tough row to hoe
   - a word to the wise
   - ace in the hole
@@ -22,7 +42,6 @@ tokens:
   - all fun and games
   - all hell broke loose
   - all in a day's work
-  - all talk, no action
   - all thumbs
   - all your eggs in one basket
   - all's fair in love and war
@@ -37,7 +56,6 @@ tokens:
   - as the crow flies
   - at loose ends
   - at my wits end
-  - at the end of the day
   - avoid like the plague
   - babe in the woods
   - back against the wall
@@ -54,7 +72,6 @@ tokens:
   - barking up the wrong tree
   - bat out of hell
   - be all and end all
-  - beat a dead horse
   - beat around the bush
   - been there, done that
   - beggars can't be choosers
@@ -93,7 +110,6 @@ tokens:
   - black as the ace of spades
   - blast from the past
   - bleeding heart
-  - blessing in disguise
   - blind ambition
   - blind as a bat
   - blind leading the blind
@@ -104,7 +120,6 @@ tokens:
   - blow off steam
   - blow your own horn
   - blushing bride
-  - boils down to
   - bolt from the blue
   - bone to pick
   - bored stiff
@@ -123,7 +138,6 @@ tokens:
   - burning question
   - burning the candle at both ends
   - burst your bubble
-  - bury the hatchet
   - busy as a bee
   - but that's another story
   - by hook or by crook
@@ -134,7 +148,6 @@ tokens:
   - can't cut the mustard
   - can't hold a candle to
   - case of mistaken identity
-  - cast aspersions
   - cat got your tongue
   - cat's meow
   - caught in the crossfire
@@ -197,7 +210,6 @@ tokens:
   - down in the dumps
   - down the hatch
   - down to earth
-  - draw the line
   - dressed to kill
   - dressed to the nines
   - drives me up the wall
@@ -222,7 +234,6 @@ tokens:
   - face the music
   - facts of life
   - fair weather friend
-  - fall by the wayside
   - fan the flames
   - far be it from me
   - fast and loose
@@ -239,7 +250,6 @@ tokens:
   - fishing for a compliment
   - fit as a fiddle
   - fit the bill
-  - fit to be tied
   - flash in the pan
   - flat as a pancake
   - flip your lid
@@ -250,9 +260,7 @@ tokens:
   - for all intents and purposes
   - for free
   - for the birds
-  - for what it's worth
   - force of nature
-  - force to be reckoned with
   - forgive and forget
   - fox in the henhouse
   - free and easy
@@ -273,7 +281,6 @@ tokens:
   - gilding the lily
   - gilding the lily
   - give and take
-  - go against the grain
   - go at it tooth and nail
   - go for broke
   - go him one better
@@ -334,13 +341,11 @@ tokens:
   - if you catch my drift
   - in a jam
   - in a jiffy
-  - in a nutshell
   - in a pig's eye
   - in a pinch
   - in a word
   - in hot water
   - in light of
-  - in the final analysis
   - in the gutter
   - in the last analysis
   - in the nick of time
@@ -348,11 +353,9 @@ tokens:
   - in your dreams
   - innocent bystander
   - it ain't over till the fat lady sings
-  - it goes without saying
   - it takes all kinds
   - it takes one to know one
   - it's a small world
-  - it's not what you know, it's who you know
   - it's only a matter of time
   - ivory tower
   - Jack of all trades
@@ -365,12 +368,9 @@ tokens:
   - jump on the bandwagon
   - jump the gun
   - jump to conclusions
-  - just a hop, skip, and a jump
-  - just the ticket
   - justice is blind
   - keep a stiff upper lip
   - keep an eye on
-  - keep it simple, stupid
   - keep the home fires burning
   - keep up with the Joneses
   - keep your chin up
@@ -402,7 +402,6 @@ tokens:
   - law of the land
   - lay down the law
   - leaps and bounds
-  - let sleeping dogs lie
   - let the cat out of the bag
   - let the good times roll
   - let your hair down
@@ -467,16 +466,13 @@ tokens:
   - naked truth
   - neat as a pin
   - needle in a haystack
-  - needless to say
   - neither here nor there
   - never look back
   - never say never
   - nip and tuck
   - nip in the bud
   - nip it in the bud
-  - no guts, no glory
   - no love lost
-  - no pain, no gain
   - no skin off my back
   - no stone unturned
   - no time like the present
@@ -540,7 +536,6 @@ tokens:
   - patience is a virtue
   - pay through the nose
   - penny pincher
-  - perfect storm
   - pig in a poke
   - pile it on
   - pillar of the community
@@ -561,10 +556,8 @@ tokens:
   - pretty as a picture
   - pull a fast one
   - pull your punches
-  - pulled no punches
   - pulling your leg
   - pure as the driven snow
-  - put it in a nutshell
   - put one over on you
   - put the cart before the horse
   - put the pedal to the metal
@@ -593,7 +586,6 @@ tokens:
   - ripe old age
   - ripped me off
   - rise and shine
-  - road to hell is paved with good intentions
   - rob Peter to pay Paul
   - roll over in the grave
   - rub the wrong way
@@ -604,7 +596,6 @@ tokens:
   - salt of the earth
   - scared stiff
   - scared to death
-  - sea change
   - sealed with a kiss
   - second to none
   - see eye to eye
@@ -647,7 +638,6 @@ tokens:
   - stands out like a sore thumb
   - start from scratch
   - stick in the mud
-  - still waters run deep
   - stitch in time
   - stop and smell the roses
   - straight as an arrow
@@ -655,7 +645,6 @@ tokens:
   - stretched to the breaking point
   - strong as an ox
   - stubborn as a mule
-  - stuff that dreams are made of
   - stuffed shirt
   - sweating blood
   - sweating bullets
@@ -673,7 +662,6 @@ tokens:
   - the real deal
   - the real McCoy
   - the red carpet treatment
-  - the same old story
   - the straw that broke the camel's back
   - there is no accounting for taste
   - thick as a brick
@@ -695,17 +683,14 @@ tokens:
   - tighter than a drum
   - time and time again
   - time is of the essence
-  - tip of the iceberg
   - tired but happy
   - to coin a phrase
   - to each his own
-  - to make a long story short
   - to the best of my knowledge
   - toe the line
   - tongue in cheek
   - too good to be true
   - too hot to handle
-  - too numerous to mention
   - touch with a ten foot pole
   - tough as nails
   - trial and error
@@ -713,7 +698,6 @@ tokens:
   - tried and true
   - trip down memory lane
   - twist of fate
-  - two cents worth
   - two peas in a pod
   - ugly as sin
   - under the counter
@@ -768,7 +752,6 @@ tokens:
   - work like a dog
   - world weary
   - worst nightmare
-  - worth its weight in gold
   - writ large
   - wrong side of the bed
   - yanking your chain

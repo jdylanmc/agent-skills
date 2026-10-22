@@ -90,7 +90,7 @@ test('Unslop preserves human intent and enables exactly the vendored packages', 
     'StylesPath = styles',
     'MinAlertLevel = suggestion',
     '[*.{md,txt}]',
-    'BasedOnStyles = RedHat, proselint, Readability, ai-slop, write-good',
+    'BasedOnStyles = RedHat, ai-slop',
   ]);
   assert.match(skill, /No Vale\s+rules\s+configured;\s+editorial review only/);
   assert.match(readFileSync(path.join(directory, 'VALE.md'), 'utf8'), /--no-global/);
@@ -179,19 +179,16 @@ const valeLicenses = new Map([
 ]);
 
 // Vendored style contents, byte-pinned: edit .vale.ini to curate, never these files.
-// RedHat, proselint, Readability and write-good are unmodified releases. ai-slop is
-// the deliberate merge of tbhb `ai-tells` and krishnasunkam `AiTells`, deduplicated;
+// RedHat is an unmodified release. ai-slop is the deliberate, deduplicated merge of
+// tbhb `ai-tells`, krishnasunkam `AiTells`, proselint, write-good and Readability;
 // changing it requires the same coverage-preservation evidence (see styles/README.md).
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
-  proselint: '02e3fef085a664f0886d77425a91723ed6bb0ecb1921eb59bed4de3749952555',
-  Readability: '8492c6c2e4019002f19249300c5f1911ba2e93296f26cd97c51e58bd7d3c488f',
-  'ai-slop': 'f601f1c1c1b01a2180245fe1ec78050e4ded7872acb3c716caf98ec813905475',
-  'write-good': '505550c45c503cc5e72d06a8286279e2a434d75b31b5505836a4bb40eae32d15',
+  'ai-slop': '7f1db7b83b9522b120674156506712c829e4fbb57b21bf26027fd7c112978184',
   config: '8b4cff82b795ff09057789fe8de2281ba51730356e47a15c11c762ab665787bf',
 };
 
-test('Unslop vendors five Vale styles with one license and notice entry per source package', () => {
+test('Unslop vendors RedHat plus one merged ai-slop style, one license and notice entry per source package', () => {
   const styles = path.join(root, '.agents/skills/unslop/styles');
   assert.deepEqual(readdirSync(styles).sort(), ['README.md', ...Object.keys(valeStyles)].sort());
   for (const [name, expectedDigest] of Object.entries(valeStyles)) {
@@ -213,18 +210,22 @@ test('Unslop vendors five Vale styles with one license and notice entry per sour
     assert.match(readme, new RegExp(`\`${name}\``), `${name} listed in styles README`);
     assert.ok(!existsSync(path.join(styles, name, 'LICENSE')), `${name}: no second license copy`);
   }
-  // Merged ai-slop: 137 tbhb + 14 surviving krishnasunkam rules. Dash duplicated EmDashUsage;
-  // Cliche and CopulaInflation were folded into AICompoundPhrases and PromotionalPuffery.
+  // Merged ai-slop: 137 tbhb + 13 krishnasunkam + 33 proselint + 7 write-good + 8 Readability.
+  // Removed as duplicates: Dash, write-good Cliches, proselint Very; Cliche and CopulaInflation
+  // were folded into AICompoundPhrases and PromotionalPuffery.
   const merged = readdirSync(path.join(styles, 'ai-slop')).filter(name => name.endsWith('.yml'));
-  assert.equal(merged.length, 151);
-  for (const folded of ['Dash.yml', 'Cliche.yml', 'CopulaInflation.yml']) {
+  assert.equal(merged.length, 198);
+  for (const folded of ['Dash.yml', 'Cliche.yml', 'CopulaInflation.yml', 'Very.yml']) {
     assert.ok(!merged.includes(folded), `${folded} was merged away`);
   }
-  assert.ok(merged.includes('EmDashUsage.yml'));
+  for (const kept of ['EmDashUsage.yml', 'Cliches.yml', 'Passive.yml', 'Apologizing.yml', 'SMOG.yml']) {
+    assert.ok(merged.includes(kept), `${kept} is kept`);
+  }
   assert.ok(existsSync(path.join(styles, 'config/templates/ai-tells-agent.tmpl')));
-  for (const source of ['tbhb/vale-ai-tells', 'krishnasunkam/vale-ai-tells']) {
+  for (const source of ['tbhb/vale-ai-tells', 'krishnasunkam/vale-ai-tells', 'vale-cli/proselint', 'vale-cli/write-good', 'vale-cli/readability']) {
     assert.ok(readme.includes(source), `${source} credited in styles README`);
   }
+  assert.match(readme, /\| `ai-slop` \| merged, see below \| \| \| 198 \|/);
 });
 
 test('style skills own their rules and Synthesize delegates to them', () => {

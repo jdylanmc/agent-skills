@@ -139,10 +139,10 @@ Validation keeps telemetry disabled and does not claim directory registration.
 - **Unslop:** rewrite supplied prose to remove formulaic AI framing, phrasing,
   and sentence patterns without changing its meaning. Check the result with
   the [curated Vale configuration](.agents/skills/unslop/VALE.md).
-  Ships five vendored Vale styles (RedHat, proselint, Readability, write-good,
-  and ai-slop, merged and deduplicated from two packages), to be pruned by the
-  human; editorial judgment and Vale coverage are reported separately. Rule
-  curation is human-directed.
+  Ships two vendored Vale styles: RedHat as the base, and ai-slop, one merged
+  and deduplicated layer of five packages, to be pruned by the human; editorial
+  judgment and Vale coverage are reported separately. Rule curation is
+  human-directed.
 - **Joe-mode:** human-started, one controller per repository, looping until
   paused or stopped. Use Squadron aggressively for independent discovery,
   delivery, and Shepherd assignments without overlapping owners.

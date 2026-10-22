@@ -3,6 +3,7 @@ message: "'%s' is an oxymoron."
 ignorecase: true
 level: error
 tokens:
+  - generally always
   - amateur expert
   - increasingly less
   - advancing backwards
@@ -10,7 +11,6 @@ tokens:
   - explicitly alludes to
   - totally obsolescent
   - completely obsolescent
-  - generally always
   - usually always
   - increasingly less
   - build down

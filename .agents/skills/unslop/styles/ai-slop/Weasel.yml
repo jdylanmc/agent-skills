@@ -3,18 +3,15 @@ message: "'%s' is a weasel word!"
 ignorecase: true
 level: warning
 tokens:
-  - clearly
   - completely
   - exceedingly
   - excellent
   - extremely
-  - fairly
   - huge
   - interestingly
   - is a number
   - largely
   - mostly
-  - obviously
   - quite
   - relatively
   - remarkably
@@ -26,4 +23,3 @@ tokens:
   - usually
   - various
   - vast
-  - very
