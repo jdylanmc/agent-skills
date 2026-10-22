@@ -9,14 +9,14 @@ import { test } from 'node:test';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const installSource = process.env.SKILLS_PACK_SOURCE ?? root;
 const expected = [
-  'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts', 'create-pull-request',
+  'automate-this', 'breakdown-tickets', 'caveman', 'changelog', 'chart-a-course', 'conflicts',
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
   'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'pull-request', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'simplified-technical-caveman', 'simplified-technical-english', 'specify',
   'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'unslop', 'verify', 'wait-what', 'wrap-up',
 ];
 const originalNames = expected.filter(name => ![
-  'chart-a-course', 'create-pull-request', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'pull-request',
+  'chart-a-course', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'pull-request',
   'simplified-technical-caveman', 'simplified-technical-english', 'unslop', 'wrap-up',
 ].includes(name));
 
@@ -381,15 +381,21 @@ test('Chart-a-course is a portable, human- and model-invocable local package', (
   assertPortable(directory);
 });
 
-test('Create-pull-request is the model-invocable generic fallback', () => {
-  const skill = readFileSync(path.join(root, '.agents/skills/create-pull-request/SKILL.md'), 'utf8');
-  const metadata = skill.split('---\n')[1];
-  assert.match(metadata, /^name: create-pull-request$/m);
+test('Pull-request is the single PR skill: body, unslop, GitHub, and ADO delegation', () => {
+  const raw = readFileSync(path.join(root, '.agents/skills/pull-request/SKILL.md'), 'utf8');
+  const metadata = raw.split('---\n')[1];
+  const skill = raw.replace(/\s+/g, ' ');
+  assert.match(metadata, /^name: pull-request$/m);
   assert.match(metadata, /^disable-model-invocation: false$/m);
   assert.match(metadata, /^user-invocable: true$/m);
-  assert.match(metadata, /fallback/i);
-  assert.match(metadata, /repository-specific/i);
-  assert.match(skill, /active delivery (?:workflow|owner)/i);
+  assert.match(metadata, /single skill for every PR/i);
+  assert.match(skill, /repository-specific/i);
+  assert.match(skill, /active Ship, Patch, Refactor, Shepherd/i);
+  assert.match(skill, /\[Unslop\]\(\.\.\/unslop\/SKILL\.md\)/);
+  assert.match(skill, /every PR title and body/i);
+  assert.match(skill, /## GitHub/);
+  assert.match(skill, /## Azure DevOps Delegate to the work `ado-pull-request` skill/);
+  assert.ok(!existsSync(path.join(root, '.agents/skills/create-pull-request')), 'create-pull-request was merged away');
 });
 
 test('Status-report never stops the owning agent\'s authorized work', () => {

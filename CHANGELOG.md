@@ -27,15 +27,14 @@ have tagged releases. Current cleanup is tracked in
 - `simplified-technical-caveman`: restructures a named document into
   ASD-STE100-style sections (purpose, terms, warnings, description, procedure,
   verification) with caveman-terse prose. Writes only the named target.
-- `create-pull-request`: model-invocable generic PR-publication fallback when
-  no repository-specific skill or active delivery owner applies. Produce a
-  concise visual summary, concrete evidence and merge-risk notes, then verify
-  provider readback without approving or merging. Adapted from Matt Pocock's
-  `pr` and its credited HumanLayer `show-me` source.
-- `pull-request`: terse PR bodies as what/why/how with a show-me style visual
-  (pseudocode, call/component/file tree, Mermaid, diff sketch), before/after
-  evidence, and blast radius (scope, door). Prose uses Synthesize's
-  Caveman altitude; grants no ready, approval, or merge authority.
+- `pull-request`: the single PR skill. Writes a terse what/why/how body with a
+  show-me style visual (pseudocode, call/component/file tree, Mermaid, diff
+  sketch), before/after evidence and blast radius in Synthesize's Caveman
+  altitude, unslops it, then creates or updates the one PR and reads it back.
+  Defers publication to a repository-specific skill or active delivery owner,
+  carries GitHub rules, and delegates Azure DevOps to the work
+  `ado-pull-request` skill. Grants no approval or merge authority. Adapted
+  from Matt Pocock's `pr` and its credited HumanLayer `show-me` source.
 - `joe-mode-orca`: opt-in native Orca team coordination through the existing
   Joe workflows, with supervised workers, capacity accounting, one Discovery
   lane and shared Shepherd. Reconcile repository ownership across adapters;

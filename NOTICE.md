@@ -44,9 +44,9 @@ Modifications to Apache-licensed files must carry prominent change notices.
   evidence-labeled, human-approved improvement route. It retains the upstream
   focus on navigation, checks, standards, steering, tool economy and
   information access. The Matt Pocock MIT notice applies.
-- `create-pull-request` adapts Matt Pocock's `pr` body guidance into the
-  generic agent-invocable publication fallback used only when no
-  repository-specific skill or active delivery workflow owns the PR. Matt's
+- `pull-request` adapts Matt Pocock's `pr` body guidance into the single
+  skill that writes, unslops and publishes every PR, deferring publication to
+  a repository-specific skill or active delivery owner. Matt's
   source credits Dex Horthy and HumanLayer's `show-me` skill for its concise
   visual-summary approach. The Matt Pocock and HumanLayer MIT notices apply.
   This human-directed adoption postdates the frozen installer provenance lock
