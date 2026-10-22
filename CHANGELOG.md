@@ -109,11 +109,11 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
-- `pull-request`: the Azure DevOps section is now a two-way contract with the
+- `pull-request`: the Azure DevOps section is now a one-way contract with the
   work `ado-pull-request` skill. This skill writes and unslops the body and the
-  work skill publishes; when the work skill calls back it gets the body only.
-  Structure adapts to the repository's own PR standards (template headings,
-  title rules, required items), on GitHub and Azure DevOps alike.
+  work skill publishes; if the work skill asks for text, it gets the title and
+  body only. Structure adapts to the repository's own PR standards (template
+  headings, required items), on GitHub and Azure DevOps alike.
 
 - `joe-mode`/`squadron`: on PR merge, the worker removes its own worktree and
   the PM closes its session. New issue, new agent. Evidence preserved first.
