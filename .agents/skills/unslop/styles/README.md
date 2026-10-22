@@ -11,7 +11,7 @@ See [VALE.md](../VALE.md).
 | Style | Source | Release | Release zip sha256 | Rules |
 | --- | --- | --- | --- | --- |
 | `RedHat` | [redhat-documentation/vale-at-red-hat](https://github.com/redhat-documentation/vale-at-red-hat) | v680 | `c8bf6824e7f9f4fbbfc29ae017f0f1553922a5d24a3aafd5e3795bca57008992` | 37 |
-| `jdylanmc` | merged, see below | | | 191 |
+| `jdylanmc` | merged, see below | | | 183 |
 
 ## jdylanmc at a glance
 
@@ -28,7 +28,6 @@ jdylanmc/
   sentence-structure/  19  Padding, nominalization, copula dodges, passive voice, sentence openers
   vocabulary/          17  AI vocabulary, clichés, jargon, buzzwords, oxymorons, weasel words, filler adverbs
   claims/              14  Hedging, blanket and absolute claims, vague attribution, urgency
-  document-hygiene/     8  Leftover notes, file paths, code tokens in prose, vague links, résumé phrasing
   inclusive-language/   7  Gender, LGBT, group, demonym and animal terms; cursing
   readability/          7  Readability scores and polysyllabic words
   punctuation/          6  Dashes, semicolons, colons, symbols
@@ -43,7 +42,6 @@ jdylanmc/
 - **sentence-structure (19):** `AbstractionSubject`, `ConsequenceClause`, `ConsequenceParticiple`, `E-Prime`, `EmphaticCopula`, `EmptyPadding`, `EmptyPaddingStacked`, `HiddenVerb`, `IncompleteComparison`, `NominalizedScopeChange`, `NounString`, `ParticipialPadding`, `Passive`, `ScopePartition`, `ServesAsDodge`, `ShellNounCopula`, `So`, `ThereIs`, `UnderRegime`
 - **vocabulary (17):** `AIAdjectiveNounPairs`, `AICompoundPhrases`, `Adverb`, `Airlinese`, `Archaisms`, `Cliches`, `CorporateSpeak`, `FormalRegister`, `HouseStyle`, `Jargon`, `OverusedVocabulary`, `OverusedVocabularyVerbs`, `Oxymorons`, `PromotionalPuffery`, `Skunked`, `StrategyBuzzwords`, `Weasel`
 - **claims (14):** `AbsoluteAssertions`, `DefensiveHedges`, `Hedging`, `HedgingPhrases`, `Hyperbole`, `OrganicConsequence`, `PointVerdict`, `RedundantPrecaution`, `StackedHedges`, `UniversalObject`, `UniversalSubject`, `UrgencyInflation`, `VagueAttributions`, `VirtueHonest`
-- **document-hygiene (8):** `Annotations`, `CodeToken`, `FilePath`, `LinkText`, `P-Value`, `SectionCode`, `StatusBracket`, `WeakResume`
 - **inclusive-language (7):** `AnimalLabels`, `Cursing`, `DenizenLabels`, `GenderBias`, `GroupTerms`, `LGBTOffensive`, `LGBTTerms`
 - **readability (7):** `AutomatedReadability`, `ColemanLiau`, `FleschReadingEase`, `GunningFog`, `LIX`, `Polysyllables`, `SMOG`
 - **punctuation (6):** `ColonUsage`, `Currency`, `DoubleHyphen`, `EmDashUsage`, `SemicolonUsage`, `Typography`
@@ -66,8 +64,8 @@ self-contained line per finding.
 | Origin | Source | Release | Release zip sha256 | License | Rules |
 | --- | --- | --- | --- | --- | --- |
 | tbhb | [tbhb/vale-ai-tells](https://github.com/tbhb/vale-ai-tells) (`ai-tells`) | v1.37.0 | `f8d1e981abbfbac1aa092d1623a1ac9bc935f0b15e8071e7a072915abddf0570` | MIT | 137 |
-| krishnasunkam | [krishnasunkam/vale-ai-tells](https://github.com/krishnasunkam/vale-ai-tells) (`AiTells`) | v1.0.0 | `eee9417ef656b5e9d1aaa76fd850c003c4a99856bcee787b6436a91a3fc1c03c` | MIT | 13 |
-| proselint | [vale-cli/proselint](https://github.com/vale-cli/proselint) | v0.3.4 | `48b1fb481ba44f6505d44346b283f6cdc74efd234f913bbdb09bf34420fab81c`* | BSD-3-Clause | 28 |
+| krishnasunkam | [krishnasunkam/vale-ai-tells](https://github.com/krishnasunkam/vale-ai-tells) (`AiTells`) | v1.0.0 | `eee9417ef656b5e9d1aaa76fd850c003c4a99856bcee787b6436a91a3fc1c03c` | MIT | 7 |
+| proselint | [vale-cli/proselint](https://github.com/vale-cli/proselint) | v0.3.4 | `48b1fb481ba44f6505d44346b283f6cdc74efd234f913bbdb09bf34420fab81c`* | BSD-3-Clause | 26 |
 | write-good | [vale-cli/write-good](https://github.com/vale-cli/write-good) | v0.4.1 | `2960ef10861ddc7dc76292a4967eb3789bf05ca24f862042f6d15f53332887f0`* | MIT | 6 |
 | Readability | [vale-cli/readability](https://github.com/vale-cli/readability) | v0.2.0 | `cf8790677bb2ef86458c1d1dbd6e646fd8063c0e9621f81141e5cd85e5e41f81` | MIT | 7 |
 
@@ -75,15 +73,14 @@ self-contained line per finding.
 
 Which rule came from where. Anything not listed below is tbhb.
 
-- **krishnasunkam (13):** `AbstractTriad`, `Adverb`, `CodeToken`,
-  `EpigramContrast`, `FilePath`, `HiddenVerb`, `LinkText`, `NegParallel`,
-  `NeverTag`, `SectionCode`, `StatusBracket`, `VirtueHonest`, `WeakResume`.
-- **proselint, BSD-3-Clause (28):** `Airlinese`, `AnimalLabels`, `Annotations`,
+- **krishnasunkam (7):** `AbstractTriad`, `Adverb`, `EpigramContrast`,
+  `HiddenVerb`, `NegParallel`, `NeverTag`, `VirtueHonest`.
+- **proselint, BSD-3-Clause (26):** `Airlinese`, `AnimalLabels`,
   `Apologizing`, `Archaisms`, `Cliches`, `CorporateSpeak`, `Currency`,
   `Cursing`, `DenizenLabels`, `Diacritical`, `GenderBias`, `GroupTerms`,
   `Hedging`, `Hyperbole`, `Jargon`, `LGBTOffensive`, `LGBTTerms`,
-  `Malapropisms`, `Needless`, `Nonwords`, `Oxymorons`, `P-Value`,
-  `RASSyndrome`, `Skunked`, `Spelling`, `Typography`, `Uncomparables`.
+  `Malapropisms`, `Needless`, `Nonwords`, `Oxymorons`, `RASSyndrome`,
+  `Skunked`, `Spelling`, `Typography`, `Uncomparables`.
 - **write-good (6):** `E-Prime`, `Passive`, `So`, `ThereIs`, `TooWordy`,
   `Weasel`.
 - **Readability (7):** `AutomatedReadability`, `ColemanLiau`,
@@ -168,6 +165,15 @@ proselint rules `DateCase` (which told you to use periods), `DateSpacing`,
 only after "I", so a correct `9 AM` is no longer flagged. Accepted gap: nothing
 flags `a.m.`, `p.m.` or `9am` now, because RedHat does not.
 
+**Document hygiene, by request:** the whole `document-hygiene` folder was
+removed, so none of these are flagged any more: proselint `Annotations`
+(leftover `XXX`, `FIXME`, `TODO`, `NOTE`) and `P-Value`; krishnasunkam
+`FilePath` (raw paths such as `docs/report.md` in prose), `CodeToken`,
+`LinkText` (vague link text such as "click here"), `SectionCode`,
+`StatusBracket` and `WeakResume`. For link text, the Vale registry's `A11y`
+package (`A11y.LinkGeneric`, `A11y.LinkURL`, MIT) is the fuller rule set, and
+is not included.
+
 ### Overlap kept on purpose
 
 - Regex rules (`AbstractTriad`, `EpigramContrast`, `HiddenVerb`, `NegParallel`,
@@ -183,6 +189,3 @@ flags `a.m.`, `p.m.` or `9am` now, because RedHat does not.
   sentence-initial or uppercase use. `So` and `ThereIs` partly overlap
   `RedHat.Conjunctions`, which only checks the first word of a paragraph, so
   they stay.
-- Six krishnasunkam rules are document hygiene, not AI tells: `CodeToken`,
-  `FilePath`, `LinkText`, `SectionCode`, `StatusBracket` (which also matches
-  `[covered]` and `[required]`) and `WeakResume`.

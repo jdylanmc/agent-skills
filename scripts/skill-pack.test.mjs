@@ -185,7 +185,7 @@ const valeLicenses = new Map([
 // coverage-preservation evidence (see styles/README.md).
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
-  jdylanmc: '408385acdfffbc9836239f96105fc57be73e3160fd30717f41a7737bc0daf17f',
+  jdylanmc: 'c0372647652d2784a6d26555c8445851934e39bb7cff949a6528ab4613c42118',
   config: 'df80e71026f49e4272995b6d4b491098b788992102b754463eedba5e2e408cf3',
 };
 
@@ -211,29 +211,30 @@ test('Unslop vendors RedHat plus one merged jdylanmc style, one license and noti
     assert.match(readme, new RegExp(`\`${name}\``), `${name} listed in styles README`);
     assert.ok(!existsSync(path.join(styles, name, 'LICENSE')), `${name}: no second license copy`);
   }
-  // Merged jdylanmc: 137 tbhb + 13 krishnasunkam + 28 proselint + 6 write-good + 7 Readability.
+  // Merged jdylanmc: 137 tbhb + 7 krishnasunkam + 26 proselint + 6 write-good + 7 Readability.
   // Removed as duplicates: Dash, write-good Cliches, proselint Very; Cliche and CopulaInflation
   // were folded into AICompoundPhrases and PromotionalPuffery. Purged because RedHat (the base)
   // already flags the same text: Illusions, But, FleschKincaid. Time formatting is RedHat's:
-  // the proselint a.m./p.m. rules were dropped on request.
+  // the proselint a.m./p.m. rules were dropped on request, as was the whole document-hygiene folder.
   const base = path.join(styles, 'jdylanmc');
   const folders = readdirSync(base).sort();
   const byFolder = Object.fromEntries(folders.map(folder => [folder,
     readdirSync(path.join(base, folder)).filter(name => name.endsWith('.yml')).map(name => name.slice(0, -4)).sort()]));
   assert.deepEqual(Object.fromEntries(Object.entries(byFolder).map(([folder, rules]) => [folder, rules.length])), {
-    claims: 14, concision: 4, 'document-hygiene': 8, framing: 20, headings: 5, 'inclusive-language': 7,
+    claims: 14, concision: 4, framing: 20, headings: 5, 'inclusive-language': 7,
     metaphors: 56, punctuation: 6, readability: 7, rhetoric: 24, 'sentence-structure': 19, spelling: 4, vocabulary: 17,
   });
   assert.ok(!readdirSync(base).some(name => name.endsWith('.yml')), 'every rule lives in a category folder');
   const merged = Object.values(byFolder).flat();
-  assert.equal(merged.length, 191);
-  assert.equal(new Set(merged).size, 191, 'rule names are unique across folders');
+  assert.equal(merged.length, 183);
+  assert.equal(new Set(merged).size, 183, 'rule names are unique across folders');
   for (const [folder, rules] of Object.entries(byFolder)) {
     assert.ok(readme.includes(`**${folder} (${rules.length}):**`), `${folder} listed in styles README`);
     for (const rule of rules) assert.ok(readme.includes(`\`${rule}\``), `${rule} listed in styles README`);
   }
   for (const folded of ['Dash', 'Cliche', 'CopulaInflation', 'Very', 'Illusions', 'But',
-    'FleschKincaid', 'DateCase', 'DateSpacing', 'DateMidnight', 'DateRedundancy']) {
+    'FleschKincaid', 'DateCase', 'DateSpacing', 'DateMidnight', 'DateRedundancy',
+    'Annotations', 'P-Value', 'FilePath', 'CodeToken', 'LinkText', 'SectionCode', 'StatusBracket', 'WeakResume']) {
     assert.ok(!merged.includes(folded), `${folded} was merged away`);
   }
   for (const kept of ['EmDashUsage', 'Cliches', 'Passive', 'Apologizing', 'SMOG']) {
@@ -243,7 +244,7 @@ test('Unslop vendors RedHat plus one merged jdylanmc style, one license and noti
   for (const source of ['tbhb/vale-ai-tells', 'krishnasunkam/vale-ai-tells', 'vale-cli/proselint', 'vale-cli/write-good', 'vale-cli/readability']) {
     assert.ok(readme.includes(source), `${source} credited in styles README`);
   }
-  assert.match(readme, /\| `jdylanmc` \| merged, see below \| \| \| 191 \|/);
+  assert.match(readme, /\| `jdylanmc` \| merged, see below \| \| \| 183 \|/);
 });
 
 test('style skills own their rules and Synthesize delegates to them', () => {
