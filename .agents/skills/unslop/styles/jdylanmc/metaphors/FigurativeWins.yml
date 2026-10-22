@@ -57,10 +57,7 @@ tokens:
   - "\\blosers?\\b"
   - "\\boutrank(?:s|ed|ing)?\\b"
   - "\\bbeats? (?:a|an|the|its|their|this|that|each|every|both|all|any|some|most|out|it|them)\\b(?! (?:per|by)\\b)"
-
-  # --- The starting whistle ("before a later run kicks off," "kick off
-  # the migration").
-  - "\\bkick(?:s|ed|ing)? off\\b"
+  - "\\bkick(?:s|ed|ing) off\\b"
 
   # --- Victory idioms: the choice triumphs ("wins the day," "wins out,"
   # "wins hands down," "comes out on top," "takes the crown").

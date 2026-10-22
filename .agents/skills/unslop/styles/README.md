@@ -197,6 +197,18 @@ replacement in every substitution rule was fed back through Vale. Removed:
   `relative inexpense`.
 - Messages no longer recommend contractions ("does not", "do not").
 
+Second pass, over the 2,219 prose files of github/awesome-copilot plus a
+token-by-token check of 3,063 plain tokens against RedHat: removed
+`Passive` `hit` and `learnt`, `Uncomparables` `fatal` and `sufficient`,
+`Adverb` `basically`, `EmptyPadding` and `EmptyPaddingStacked` `respective`,
+`HiddenVerb` `provide`, the base forms `leverage` and `navigate` from
+`OverusedVocabularyVerbs`, and the bare `kick off` from `FigurativeWins`.
+RedHat flags those words itself. Inflected forms stay because RedHat misses
+them. Accepted gap: a capitalized "Basically" at a sentence start is no longer
+flagged, since RedHat's rule is case-sensitive. The other overlaps found
+(`VerbTricolon`, `SemicolonUsage`, `NounString`, `ParallelStaccato`) only
+share wide spans with RedHat alerts and flag different problems, so they stay.
+
 Still open: `jdylanmc.NounString` flags RedHat's suggested "session management
 exit routine", and RedHat's own rules conflict with each other in places
 (upstream, not edited).

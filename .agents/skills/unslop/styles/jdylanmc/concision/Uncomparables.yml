@@ -19,7 +19,6 @@ tokens:
   - devoid
   - entire
   - 'false'
-  - fatal
   - favorite
   - final
   - ideal
@@ -38,7 +37,6 @@ tokens:
   - principal
   - singular
   - stationary
-  - sufficient
   - 'true'
   - unanimous
   - unavoidable

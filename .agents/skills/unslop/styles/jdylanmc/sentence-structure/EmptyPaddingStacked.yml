@@ -6,7 +6,7 @@ ignorecase: true
 # "Named" left this list with EmptyPadding's (2026-09); NamedAdjective
 # reads the modifier-adjective-noun construction through an optional slot.
 tokens:
-  - pattern: various|certain|respective|given|particular
+  - pattern: various|certain|given|particular
     tag: JJ|VBN|DT
   - tag: JJ|JJR|JJS
   - tag: NN|NNS
