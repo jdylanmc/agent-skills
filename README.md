@@ -1,6 +1,6 @@
 # Agent Skills
 
-Dylan's editable library of **42 skills** and human-owned engineering doctrine,
+Dylan's editable library of **41 skills** and human-owned engineering doctrine,
 designed for GitHub Copilot. The retired atomic framework remains historical
 material under `archive/atomic-v1/`; it does not govern the active library.
 
@@ -26,7 +26,7 @@ DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill '*
 The environment prefix above is POSIX shell syntax; in PowerShell, set
 `$env:DISABLE_TELEMETRY='1'` before running the `npx` command.
 
-Install **all 42** together for a new consumer. Isolated installs without
+Install **all 41** together for a new consumer. Isolated installs without
 prerequisites are unsupported: workflows
 reference sibling skills, and Setup carries the shared policies, attribution,
 licenses, and historical provenance. The quoted `'*'` selects every active
@@ -176,10 +176,11 @@ Validation keeps telemetry disabled and does not claim directory registration.
   Kickoff authorizes routine in-scope delivery steps, not repeated prompts.
   Standalone Ship is TDD opt-in; Joe prefers it for features. Patch/Refactor do
   not force red/green. Tests and useful acceptance proof still matter.
-- **Pull request fallback:** repository-specific create-PR skills and active
-  delivery owners take precedence. When neither applies,
-  `create-pull-request` publishes the owned branch with concise visual context,
-  evidence and merge-risk notes; it does not implement, approve or merge.
+- **Pull requests:** `pull-request` is the single PR skill. Repository-specific
+  create-PR skills and active delivery owners keep publication; otherwise it
+  writes the body, unslops it, and publishes the owned branch with concise
+  visual context, evidence and merge-risk notes. It does not implement,
+  approve or merge.
 - **Shepherd:** one owner maintains that PR, rebasing when main/the agreed
   target advances even if mergeable, refreshing checks and review coverage.
   Functional feedback stays on the same delivery. Final approval and merging

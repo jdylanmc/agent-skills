@@ -1,15 +1,34 @@
 ---
 name: pull-request
-description: "Both. Write or update a pull request body as a terse what/why/how with a show-me style visual, before/after evidence, and blast radius. Humans review this surface; no prose padding."
+description: "Both. Write, create, or update a pull request: terse what/why/how body with a show-me style visual, before/after evidence and blast radius, unslopped, then publish and read it back. The single skill for every PR. Humans review this surface; no prose padding."
 disable-model-invocation: false
 user-invocable: true
 ---
 
 # Pull Request
 
-**Entry:** a human request, or an agent inside an already authorized delivery (Ship, Patch, Refactor, Shepherd), under the [invocation contract](../setup/INVOCATION.md). This skill writes the PR body. A request to open or update a PR authorizes that one PR; it grants no merge, approval, or ready-for-review authority. Without publication authority, return the body only.
+**Entry:** a human request, or an agent inside an already authorized delivery (Ship, Patch, Refactor, Shepherd, Wrap-up), under the [invocation contract](../setup/INVOCATION.md). This skill writes the PR body, unslops it, and creates or updates the one PR. A request to open or update a PR authorizes that one PR; it grants no implementation, tracker change, approval, auto-merge, merge, branch deletion, or release authority. Without publication authority, return the body only.
 
 The body is the surface a human reviews. Give the **what**, the **why**, and the **how**. Show the how; do not narrate it.
+
+## Resolve the route
+
+Inspect repository guidance and available skills before acting:
+
+1. Use an explicitly requested PR workflow.
+2. Otherwise use a repository-specific create-PR skill or documented publication procedure. This skill then supplies the body only.
+3. Otherwise, inside an active Ship, Patch, Refactor, Shepherd, release, or equivalent delivery, return publication to that owner with the body.
+4. Otherwise publish with this skill.
+
+Do not run two publication workflows, take over an owned branch, or bypass a repository's review, template, provider, or approval rules. If ownership is unclear, stop and ask.
+
+## Inspect the candidate
+
+Read repository guidance, the target branch, remote and provider configuration, PR templates, changed commits and files, status, and validation evidence. Resolve the actual source and target refs; do not assume `main`, `origin`, GitHub, or same-repository publication.
+
+Require `worktrees` under [Doctrine](../doctrine/APPLY.md), keeping any caller selection, and use the existing owned isolated workspace. Do not relocate, discard, stash, reset, or overwrite unrelated work.
+
+Check for an open PR from the source branch or for the same delivery, and reuse it. Ask when several plausible matches exist. After an uncertain create or update result, query provider state before retrying. With no meaningful committed change, report that no PR can be created; do not manufacture an empty commit. Report missing commits, push access, required validation, or provider destination as the exact blocker.
 
 ## Voice
 
@@ -115,25 +134,59 @@ Every PR title and body passes through [Unslop](../unslop/SKILL.md) before it is
 - Keep the Voice above. Unslop removes formulaic framing and stock phrasing; it never lengthens a line or adds filler to satisfy a readability score.
 - Run Unslop's Vale check on the final text and read the alerts in context, per its own rules. Do not disable rules or edit the configuration for a clean result.
 - If Vale, its configuration, or its styles are unavailable, say so in your report and publish the editorially unslopped text. Do not install tools as a side effect.
-- Read the stored body back after publishing. It must match the unslopped text.
 
 ## Publish or update
 
-Follow [DELIVERY](../ship/DELIVERY.md) for provider mechanics: reuse any existing PR for the branch, create as draft, query before retrying after an uncertain result, and never mark ready or merge. Use the repository's PR template headings when one exists. Confirm the PR URL and read the stored body back; it must match the intended text.
+Follow [DELIVERY](../ship/DELIVERY.md) for provider mechanics. Use the repository's PR template headings when one exists.
+
+- **State.** Honor an explicit draft or ready request from the human or the owning workflow. Otherwise follow repository convention, and with none, create a draft. Never mark an existing PR ready, approve, enable auto-merge, or merge on your own.
+- **Provider.** GitHub and Azure DevOps (ADO) rules follow below. For any other provider, use its supported equivalent or report the missing capability.
+- **Push.** Only the owned source branch, to its resolved remote. Never force-push unless the caller owns a separately authorized history rewrite with an exact expected-head lease.
+- **Create or update** with the unslopped title and body and the correct base and head. Then read the stored PR back. The body must match the intended text.
+
+Report:
+
+- URL and provider;
+- draft or ready state;
+- source and target refs;
+- observed head commit;
+- validation evidence included;
+- Unslop and Vale coverage for the title and body;
+- unresolved blockers or human decisions.
+
+Request success is not verification. If readback differs from what you asked for, report the actual state. Stop after publication; a separately authorized Shepherd or repository workflow owns continued maintenance.
 
 When updating after new commits, revise What, How, Evidence, and Blast Radius to the current head; do not append history.
 
+## GitHub
+
+Resolve the provider from the remote URL, not from memory.
+
+- Use `gh` or the available GitHub integration with an explicit `--repo owner/name`, `--base`, and `--head`. For a fork, name the head as `owner:branch`.
+- Authenticate as the identity that owns the repository: the personal account for open-source checkouts, the work account for enterprise. Do not switch accounts or write credentials to files.
+- Pass the unslopped body from a file (`--body-file`), never inline shell text. Update an existing PR with `gh pr edit`.
+- Draft or ready follows the State rule above: `--draft` on create, and `gh pr ready` only on an explicit request.
+- Read back with `gh pr view --json` for state, base, head, and body, and compare against the intended text.
+
+## Azure DevOps
+
+Delegate to the work `ado-pull-request` skill. Do not call ADO APIs, `az repos`, or the ADO integration directly from this skill.
+
+- Hand it the unslopped title and body, the source and target refs, the draft or ready request, and the linked work items.
+- It owns provider mechanics, branch policies, reviewers, and work-item links. Apply its readback to the Report list above.
+- If that skill is not installed, report the missing capability and return the unslopped body. Do not improvise an ADO publication path.
+
 ## Check before finishing
 
+- The route was resolved, and no second publication workflow ran.
 - What and Why each fit in two lines; nothing restates the diff.
 - How shows structure, with names verified against the change.
 - Evidence is real, current, and labeled before/after, or explicitly `none`.
 - Scope and Door are both stated.
 - No required meaning was lost to compression.
 - Title and body were unslopped, and the stored body matches that text.
+- The readback report covers state, refs, head, and blockers.
 
-## Relationship and attribution
+## Attribution
 
-This skill owns the PR **body format and voice**. [Create Pull Request](../create-pull-request/SKILL.md) owns generic **publication** when no other route does; when both apply, use this body inside that publication flow. Do not run two publication workflows.
-
-Adapted from Matt Pocock's MIT-licensed [`pr`](https://github.com/mattpocock/skills/blob/main/skills/engineering/pr/SKILL.md) skill, which credits Dex Horthy and HumanLayer's MIT-licensed [`show-me`](https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md). See the bundled [third-party notice](../setup/NOTICE.md).
+Adapted from Matt Pocock's MIT-licensed [`pr`](https://github.com/mattpocock/skills/blob/main/skills/engineering/pr/SKILL.md) skill, which credits Dex Horthy and HumanLayer's MIT-licensed [`show-me`](https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md) skill for the concise visual-summary approach. See the bundled [third-party notice](../setup/NOTICE.md), [Matt Pocock license](../setup/licenses/mattpocock-skills.LICENSE), and [HumanLayer license](../setup/licenses/humanlayer-skills.LICENSE).

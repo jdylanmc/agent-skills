@@ -40,7 +40,6 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [caveman](../caveman/SKILL.md) | Human-only terse style: one-shot on given or generated text, or sticky chat mode. Owns the style rules; Synthesize reads them. Shared commit and worker-message styles do not activate it. |
 | [changelog](../changelog/SKILL.md) | Internal; every modifying agent consults the same curation helper. |
 | [chart-a-course](../chart-a-course/SKILL.md) | Both; read-only critical task paths, missing work, and research spikes. Recommends targeted Discovery; the caller owns execution. |
-| [create-pull-request](../create-pull-request/SKILL.md) | Both; generic PR-publication fallback only when no repository-specific skill or active delivery owner applies. |
 | [discovery](../discovery/SKILL.md) | Both; material unknowns, with alignment and experiment/write gates. |
 | [doctrine](../doctrine/SKILL.md) | Both; catalog, selection, and verified loading, never approval. |
 | [domain-modeling](../domain-modeling/SKILL.md) | Internal; authorized domain work and separately agreed recording. |
@@ -55,7 +54,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [migration](../migration/SKILL.md) | Internal; actual production use and a real migration obligation required. |
 | [patch](../patch/SKILL.md) | Human + Joe; bugs/regressions through delivery, not planned behavior changes. |
 | [poc](../poc/SKILL.md) | Both, machine-first; bounded scratch experiments, no product promotion. |
-| [pull-request](../pull-request/SKILL.md) | Both; writes the PR body (what/why/how visual, evidence, blast radius). No merge, approval, or ready authority. |
+| [pull-request](../pull-request/SKILL.md) | Both; the single PR skill: writes and unslops the body (what/why/how visual, evidence, blast radius), then creates or updates the one PR. Defers publication to a repository-specific skill or active delivery owner. No merge or approval authority. |
 | [refactor](../refactor/SKILL.md) | Internal delivery route selected by Joe; scoped structural work may stay under an existing delivery owner. |
 | [research](../research/SKILL.md) | Both; questions or link batches, evidence-grounded and read-only by default. |
 | [conflicts](../conflicts/SKILL.md) | Internal to Shepherd or an authorized delivery owner; human decisions stay human. |
