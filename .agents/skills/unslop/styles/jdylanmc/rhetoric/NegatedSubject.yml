@@ -1,6 +1,6 @@
 ---
 extends: existence
-message: "AI negated subject: '%s'. Name who does what: 'you don't need to configure anything' instead of announcing an absence."
+message: "AI negated subject: '%s'. Name who does what: 'you do not need to configure anything' instead of announcing an absence."
 level: error
 nonword: true
 # The passive sibling of NegatedObject: the object of the negated claim

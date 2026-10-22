@@ -4,4 +4,4 @@ level: suggestion
 ignorecase: true
 raw:
   - '\b(?:conduct|perform|provide|make|undertake|engage in|carry out)\s+'
-  - '(?:a|an|the)?\s*\w+(?:tion|sion|ment|ance|sis)\b'
+  - '(?:a|an|the)?\s*(?!transition\b)\w+(?:tion|sion|ment|ance|sis)\b'

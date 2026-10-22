@@ -11,13 +11,13 @@ See [VALE.md](../VALE.md).
 | Style | Source | Release | Release zip sha256 | Rules |
 | --- | --- | --- | --- | --- |
 | `RedHat` | [redhat-documentation/vale-at-red-hat](https://github.com/redhat-documentation/vale-at-red-hat) | v680 | `c8bf6824e7f9f4fbbfc29ae017f0f1553922a5d24a3aafd5e3795bca57008992` | 37 |
-| `jdylanmc` | merged, see below | | | 183 |
+| `jdylanmc` | merged, see below | | | 179 |
 
 ## jdylanmc at a glance
 
 Rule IDs are `jdylanmc.<folder>.<Rule>`, for example
-`jdylanmc.sentence-structure.E-Prime`. Vale loads the folders as one style. You
-can turn off one rule (`jdylanmc.sentence-structure.E-Prime = NO`) but not a
+`jdylanmc.sentence-structure.ThereIs`. Vale loads the folders as one style. You
+can turn off one rule (`jdylanmc.sentence-structure.ThereIs = NO`) but not a
 whole folder with one line, so a folder is for finding and sorting, not toggling.
 
 ```text
@@ -25,10 +25,10 @@ jdylanmc/
   metaphors/           56  Figurative verbs and nouns, anthropomorphism ("the check lives in", "really lands")
   rhetoric/            24  Contrast and negation formulas, tricolons, staccato, self-answered questions
   framing/             20  Openers, closers, transitions, announcements, chatbot filler and sycophancy
-  sentence-structure/  19  Padding, nominalization, copula dodges, passive voice, sentence openers
+  sentence-structure/  18  Padding, nominalization, copula dodges, passive voice, sentence openers
   vocabulary/          17  AI vocabulary, clichés, jargon, buzzwords, oxymorons, weasel words, filler adverbs
   claims/              14  Hedging, blanket and absolute claims, vague attribution, urgency
-  inclusive-language/   7  Gender, LGBT, group, demonym and animal terms; cursing
+  inclusive-language/   4  Gender and LGBT terms; cursing
   readability/          7  Readability scores and polysyllabic words
   punctuation/          6  Dashes, semicolons, colons, symbols
   headings/             5  Announcement, explainer, marketing, mic-drop and wrap-up headings
@@ -39,10 +39,10 @@ jdylanmc/
 - **metaphors (56):** `AnthropomorphicAdjectives`, `AnthropomorphicCognition`, `AnthropomorphicJustification`, `BareHolds`, `BareNames`, `BareReaches`, `ColloquialAssessments`, `DepletionMetaphors`, `EnforcementMetaphors`, `EvasionMetaphors`, `FigurativeBreeds`, `FigurativeCarries`, `FigurativeCasts`, `FigurativeClears`, `FigurativeDemands`, `FigurativeDisguises`, `FigurativeDraws`, `FigurativeEarns`, `FigurativeFalls`, `FigurativeFires`, `FigurativeHolds`, `FigurativeIdioms`, `FigurativeKeeps`, `FigurativeLands`, `FigurativeLends`, `FigurativeLives`, `FigurativeLoud`, `FigurativeMints`, `FigurativeNouns`, `FigurativeOwns`, `FigurativePays`, `FigurativeQuantities`, `FigurativeQuiet`, `FigurativeReaches`, `FigurativeRides`, `FigurativeRuns`, `FigurativeSees`, `FigurativeSettles`, `FigurativeShape`, `FigurativeSits`, `FigurativeStays`, `FigurativeStrikes`, `FigurativeSurfaces`, `FigurativeSweeps`, `FigurativeTravels`, `FigurativeTrips`, `FigurativeWins`, `FigurativeWorth`, `FusionMetaphors`, `GrowthMetaphors`, `JourneyMetaphors`, `MortalityMetaphors`, `MotionMetaphors`, `NamedAdjective`, `ResonateOveruse`, `ShipOveruse`
 - **rhetoric (24):** `AbstractTriad`, `ContrastiveFormulas`, `ContrastiveNegation`, `CoordinatedReveal`, `DespiteChallenges`, `EpigramContrast`, `FalseBalance`, `FalseExclusivity`, `LabelAndExplain`, `MicDrop`, `NegParallel`, `NegatedObject`, `NegatedPair`, `NegatedSubject`, `NeverTag`, `ParallelStaccato`, `PseudoCleft`, `RhetoricalDevices`, `RhetoricalSelfAnswer`, `StackedAnaphora`, `StrawmanContrast`, `SummativeAppositive`, `VerbTricolon`, `VerbTricolonDensity`
 - **framing (20):** `AffirmativeFormulas`, `Apologizing`, `CataphoricForecasting`, `ClosingPleasantries`, `ConclusionMarkers`, `ExplainerLeads`, `FillerIntensifier`, `FillerPhrases`, `FormalTransitions`, `HollowAcknowledgment`, `ListIntroductions`, `Metacommentary`, `NarrativePivots`, `OpeningCliches`, `RestatementMarkers`, `SelfReference`, `SequencingMarkers`, `StructureAnnouncements`, `SycophancyMarkers`, `UnpackExplore`
-- **sentence-structure (19):** `AbstractionSubject`, `ConsequenceClause`, `ConsequenceParticiple`, `E-Prime`, `EmphaticCopula`, `EmptyPadding`, `EmptyPaddingStacked`, `HiddenVerb`, `IncompleteComparison`, `NominalizedScopeChange`, `NounString`, `ParticipialPadding`, `Passive`, `ScopePartition`, `ServesAsDodge`, `ShellNounCopula`, `So`, `ThereIs`, `UnderRegime`
+- **sentence-structure (18):** `AbstractionSubject`, `ConsequenceClause`, `ConsequenceParticiple`, `EmphaticCopula`, `EmptyPadding`, `EmptyPaddingStacked`, `HiddenVerb`, `IncompleteComparison`, `NominalizedScopeChange`, `NounString`, `ParticipialPadding`, `Passive`, `ScopePartition`, `ServesAsDodge`, `ShellNounCopula`, `So`, `ThereIs`, `UnderRegime`
 - **vocabulary (17):** `AIAdjectiveNounPairs`, `AICompoundPhrases`, `Adverb`, `Airlinese`, `Archaisms`, `Cliches`, `CorporateSpeak`, `FormalRegister`, `HouseStyle`, `Jargon`, `OverusedVocabulary`, `OverusedVocabularyVerbs`, `Oxymorons`, `PromotionalPuffery`, `Skunked`, `StrategyBuzzwords`, `Weasel`
 - **claims (14):** `AbsoluteAssertions`, `DefensiveHedges`, `Hedging`, `HedgingPhrases`, `Hyperbole`, `OrganicConsequence`, `PointVerdict`, `RedundantPrecaution`, `StackedHedges`, `UniversalObject`, `UniversalSubject`, `UrgencyInflation`, `VagueAttributions`, `VirtueHonest`
-- **inclusive-language (7):** `AnimalLabels`, `Cursing`, `DenizenLabels`, `GenderBias`, `GroupTerms`, `LGBTOffensive`, `LGBTTerms`
+- **inclusive-language (4):** `Cursing`, `GenderBias`, `LGBTOffensive`, `LGBTTerms`
 - **readability (7):** `AutomatedReadability`, `ColemanLiau`, `FleschReadingEase`, `GunningFog`, `LIX`, `Polysyllables`, `SMOG`
 - **punctuation (6):** `ColonUsage`, `Currency`, `DoubleHyphen`, `EmDashUsage`, `SemicolonUsage`, `Typography`
 - **headings (5):** `AnnouncementHeadings`, `ExplainerHeadings`, `MarketingHeadings`, `MicDropHeadings`, `WrapUpHeadings`
@@ -75,13 +75,13 @@ Which rule came from where. Anything not listed below is tbhb.
 
 - **krishnasunkam (7):** `AbstractTriad`, `Adverb`, `EpigramContrast`,
   `HiddenVerb`, `NegParallel`, `NeverTag`, `VirtueHonest`.
-- **proselint, BSD-3-Clause (26):** `Airlinese`, `AnimalLabels`,
+- **proselint, BSD-3-Clause (23):** `Airlinese`,
   `Apologizing`, `Archaisms`, `Cliches`, `CorporateSpeak`, `Currency`,
-  `Cursing`, `DenizenLabels`, `Diacritical`, `GenderBias`, `GroupTerms`,
+  `Cursing`, `Diacritical`, `GenderBias`,
   `Hedging`, `Hyperbole`, `Jargon`, `LGBTOffensive`, `LGBTTerms`,
   `Malapropisms`, `Needless`, `Nonwords`, `Oxymorons`, `RASSyndrome`,
   `Skunked`, `Spelling`, `Typography`, `Uncomparables`.
-- **write-good (6):** `E-Prime`, `Passive`, `So`, `ThereIs`, `TooWordy`,
+- **write-good (5):** `Passive`, `So`, `ThereIs`, `TooWordy`,
   `Weasel`.
 - **Readability (7):** `AutomatedReadability`, `ColemanLiau`,
   `FleschReadingEase`, `GunningFog`, `LIX`, `Polysyllables`, `SMOG`.
@@ -173,6 +173,33 @@ removed, so none of these are flagged any more: proselint `Annotations`
 `StatusBracket` and `WeakResume`. For link text, the Vale registry's `A11y`
 package (`A11y.LinkGeneric`, `A11y.LinkURL`, MIT) is the fuller rule set, and
 is not included.
+
+**RedHat wins conflicts and duplicates, by request.** Alerts were compared
+before and after over the 155 agent-skills prose files and every suggested
+replacement in every substitution rule was fed back through Vale. Removed:
+
+- `E-Prime`: flagged all 14 expansions that `RedHat.Contractions` suggests
+  ("isn't" to "is not"), and 514 of its alerts sat inside `RedHat.PassiveVoice`.
+- `inclusive-language` `AnimalLabels`, `DenizenLabels`, `GroupTerms`: every
+  suggested word ("pardine", "Novocastrian") failed `RedHat.Spelling`.
+- Replacements that `RedHat.Spelling` rejects: `Diacritical` (four entries),
+  `Needless` (`carta blanca`, `ex officiis`), `GenderBias` (`ombudsman`).
+- Tokens that flagged RedHat's own suggested words: `FormalTransitions`
+  (`Therefore`, `Thus`, `Conversely`, `For example`, `For instance`,
+  `Henceforth`), `TooWordy` (`accelerate`, `evaluate`, `however`, `it is`,
+  `monitor`, `objective`, `obtain`, `provided that`, `validate`), `Weasel`
+  (`several`, `huge`), `OverusedVocabulary` (`dynamically`), `Needless`
+  (`cell phone`, `innovational`, `labyrinthian`, `meliorate`,
+  `henceforward`).
+- Narrowed so RedHat's wording passes: `Typography` skips `24x7`,
+  `EmptyPadding` skips "given name", `HiddenVerb` skips "make the transition".
+  `Nonwords` now suggests `therefore` for `thusly` and `low price` for
+  `relative inexpense`.
+- Messages no longer recommend contractions ("does not", "do not").
+
+Still open: `jdylanmc.NounString` flags RedHat's suggested "session management
+exit routine", and RedHat's own rules conflict with each other in places
+(upstream, not edited).
 
 ### Overlap kept on purpose
 

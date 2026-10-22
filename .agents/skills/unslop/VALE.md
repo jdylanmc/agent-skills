@@ -56,7 +56,7 @@ document to satisfy existing checks.
 
 1. Agree on the rule, scope, severity, and exceptions with the human.
 2. Disable a rule in `.vale.ini` under the file section, for example
-   `RedHat.Contractions = NO` or `jdylanmc.sentence-structure.E-Prime = NO`
+   `RedHat.Contractions = NO` or `jdylanmc.sentence-structure.ThereIs = NO`
    (rule IDs include the folder). Vale cannot switch off a whole folder with one
    line, but you can turn a whole style off by removing it from `BasedOnStyles`.
    Do not edit the vendored styles in place: `RedHat` must stay byte-identical

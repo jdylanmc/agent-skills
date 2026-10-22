@@ -1,6 +1,6 @@
 ---
 extends: existence
-message: "AI stilted negation: '%s'. Negate the verb with 'doesn't' instead of shifting 'no' onto the object."
+message: "AI stilted negation: '%s'. Negate the verb with 'does not' instead of shifting 'no' onto the object."
 level: error
 nonword: true
 ignorecase: true

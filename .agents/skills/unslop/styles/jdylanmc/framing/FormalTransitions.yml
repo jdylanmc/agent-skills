@@ -10,11 +10,7 @@ tokens:
   - Subsequently
   - Nevertheless
   - Nonetheless
-  - Conversely
-  - Thus
-  - Therefore
   - Thereby
-  - Henceforth
   - Likewise
   - Similarly
   - In addition
@@ -22,8 +18,6 @@ tokens:
   - On the contrary
   - By contrast
   - As a result
-  - For instance
-  - For example
   - In particular
   # Pure degree/manner adverbs flag only as sentence-initial transitions with a
   # trailing comma; mid-sentence senses ("runs significantly faster",

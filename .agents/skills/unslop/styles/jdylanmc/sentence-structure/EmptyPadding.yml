@@ -7,7 +7,7 @@ ignorecase: true
 # the definite determiner and keeps the terms of art ("a named pipe,"
 # "named types") quiet; the tagger-driven pair here flagged every one.
 tokens:
-  - pattern: various|certain|respective|given|particular
+  - pattern: various|certain|respective|given(?! name)|particular
     tag: JJ|VBN|DT
   - tag: NN|NNS
 ---

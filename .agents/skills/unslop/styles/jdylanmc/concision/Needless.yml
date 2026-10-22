@@ -4,7 +4,6 @@ ignorecase: true
 action:
   name: replace
 swap:
-  '(?:cell phone|cell-phone)': cellphone
   '(?:cliquey|cliquy)': cliquish
   '(?:pygmean|pygmaen)': pygmy
   '(?:retributional|retributionary)': retributive
@@ -33,7 +32,6 @@ swap:
   benefic: beneficent
   benignant: benign
   butt naked: buck naked
-  carta blanca: carte blanche
   catch on fire: catch fire
   catholicly: catholically
   cease fire: ceasefire
@@ -81,7 +79,6 @@ swap:
   educatory: educative
   enswathe: swathe
   epical: epic
-  ex officiis: ex officio
   exigence: exigency
   expedience: expediency
   expediential: expedient
@@ -94,7 +91,6 @@ swap:
   geometrical: geometric
   gerry-rigged: jury-rigged
   habitude: habit
-  henceforward: henceforth
   hesitance: hesitancy
   hierarchic: hierarchical
   hindermost: hindmost
@@ -110,14 +106,12 @@ swap:
   incontrollable: uncontrollable
   indue: endue
   inhibitive: inhibitory
-  innovational: innovative
   inquisitional: inquisitorial
   insolvable: unsolvable
   instillment: instillation
   instinctual: instinctive
   ironical: ironic
   jerry-rigged: jury-rigged
-  labyrinthian: labyrinthine
   legitimatize: legitimize
   legitimization: legitimation
   life-sized: life-size
@@ -126,7 +120,6 @@ swap:
   lollipop: lollypop
   maihem: mayhem
   medicinal marijuana: medical marijuana
-  meliorate: ameliorate
   mirk: murk
   misdoubt: doubt
   moveable: movable

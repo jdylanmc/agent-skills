@@ -185,7 +185,7 @@ const valeLicenses = new Map([
 // coverage-preservation evidence (see styles/README.md).
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
-  jdylanmc: 'c0372647652d2784a6d26555c8445851934e39bb7cff949a6528ab4613c42118',
+  jdylanmc: '381a9ed51cd1cbf6c4ff48dbaf88138c49ee8005c9aa94105f59fda4d58f1fbe',
   config: 'df80e71026f49e4272995b6d4b491098b788992102b754463eedba5e2e408cf3',
 };
 
@@ -221,19 +221,20 @@ test('Unslop vendors RedHat plus one merged jdylanmc style, one license and noti
   const byFolder = Object.fromEntries(folders.map(folder => [folder,
     readdirSync(path.join(base, folder)).filter(name => name.endsWith('.yml')).map(name => name.slice(0, -4)).sort()]));
   assert.deepEqual(Object.fromEntries(Object.entries(byFolder).map(([folder, rules]) => [folder, rules.length])), {
-    claims: 14, concision: 4, framing: 20, headings: 5, 'inclusive-language': 7,
-    metaphors: 56, punctuation: 6, readability: 7, rhetoric: 24, 'sentence-structure': 19, spelling: 4, vocabulary: 17,
+    claims: 14, concision: 4, framing: 20, headings: 5, 'inclusive-language': 4,
+    metaphors: 56, punctuation: 6, readability: 7, rhetoric: 24, 'sentence-structure': 18, spelling: 4, vocabulary: 17,
   });
   assert.ok(!readdirSync(base).some(name => name.endsWith('.yml')), 'every rule lives in a category folder');
   const merged = Object.values(byFolder).flat();
-  assert.equal(merged.length, 183);
-  assert.equal(new Set(merged).size, 183, 'rule names are unique across folders');
+  assert.equal(merged.length, 179);
+  assert.equal(new Set(merged).size, 179, 'rule names are unique across folders');
   for (const [folder, rules] of Object.entries(byFolder)) {
     assert.ok(readme.includes(`**${folder} (${rules.length}):**`), `${folder} listed in styles README`);
     for (const rule of rules) assert.ok(readme.includes(`\`${rule}\``), `${rule} listed in styles README`);
   }
   for (const folded of ['Dash', 'Cliche', 'CopulaInflation', 'Very', 'Illusions', 'But',
     'FleschKincaid', 'DateCase', 'DateSpacing', 'DateMidnight', 'DateRedundancy',
+    'E-Prime', 'AnimalLabels', 'DenizenLabels', 'GroupTerms',
     'Annotations', 'P-Value', 'FilePath', 'CodeToken', 'LinkText', 'SectionCode', 'StatusBracket', 'WeakResume']) {
     assert.ok(!merged.includes(folded), `${folded} was merged away`);
   }
@@ -244,7 +245,7 @@ test('Unslop vendors RedHat plus one merged jdylanmc style, one license and noti
   for (const source of ['tbhb/vale-ai-tells', 'krishnasunkam/vale-ai-tells', 'vale-cli/proselint', 'vale-cli/write-good', 'vale-cli/readability']) {
     assert.ok(readme.includes(source), `${source} credited in styles README`);
   }
-  assert.match(readme, /\| `jdylanmc` \| merged, see below \| \| \| 183 \|/);
+  assert.match(readme, /\| `jdylanmc` \| merged, see below \| \| \| 179 \|/);
 });
 
 test('style skills own their rules and Synthesize delegates to them', () => {
