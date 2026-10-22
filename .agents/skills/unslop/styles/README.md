@@ -26,8 +26,8 @@ jdylanmc/
   rhetoric/            24  Contrast and negation formulas, tricolons, staccato, self-answered questions
   framing/             20  Openers, closers, transitions, announcements, chatbot filler and sycophancy
   sentence-structure/  19  Padding, nominalization, copula dodges, passive voice, sentence openers
-  claims/              15  Hedging, blanket and absolute claims, vague attribution, urgency
-  vocabulary/          15  AI vocabulary, clichés, jargon, buzzwords, filler adverbs
+  vocabulary/          16  AI vocabulary, clichés, jargon, buzzwords, weasel words, filler adverbs
+  claims/              14  Hedging, blanket and absolute claims, vague attribution, urgency
   document-hygiene/     8  Leftover notes, file paths, code tokens in prose, vague links, résumé phrasing
   inclusive-language/   7  Gender, LGBT, group, demonym and animal terms; cursing
   readability/          7  Readability scores and polysyllabic words
@@ -41,8 +41,8 @@ jdylanmc/
 - **rhetoric (24):** `AbstractTriad`, `ContrastiveFormulas`, `ContrastiveNegation`, `CoordinatedReveal`, `DespiteChallenges`, `EpigramContrast`, `FalseBalance`, `FalseExclusivity`, `LabelAndExplain`, `MicDrop`, `NegParallel`, `NegatedObject`, `NegatedPair`, `NegatedSubject`, `NeverTag`, `ParallelStaccato`, `PseudoCleft`, `RhetoricalDevices`, `RhetoricalSelfAnswer`, `StackedAnaphora`, `StrawmanContrast`, `SummativeAppositive`, `VerbTricolon`, `VerbTricolonDensity`
 - **framing (20):** `AffirmativeFormulas`, `Apologizing`, `CataphoricForecasting`, `ClosingPleasantries`, `ConclusionMarkers`, `ExplainerLeads`, `FillerIntensifier`, `FillerPhrases`, `FormalTransitions`, `HollowAcknowledgment`, `ListIntroductions`, `Metacommentary`, `NarrativePivots`, `OpeningCliches`, `RestatementMarkers`, `SelfReference`, `SequencingMarkers`, `StructureAnnouncements`, `SycophancyMarkers`, `UnpackExplore`
 - **sentence-structure (19):** `AbstractionSubject`, `ConsequenceClause`, `ConsequenceParticiple`, `E-Prime`, `EmphaticCopula`, `EmptyPadding`, `EmptyPaddingStacked`, `HiddenVerb`, `IncompleteComparison`, `NominalizedScopeChange`, `NounString`, `ParticipialPadding`, `Passive`, `ScopePartition`, `ServesAsDodge`, `ShellNounCopula`, `So`, `ThereIs`, `UnderRegime`
-- **claims (15):** `AbsoluteAssertions`, `DefensiveHedges`, `Hedging`, `HedgingPhrases`, `Hyperbole`, `OrganicConsequence`, `PointVerdict`, `RedundantPrecaution`, `StackedHedges`, `UniversalObject`, `UniversalSubject`, `UrgencyInflation`, `VagueAttributions`, `VirtueHonest`, `Weasel`
-- **vocabulary (15):** `AIAdjectiveNounPairs`, `AICompoundPhrases`, `Adverb`, `Airlinese`, `Archaisms`, `Cliches`, `CorporateSpeak`, `FormalRegister`, `HouseStyle`, `Jargon`, `OverusedVocabulary`, `OverusedVocabularyVerbs`, `PromotionalPuffery`, `Skunked`, `StrategyBuzzwords`
+- **vocabulary (16):** `AIAdjectiveNounPairs`, `AICompoundPhrases`, `Adverb`, `Airlinese`, `Archaisms`, `Cliches`, `CorporateSpeak`, `FormalRegister`, `HouseStyle`, `Jargon`, `OverusedVocabulary`, `OverusedVocabularyVerbs`, `PromotionalPuffery`, `Skunked`, `StrategyBuzzwords`, `Weasel`
+- **claims (14):** `AbsoluteAssertions`, `DefensiveHedges`, `Hedging`, `HedgingPhrases`, `Hyperbole`, `OrganicConsequence`, `PointVerdict`, `RedundantPrecaution`, `StackedHedges`, `UniversalObject`, `UniversalSubject`, `UrgencyInflation`, `VagueAttributions`, `VirtueHonest`
 - **document-hygiene (8):** `Annotations`, `CodeToken`, `FilePath`, `LinkText`, `P-Value`, `SectionCode`, `StatusBracket`, `WeakResume`
 - **inclusive-language (7):** `AnimalLabels`, `Cursing`, `DenizenLabels`, `GenderBias`, `GroupTerms`, `LGBTOffensive`, `LGBTTerms`
 - **readability (7):** `AutomatedReadability`, `ColemanLiau`, `FleschReadingEase`, `GunningFog`, `LIX`, `Polysyllables`, `SMOG`

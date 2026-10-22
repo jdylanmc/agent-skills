@@ -185,7 +185,7 @@ const valeLicenses = new Map([
 // coverage-preservation evidence (see styles/README.md).
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
-  jdylanmc: '5da951ec0ee835bbb02e8247ea1fa6b946524442a5b463d3ed0676f530e10abe',
+  jdylanmc: '2017fc00957a0ad7cf6933f681ef751d6a61926f231fa6aa2b0dd522d47a6d02',
   config: 'df80e71026f49e4272995b6d4b491098b788992102b754463eedba5e2e408cf3',
 };
 
@@ -221,8 +221,8 @@ test('Unslop vendors RedHat plus one merged jdylanmc style, one license and noti
   const byFolder = Object.fromEntries(folders.map(folder => [folder,
     readdirSync(path.join(base, folder)).filter(name => name.endsWith('.yml')).map(name => name.slice(0, -4)).sort()]));
   assert.deepEqual(Object.fromEntries(Object.entries(byFolder).map(([folder, rules]) => [folder, rules.length])), {
-    claims: 15, concision: 5, 'document-hygiene': 8, framing: 20, headings: 5, 'inclusive-language': 7,
-    metaphors: 56, punctuation: 6, readability: 7, rhetoric: 24, 'sentence-structure': 19, spelling: 4, vocabulary: 15,
+    claims: 14, concision: 5, 'document-hygiene': 8, framing: 20, headings: 5, 'inclusive-language': 7,
+    metaphors: 56, punctuation: 6, readability: 7, rhetoric: 24, 'sentence-structure': 19, spelling: 4, vocabulary: 16,
   });
   assert.ok(!readdirSync(base).some(name => name.endsWith('.yml')), 'every rule lives in a category folder');
   const merged = Object.values(byFolder).flat();
