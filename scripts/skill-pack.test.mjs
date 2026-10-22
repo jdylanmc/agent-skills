@@ -394,7 +394,7 @@ test('Pull-request is the single PR skill: body, unslop, GitHub, and ADO delegat
   assert.match(skill, /\[Unslop\]\(\.\.\/unslop\/SKILL\.md\)/);
   assert.match(skill, /every PR title and body/i);
   assert.match(skill, /## GitHub/);
-  assert.match(skill, /## Azure DevOps Delegate to the work `ado-pull-request` skill/);
+  assert.match(skill, /## Azure DevOps Delegate publishing to the work `ado-pull-request` skill/);
   assert.ok(!existsSync(path.join(root, '.agents/skills/create-pull-request')), 'create-pull-request was merged away');
 });
 
