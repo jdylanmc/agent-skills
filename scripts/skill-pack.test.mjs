@@ -13,11 +13,11 @@ const expected = [
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
   'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'pull-request', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'simplified-technical-caveman', 'simplified-technical-english', 'specify',
-  'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'verify', 'wait-what', 'wrap-up',
+  'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'unslop', 'verify', 'wait-what', 'wrap-up',
 ];
 const originalNames = expected.filter(name => ![
   'chart-a-course', 'create-pull-request', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'pull-request',
-  'simplified-technical-caveman', 'simplified-technical-english', 'wrap-up',
+  'simplified-technical-caveman', 'simplified-technical-english', 'unslop', 'wrap-up',
 ].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
@@ -47,6 +47,8 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     .filter(filename => filename !== '.agents/skills/shepherd/intent.md')
     // New simplified-technical-caveman intent explicitly requested by the human; pinned below.
     .filter(filename => filename !== '.agents/skills/simplified-technical-caveman/intent.md')
+    // Unslop intent supplied verbatim by the human; pinned separately below.
+    .filter(filename => filename !== '.agents/skills/unslop/intent.md')
     // New wrap-up intent explicitly supplied by the human; pinned below.
     .filter(filename => filename !== '.agents/skills/wrap-up/intent.md');
   sources.push('intent.md');
@@ -71,6 +73,27 @@ test('human-supplied wrap-up intent remains pinned', () => {
   const intent = readFileSync(path.join(root, '.agents/skills/wrap-up/intent.md'));
   assert.equal(createHash('sha256').update(intent).digest('hex'),
     '78b54e387f4f88770533405ead518b0d5727c8763f54e4eb63719f63267c107c');
+});
+
+test('Unslop preserves human intent and enables exactly the vendored packages', () => {
+  const directory = path.join(root, '.agents/skills/unslop');
+  assert.equal(readFileSync(path.join(directory, 'intent.md'), 'utf8'),
+    'AI wrote some prose, but it reads just like an AI wrote it. It\'s clear in the framing, word choices, and sentence structures. Detect this and strip it. Humanize the content and ensure it passes the vale checks we have configured.  The vale checks find everything from emdash overuse to "It\'s not X, but Y" syle phrases.\n');
+  const skill = readFileSync(path.join(directory, 'SKILL.md'), 'utf8');
+  const metadata = skill.split('---\n')[1];
+  assert.match(metadata, /^name: unslop$/m);
+  assert.match(metadata, /^disable-model-invocation: false$/m);
+  assert.match(metadata, /^user-invocable: true$/m);
+  const config = readFileSync(path.join(directory, '.vale.ini'), 'utf8')
+    .split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
+  assert.deepEqual(config, [
+    'StylesPath = styles',
+    'MinAlertLevel = suggestion',
+    '[*.{md,txt}]',
+    'BasedOnStyles = RedHat, jdylanmc',
+  ]);
+  assert.match(skill, /No Vale\s+rules\s+configured;\s+editorial review only/);
+  assert.match(readFileSync(path.join(directory, 'VALE.md'), 'utf8'), /--no-global/);
 });
 
 test('separately authorized PM intent and entrypoint metadata remain pinned', () => {
@@ -139,9 +162,90 @@ test('import provenance bytes survive outside active installer state', () => {
 
 test('original repository and upstream license bytes remain intact', () => {
   const sources = files(path.join(root, 'licenses'))
-    .map(filename => path.relative(root, filename).split(path.sep).join('/'));
+    .map(filename => path.relative(root, filename).split(path.sep).join('/'))
+    // Vale package licenses were added with `unslop`; pinned below.
+    .filter(filename => !valeLicenses.has(path.basename(filename)));
   sources.push('LICENSE');
   assert.equal(digestFiles(sources), '4a3e14e9b3c8a2203e46578812f283645dfa37ebe5d6735a70ae9c766364e13c');
+});
+
+const valeLicenses = new Map([
+  ['redhat-documentation-vale-at-red-hat.LICENSE', '7f8ae7549de044f0f338ecd8c9363f0f061c265f8be3c772044eed69fcc8a1f5'],
+  ['vale-cli-proselint.LICENSE', 'b1f23c552b813bb86d87ed697d895a5e03bf80a3882f9ffd87fcdeb176f103c0'],
+  ['vale-cli-readability.LICENSE', 'aa431e1653f927cf92be0fcc77fe388b97780b5f0f541085e30c4abe626b1074'],
+  ['tbhb-vale-ai-tells.LICENSE', 'adf519814a60378fc45fedaa358c6598cde3621154945180569784c79365d4ed'],
+  ['krishnasunkam-vale-ai-tells.LICENSE', '5c1b9768e3367bf8142f1b843fa7c1ed1bd95ccc0039f473d22d10fb6bb5c0ec'],
+  ['vale-cli-write-good.LICENSE', 'b9bb0975e308708b97e4a30c7665c815fe4bd3a1de2ed04d35c0eef03d4eaa69'],
+]);
+
+// Vendored style contents, byte-pinned: edit .vale.ini to curate, never these files.
+// RedHat is an unmodified release. jdylanmc is the deliberate, deduplicated merge of
+// tbhb `ai-tells`, krishnasunkam `AiTells`, proselint, write-good and Readability,
+// sorted into folders by what each rule does; changing it requires the same
+// coverage-preservation evidence (see styles/README.md).
+const valeStyles = {
+  RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
+  jdylanmc: 'd09175d4e65fad6e8709a7a43d683ac5c6a100992309d88fb1f86f1c0b9518f3',
+  config: 'df80e71026f49e4272995b6d4b491098b788992102b754463eedba5e2e408cf3',
+};
+
+test('Unslop vendors RedHat plus one merged jdylanmc style, one license and notice entry per source package', () => {
+  const styles = path.join(root, '.agents/skills/unslop/styles');
+  assert.deepEqual(readdirSync(styles).sort(), ['README.md', ...Object.keys(valeStyles)].sort());
+  for (const [name, expectedDigest] of Object.entries(valeStyles)) {
+    const hash = createHash('sha256');
+    for (const filename of files(path.join(styles, name))) {
+      hash.update(`${path.relative(path.join(styles, name), filename).split(path.sep).join('/')}\0`);
+      hash.update(readFileSync(filename));
+      hash.update('\0');
+    }
+    assert.equal(hash.digest('hex'), expectedDigest, `${name} drifted from its pinned release`);
+  }
+  const notice = readFileSync(path.join(root, 'NOTICE.md'), 'utf8');
+  const readme = readFileSync(path.join(styles, 'README.md'), 'utf8');
+  for (const [name, digest] of valeLicenses) {
+    assert.equal(createHash('sha256').update(readFileSync(path.join(root, 'licenses', name))).digest('hex'), digest, name);
+    assert.equal(notice.split(`./licenses/${name}`).length - 1, 1, `${name}: exactly one notice entry`);
+  }
+  for (const name of Object.keys(valeStyles).filter(name => name !== 'config')) {
+    assert.match(readme, new RegExp(`\`${name}\``), `${name} listed in styles README`);
+    assert.ok(!existsSync(path.join(styles, name, 'LICENSE')), `${name}: no second license copy`);
+  }
+  // Merged jdylanmc: 137 tbhb + 7 krishnasunkam + 26 proselint + 6 write-good + 7 Readability.
+  // Removed as duplicates: Dash, write-good Cliches, proselint Very; Cliche and CopulaInflation
+  // were folded into AICompoundPhrases and PromotionalPuffery. Purged because RedHat (the base)
+  // already flags the same text: Illusions, But, FleschKincaid. Time formatting is RedHat's:
+  // the proselint a.m./p.m. rules were dropped on request, as was the whole document-hygiene folder.
+  const base = path.join(styles, 'jdylanmc');
+  const folders = readdirSync(base).sort();
+  const byFolder = Object.fromEntries(folders.map(folder => [folder,
+    readdirSync(path.join(base, folder)).filter(name => name.endsWith('.yml')).map(name => name.slice(0, -4)).sort()]));
+  assert.deepEqual(Object.fromEntries(Object.entries(byFolder).map(([folder, rules]) => [folder, rules.length])), {
+    claims: 14, concision: 4, framing: 20, headings: 5, 'inclusive-language': 4,
+    metaphors: 56, punctuation: 6, readability: 7, rhetoric: 24, 'sentence-structure': 18, spelling: 4, vocabulary: 17,
+  });
+  assert.ok(!readdirSync(base).some(name => name.endsWith('.yml')), 'every rule lives in a category folder');
+  const merged = Object.values(byFolder).flat();
+  assert.equal(merged.length, 179);
+  assert.equal(new Set(merged).size, 179, 'rule names are unique across folders');
+  for (const [folder, rules] of Object.entries(byFolder)) {
+    assert.ok(readme.includes(`**${folder} (${rules.length}):**`), `${folder} listed in styles README`);
+    for (const rule of rules) assert.ok(readme.includes(`\`${rule}\``), `${rule} listed in styles README`);
+  }
+  for (const folded of ['Dash', 'Cliche', 'CopulaInflation', 'Very', 'Illusions', 'But',
+    'FleschKincaid', 'DateCase', 'DateSpacing', 'DateMidnight', 'DateRedundancy',
+    'E-Prime', 'AnimalLabels', 'DenizenLabels', 'GroupTerms',
+    'Annotations', 'P-Value', 'FilePath', 'CodeToken', 'LinkText', 'SectionCode', 'StatusBracket', 'WeakResume']) {
+    assert.ok(!merged.includes(folded), `${folded} was merged away`);
+  }
+  for (const kept of ['EmDashUsage', 'Cliches', 'Passive', 'Apologizing', 'SMOG']) {
+    assert.ok(merged.includes(kept), `${kept} is kept`);
+  }
+  assert.ok(existsSync(path.join(styles, 'config/templates/jdylanmc-agent.tmpl')));
+  for (const source of ['tbhb/vale-ai-tells', 'krishnasunkam/vale-ai-tells', 'vale-cli/proselint', 'vale-cli/write-good', 'vale-cli/readability']) {
+    assert.ok(readme.includes(source), `${source} credited in styles README`);
+  }
+  assert.match(readme, /\| `jdylanmc` \| merged, see below \| \| \| 179 \|/);
 });
 
 test('style skills own their rules and Synthesize delegates to them', () => {
@@ -327,7 +431,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
     });
     install();
     const installed = path.join(consumer, '.agents/skills');
-    await t.test('all 37 active names, no archive', () => {
+    await t.test('all active names, no archive', () => {
       assert.deepEqual(readdirSync(installed).sort(), expected);
     });
     await t.test('installation writes only project skill files and installer lock, not Setup outputs', () => {
@@ -399,6 +503,7 @@ test('released CLI copy-installs exactly the complete active pack', { timeout: 1
         'licenses/humanlayer-skills.LICENSE', 'licenses/danyuchn-asd-ste100-skill.LICENSE',
         'licenses/caveman.LICENSING.md', 'licenses/mattpocock-skills.LICENSE',
         'licenses/superpowers.LICENSE', 'licenses/anthropic-skills.LICENSE',
+        ...[...valeLicenses.keys()].map(name => `licenses/${name}`),
       ]) {
         assert.ok(readFileSync(path.join(installed, 'setup', name)).length > 0, name);
       }

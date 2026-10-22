@@ -1,0 +1,1 @@
+AI wrote some prose, but it reads just like an AI wrote it. It's clear in the framing, word choices, and sentence structures. Detect this and strip it. Humanize the content and ensure it passes the vale checks we have configured.  The vale checks find everything from emdash overuse to "It's not X, but Y" syle phrases.

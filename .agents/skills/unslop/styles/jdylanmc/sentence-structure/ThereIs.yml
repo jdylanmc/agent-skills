@@ -1,0 +1,6 @@
+extends: existence
+message: "Do not start a sentence with '%s'."
+ignorecase: false
+level: error
+raw:
+  - '(?:[;-]\s)There\s(is|are)|\bThere\s(is|are)\b'

@@ -1,0 +1,118 @@
+extends: existence
+message: "'%s' is too wordy."
+ignorecase: true
+level: warning
+tokens:
+  - because of the fact that
+  - by virtue of the fact that
+  - in a very real sense
+  - is authorized to
+  - is responsible for
+  - accede to
+  - additional
+  - adversely impact
+  - aforementioned
+  - all of
+  - along the lines of
+  - already existing
+  - amazing
+  - appreciable
+  - as a matter of fact
+  - as a means of
+  - as far as I'm concerned
+  - as of yet
+  - as to
+  - as yet
+  - at the present time
+  - at this time
+  - attributable to
+  - benefit from
+  - by means of
+  - by virtue of
+  - close proximity
+  - comply with
+  - each and every
+  - economical
+  - evidenced
+  - expend
+  - expiration
+  - factual evidence
+  - feasible
+  - forfeit
+  - formulate
+  - have a tendency to
+  - if and when
+  - impacted
+  - in a manner of speaking
+  - in a timely manner
+  - in accordance with
+  - in all likelihood
+  - in an effort to
+  - in between
+  - in excess of
+  - in lieu of
+  - in many cases
+  - in my opinion
+  - in regard to
+  - in some instances
+  - in terms of
+  - in the case of
+  - in the event that
+  - in the nature of
+  - in the near future
+  - in the process of
+  - inception
+  - incumbent upon
+  - indicate
+  - is applicable to
+  - it is essential
+  - it seems that
+  - it was
+  - magnitude
+  - maximum
+  - minimum
+  - not certain
+  - not many
+  - not often
+  - not unless
+  - not unlike
+  - notwithstanding
+  - null and void
+  - one particular
+  - overall
+  - participate
+  - particulars
+  - pass away
+  - pertaining to
+  - point in time
+  - preclude
+  - proficiency
+  - readily apparent
+  - refer back
+  - regarding
+  - remainder
+  - remuneration
+  - requirement
+  - reside
+  - residence
+  - retain
+  - satisfy
+  - shall
+  - should you wish
+  - similar to
+  - span across
+  - strategize
+  - successfully complete
+  - the month of
+  - the point I am trying to make
+  - time period
+  - took advantage of
+  - transpire
+  - type of
+  - until such time as
+  - various different
+  - what I mean to say is
+  - whether or not
+  - with respect to
+  - with the exception of
+  - witnessed

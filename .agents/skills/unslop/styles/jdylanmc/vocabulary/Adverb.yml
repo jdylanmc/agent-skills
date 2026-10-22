@@ -1,0 +1,38 @@
+extends: existence
+message: "Filler adverb '%s': let the verb carry it."
+level: suggestion
+ignorecase: true
+tokens:
+  - quietly
+  - simply
+  - actually
+  - really
+  - very
+  - literally
+  - structurally
+  - precisely
+  - exactly
+  - merely
+  - truly
+  - clearly
+  - obviously
+  - essentially
+  - virtually
+  - generally
+  - currently
+  - quickly
+  - easily
+  - just
+  - robustly
+  - arguably
+  - somewhat
+  - fairly
+  - seemingly
+  - candidly
+  - carefully
+  - thoughtfully
+  - properly
+  - effortlessly
+  - cleanly
+  - transparently
+  - authentically

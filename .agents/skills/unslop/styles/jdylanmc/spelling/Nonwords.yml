@@ -1,0 +1,12 @@
+extends: substitution
+message: "Consider using '%s' instead of '%s'."
+ignorecase: true
+level: error
+action:
+  name: replace
+swap:
+  doubtlessly: doubtless|undoubtedly
+  irregardless: regardless
+  pettifogger: pettifog
+  relative inexpense: low price|affordability
+  thusly: therefore

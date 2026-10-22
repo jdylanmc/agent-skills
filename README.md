@@ -1,6 +1,6 @@
 # Agent Skills
 
-Dylan's editable library of **37 skills** and human-owned engineering doctrine,
+Dylan's editable library of **42 skills** and human-owned engineering doctrine,
 designed for GitHub Copilot. The retired atomic framework remains historical
 material under `archive/atomic-v1/`; it does not govern the active library.
 
@@ -26,7 +26,7 @@ DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill '*
 The environment prefix above is POSIX shell syntax; in PowerShell, set
 `$env:DISABLE_TELEMETRY='1'` before running the `npx` command.
 
-Install **all 37** together for a new consumer. Isolated installs without
+Install **all 42** together for a new consumer. Isolated installs without
 prerequisites are unsupported: workflows
 reference sibling skills, and Setup carries the shared policies, attribution,
 licenses, and historical provenance. The quoted `'*'` selects every active
@@ -136,6 +136,13 @@ Validation keeps telemetry disabled and does not claim directory registration.
 
 ## The workflow
 
+- **Unslop:** rewrite supplied prose to remove formulaic AI framing, phrasing,
+  and sentence patterns without changing its meaning. Check the result with
+  the [curated Vale configuration](.agents/skills/unslop/VALE.md).
+  Ships two vendored Vale styles: RedHat as the base, and jdylanmc, one merged
+  and deduplicated layer of five packages with everything RedHat flags purged,
+  to be pruned by the human. Editorial judgment and Vale coverage are reported
+  separately. Rule curation is human-directed.
 - **Joe-mode:** human-started, one controller per repository, looping until
   paused or stopped. Use Squadron aggressively for independent discovery,
   delivery, and Shepherd assignments without overlapping owners.
