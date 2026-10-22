@@ -162,6 +162,7 @@ When updating after new commits, revise What, How, Evidence, and Blast Radius to
 
 Resolve the provider from the remote URL, not from memory.
 
+- Adapt to the repository's own PR standards before writing: its PR template (including a `pull_request_template/` folder), `CONTRIBUTING.md`, title and branch conventions, and recent merged PRs. Keep this skill's voice, visuals, and unslopping, and fit the structure to what the repository states.
 - Use `gh` or the available GitHub integration with an explicit `--repo owner/name`, `--base`, and `--head`. For a fork, name the head as `owner:branch`.
 - Authenticate as the identity that owns the repository: the personal account for open-source checkouts, the work account for enterprise. Do not switch accounts or write credentials to files.
 - Pass the unslopped body from a file (`--body-file`), never inline shell text. Update an existing PR with `gh pr edit`.
@@ -170,9 +171,11 @@ Resolve the provider from the remote URL, not from memory.
 
 ## Azure DevOps
 
-Delegate to the work `ado-pull-request` skill. Do not call ADO APIs, `az repos`, or the ADO integration directly from this skill.
+Delegate to the work `ado-pull-request` skill. It knows Azure DevOps and each repository's own PR standards. This skill owns the generic style. Do not call ADO APIs, `az repos`, or the ADO integration directly from this skill.
 
-- Hand it the unslopped title and body, the source and target refs, the draft or ready request, and the linked work items.
+- **You write, it publishes.** Write and unslop the title and body first, then hand it the text, the source and target refs, the draft or ready request, and the linked work items.
+- **It may call you.** When `ado-pull-request` invokes this skill for a body, work in body-only mode: return the unslopped title and body and do not delegate back.
+- **Adapt to the repository.** It passes the standards it found: the PR template, title and branch rules, required sections or checklist items. Keep this skill's voice, visuals, and unslopping, and fit the structure to those standards. A template's headings win, required items are filled and not dropped, and a stated repository rule beats this skill's defaults.
 - It owns provider mechanics, branch policies, reviewers, and work-item links. Apply its readback to the Report list above.
 - If that skill is not installed, report the missing capability and return the unslopped body. Do not improvise an ADO publication path.
 
