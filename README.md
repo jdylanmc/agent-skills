@@ -139,7 +139,7 @@ Validation keeps telemetry disabled and does not claim directory registration.
 - **Unslop:** rewrite supplied prose to remove formulaic AI framing, phrasing,
   and sentence patterns without changing its meaning. Check the result with
   the [curated Vale configuration](.agents/skills/unslop/VALE.md).
-  Ships two vendored Vale styles: RedHat as the base, and ai-slop, one merged
+  Ships two vendored Vale styles: RedHat as the base, and jdylanmc, one merged
   and deduplicated layer of five packages with everything RedHat flags purged,
   to be pruned by the human. Editorial judgment and Vale coverage are reported
   separately. Rule curation is human-directed.

@@ -90,7 +90,7 @@ test('Unslop preserves human intent and enables exactly the vendored packages', 
     'StylesPath = styles',
     'MinAlertLevel = suggestion',
     '[*.{md,txt}]',
-    'BasedOnStyles = RedHat, ai-slop',
+    'BasedOnStyles = RedHat, jdylanmc',
   ]);
   assert.match(skill, /No Vale\s+rules\s+configured;\s+editorial review only/);
   assert.match(readFileSync(path.join(directory, 'VALE.md'), 'utf8'), /--no-global/);
@@ -179,16 +179,17 @@ const valeLicenses = new Map([
 ]);
 
 // Vendored style contents, byte-pinned: edit .vale.ini to curate, never these files.
-// RedHat is an unmodified release. ai-slop is the deliberate, deduplicated merge of
-// tbhb `ai-tells`, krishnasunkam `AiTells`, proselint, write-good and Readability;
-// changing it requires the same coverage-preservation evidence (see styles/README.md).
+// RedHat is an unmodified release. jdylanmc is the deliberate, deduplicated merge of
+// tbhb `ai-tells`, krishnasunkam `AiTells`, proselint, write-good and Readability,
+// sorted into folders by what each rule does; changing it requires the same
+// coverage-preservation evidence (see styles/README.md).
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
-  'ai-slop': '81a1432d07cad4808e6ca65fd29f29b7f853c64a3598fc5320335ac3929832f7',
+  jdylanmc: '5da951ec0ee835bbb02e8247ea1fa6b946524442a5b463d3ed0676f530e10abe',
   config: '8b4cff82b795ff09057789fe8de2281ba51730356e47a15c11c762ab665787bf',
 };
 
-test('Unslop vendors RedHat plus one merged ai-slop style, one license and notice entry per source package', () => {
+test('Unslop vendors RedHat plus one merged jdylanmc style, one license and notice entry per source package', () => {
   const styles = path.join(root, '.agents/skills/unslop/styles');
   assert.deepEqual(readdirSync(styles).sort(), ['README.md', ...Object.keys(valeStyles)].sort());
   for (const [name, expectedDigest] of Object.entries(valeStyles)) {
@@ -210,25 +211,39 @@ test('Unslop vendors RedHat plus one merged ai-slop style, one license and notic
     assert.match(readme, new RegExp(`\`${name}\``), `${name} listed in styles README`);
     assert.ok(!existsSync(path.join(styles, name, 'LICENSE')), `${name}: no second license copy`);
   }
-  // Merged ai-slop: 137 tbhb + 13 krishnasunkam + 28 proselint + 6 write-good + 7 Readability.
+  // Merged jdylanmc: 137 tbhb + 13 krishnasunkam + 28 proselint + 6 write-good + 7 Readability.
   // Removed as duplicates: Dash, write-good Cliches, proselint Very; Cliche and CopulaInflation
   // were folded into AICompoundPhrases and PromotionalPuffery. Purged because RedHat (the base)
   // already flags the same text: Illusions, But, FleschKincaid. Time formatting is RedHat's:
   // the proselint a.m./p.m. rules were dropped on request.
-  const merged = readdirSync(path.join(styles, 'ai-slop')).filter(name => name.endsWith('.yml'));
+  const base = path.join(styles, 'jdylanmc');
+  const folders = readdirSync(base).sort();
+  const byFolder = Object.fromEntries(folders.map(folder => [folder,
+    readdirSync(path.join(base, folder)).filter(name => name.endsWith('.yml')).map(name => name.slice(0, -4)).sort()]));
+  assert.deepEqual(Object.fromEntries(Object.entries(byFolder).map(([folder, rules]) => [folder, rules.length])), {
+    claims: 15, concision: 5, 'document-hygiene': 8, framing: 20, headings: 5, 'inclusive-language': 7,
+    metaphors: 56, punctuation: 6, readability: 7, rhetoric: 24, 'sentence-structure': 19, spelling: 4, vocabulary: 15,
+  });
+  assert.ok(!readdirSync(base).some(name => name.endsWith('.yml')), 'every rule lives in a category folder');
+  const merged = Object.values(byFolder).flat();
   assert.equal(merged.length, 191);
-  for (const folded of ['Dash.yml', 'Cliche.yml', 'CopulaInflation.yml', 'Very.yml', 'Illusions.yml', 'But.yml',
-    'FleschKincaid.yml', 'DateCase.yml', 'DateSpacing.yml', 'DateMidnight.yml', 'DateRedundancy.yml']) {
+  assert.equal(new Set(merged).size, 191, 'rule names are unique across folders');
+  for (const [folder, rules] of Object.entries(byFolder)) {
+    assert.ok(readme.includes(`**${folder} (${rules.length}):**`), `${folder} listed in styles README`);
+    for (const rule of rules) assert.ok(readme.includes(`\`${rule}\``), `${rule} listed in styles README`);
+  }
+  for (const folded of ['Dash', 'Cliche', 'CopulaInflation', 'Very', 'Illusions', 'But',
+    'FleschKincaid', 'DateCase', 'DateSpacing', 'DateMidnight', 'DateRedundancy']) {
     assert.ok(!merged.includes(folded), `${folded} was merged away`);
   }
-  for (const kept of ['EmDashUsage.yml', 'Cliches.yml', 'Passive.yml', 'Apologizing.yml', 'SMOG.yml']) {
+  for (const kept of ['EmDashUsage', 'Cliches', 'Passive', 'Apologizing', 'SMOG']) {
     assert.ok(merged.includes(kept), `${kept} is kept`);
   }
   assert.ok(existsSync(path.join(styles, 'config/templates/ai-tells-agent.tmpl')));
   for (const source of ['tbhb/vale-ai-tells', 'krishnasunkam/vale-ai-tells', 'vale-cli/proselint', 'vale-cli/write-good', 'vale-cli/readability']) {
     assert.ok(readme.includes(source), `${source} credited in styles README`);
   }
-  assert.match(readme, /\| `ai-slop` \| merged, see below \| \| \| 191 \|/);
+  assert.match(readme, /\| `jdylanmc` \| merged, see below \| \| \| 191 \|/);
 });
 
 test('style skills own their rules and Synthesize delegates to them', () => {

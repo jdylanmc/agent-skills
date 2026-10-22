@@ -11,7 +11,7 @@ have tagged releases. Current cleanup is tracked in
 
 - `unslop`: rewrite AI-sounding prose while preserving meaning, then verify
   the selected Vale checks. Includes the human-supplied intent and two
-  vendored Vale styles: RedHat as the base, and ai-slop, one deduplicated
+  vendored Vale styles: RedHat as the base, and jdylanmc, one deduplicated
   layer merged from five packages (ai-tells, AiTells, proselint, write-good,
   Readability) and purged of everything RedHat already flags, enabled in full
   pending human pruning. Upstream licenses and attribution retained in

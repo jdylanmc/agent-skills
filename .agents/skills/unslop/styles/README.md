@@ -1,22 +1,65 @@
 # Vale styles
 
-Two styles. `RedHat` is the base, an unmodified pinned release. `ai-slop` is
+Two styles. `RedHat` is the base, an unmodified pinned release. `jdylanmc` is
 one merged, deduplicated layer built from five other packages, with everything
-RedHat already flags purged. Nothing is
-fetched at run time. Licenses and copyright notices live in the repository
-[NOTICE](../../setup/NOTICE.md) and `licenses/`; do not add per-package copies.
-Enable or disable rules in [`.vale.ini`](../.vale.ini). See [VALE.md](../VALE.md).
+RedHat already flags purged, and sorted into folders by what each rule does.
+Nothing is fetched at run time. Licenses and copyright notices live in the
+repository [NOTICE](../../setup/NOTICE.md) and `licenses/`; do not add
+per-package copies. Enable or disable rules in [`.vale.ini`](../.vale.ini).
+See [VALE.md](../VALE.md).
 
 | Style | Source | Release | Release zip sha256 | Rules |
 | --- | --- | --- | --- | --- |
 | `RedHat` | [redhat-documentation/vale-at-red-hat](https://github.com/redhat-documentation/vale-at-red-hat) | v680 | `c8bf6824e7f9f4fbbfc29ae017f0f1553922a5d24a3aafd5e3795bca57008992` | 37 |
-| `ai-slop` | merged, see below | | | 191 |
+| `jdylanmc` | merged, see below | | | 191 |
 
-## ai-slop (merged)
+## jdylanmc at a glance
 
-Rule IDs are `ai-slop.Name`. Package metadata (`meta.json`, package READMEs) and
-`Readability/LICENSE` are dropped; each license is kept once in `licenses/`.
-The tbhb `config/templates/ai-tells-agent.tmpl` output template is kept.
+Rule IDs are `jdylanmc.<folder>.<Rule>`, for example
+`jdylanmc.sentence-structure.E-Prime`. Vale loads the folders as one style. You
+can turn off one rule (`jdylanmc.sentence-structure.E-Prime = NO`) but not a
+whole folder with one line, so a folder is for finding and sorting, not toggling.
+
+```text
+jdylanmc/
+  metaphors/           56  Figurative verbs and nouns, anthropomorphism ("the check lives in", "really lands")
+  rhetoric/            24  Contrast and negation formulas, tricolons, staccato, self-answered questions
+  framing/             20  Openers, closers, transitions, announcements, chatbot filler and sycophancy
+  sentence-structure/  19  Padding, nominalization, copula dodges, passive voice, sentence openers
+  claims/              15  Hedging, blanket and absolute claims, vague attribution, urgency
+  vocabulary/          15  AI vocabulary, clichés, jargon, buzzwords, filler adverbs
+  document-hygiene/     8  Leftover notes, file paths, code tokens in prose, vague links, résumé phrasing
+  inclusive-language/   7  Gender, LGBT, group, demonym and animal terms; cursing
+  readability/          7  Readability scores and polysyllabic words
+  punctuation/          6  Dashes, semicolons, colons, symbols
+  concision/            5  Wordy phrases, redundancy, oxymorons, non-comparable words
+  headings/             5  Announcement, explainer, marketing, mic-drop and wrap-up headings
+  spelling/             4  Non-words, diacritics, inconsistent spelling, malapropisms
+```
+
+- **metaphors (56):** `AnthropomorphicAdjectives`, `AnthropomorphicCognition`, `AnthropomorphicJustification`, `BareHolds`, `BareNames`, `BareReaches`, `ColloquialAssessments`, `DepletionMetaphors`, `EnforcementMetaphors`, `EvasionMetaphors`, `FigurativeBreeds`, `FigurativeCarries`, `FigurativeCasts`, `FigurativeClears`, `FigurativeDemands`, `FigurativeDisguises`, `FigurativeDraws`, `FigurativeEarns`, `FigurativeFalls`, `FigurativeFires`, `FigurativeHolds`, `FigurativeIdioms`, `FigurativeKeeps`, `FigurativeLands`, `FigurativeLends`, `FigurativeLives`, `FigurativeLoud`, `FigurativeMints`, `FigurativeNouns`, `FigurativeOwns`, `FigurativePays`, `FigurativeQuantities`, `FigurativeQuiet`, `FigurativeReaches`, `FigurativeRides`, `FigurativeRuns`, `FigurativeSees`, `FigurativeSettles`, `FigurativeShape`, `FigurativeSits`, `FigurativeStays`, `FigurativeStrikes`, `FigurativeSurfaces`, `FigurativeSweeps`, `FigurativeTravels`, `FigurativeTrips`, `FigurativeWins`, `FigurativeWorth`, `FusionMetaphors`, `GrowthMetaphors`, `JourneyMetaphors`, `MortalityMetaphors`, `MotionMetaphors`, `NamedAdjective`, `ResonateOveruse`, `ShipOveruse`
+- **rhetoric (24):** `AbstractTriad`, `ContrastiveFormulas`, `ContrastiveNegation`, `CoordinatedReveal`, `DespiteChallenges`, `EpigramContrast`, `FalseBalance`, `FalseExclusivity`, `LabelAndExplain`, `MicDrop`, `NegParallel`, `NegatedObject`, `NegatedPair`, `NegatedSubject`, `NeverTag`, `ParallelStaccato`, `PseudoCleft`, `RhetoricalDevices`, `RhetoricalSelfAnswer`, `StackedAnaphora`, `StrawmanContrast`, `SummativeAppositive`, `VerbTricolon`, `VerbTricolonDensity`
+- **framing (20):** `AffirmativeFormulas`, `Apologizing`, `CataphoricForecasting`, `ClosingPleasantries`, `ConclusionMarkers`, `ExplainerLeads`, `FillerIntensifier`, `FillerPhrases`, `FormalTransitions`, `HollowAcknowledgment`, `ListIntroductions`, `Metacommentary`, `NarrativePivots`, `OpeningCliches`, `RestatementMarkers`, `SelfReference`, `SequencingMarkers`, `StructureAnnouncements`, `SycophancyMarkers`, `UnpackExplore`
+- **sentence-structure (19):** `AbstractionSubject`, `ConsequenceClause`, `ConsequenceParticiple`, `E-Prime`, `EmphaticCopula`, `EmptyPadding`, `EmptyPaddingStacked`, `HiddenVerb`, `IncompleteComparison`, `NominalizedScopeChange`, `NounString`, `ParticipialPadding`, `Passive`, `ScopePartition`, `ServesAsDodge`, `ShellNounCopula`, `So`, `ThereIs`, `UnderRegime`
+- **claims (15):** `AbsoluteAssertions`, `DefensiveHedges`, `Hedging`, `HedgingPhrases`, `Hyperbole`, `OrganicConsequence`, `PointVerdict`, `RedundantPrecaution`, `StackedHedges`, `UniversalObject`, `UniversalSubject`, `UrgencyInflation`, `VagueAttributions`, `VirtueHonest`, `Weasel`
+- **vocabulary (15):** `AIAdjectiveNounPairs`, `AICompoundPhrases`, `Adverb`, `Airlinese`, `Archaisms`, `Cliches`, `CorporateSpeak`, `FormalRegister`, `HouseStyle`, `Jargon`, `OverusedVocabulary`, `OverusedVocabularyVerbs`, `PromotionalPuffery`, `Skunked`, `StrategyBuzzwords`
+- **document-hygiene (8):** `Annotations`, `CodeToken`, `FilePath`, `LinkText`, `P-Value`, `SectionCode`, `StatusBracket`, `WeakResume`
+- **inclusive-language (7):** `AnimalLabels`, `Cursing`, `DenizenLabels`, `GenderBias`, `GroupTerms`, `LGBTOffensive`, `LGBTTerms`
+- **readability (7):** `AutomatedReadability`, `ColemanLiau`, `FleschReadingEase`, `GunningFog`, `LIX`, `Polysyllables`, `SMOG`
+- **punctuation (6):** `ColonUsage`, `Currency`, `DoubleHyphen`, `EmDashUsage`, `SemicolonUsage`, `Typography`
+- **concision (5):** `Needless`, `Oxymorons`, `RASSyndrome`, `TooWordy`, `Uncomparables`
+- **headings (5):** `AnnouncementHeadings`, `ExplainerHeadings`, `MarketingHeadings`, `MicDropHeadings`, `WrapUpHeadings`
+- **spelling (4):** `Diacritical`, `Malapropisms`, `Nonwords`, `Spelling`
+
+Moving the files into folders changed only the rule IDs. A before/after run over
+121 files gave 54,601 identical alerts (same span, rule and match) and the same
+211 rules firing.
+
+## Where the rules came from
+
+Package metadata (`meta.json`, package READMEs) and `Readability/LICENSE` are
+dropped; each license is kept once in `licenses/`. The tbhb
+`config/templates/ai-tells-agent.tmpl` output template is kept.
 
 | Origin | Source | Release | Release zip sha256 | License | Rules |
 | --- | --- | --- | --- | --- | --- |
@@ -44,12 +87,13 @@ Which rule came from where. Anything not listed below is tbhb.
 - **Readability (7):** `AutomatedReadability`, `ColemanLiau`,
   `FleschReadingEase`, `GunningFog`, `LIX`, `Polysyllables`, `SMOG`.
 
-### How it was deduplicated
+## How it was deduplicated
 
-Three passes, each checked with Vale 3.24.0 before and after over thousands of
-test sentences in lowercase, sentence-initial and uppercase form. Priority when
-two rules flag the same text: `RedHat` first, then `ai-slop` rules, then
-proselint, then write-good.
+The layer was called `ai-slop` while this work was done; rule names below are
+unprefixed. Each pass was checked with Vale 3.24.0 before and after over
+thousands of test sentences in lowercase, sentence-initial and uppercase form.
+Priority when two rules flag the same text: `RedHat` first, then this layer,
+then proselint, then write-good.
 
 **Pass 1, tbhb + krishnasunkam (154 rules, ten analysts):** removed `Dash`
 (identical to `EmDashUsage`); folded `Cliche` into `AICompoundPhrases` and
@@ -61,7 +105,7 @@ a few phrases from `Adverb`, `SycophancyMarkers` and `OverusedVocabulary`.
 
 - `write-good.Cliches` removed. All 697 of its patterns are also in
   `proselint.Cliches`.
-- `proselint.Very` removed; `ai-slop.Adverb` flags `very` the same way.
+- `proselint.Very` removed; `Adverb` flags `very` the same way.
 - Trimmed only where another rule flags the complete phrase: `Cliches` 17 of
   777, `TooWordy` 29 of 216, `CorporateSpeak` 4 of 25, `Weasel` 4 of 24.
 - `Passive` is one rule: write-good's participle list plus the optional adverb
@@ -73,13 +117,13 @@ a few phrases from `Adverb`, `SycophancyMarkers` and `OverusedVocabulary`.
   their words. They were restored; coverage now requires the other rule's
   span to contain the original.
 
-Result of the final check over 116 files: no previously flagged span is lost
-or narrowed; same-span duplicate alerts fell from 7,046 to 2,316. One earlier
+Result of that check over 116 files: no previously flagged span is lost or
+narrowed; same-span duplicate alerts fell from 7,046 to 2,316. One earlier
 case differs: `CopulaInflation`'s `is/are a testament to` is now flagged by
 `AICompoundPhrases` as `a testament to`, without the verb.
 
 **Pass 3, purge everything RedHat already flags** (RedHat is the base, so the
-overlap is removed from `ai-slop`, never from RedHat). A pattern was removed
+overlap is removed from this layer, never from RedHat). A pattern was removed
 only when a RedHat rule *of the same concern* flagged the complete text in both
 mid-sentence and sentence-initial form. 304 patterns went:
 
@@ -108,13 +152,12 @@ Not purged, though RedHat alerts sometimes contain them: `Definitions`
 (capitalization of a whole heading), the other readability metrics (a different
 formula from RedHat's), `Spelling` hits in rules whose point is not misspelling
 (`DenizenLabels`, `Archaisms`, `Diacritical`), `Polysyllables`, and
-`E-Prime`'s be-verbs inside a passive phrase. `E-Prime`'s `am` also looked
-covered, by `RedHat.TermsErrors`, but that rule is about AM/PM, so it stays.
+`E-Prime`'s be-verbs inside a passive phrase.
 
 Result over 119 files: 20 alerts are no longer flagged by anything, all of
 them ALL-CAPS misspellings, because `RedHat.Spelling` skips all-caps words.
-`ai-slop` alerts that sit inside a RedHat alert fell from 5,651 to 2,971, and
-from 2,411 to 991 once coincidental RedHat rules are excluded.
+Layer alerts that sit inside a RedHat alert fell from 5,651 to 2,971, and from
+2,411 to 991 once coincidental RedHat rules are excluded.
 
 **Time formatting, by request:** `AM` and `PM` are capitalized without periods,
 and RedHat owns that (`RedHat.TermsErrors` rewrites `am`, `pm` and `Am`). The
@@ -131,13 +174,13 @@ flags `a.m.`, `p.m.` or `9am` now, because RedHat does not.
 - Severity follows the rule that now owns a pattern. The folded `Cliche` and
   `boasts a/an` patterns moved from `suggestion` to `error`. `clearly`,
   `fairly`, `obviously` and `very` moved from write-good `warning` and
-  proselint `error` to `ai-slop.Adverb` `suggestion`.
-- `ai-slop` is now purged of what `RedHat` flags (pass 3). The remaining
-  overlap is incidental: `Polysyllables` and `E-Prime` flag words that RedHat
-  also flags for a different reason, and RedHat's term rules are case-sensitive
-  in places, so a few patterns stay for sentence-initial or uppercase use.
-  `So` and `ThereIs` partly overlap `RedHat.Conjunctions`, which only checks
-  the first word of a paragraph, so they stay.
+  proselint `error` to `Adverb` `suggestion`.
+- The remaining overlap with RedHat is incidental: `Polysyllables` and
+  `E-Prime` flag words that RedHat also flags for a different reason, and
+  RedHat's term rules are case-sensitive in places, so a few patterns stay for
+  sentence-initial or uppercase use. `So` and `ThereIs` partly overlap
+  `RedHat.Conjunctions`, which only checks the first word of a paragraph, so
+  they stay.
 - Six krishnasunkam rules are document hygiene, not AI tells: `CodeToken`,
   `FilePath`, `LinkText`, `SectionCode`, `StatusBracket` (which also matches
   `[covered]` and `[required]`) and `WeakResume`.
