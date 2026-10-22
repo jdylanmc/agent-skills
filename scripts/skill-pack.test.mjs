@@ -184,7 +184,7 @@ const valeLicenses = new Map([
 // changing it requires the same coverage-preservation evidence (see styles/README.md).
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
-  'ai-slop': '7f1db7b83b9522b120674156506712c829e4fbb57b21bf26027fd7c112978184',
+  'ai-slop': 'f4aa29b7394a8fc0c276c757a082ecc49809b90b6846ce4f8ae42206bf48a02d',
   config: '8b4cff82b795ff09057789fe8de2281ba51730356e47a15c11c762ab665787bf',
 };
 
@@ -210,12 +210,13 @@ test('Unslop vendors RedHat plus one merged ai-slop style, one license and notic
     assert.match(readme, new RegExp(`\`${name}\``), `${name} listed in styles README`);
     assert.ok(!existsSync(path.join(styles, name, 'LICENSE')), `${name}: no second license copy`);
   }
-  // Merged ai-slop: 137 tbhb + 13 krishnasunkam + 33 proselint + 7 write-good + 8 Readability.
+  // Merged ai-slop: 137 tbhb + 13 krishnasunkam + 32 proselint + 6 write-good + 7 Readability.
   // Removed as duplicates: Dash, write-good Cliches, proselint Very; Cliche and CopulaInflation
-  // were folded into AICompoundPhrases and PromotionalPuffery.
+  // were folded into AICompoundPhrases and PromotionalPuffery. Purged because RedHat (the base)
+  // already flags the same text: Illusions, But, FleschKincaid.
   const merged = readdirSync(path.join(styles, 'ai-slop')).filter(name => name.endsWith('.yml'));
-  assert.equal(merged.length, 198);
-  for (const folded of ['Dash.yml', 'Cliche.yml', 'CopulaInflation.yml', 'Very.yml']) {
+  assert.equal(merged.length, 195);
+  for (const folded of ['Dash.yml', 'Cliche.yml', 'CopulaInflation.yml', 'Very.yml', 'Illusions.yml', 'But.yml', 'FleschKincaid.yml']) {
     assert.ok(!merged.includes(folded), `${folded} was merged away`);
   }
   for (const kept of ['EmDashUsage.yml', 'Cliches.yml', 'Passive.yml', 'Apologizing.yml', 'SMOG.yml']) {
@@ -225,7 +226,7 @@ test('Unslop vendors RedHat plus one merged ai-slop style, one license and notic
   for (const source of ['tbhb/vale-ai-tells', 'krishnasunkam/vale-ai-tells', 'vale-cli/proselint', 'vale-cli/write-good', 'vale-cli/readability']) {
     assert.ok(readme.includes(source), `${source} credited in styles README`);
   }
-  assert.match(readme, /\| `ai-slop` \| merged, see below \| \| \| 198 \|/);
+  assert.match(readme, /\| `ai-slop` \| merged, see below \| \| \| 195 \|/);
 });
 
 test('style skills own their rules and Synthesize delegates to them', () => {

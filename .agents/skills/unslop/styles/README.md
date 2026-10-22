@@ -1,7 +1,8 @@
 # Vale styles
 
 Two styles. `RedHat` is the base, an unmodified pinned release. `ai-slop` is
-one merged, deduplicated layer built from five other packages. Nothing is
+one merged, deduplicated layer built from five other packages, with everything
+RedHat already flags purged. Nothing is
 fetched at run time. Licenses and copyright notices live in the repository
 [NOTICE](../../setup/NOTICE.md) and `licenses/`; do not add per-package copies.
 Enable or disable rules in [`.vale.ini`](../.vale.ini). See [VALE.md](../VALE.md).
@@ -9,7 +10,7 @@ Enable or disable rules in [`.vale.ini`](../.vale.ini). See [VALE.md](../VALE.md
 | Style | Source | Release | Release zip sha256 | Rules |
 | --- | --- | --- | --- | --- |
 | `RedHat` | [redhat-documentation/vale-at-red-hat](https://github.com/redhat-documentation/vale-at-red-hat) | v680 | `c8bf6824e7f9f4fbbfc29ae017f0f1553922a5d24a3aafd5e3795bca57008992` | 37 |
-| `ai-slop` | merged, see below | | | 198 |
+| `ai-slop` | merged, see below | | | 195 |
 
 ## ai-slop (merged)
 
@@ -21,9 +22,9 @@ The tbhb `config/templates/ai-tells-agent.tmpl` output template is kept.
 | --- | --- | --- | --- | --- | --- |
 | tbhb | [tbhb/vale-ai-tells](https://github.com/tbhb/vale-ai-tells) (`ai-tells`) | v1.37.0 | `f8d1e981abbfbac1aa092d1623a1ac9bc935f0b15e8071e7a072915abddf0570` | MIT | 137 |
 | krishnasunkam | [krishnasunkam/vale-ai-tells](https://github.com/krishnasunkam/vale-ai-tells) (`AiTells`) | v1.0.0 | `eee9417ef656b5e9d1aaa76fd850c003c4a99856bcee787b6436a91a3fc1c03c` | MIT | 13 |
-| proselint | [vale-cli/proselint](https://github.com/vale-cli/proselint) | v0.3.4 | `48b1fb481ba44f6505d44346b283f6cdc74efd234f913bbdb09bf34420fab81c`* | BSD-3-Clause | 33 |
-| write-good | [vale-cli/write-good](https://github.com/vale-cli/write-good) | v0.4.1 | `2960ef10861ddc7dc76292a4967eb3789bf05ca24f862042f6d15f53332887f0`* | MIT | 7 |
-| Readability | [vale-cli/readability](https://github.com/vale-cli/readability) | v0.2.0 | `cf8790677bb2ef86458c1d1dbd6e646fd8063c0e9621f81141e5cd85e5e41f81` | MIT | 8 |
+| proselint | [vale-cli/proselint](https://github.com/vale-cli/proselint) | v0.3.4 | `48b1fb481ba44f6505d44346b283f6cdc74efd234f913bbdb09bf34420fab81c`* | BSD-3-Clause | 32 |
+| write-good | [vale-cli/write-good](https://github.com/vale-cli/write-good) | v0.4.1 | `2960ef10861ddc7dc76292a4967eb3789bf05ca24f862042f6d15f53332887f0`* | MIT | 6 |
+| Readability | [vale-cli/readability](https://github.com/vale-cli/readability) | v0.2.0 | `cf8790677bb2ef86458c1d1dbd6e646fd8063c0e9621f81141e5cd85e5e41f81` | MIT | 7 |
 
 \* The release publishes no digest; recorded from the downloaded asset.
 
@@ -32,23 +33,24 @@ Which rule came from where. Anything not listed below is tbhb.
 - **krishnasunkam (13):** `AbstractTriad`, `Adverb`, `CodeToken`,
   `EpigramContrast`, `FilePath`, `HiddenVerb`, `LinkText`, `NegParallel`,
   `NeverTag`, `SectionCode`, `StatusBracket`, `VirtueHonest`, `WeakResume`.
-- **proselint, BSD-3-Clause (33):** `Airlinese`, `AnimalLabels`, `Annotations`,
-  `Apologizing`, `Archaisms`, `But`, `Cliches`, `CorporateSpeak`, `Currency`,
+- **proselint, BSD-3-Clause (32):** `Airlinese`, `AnimalLabels`, `Annotations`,
+  `Apologizing`, `Archaisms`, `Cliches`, `CorporateSpeak`, `Currency`,
   `Cursing`, `DateCase`, `DateMidnight`, `DateRedundancy`, `DateSpacing`,
   `DenizenLabels`, `Diacritical`, `GenderBias`, `GroupTerms`, `Hedging`,
   `Hyperbole`, `Jargon`, `LGBTOffensive`, `LGBTTerms`, `Malapropisms`,
   `Needless`, `Nonwords`, `Oxymorons`, `P-Value`, `RASSyndrome`, `Skunked`,
   `Spelling`, `Typography`, `Uncomparables`.
-- **write-good (7):** `E-Prime`, `Illusions`, `Passive`, `So`, `ThereIs`,
-  `TooWordy`, `Weasel`.
-- **Readability (8):** `AutomatedReadability`, `ColemanLiau`, `FleschKincaid`,
+- **write-good (6):** `E-Prime`, `Passive`, `So`, `ThereIs`, `TooWordy`,
+  `Weasel`.
+- **Readability (7):** `AutomatedReadability`, `ColemanLiau`,
   `FleschReadingEase`, `GunningFog`, `LIX`, `Polysyllables`, `SMOG`.
 
 ### How it was deduplicated
 
-Two passes, each checked with Vale 3.24.0 before and after over thousands of
+Three passes, each checked with Vale 3.24.0 before and after over thousands of
 test sentences in lowercase, sentence-initial and uppercase form. Priority when
-two rules flag the same text: `ai-slop` rules, then proselint, then write-good.
+two rules flag the same text: `RedHat` first, then `ai-slop` rules, then
+proselint, then write-good.
 
 **Pass 1, tbhb + krishnasunkam (154 rules, ten analysts):** removed `Dash`
 (identical to `EmDashUsage`); folded `Cliche` into `AICompoundPhrases` and
@@ -77,6 +79,44 @@ or narrowed; same-span duplicate alerts fell from 7,046 to 2,316. One earlier
 case differs: `CopulaInflation`'s `is/are a testament to` is now flagged by
 `AICompoundPhrases` as `a testament to`, without the verb.
 
+**Pass 3, purge everything RedHat already flags** (RedHat is the base, so the
+overlap is removed from `ai-slop`, never from RedHat). A pattern was removed
+only when a RedHat rule *of the same concern* flagged the complete text in both
+mid-sentence and sentence-initial form. 304 patterns went:
+
+- Whole rules removed: `Illusions` (the same `repetition` rule as
+  `RedHat.RepeatedWords`), `But` (RedHat's `Conjunctions` has the same `^But`
+  at paragraph scope) and `FleschKincaid` (the same metric as
+  `RedHat.ReadabilityGrade`, which uses a grade of 9; the old threshold was 8).
+- `Passive` keeps only the case RedHat misses: a be-verb, an adverb, then a
+  participle ("was quickly fixed"). `RedHat.PassiveVoice` has the same
+  participle list for the plain case.
+- `EmDashUsage` keeps only the en dash; `RedHat.EmDash` owns `—`. `Typography`
+  drops `...`, which `RedHat.Ellipses` already flags.
+- Word-choice patterns RedHat flags through `SimpleWords`, `TermsErrors`,
+  `TermsWarnings`, `TermsSuggestions` or `ReleaseNotes`: 65 from `TooWordy`, 9
+  from `FormalRegister`, 3 from `FormalTransitions`, 2 each from `FillerPhrases`
+  and `OverusedVocabulary`, 1 each from `AICompoundPhrases`, `HedgingPhrases`
+  and `RestatementMarkers`.
+- 12 contraction forms from `E-Prime`, which `RedHat.Contractions` already
+  flags. 206 patterns from `Needless` (180) and `Nonwords` (26): all but three
+  are misspellings that `RedHat.Spelling` already flags (the three are flagged
+  by `RedHat.TermsErrors`). Those two rules lose the suggested replacement for
+  those words.
+
+Not purged, though RedHat alerts sometimes contain them: `Definitions`
+(undefined acronyms, so it "contains" `TODO` and `FIXME`), `Headings`
+(capitalization of a whole heading), the other readability metrics (a different
+formula from RedHat's), `Spelling` hits in rules whose point is not misspelling
+(`DenizenLabels`, `Archaisms`, `Diacritical`), `Polysyllables`, and
+`E-Prime`'s be-verbs inside a passive phrase. `E-Prime`'s `am` also looked
+covered, by `RedHat.TermsErrors`, but that rule is about AM/PM, so it stays.
+
+Result over 119 files: 20 alerts are no longer flagged by anything, all of
+them ALL-CAPS misspellings, because `RedHat.Spelling` skips all-caps words.
+`ai-slop` alerts that sit inside a RedHat alert fell from 5,651 to 2,971, and
+from 2,411 to 991 once coincidental RedHat rules are excluded.
+
 ### Overlap kept on purpose
 
 - Regex rules (`AbstractTriad`, `EpigramContrast`, `HiddenVerb`, `NegParallel`,
@@ -86,10 +126,12 @@ case differs: `CopulaInflation`'s `is/are a testament to` is now flagged by
   `boasts a/an` patterns moved from `suggestion` to `error`. `clearly`,
   `fairly`, `obviously` and `very` moved from write-good `warning` and
   proselint `error` to `ai-slop.Adverb` `suggestion`.
-- `ai-slop` was not deduplicated against `RedHat`. Known overlaps:
-  `RedHat.EmDash` and `ai-slop.EmDashUsage`; passive voice in
-  `RedHat.PassiveVoice` and `ai-slop.Passive`; `RedHat.ReadabilityGrade` and the
-  Readability metrics.
+- `ai-slop` is now purged of what `RedHat` flags (pass 3). The remaining
+  overlap is incidental: `Polysyllables` and `E-Prime` flag words that RedHat
+  also flags for a different reason, and RedHat's term rules are case-sensitive
+  in places, so a few patterns stay for sentence-initial or uppercase use.
+  `So` and `ThereIs` partly overlap `RedHat.Conjunctions`, which only checks
+  the first word of a paragraph, so they stay.
 - Six krishnasunkam rules are document hygiene, not AI tells: `CodeToken`,
   `FilePath`, `LinkText`, `SectionCode`, `StatusBracket` (which also matches
   `[covered]` and `[required]`) and `WeakResume`.

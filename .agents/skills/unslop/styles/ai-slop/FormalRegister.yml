@@ -4,12 +4,8 @@ message: "AI formalism: '%s'. Use a plainer everyday word (e.g., 'use', 'help', 
 level: error
 ignorecase: true
 tokens:
-  - utilize
   - utilizes
-  - utilizing
   - utilized
-  - utilization
-  - facilitate
   - facilitates
   - facilitating
   - facilitated
@@ -18,15 +14,12 @@ tokens:
   - implements
   - implementing
   - implementation
-  - commence
   - commences
   - commencing
   - commenced
-  - terminate
   - terminates
   - terminating
   - terminated
-  - ascertain
   - ascertains
   - ascertaining
   - endeavour
@@ -38,10 +31,8 @@ tokens:
   - operationalize
   - operationalizes
   - operationalizing
-  - prioritize
   - prioritizes
   - prioritizing
-  - incentivize
   - incentivizes
   - incentivizing
   - optimize

@@ -41,7 +41,6 @@ ignorecase: true
 # "Holds true" stays in FigurativeHolds, so "The same holds true" fires
 # there and the parallel token steps around it.
 tokens:
-  - In other words
   - Simply put
   - Put simply
   - Put differently
