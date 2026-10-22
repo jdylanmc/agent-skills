@@ -26,14 +26,14 @@ jdylanmc/
   rhetoric/            24  Contrast and negation formulas, tricolons, staccato, self-answered questions
   framing/             20  Openers, closers, transitions, announcements, chatbot filler and sycophancy
   sentence-structure/  19  Padding, nominalization, copula dodges, passive voice, sentence openers
-  vocabulary/          16  AI vocabulary, clichés, jargon, buzzwords, weasel words, filler adverbs
+  vocabulary/          17  AI vocabulary, clichés, jargon, buzzwords, oxymorons, weasel words, filler adverbs
   claims/              14  Hedging, blanket and absolute claims, vague attribution, urgency
   document-hygiene/     8  Leftover notes, file paths, code tokens in prose, vague links, résumé phrasing
   inclusive-language/   7  Gender, LGBT, group, demonym and animal terms; cursing
   readability/          7  Readability scores and polysyllabic words
   punctuation/          6  Dashes, semicolons, colons, symbols
-  concision/            5  Wordy phrases, redundancy, oxymorons, non-comparable words
   headings/             5  Announcement, explainer, marketing, mic-drop and wrap-up headings
+  concision/            4  Wordy phrases, redundancy, non-comparable words
   spelling/             4  Non-words, diacritics, inconsistent spelling, malapropisms
 ```
 
@@ -41,14 +41,14 @@ jdylanmc/
 - **rhetoric (24):** `AbstractTriad`, `ContrastiveFormulas`, `ContrastiveNegation`, `CoordinatedReveal`, `DespiteChallenges`, `EpigramContrast`, `FalseBalance`, `FalseExclusivity`, `LabelAndExplain`, `MicDrop`, `NegParallel`, `NegatedObject`, `NegatedPair`, `NegatedSubject`, `NeverTag`, `ParallelStaccato`, `PseudoCleft`, `RhetoricalDevices`, `RhetoricalSelfAnswer`, `StackedAnaphora`, `StrawmanContrast`, `SummativeAppositive`, `VerbTricolon`, `VerbTricolonDensity`
 - **framing (20):** `AffirmativeFormulas`, `Apologizing`, `CataphoricForecasting`, `ClosingPleasantries`, `ConclusionMarkers`, `ExplainerLeads`, `FillerIntensifier`, `FillerPhrases`, `FormalTransitions`, `HollowAcknowledgment`, `ListIntroductions`, `Metacommentary`, `NarrativePivots`, `OpeningCliches`, `RestatementMarkers`, `SelfReference`, `SequencingMarkers`, `StructureAnnouncements`, `SycophancyMarkers`, `UnpackExplore`
 - **sentence-structure (19):** `AbstractionSubject`, `ConsequenceClause`, `ConsequenceParticiple`, `E-Prime`, `EmphaticCopula`, `EmptyPadding`, `EmptyPaddingStacked`, `HiddenVerb`, `IncompleteComparison`, `NominalizedScopeChange`, `NounString`, `ParticipialPadding`, `Passive`, `ScopePartition`, `ServesAsDodge`, `ShellNounCopula`, `So`, `ThereIs`, `UnderRegime`
-- **vocabulary (16):** `AIAdjectiveNounPairs`, `AICompoundPhrases`, `Adverb`, `Airlinese`, `Archaisms`, `Cliches`, `CorporateSpeak`, `FormalRegister`, `HouseStyle`, `Jargon`, `OverusedVocabulary`, `OverusedVocabularyVerbs`, `PromotionalPuffery`, `Skunked`, `StrategyBuzzwords`, `Weasel`
+- **vocabulary (17):** `AIAdjectiveNounPairs`, `AICompoundPhrases`, `Adverb`, `Airlinese`, `Archaisms`, `Cliches`, `CorporateSpeak`, `FormalRegister`, `HouseStyle`, `Jargon`, `OverusedVocabulary`, `OverusedVocabularyVerbs`, `Oxymorons`, `PromotionalPuffery`, `Skunked`, `StrategyBuzzwords`, `Weasel`
 - **claims (14):** `AbsoluteAssertions`, `DefensiveHedges`, `Hedging`, `HedgingPhrases`, `Hyperbole`, `OrganicConsequence`, `PointVerdict`, `RedundantPrecaution`, `StackedHedges`, `UniversalObject`, `UniversalSubject`, `UrgencyInflation`, `VagueAttributions`, `VirtueHonest`
 - **document-hygiene (8):** `Annotations`, `CodeToken`, `FilePath`, `LinkText`, `P-Value`, `SectionCode`, `StatusBracket`, `WeakResume`
 - **inclusive-language (7):** `AnimalLabels`, `Cursing`, `DenizenLabels`, `GenderBias`, `GroupTerms`, `LGBTOffensive`, `LGBTTerms`
 - **readability (7):** `AutomatedReadability`, `ColemanLiau`, `FleschReadingEase`, `GunningFog`, `LIX`, `Polysyllables`, `SMOG`
 - **punctuation (6):** `ColonUsage`, `Currency`, `DoubleHyphen`, `EmDashUsage`, `SemicolonUsage`, `Typography`
-- **concision (5):** `Needless`, `Oxymorons`, `RASSyndrome`, `TooWordy`, `Uncomparables`
 - **headings (5):** `AnnouncementHeadings`, `ExplainerHeadings`, `MarketingHeadings`, `MicDropHeadings`, `WrapUpHeadings`
+- **concision (4):** `Needless`, `RASSyndrome`, `TooWordy`, `Uncomparables`
 - **spelling (4):** `Diacritical`, `Malapropisms`, `Nonwords`, `Spelling`
 
 Moving the files into folders changed only the rule IDs. A before/after run over
