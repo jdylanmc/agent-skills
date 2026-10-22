@@ -3,7 +3,7 @@ message: "Try to avoid using '%s'."
 ignorecase: true
 level: suggestion
 tokens:
-  - am
+  - '(?<=\bI )am'
   - are
   - be
   - been

@@ -10,7 +10,7 @@ Enable or disable rules in [`.vale.ini`](../.vale.ini). See [VALE.md](../VALE.md
 | Style | Source | Release | Release zip sha256 | Rules |
 | --- | --- | --- | --- | --- |
 | `RedHat` | [redhat-documentation/vale-at-red-hat](https://github.com/redhat-documentation/vale-at-red-hat) | v680 | `c8bf6824e7f9f4fbbfc29ae017f0f1553922a5d24a3aafd5e3795bca57008992` | 37 |
-| `ai-slop` | merged, see below | | | 195 |
+| `ai-slop` | merged, see below | | | 191 |
 
 ## ai-slop (merged)
 
@@ -22,7 +22,7 @@ The tbhb `config/templates/ai-tells-agent.tmpl` output template is kept.
 | --- | --- | --- | --- | --- | --- |
 | tbhb | [tbhb/vale-ai-tells](https://github.com/tbhb/vale-ai-tells) (`ai-tells`) | v1.37.0 | `f8d1e981abbfbac1aa092d1623a1ac9bc935f0b15e8071e7a072915abddf0570` | MIT | 137 |
 | krishnasunkam | [krishnasunkam/vale-ai-tells](https://github.com/krishnasunkam/vale-ai-tells) (`AiTells`) | v1.0.0 | `eee9417ef656b5e9d1aaa76fd850c003c4a99856bcee787b6436a91a3fc1c03c` | MIT | 13 |
-| proselint | [vale-cli/proselint](https://github.com/vale-cli/proselint) | v0.3.4 | `48b1fb481ba44f6505d44346b283f6cdc74efd234f913bbdb09bf34420fab81c`* | BSD-3-Clause | 32 |
+| proselint | [vale-cli/proselint](https://github.com/vale-cli/proselint) | v0.3.4 | `48b1fb481ba44f6505d44346b283f6cdc74efd234f913bbdb09bf34420fab81c`* | BSD-3-Clause | 28 |
 | write-good | [vale-cli/write-good](https://github.com/vale-cli/write-good) | v0.4.1 | `2960ef10861ddc7dc76292a4967eb3789bf05ca24f862042f6d15f53332887f0`* | MIT | 6 |
 | Readability | [vale-cli/readability](https://github.com/vale-cli/readability) | v0.2.0 | `cf8790677bb2ef86458c1d1dbd6e646fd8063c0e9621f81141e5cd85e5e41f81` | MIT | 7 |
 
@@ -33,13 +33,12 @@ Which rule came from where. Anything not listed below is tbhb.
 - **krishnasunkam (13):** `AbstractTriad`, `Adverb`, `CodeToken`,
   `EpigramContrast`, `FilePath`, `HiddenVerb`, `LinkText`, `NegParallel`,
   `NeverTag`, `SectionCode`, `StatusBracket`, `VirtueHonest`, `WeakResume`.
-- **proselint, BSD-3-Clause (32):** `Airlinese`, `AnimalLabels`, `Annotations`,
+- **proselint, BSD-3-Clause (28):** `Airlinese`, `AnimalLabels`, `Annotations`,
   `Apologizing`, `Archaisms`, `Cliches`, `CorporateSpeak`, `Currency`,
-  `Cursing`, `DateCase`, `DateMidnight`, `DateRedundancy`, `DateSpacing`,
-  `DenizenLabels`, `Diacritical`, `GenderBias`, `GroupTerms`, `Hedging`,
-  `Hyperbole`, `Jargon`, `LGBTOffensive`, `LGBTTerms`, `Malapropisms`,
-  `Needless`, `Nonwords`, `Oxymorons`, `P-Value`, `RASSyndrome`, `Skunked`,
-  `Spelling`, `Typography`, `Uncomparables`.
+  `Cursing`, `DenizenLabels`, `Diacritical`, `GenderBias`, `GroupTerms`,
+  `Hedging`, `Hyperbole`, `Jargon`, `LGBTOffensive`, `LGBTTerms`,
+  `Malapropisms`, `Needless`, `Nonwords`, `Oxymorons`, `P-Value`,
+  `RASSyndrome`, `Skunked`, `Spelling`, `Typography`, `Uncomparables`.
 - **write-good (6):** `E-Prime`, `Passive`, `So`, `ThereIs`, `TooWordy`,
   `Weasel`.
 - **Readability (7):** `AutomatedReadability`, `ColemanLiau`,
@@ -116,6 +115,13 @@ Result over 119 files: 20 alerts are no longer flagged by anything, all of
 them ALL-CAPS misspellings, because `RedHat.Spelling` skips all-caps words.
 `ai-slop` alerts that sit inside a RedHat alert fell from 5,651 to 2,971, and
 from 2,411 to 991 once coincidental RedHat rules are excluded.
+
+**Time formatting, by request:** `AM` and `PM` are capitalized without periods,
+and RedHat owns that (`RedHat.TermsErrors` rewrites `am`, `pm` and `Am`). The
+proselint rules `DateCase` (which told you to use periods), `DateSpacing`,
+`DateMidnight` and `DateRedundancy` were removed. `E-Prime`'s `am` now matches
+only after "I", so a correct `9 AM` is no longer flagged. Accepted gap: nothing
+flags `a.m.`, `p.m.` or `9am` now, because RedHat does not.
 
 ### Overlap kept on purpose
 
