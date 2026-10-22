@@ -110,6 +110,11 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- `pull-request` and `create-pull-request`: every PR title and body is now
+  unslopped (Unslop plus its Vale check) before it is created or updated, and
+  the stored body is read back against that text. Without Vale, the report
+  says so and the editorially unslopped text publishes.
+
 - `joe-mode`/`squadron`: on PR merge, the worker removes its own worktree and
   the PM closes its session. New issue, new agent. Evidence preserved first.
 - `caveman`: now a style that owns the caveman rules. One-shot use shortens or

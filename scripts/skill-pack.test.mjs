@@ -392,6 +392,14 @@ test('Create-pull-request is the model-invocable generic fallback', () => {
   assert.match(skill, /active delivery (?:workflow|owner)/i);
 });
 
+test('Every PR route unslops the title and body', () => {
+  for (const name of ['pull-request', 'create-pull-request']) {
+    const skill = readFileSync(path.join(root, `.agents/skills/${name}/SKILL.md`), 'utf8').replace(/\s+/g, ' ');
+    assert.match(skill, /\[Unslop\]\(\.\.\/unslop\/SKILL\.md\)/, `${name} links Unslop`);
+    assert.match(skill, /every PR/i, `${name} applies Unslop to every PR`);
+  }
+});
+
 test('Status-report never stops the owning agent\'s authorized work', () => {
   const read = file => readFileSync(path.join(root, '.agents/skills/status-report', file), 'utf8').replace(/\s+/g, ' ');
   const skill = read('SKILL.md');

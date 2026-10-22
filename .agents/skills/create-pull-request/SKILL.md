@@ -72,6 +72,8 @@ Use no visual when plain text is clearer. Do not overwhelm the PR with every pos
 
 For **Merge Danger**, call a reversible, cheaply backed-out change a two-way door. Use one-way door only for destructive, externally committed, irreversible, or migration-heavy changes. Describe realistic blast radius rather than minimizing risk.
 
+Before publishing, run [Unslop](../unslop/SKILL.md) on the title and body prose, protecting headings, code, paths, identifiers, numbers, links, and closing keywords. This applies to every PR and every revision, including a repository template's free-text sections. Without a Vale install, say so and publish the editorially unslopped text. See the Unslop section of [Pull Request](../pull-request/SKILL.md) for the full rules.
+
 ## 4. Publish and verify
 
 Honor an explicit draft/ready request. Otherwise follow repository convention; when no convention or completion evidence exists, create a draft.
@@ -91,9 +93,10 @@ Create or update the PR with the prepared title/body and correct base/head. Then
 - source and target refs;
 - observed head commit;
 - validation evidence included;
+- Unslop and Vale coverage for the title and body;
 - unresolved blockers or human decisions.
 
-Provider request success is not verification. If readback differs from the requested state, report the actual state. Stop after publication; do not approve, merge, enable auto-merge, or invent ongoing monitoring. A separately authorized Shepherd or repository workflow owns continued maintenance.
+Provider request success is not verification. If readback differs from the requested state, report the actual state. A stored body that differs from the unslopped text is a mismatch. Stop after publication; do not approve, merge, enable auto-merge, or invent ongoing monitoring. A separately authorized Shepherd or repository workflow owns continued maintenance.
 
 ## Attribution
 

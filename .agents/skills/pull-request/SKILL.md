@@ -107,6 +107,16 @@ For a new behavior with no meaningful before, show the failing test on the base 
 - **Door.** *Two-way*: cheap to roll back (revert restores state). *One-way*: destructive or hard to reverse, such as data migration or deletion, published API or contract change, external side effects, secrets rotation. Say which, and why in one line when not obvious.
 - Say `none known` only after checking consumers and call sites. Mark inference as inference.
 
+## Unslop
+
+Every PR title and body passes through [Unslop](../unslop/SKILL.md) before it is created or updated, on any route and for every revision. This is standing human policy for all pull requests, not an option per request.
+
+- Unslop the prose lines only. Protect headings (the template's or the repository's), fences, diagrams, paths, identifiers, numbers, links, closing keywords, and quoted output.
+- Keep the Voice above. Unslop removes formulaic framing and stock phrasing; it never lengthens a line or adds filler to satisfy a readability score.
+- Run Unslop's Vale check on the final text and read the alerts in context, per its own rules. Do not disable rules or edit the configuration for a clean result.
+- If Vale, its configuration, or its styles are unavailable, say so in your report and publish the editorially unslopped text. Do not install tools as a side effect.
+- Read the stored body back after publishing. It must match the unslopped text.
+
 ## Publish or update
 
 Follow [DELIVERY](../ship/DELIVERY.md) for provider mechanics: reuse any existing PR for the branch, create as draft, query before retrying after an uncertain result, and never mark ready or merge. Use the repository's PR template headings when one exists. Confirm the PR URL and read the stored body back; it must match the intended text.
@@ -120,6 +130,7 @@ When updating after new commits, revise What, How, Evidence, and Blast Radius to
 - Evidence is real, current, and labeled before/after, or explicitly `none`.
 - Scope and Door are both stated.
 - No required meaning was lost to compression.
+- Title and body were unslopped, and the stored body matches that text.
 
 ## Relationship and attribution
 
