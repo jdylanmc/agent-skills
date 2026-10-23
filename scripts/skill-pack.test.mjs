@@ -13,11 +13,11 @@ const expected = [
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
   'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'pull-request', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'simplified-technical-caveman', 'simplified-technical-english', 'specify',
-  'squadron', 'status-report', 'synthesize', 'tdd', 'triage', 'unslop', 'verify', 'wait-what', 'wrap-up',
+  'squadron', 'stack', 'status-report', 'synthesize', 'tdd', 'triage', 'unslop', 'verify', 'wait-what', 'wrap-up',
 ];
 const originalNames = expected.filter(name => ![
   'chart-a-course', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'pull-request',
-  'simplified-technical-caveman', 'simplified-technical-english', 'unslop', 'wrap-up',
+  'simplified-technical-caveman', 'simplified-technical-english', 'stack', 'unslop', 'wrap-up',
 ].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
@@ -49,6 +49,8 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     .filter(filename => filename !== '.agents/skills/simplified-technical-caveman/intent.md')
     // Unslop intent supplied verbatim by the human; pinned separately below.
     .filter(filename => filename !== '.agents/skills/unslop/intent.md')
+    // Stack intent supplied verbatim by the human; pinned separately below.
+    .filter(filename => filename !== '.agents/skills/stack/intent.md')
     // New wrap-up intent explicitly supplied by the human; pinned below.
     .filter(filename => filename !== '.agents/skills/wrap-up/intent.md');
   sources.push('intent.md');
@@ -379,6 +381,26 @@ test('Chart-a-course is a portable, human- and model-invocable local package', (
   assert.match(metadata, /^user-invocable: true$/m);
   assert.ok(readFileSync(path.join(directory, 'chart-a-course/intent.md')).length > 0);
   assertPortable(directory);
+});
+
+test('Stack preserves human intent and covers add, split, preserve, and both providers', () => {
+  const directory = path.join(root, '.agents/skills/stack');
+  const intent = readFileSync(path.join(directory, 'intent.md'), 'utf8');
+  assert.match(intent, /^`\/stack this bug ontop: <url>`/);
+  assert.match(intent, /it may refer to breaking up a PR into smaller chunks/);
+  assert.match(intent, /it may also refer to preserving a chain of PRs\n$/);
+  const raw = readFileSync(path.join(directory, 'SKILL.md'), 'utf8');
+  const metadata = raw.split('---\n')[1];
+  const skill = raw.replace(/\s+/g, ' ');
+  assert.match(metadata, /^name: stack$/m);
+  assert.match(metadata, /^disable-model-invocation: false$/m);
+  assert.match(metadata, /^user-invocable: true$/m);
+  for (const mode of ['**Add**', '**Split**', '**Preserve**']) assert.ok(skill.includes(mode), `${mode} mode`);
+  assert.match(skill, /native/i);
+  assert.match(skill, /gh stack/);
+  assert.match(skill, /Azure DevOps \(emulated\)/);
+  assert.match(skill, /ado-pull-request/);
+  assert.match(skill, /table of the stack from top to bottom/);
 });
 
 test('Pull-request is the single PR skill: body, unslop, GitHub, and ADO delegation', () => {

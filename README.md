@@ -1,6 +1,6 @@
 # Agent Skills
 
-Dylan's editable library of **41 skills** and human-owned engineering doctrine,
+Dylan's editable library of **42 skills** and human-owned engineering doctrine,
 designed for GitHub Copilot. The retired atomic framework remains historical
 material under `archive/atomic-v1/`; it does not govern the active library.
 
@@ -26,7 +26,7 @@ DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add jdylanmc/agent-skills --skill '*
 The environment prefix above is POSIX shell syntax; in PowerShell, set
 `$env:DISABLE_TELEMETRY='1'` before running the `npx` command.
 
-Install **all 41** together for a new consumer. Isolated installs without
+Install **all 42** together for a new consumer. Isolated installs without
 prerequisites are unsupported: workflows
 reference sibling skills, and Setup carries the shared policies, attribution,
 licenses, and historical provenance. The quoted `'*'` selects every active
@@ -259,9 +259,9 @@ sources and the root intent remain unchanged.
 ## Provenance and licenses
 
 There are **27 imported/adapted packages**, three locally authored Joe adapters
-(`joe-mode-cmux`, `joe-mode-orca`, `joe-mode-paseo`), and nine local/restored packages:
+(`joe-mode-cmux`, `joe-mode-orca`, `joe-mode-paseo`), and ten local/restored packages:
 `shepherd`, `synthesize`, `doctrine`, `eli5`, `changelog`, `status-report`,
-`chart-a-course`, `simplified-technical-caveman`, and `wrap-up`.
+`chart-a-course`, `simplified-technical-caveman`, `wrap-up`, and `stack`.
 
 | Primary upstream source | Initially imported | Retained |
 | --- | ---: | ---: |

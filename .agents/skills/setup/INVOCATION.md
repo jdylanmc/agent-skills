@@ -67,6 +67,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [simplified-technical-caveman](../simplified-technical-caveman/SKILL.md) | Both; restructures a named document into STE sections with caveman prose. Writes only the named target. |
 | [specify](../specify/SKILL.md) | Both; aligned Discovery artifact to full requirements specification. |
 | [squadron](../squadron/SKILL.md) | Both; parallel independent assignments, aggressively used by Joe-mode. |
+| [stack](../stack/SKILL.md) | Both; stacked PRs: add work on top of a branch or PR, split a large PR, or preserve a chain. GitHub uses native stacks through `gh stack`; Azure DevOps is emulated with managed git and `ado-pull-request`. Every run ends with a top-to-bottom table of the stack. No merge or approval authority. |
 | [status-report](../status-report/SKILL.md) | Human; Joe may request a snapshot at full-cycle completion or confirmed major-feature merge. |
 | [simplified-technical-english](../simplified-technical-english/SKILL.md) | Human-only STE style: one-shot on given or generated text, or sticky chat mode. Owns the STE rules; Synthesize reads them. Never claims ASD compliance. |
 | [synthesize](../synthesize/SKILL.md) | Human; agent sub-flow only with supplied sources, output purpose, and altitude. |
