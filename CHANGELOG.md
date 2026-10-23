@@ -9,6 +9,15 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `stack`: stacked pull requests. Add new work (a bug or change from a URL) on
+  top of the current branch or another PR, split a large PR into smaller
+  dependent PRs, or preserve an existing chain (adopt, rebase, relink). GitHub
+  uses its native stacks through `gh stack`; Azure DevOps has none, so the skill
+  emulates one with managed git, per-layer PRs through `ado-pull-request`, and a
+  Stack section in each description. Layers are drafted with the Pull Request
+  skill, and every run ends with a top-to-bottom table of the stack: PR link,
+  state, what, and why. Same repository only; no merge or approval authority.
+  Includes the human-supplied intent.
 - `unslop`: rewrite AI-sounding prose while preserving meaning, then verify
   the selected Vale checks. Includes the human-supplied intent and two
   vendored Vale styles: RedHat as the base, and jdylanmc, one deduplicated
