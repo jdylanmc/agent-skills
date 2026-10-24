@@ -56,6 +56,10 @@ the conversation. Include:
   owned files/resources, and integration owner.
 - Doctrine packet, [commit style](../setup/COMMIT-STYLE.md), stop conditions,
   expected return, and follow-up/monitor custody.
+- A cleanup instruction: remove the worktrees, branches, temp files, and build
+  output the worker creates before it finishes, per
+  [Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene), and list what was
+  removed and kept in the return.
 
 Independent writers need distinct isolated Git worktrees, not disjoint files
 sharing one checkout and Git index. Use the existing delivery's

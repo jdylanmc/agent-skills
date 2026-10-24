@@ -109,4 +109,5 @@ Every invocation, in every mode, ends with a table of the stack from top to bott
 
 - **State** combines draft or open or merged or queued, rebase status, and check results as read from the provider in this run. Say "unknown" instead of guessing.
 - **What** and **Why** come from the PR itself and the layer's diff, not from memory. Keep each to one line.
+- Layer worktrees and branches you created follow [Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene) once their PRs merge or close. A merged bottom layer is cleaned up first.
 - Under the table, give the trunk, anything this run changed, and anything unverified: a failed rebase, a missing check, or an action left for the human. For a split, add the tree-equality result.

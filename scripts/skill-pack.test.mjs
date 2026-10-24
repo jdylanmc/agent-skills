@@ -403,6 +403,24 @@ test('Stack preserves human intent and covers add, split, preserve, and both pro
   assert.match(skill, /table of the stack from top to bottom/);
 });
 
+test('Workspace hygiene is one rule in WORKSPACE.md, linked from every workspace-creating skill', () => {
+  const read = file => readFileSync(path.join(root, '.agents/skills', file), 'utf8');
+  const workspace = read('ship/WORKSPACE.md');
+  assert.match(workspace, /^## Workspace hygiene$/m);
+  assert.match(workspace, /Whoever creates a workspace owns its cleanup/);
+  for (const part of ['Own and record', 'Clean up at the end', 'Never remove', 'Build output', 'Reuse, do not multiply',
+    'Coordinators sweep', 'Check first, use exact paths', 'Report']) {
+    assert.ok(workspace.includes(`**${part}`), `rule: ${part}`);
+  }
+  assert.ok(existsSync(path.join(root, '.agents/skills/ship/scripts/worktree-hygiene.mjs')));
+  for (const file of ['ship/SKILL.md', 'patch/SKILL.md', 'refactor/SKILL.md', 'wrap-up/SKILL.md', 'shepherd/SKILL.md',
+    'joe-mode/SKILL.md', 'squadron/SKILL.md', 'poc/SKILL.md', 'stack/SKILL.md', 'pull-request/SKILL.md']) {
+    assert.match(read(file), /WORKSPACE\.md#workspace-hygiene/, `${file} links Workspace hygiene`);
+    assert.ok(!/\bgit worktree remove\b/.test(read(file)), `${file} links the rule instead of restating it`);
+  }
+  assert.match(readFileSync(path.join(root, 'AGENTS.md'), 'utf8'), /WORKSPACE\.md#workspace-hygiene/);
+});
+
 test('Pull-request is the single PR skill: body, unslop, GitHub, and ADO delegation', () => {
   const raw = readFileSync(path.join(root, '.agents/skills/pull-request/SKILL.md'), 'utf8');
   const metadata = raw.split('---\n')[1];

@@ -41,6 +41,8 @@ persistence failure means reported error, not resumability. On cancellation/resu
 reconcile live owners/children, partial work/wakeups before monitor/repair
 replacement. Record observation gap; reconstruct missing PR history with limits explicit.
 
+**Workspace hygiene.** When the PR reaches a terminal state (merged or closed), sweep the delivery's worktrees, branches, and build output under [Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene), and report what was removed and kept. The sweep helper there lists candidates.
+
 ## Observe the PR
 
 Use the provider's available read operations to inspect:

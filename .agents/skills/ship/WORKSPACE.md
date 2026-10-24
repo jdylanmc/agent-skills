@@ -73,10 +73,34 @@ owned checkout. Reuse the exact existing workspace for recurring work, never
 create another worktree on each tick. Unsupported placement blocks writes;
 it does not authorize a local substitute for a remote worker.
 
+## Workspace hygiene
+
+Whoever creates a workspace owns its cleanup. This section is the rule; other skills link here instead of restating it.
+
+1. **Own and record.** An agent that creates a worktree, branch, temp directory, scratch file, or build output owns removing it. Record the path, branch, and PR in the report or handoff when you create it.
+2. **Clean up at the end.** When the PR merges or closes, or the experiment ends, remove what you created: `git worktree remove <exact path>`, `git worktree prune`, `git branch -d <branch>` once merged, and your temp and scratch files. This authorizes removing run-owned worktrees without another prompt. A delivery worktree stays only while its PR needs maintenance.
+3. **Never remove** a worktree with uncommitted or untracked changes, a branch with commits that are neither merged nor on a remote, a locked worktree, the main checkout, the current worktree, or anything you did not create. Keep it and report what and why.
+4. **Build output.** When a task finishes or a worktree goes idle, delete large rebuildable output in worktrees you own: Cargo `target/` (`cargo clean`), `node_modules`, and similar. The main checkout keeps its dependencies unless the human asks. A single worktree's output can reach tens of GB.
+5. **Reuse, do not multiply.** Reuse the worktree for the same PR instead of creating another. Keep at most 5 active worktrees per repository, and clean up before adding a sixth. Where safe, share one Cargo target directory (`CARGO_TARGET_DIR`) across worktrees.
+6. **Coordinators sweep.** A coordinator or parent agent sweeps for merged and closed-PR worktrees at each milestone: PR merged, release cut, end of session. Every delegated worker's prompt tells it to clean up its own artifacts before it finishes.
+7. **Check first, use exact paths.** Before removing, confirm `git status --porcelain` is empty and either the branch is merged (`git merge-base --is-ancestor <head> origin/main`) or the PR is merged or closed with its commits on a remote. Never `rm -rf` a glob or a path you did not create. Ask before deleting anything you did not create.
+8. **Report.** The final report lists what you removed, what you kept and why, and the disk freed.
+
+### Sweep helper
+
+[`scripts/worktree-hygiene.mjs`](scripts/worktree-hygiene.mjs) applies rules 2, 3, and 7 to every linked worktree of a repository. It needs only `git`; `gh` adds PR state. It is a dry run unless `--apply` is given.
+
+```sh
+node scripts/worktree-hygiene.mjs --repo <repo>                # list: size, PR state, dirty, REMOVE or KEEP with a reason
+node scripts/worktree-hygiene.mjs --repo <repo> --apply        # remove merged or closed clean worktrees and their merged branches
+node scripts/worktree-hygiene.mjs --repo <repo> --apply --clean-build --path <worktree>   # also delete target/ and node_modules in a named, clean worktree
+```
+
+Other flags: `--base <ref>` (default `origin/main`), `--fetch` (run `git fetch --prune` first), `--no-pr`, `--no-size`, `--json`. It never removes the main or current checkout, a dirty or locked worktree, or one whose commits are not merged or on a remote. Read the dry run before `--apply`; a squash-merged PR is recognized only when `gh` reports it.
+
 ## Preserve resources at retirement
 
-Agent archival follows LIFECYCLE, not Git/UI cleanup. Before separately authorized
-worktree removal, verify run ownership, integration, no live writer, no uncommitted/
+Agent archival follows LIFECYCLE, not Git/UI cleanup. Before removing a worktree (authorized for run-owned worktrees by Workspace hygiene above), verify run ownership, integration, no live writer, no uncommitted/
 unpreserved work. Remove only specific completed run-owned worker worktrees.
 Keep delivery workspace while PR/Shepherd needs it; never archive projects/workspaces
 or delete branches/worktrees merely to clear finished agents.

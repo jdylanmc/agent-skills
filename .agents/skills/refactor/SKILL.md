@@ -50,6 +50,8 @@ Run the same behavior proof after each meaningful step and at the end. Inspect t
 
 For a Joe-mode-selected Refactor delivery, execute [the shared finish](../ship/DELIVERY.md): independent whole-deliverable Roast, required validation, criterion verdicts, the same PR, latest-target synchronization, and real Shepherd custody. Local preservation proof and an internal draft are not the final handoff. Do not invoke Ship, approve your own work, merge, or enable automatic merge.
 
+**Workspace hygiene.** Clean up the worktrees, branches, temp files, and build output this refactor created when its PR merges or closes, per [Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene). Report what was removed and kept.
+
 Roast from distinct preservation, ownership/SOLID and simplicity/KISS/YAGNI
 angles. Use separate reviewers when their expertise needs separate context.
 Reconcile findings against evidence before proceeding; do not count votes or

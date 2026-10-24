@@ -142,7 +142,9 @@ The delivery owner retains integration; peer exchange grants no extra authority.
 Keep corrections with the same owner/PR and independent review. Reconcile
 surviving members, handoffs and questions before restart; retain history through
 completion or suspension. Follow existing isolation and LIFECYCLE rules: retire
-finished agents without concrete duties, not branches/worktrees. No extra
+finished agents without concrete duties; keep their branches and worktrees only until the PR merges or closes, then
+[Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene) applies. The PM sweeps at each milestone (PR merged, release
+cut, end of session). No extra
 controller, approval system or per-issue shared service.
 
 ## 3. Refresh the relevant backlog

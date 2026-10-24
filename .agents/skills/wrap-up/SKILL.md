@@ -55,4 +55,4 @@ Stop and report if blocked: failing check outside scope, missing permission, rev
 
 ## 9. Report
 
-Return: PR link, state (undrafted), check results, what changed since checkpoint start, local-only caveats, open blockers. Stop. Do not merge.
+Return: PR link, state (undrafted), check results, what changed since checkpoint start, local-only caveats, open blockers, and the workspace you created (path and branch). It stays while the PR needs maintenance, then [Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene) applies. Stop. Do not merge.

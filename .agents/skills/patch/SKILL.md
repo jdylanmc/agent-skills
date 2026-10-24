@@ -100,6 +100,8 @@ Every modifying agent uses [changelog](../changelog/SKILL.md); isolated workers 
 
 On functional feedback, recover the current PR and original bug evidence, classify the finding within Patch's bug/regression scope, and repeat the affected diagnosis/repair/proof and independent review on that same branch/PR. Return head/results to its existing Shepherd rather than starting a second monitor. Different-kind or scope-changing work returns to Joe-mode/the human. Explicit diagnosis-only or scoped worker requests return their evidence without publication; never treat them as repair authority. No deployment, self-approval, merge, or automatic merge.
 
+**Workspace hygiene.** Clean up the worktrees, branches, temp files, and build output this repair created when its PR merges or closes, per [Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene). Report what was removed and kept.
+
 ## Supporting techniques
 
 Load these only when relevant; examples do not expand the task's mutation authority or justify unrelated changes:

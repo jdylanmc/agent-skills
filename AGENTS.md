@@ -16,6 +16,10 @@ Read [intent.md](./intent.md) before making structural decisions.
 - Follow [the bundled invocation policy](.agents/skills/setup/INVOCATION.md) for human/internal entry
   contracts and caller restrictions. Every entrypoint declares both invocation
   flags; metadata is not a permission boundary or proof of runtime enforcement.
+- Whoever creates a worktree, branch, temp directory, or build output owns
+  removing it. Follow [Workspace hygiene](.agents/skills/ship/WORKSPACE.md#workspace-hygiene):
+  clean up when the PR merges or closes, never remove dirty or unmerged work,
+  delete rebuildable output, and report what was removed and kept.
 - Every modifying agent uses the shared
   [Changelog helper](.agents/skills/changelog/SKILL.md). Curate notable outcomes,
   serialize shared-file updates, and preserve read-only/approval boundaries.
@@ -55,7 +59,7 @@ This is library-local; do not change global Copilot configuration.
 
 ## Validation and local files
 
-Run `node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs`
+Run `node --test scripts/doctrine-manifest.test.mjs .agents/skills/doctrine/tests/*.test.mjs .agents/skills/scout/tests/skill-file.test.mjs .agents/skills/ship/tests/*.test.mjs`
 to check preserved doctrine, the catalog/selection/load interface, and Scout's
 package contract.
 After `npm ci --ignore-scripts`, run `npm run test:pack` for the pinned released
