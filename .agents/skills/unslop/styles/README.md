@@ -228,3 +228,6 @@ exit routine", and RedHat's own rules conflict with each other in places
   sentence-initial or uppercase use. `So` and `ThereIs` partly overlap
   `RedHat.Conjunctions`, which only checks the first word of a paragraph, so
   they stay.
+- `blast radius` was removed from `FigurativeIdioms`. It is an accepted term and
+  the Pull Request template heading, so it is no longer flagged. RedHat's
+  sentence-case warning on the heading still applies.

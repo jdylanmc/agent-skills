@@ -82,14 +82,14 @@ tokens:
   - '\bput\s+\w+\s+in front of\b'
 
   # --- Consequence and evasion metaphors that cleared every gate in the
-  # repository whose own documentation recorded them. A check does not bite,
-  # a document does not sail, and a change has no blast radius.
+  # repository whose own documentation recorded them. A check does not bite
+  # and a document does not sail. "Blast radius" is deliberately absent: it
+  # is an accepted engineering term and the Pull Request template heading.
   - '\bwhere (?:this|that|it) bites\b'
   - '\b(?:bites?|biting) hardest\b'
   - '\bsails? through\b'
   - '\bsailed through\b'
   - '\bmov(?:e|es|ed|ing) the goalposts?\b'
-  - '\bblast radius\b'
 
   # --- Reduction: a question collapsed to one factor rather than the
   # factor being named ("it comes down to trust," "this boils down to a

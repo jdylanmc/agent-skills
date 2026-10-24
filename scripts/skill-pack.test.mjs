@@ -187,7 +187,7 @@ const valeLicenses = new Map([
 // coverage-preservation evidence (see styles/README.md).
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
-  jdylanmc: 'd09175d4e65fad6e8709a7a43d683ac5c6a100992309d88fb1f86f1c0b9518f3',
+  jdylanmc: '989d35fdab620c5ae6272678188e401efb0edafc43c79e30de2ba570cef1aec0',
   config: 'df80e71026f49e4272995b6d4b491098b788992102b754463eedba5e2e408cf3',
 };
 
