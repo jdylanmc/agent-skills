@@ -409,9 +409,12 @@ test('Workspace hygiene is one rule in WORKSPACE.md, linked from every workspace
   assert.match(workspace, /^## Workspace hygiene$/m);
   assert.match(workspace, /Whoever creates a workspace owns its cleanup/);
   for (const part of ['Own and record', 'Clean up at the end', 'Never remove', 'Build output', 'Reuse, do not multiply',
-    'Coordinators sweep', 'Check first, use exact paths', 'Report']) {
+    'Coordinators sweep', 'Prove it, then use exact paths', 'Report']) {
     assert.ok(workspace.includes(`**${part}`), `rule: ${part}`);
   }
+  assert.ok(!/five|at most 5/i.test(workspace.slice(workspace.indexOf('## Workspace hygiene'))), 'no fixed worktree cap');
+  assert.match(workspace, /Shepherd and other non-owners report finished workspaces; they never remove them/);
+  assert.match(readFileSync(path.join(root, '.agents/skills/shepherd/intent.md'), 'utf8'), /branches, worktrees, workspaces and unfinished evidence\nare preserved/);
   assert.ok(existsSync(path.join(root, '.agents/skills/ship/scripts/worktree-hygiene.mjs')));
   for (const file of ['ship/SKILL.md', 'patch/SKILL.md', 'refactor/SKILL.md', 'wrap-up/SKILL.md', 'shepherd/SKILL.md',
     'joe-mode/SKILL.md', 'squadron/SKILL.md', 'poc/SKILL.md', 'stack/SKILL.md', 'pull-request/SKILL.md']) {

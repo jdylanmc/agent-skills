@@ -41,7 +41,7 @@ persistence failure means reported error, not resumability. On cancellation/resu
 reconcile live owners/children, partial work/wakeups before monitor/repair
 replacement. Record observation gap; reconstruct missing PR history with limits explicit.
 
-**Workspace hygiene.** When the PR reaches a terminal state (merged or closed), sweep the delivery's worktrees, branches, and build output under [Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene), and report what was removed and kept. The sweep helper there lists candidates.
+**Workspace hygiene.** Shepherd never deletes branches or worktrees. When the PR reaches a terminal state (merged or closed), report the delivery's worktrees and branches as finished so the delivery owner or coordinator can remove them under [Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene).
 
 ## Observe the PR
 

@@ -77,26 +77,26 @@ it does not authorize a local substitute for a remote worker.
 
 Whoever creates a workspace owns its cleanup. This section is the rule; other skills link here instead of restating it.
 
-1. **Own and record.** An agent that creates a worktree, branch, temp directory, scratch file, or build output owns removing it. Record the path, branch, and PR in the report or handoff when you create it.
-2. **Clean up at the end.** When the PR merges or closes, or the experiment ends, remove what you created: `git worktree remove <exact path>`, `git worktree prune`, `git branch -d <branch>` once merged, and your temp and scratch files. This authorizes removing run-owned worktrees without another prompt. A delivery worktree stays only while its PR needs maintenance.
-3. **Never remove** a worktree with uncommitted or untracked changes, a branch with commits that are neither merged nor on a remote, a locked worktree, the main checkout, the current worktree, or anything you did not create. Keep it and report what and why.
-4. **Build output.** When a task finishes or a worktree goes idle, delete large rebuildable output in worktrees you own: Cargo `target/` (`cargo clean`), `node_modules`, and similar. The main checkout keeps its dependencies unless the human asks. A single worktree's output can reach tens of GB.
-5. **Reuse, do not multiply.** Reuse the worktree for the same PR instead of creating another. Keep at most 5 active worktrees per repository, and clean up before adding a sixth. Where safe, share one Cargo target directory (`CARGO_TARGET_DIR`) across worktrees.
-6. **Coordinators sweep.** A coordinator or parent agent sweeps for merged and closed-PR worktrees at each milestone: PR merged, release cut, end of session. Every delegated worker's prompt tells it to clean up its own artifacts before it finishes.
-7. **Check first, use exact paths.** Before removing, confirm `git status --porcelain` is empty and either the branch is merged (`git merge-base --is-ancestor <head> origin/main`) or the PR is merged or closed with its commits on a remote. Never `rm -rf` a glob or a path you did not create. Ask before deleting anything you did not create.
+1. **Own and record.** An agent that creates a worktree, branch, temp directory, scratch file, or build output owns removing it. Record the path, branch, and PR in the report or handoff when you create it. Remove only what that record names.
+2. **Clean up at the end.** When the PR merges or closes, or the experiment ends, remove what you created: `git worktree remove <exact path>`, `git worktree prune`, the branch, and your temp and scratch files. This authorizes removing run-owned worktrees without another prompt, once no writer is running in them. A delivery worktree stays only while its PR needs maintenance. Shepherd and other non-owners report finished workspaces; they never remove them.
+3. **Never remove** a worktree with uncommitted or untracked changes, a branch with commits that are neither merged nor on a live remote ref, a locked or active worktree, the main checkout, the directory you are running from, or anything you did not create. Ignored files are not backed up either: keep a worktree that holds ignored local data (`.env*`, databases, keys) unless you have preserved it. Keep it and report what and why.
+4. **Build output.** When a task finishes or a worktree goes idle, delete large rebuildable output in worktrees you own: Cargo `target/` (`cargo clean`), `node_modules`, and similar. Only untracked, ignored output is disposable; tracked files and symlinks are not. The main checkout keeps its dependencies unless the human asks.
+5. **Reuse, do not multiply.** Reuse the worktree for the same PR instead of creating another. Size the active set to the work: Joe-mode's pool allows six developers, each isolated. Clean up finished workspaces before adding more, and never remove active work to meet a number. Where safe, share one Cargo target directory (`CARGO_TARGET_DIR`) across worktrees.
+6. **Coordinators sweep.** A coordinator or parent agent sweeps for finished, owned worktrees at each milestone: PR merged, release cut, end of session. Every delegated worker's prompt tells it to clean up its own artifacts before it finishes.
+7. **Prove it, then use exact paths.** Remove a worktree only with proof it is finished: its PR is merged and the local head equals the PR head, or the PR is closed and a live remote ref (not a cached one) contains the exact commit. Re-read that state immediately before removing, because a plan goes stale. Delete the branch only if it still points at the proven commit. Never `rm -rf` a glob or a path you did not create. Ask before deleting anything you did not create.
 8. **Report.** The final report lists what you removed, what you kept and why, and the disk freed.
 
 ### Sweep helper
 
-[`scripts/worktree-hygiene.mjs`](scripts/worktree-hygiene.mjs) applies rules 2, 3, and 7 to every linked worktree of a repository. It needs only `git`; `gh` adds PR state. It is a dry run unless `--apply` is given.
+[`scripts/worktree-hygiene.mjs`](scripts/worktree-hygiene.mjs) lists each linked worktree and whether it is removable under rules 3 and 7. It needs `git`, `gh` for PR state, and `lsof` to check for running processes. It is a dry run, and it removes only what you name.
 
 ```sh
-node scripts/worktree-hygiene.mjs --repo <repo>                # list: size, PR state, dirty, REMOVE or KEEP with a reason
-node scripts/worktree-hygiene.mjs --repo <repo> --apply        # remove merged or closed clean worktrees and their merged branches
-node scripts/worktree-hygiene.mjs --repo <repo> --apply --clean-build --path <worktree>   # also delete target/ and node_modules in a named, clean worktree
+node scripts/worktree-hygiene.mjs --repo <repo>                                  # list: size, PR state, REMOVABLE or KEEP with a reason
+node scripts/worktree-hygiene.mjs --repo <repo> --apply --remove <worktree>      # remove one worktree you own, after re-checking it
+node scripts/worktree-hygiene.mjs --repo <repo> --apply --clean-build <worktree> # delete target/ and node_modules in one clean worktree
 ```
 
-Other flags: `--base <ref>` (default `origin/main`), `--fetch` (run `git fetch --prune` first), `--no-pr`, `--no-size`, `--json`. It never removes the main or current checkout, a dirty or locked worktree, or one whose commits are not merged or on a remote. Read the dry run before `--apply`; a squash-merged PR is recognized only when `gh` reports it.
+Repeat `--remove` or `--clean-build` for more than one. Anything uncertain is kept: unknown PR state, no PR, an open PR, a running process, an unreadable status, a failed remote check, or ignored files other than build output. The helper never removes the main checkout or the directory it runs from. It deletes a branch only if it still points at the proven commit. Other flags: `--no-size`, `--json`.
 
 ## Preserve resources at retirement
 
