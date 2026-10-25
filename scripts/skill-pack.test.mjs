@@ -187,7 +187,7 @@ const valeLicenses = new Map([
 // coverage-preservation evidence (see styles/README.md).
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
-  jdylanmc: 'd09175d4e65fad6e8709a7a43d683ac5c6a100992309d88fb1f86f1c0b9518f3',
+  jdylanmc: '989d35fdab620c5ae6272678188e401efb0edafc43c79e30de2ba570cef1aec0',
   config: 'df80e71026f49e4272995b6d4b491098b788992102b754463eedba5e2e408cf3',
 };
 
@@ -401,6 +401,27 @@ test('Stack preserves human intent and covers add, split, preserve, and both pro
   assert.match(skill, /Azure DevOps \(emulated\)/);
   assert.match(skill, /ado-pull-request/);
   assert.match(skill, /table of the stack from top to bottom/);
+});
+
+test('Workspace hygiene is one rule in WORKSPACE.md, linked from every workspace-creating skill', () => {
+  const read = file => readFileSync(path.join(root, '.agents/skills', file), 'utf8');
+  const workspace = read('ship/WORKSPACE.md');
+  assert.match(workspace, /^## Workspace hygiene$/m);
+  assert.match(workspace, /Whoever creates a workspace owns its cleanup/);
+  for (const part of ['Own and record', 'Clean up at the end', 'Never remove', 'Build output', 'Reuse, do not multiply',
+    'Coordinators sweep', 'Prove it, then use exact paths', 'Report']) {
+    assert.ok(workspace.includes(`**${part}`), `rule: ${part}`);
+  }
+  assert.ok(!/at most 5|five[- ]worktree|five active/i.test(workspace.slice(workspace.indexOf('## Workspace hygiene'))), 'no fixed worktree cap');
+  assert.match(workspace, /Shepherd and other non-owners report finished workspaces; they never remove them/);
+  assert.match(readFileSync(path.join(root, '.agents/skills/shepherd/intent.md'), 'utf8'), /branches, worktrees, workspaces and unfinished evidence\nare preserved/);
+  assert.ok(existsSync(path.join(root, '.agents/skills/ship/scripts/worktree-hygiene.mjs')));
+  for (const file of ['ship/SKILL.md', 'patch/SKILL.md', 'refactor/SKILL.md', 'wrap-up/SKILL.md', 'shepherd/SKILL.md',
+    'joe-mode/SKILL.md', 'squadron/SKILL.md', 'poc/SKILL.md', 'stack/SKILL.md', 'pull-request/SKILL.md']) {
+    assert.match(read(file), /WORKSPACE\.md#workspace-hygiene/, `${file} links Workspace hygiene`);
+    assert.ok(!/\bgit worktree remove\b/.test(read(file)), `${file} links the rule instead of restating it`);
+  }
+  assert.match(readFileSync(path.join(root, 'AGENTS.md'), 'utf8'), /WORKSPACE\.md#workspace-hygiene/);
 });
 
 test('Pull-request is the single PR skill: body, unslop, GitHub, and ADO delegation', () => {

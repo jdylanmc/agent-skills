@@ -118,6 +118,21 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- Workspace hygiene: agents now own cleaning up the worktrees, branches, temp
+  files, and build output they create. One rule in `ship/WORKSPACE.md` (cleanup
+  at PR merge or close, no removal of dirty or unmerged work, build-output
+  deletion, reuse over creation sized to the work, coordinator sweeps, exact
+  paths, and a cleanup report) is linked from Ship, Patch, Refactor, Wrap-up,
+  Shepherd, Joe-mode, Squadron, POC, Stack, and Pull Request. Worker packets
+  carry a cleanup instruction. Removal needs proof the work is finished (a
+  merged PR whose head equals the local head, or a closed PR with the exact
+  commit on a live remote ref), no running process, and no ignored local data.
+  Shepherd reports finished workspaces and never removes them. The new
+  `worktree-hygiene.mjs` helper lists linked worktrees, re-checks before every
+  step, and removes only worktrees and build output you name with `--apply
+  --writers-stopped`. It never prunes other worktrees' records.
+- Unslop's Vale layer no longer flags "blast radius" (an accepted term and the
+  Pull Request template heading).
 - `pull-request`: the Azure DevOps section is now a two-way contract with the
   work `ado-pull-request` skill. This skill writes and unslops the body and the
   work skill publishes; when the work skill calls back it gets the body only.

@@ -60,6 +60,6 @@ Produce a concise findings packet with:
 - Human feedback, distinguished from agent observations; mark it pending when absent.
 - A supported, contradicted, or inconclusive verdict against the agreed question, with limitations and possible next investigations.
 
-Keep findings in the conversation or beside the scratch experiment unless another destination was explicitly authorized. Mark scratch artifacts temporary; do not promise survival after cleanup. Retain evidence the receiver needs through handoff.
+Keep findings in the conversation or beside the scratch experiment unless another destination was explicitly authorized. Mark scratch artifacts temporary and remove them when the experiment ends, per [Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene); do not promise survival after cleanup. Retain evidence the receiver needs through handoff.
 
 Return the packet to discovery if it called; otherwise to the human for discovery, specification, or implementation. Do not promote prototype code into product code, create tickets or specs, deploy, commit, or publish the experiment as a side effect. Product implementation is separate work.

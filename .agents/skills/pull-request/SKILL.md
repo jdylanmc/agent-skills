@@ -26,7 +26,7 @@ Do not run two publication workflows, take over an owned branch, or bypass a rep
 
 Read repository guidance, the target branch, remote and provider configuration, PR templates, changed commits and files, status, and validation evidence. Resolve the actual source and target refs; do not assume `main`, `origin`, GitHub, or same-repository publication.
 
-Require `worktrees` under [Doctrine](../doctrine/APPLY.md), keeping any caller selection, and use the existing owned isolated workspace. Do not relocate, discard, stash, reset, or overwrite unrelated work.
+Require `worktrees` under [Doctrine](../doctrine/APPLY.md), keeping any caller selection, and use the existing owned isolated workspace. Do not relocate, discard, stash, reset, or overwrite unrelated work. Record the workspace you create; it is cleaned up under [Workspace hygiene](../ship/WORKSPACE.md#workspace-hygiene) when the PR merges or closes.
 
 Check for an open PR from the source branch or for the same delivery, and reuse it. Ask when several plausible matches exist. After an uncertain create or update result, query provider state before retrying. With no meaningful committed change, report that no PR can be created; do not manufacture an empty commit. Report missing commits, push access, required validation, or provider destination as the exact blocker.
 
