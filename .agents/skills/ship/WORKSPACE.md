@@ -78,7 +78,7 @@ it does not authorize a local substitute for a remote worker.
 Whoever creates a workspace owns its cleanup. This section is the rule; other skills link here instead of restating it.
 
 1. **Own and record.** An agent that creates a worktree, branch, temp directory, scratch file, or build output owns removing it. Record the path, branch, and PR in the report or handoff when you create it. Remove only what that record names.
-2. **Clean up at the end.** When the PR merges or closes, or the experiment ends, remove what you created: `git worktree remove <exact path>`, `git worktree prune`, the branch, and your temp and scratch files. This authorizes removing run-owned worktrees without another prompt, once no writer is running in them. A delivery worktree stays only while its PR needs maintenance. Shepherd and other non-owners report finished workspaces; they never remove them.
+2. **Clean up at the end.** When the PR merges or closes, or the experiment ends, stop or retire any writer in it, then remove what you created: `git worktree remove <exact path>`, the branch, and your temp and scratch files. This authorizes removing run-owned worktrees without another prompt. Do not run `git worktree prune`; it touches every worktree record, including ones you do not own. A delivery worktree stays only while its PR needs maintenance. Shepherd and other non-owners report finished workspaces; they never remove them.
 3. **Never remove** a worktree with uncommitted or untracked changes, a branch with commits that are neither merged nor on a live remote ref, a locked or active worktree, the main checkout, the directory you are running from, or anything you did not create. Ignored files are not backed up either: keep a worktree that holds ignored local data (`.env*`, databases, keys) unless you have preserved it. Keep it and report what and why.
 4. **Build output.** When a task finishes or a worktree goes idle, delete large rebuildable output in worktrees you own: Cargo `target/` (`cargo clean`), `node_modules`, and similar. Only untracked, ignored output is disposable; tracked files and symlinks are not. The main checkout keeps its dependencies unless the human asks.
 5. **Reuse, do not multiply.** Reuse the worktree for the same PR instead of creating another. Size the active set to the work: Joe-mode's pool allows six developers, each isolated. Clean up finished workspaces before adding more, and never remove active work to meet a number. Where safe, share one Cargo target directory (`CARGO_TARGET_DIR`) across worktrees.
@@ -88,15 +88,17 @@ Whoever creates a workspace owns its cleanup. This section is the rule; other sk
 
 ### Sweep helper
 
-[`scripts/worktree-hygiene.mjs`](scripts/worktree-hygiene.mjs) lists each linked worktree and whether it is removable under rules 3 and 7. It needs `git`, `gh` for PR state, and `lsof` to check for running processes. It is a dry run, and it removes only what you name.
+[`scripts/worktree-hygiene.mjs`](scripts/worktree-hygiene.mjs) lists each linked worktree and whether it is removable under rules 3 and 7. It needs `git`, `gh` for PR state, `lsof`, and `find`. It is a dry run, and it removes only what you name.
 
 ```sh
 node scripts/worktree-hygiene.mjs --repo <repo>                                  # list: size, PR state, REMOVABLE or KEEP with a reason
-node scripts/worktree-hygiene.mjs --repo <repo> --apply --remove <worktree>      # remove one worktree you own, after re-checking it
-node scripts/worktree-hygiene.mjs --repo <repo> --apply --clean-build <worktree> # delete target/ and node_modules in one clean worktree
+node scripts/worktree-hygiene.mjs --repo <repo> --apply --writers-stopped --remove <worktree>       # remove one worktree you own
+node scripts/worktree-hygiene.mjs --repo <repo> --apply --writers-stopped --clean-build <worktree>  # delete target/ and node_modules in one clean worktree
 ```
 
-Repeat `--remove` or `--clean-build` for more than one. Anything uncertain is kept: unknown PR state, no PR, an open PR, a running process, an unreadable status, a failed remote check, or ignored files other than build output. The helper never removes the main checkout or the directory it runs from. It deletes a branch only if it still points at the proven commit. Other flags: `--no-size`, `--json`.
+`--writers-stopped` is your statement that no agent or process is still writing in the named worktree. The helper cannot prove it. It only adds best-effort checks: any process with that working directory, and any file changed in the last five minutes. Stop or retire the writers first (rule 2). Applying inspects only the named worktrees, reads the PR first and the local state last, and re-checks right before each removal. Repeat `--remove` or `--clean-build` for more than one.
+
+Anything uncertain is kept: unknown PR state, no PR, an open PR, a running process, recent changes, an incomplete `lsof` or `find`, an unreadable status, a failed remote check, or ignored files other than build output. The helper never removes the main checkout or the directory it runs from, and it never runs `git worktree prune`. A worktree whose directory is gone is listed as `STALE`; run `git worktree prune` yourself once you know it is not on an offline volume. It deletes a branch only if it still points at the proven commit. Other flags: `--no-size`, `--json`.
 
 ## Preserve resources at retirement
 

@@ -129,7 +129,8 @@ have tagged releases. Current cleanup is tracked in
   commit on a live remote ref), no running process, and no ignored local data.
   Shepherd reports finished workspaces and never removes them. The new
   `worktree-hygiene.mjs` helper lists linked worktrees, re-checks before every
-  step, and removes only worktrees and build output you name with `--apply`.
+  step, and removes only worktrees and build output you name with `--apply
+  --writers-stopped`. It never prunes other worktrees' records.
 - Unslop's Vale layer no longer flags "blast radius" (an accepted term and the
   Pull Request template heading).
 - `pull-request`: the Azure DevOps section is now a two-way contract with the

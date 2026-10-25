@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { afterEach, test } from "node:test";
-import { apply, parseWorktrees, plan } from "../scripts/worktree-hygiene.mjs";
+import { apply, parseWorktrees, plan, processDirectories } from "../scripts/worktree-hygiene.mjs";
 
 const roots = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -44,8 +44,9 @@ function worktree(f, name, { commit = true, push = false } = {}) {
 
 const head = path => run(path, "rev-parse", "HEAD");
 const prState = (state, path) => () => ({ number: 1, state, headRefOid: head(path) });
-// Injected evidence: no running processes, and the live remote has these tips.
-const quiet = (extra = {}) => ({ size: false, processes: [], remoteTips: [], cwd: tmpdir(), ...extra });
+// Injected evidence: no running processes, nothing recently modified, and the live remote has these tips.
+const quiet = (extra = {}) => ({ size: false, processes: [], recent: () => false, remoteTips: [], cwd: tmpdir(), ...extra });
+const confirmed = options => ({ writersStopped: true, ...options });
 const only = rows => rows.map(row => [row.branch, row.decision]);
 
 test("parses worktree porcelain", () => {
@@ -130,7 +131,7 @@ test("a stale remote-tracking ref is not evidence: deleting the remote branch ke
   const f = fixture();
   const path = worktree(f, "gone", { push: true });
   run(f.repo, "push", "-q", "origin", "--delete", "gone");
-  const [row] = plan({ repo: f.repo, size: false, processes: [], cwd: tmpdir(), pr: prState("CLOSED", path) });
+  const [row] = plan({ repo: f.repo, ...quiet({ pr: prState("CLOSED", path) }) });
   assert.equal(row.decision, "keep", "live ls-remote no longer shows the commit");
 });
 
@@ -140,7 +141,7 @@ test("apply removes only what is named, and keeps everything else", () => {
   const other = worktree(f, "other");
   const options = quiet({ pr: branch => prState("MERGED", branch === "named" ? named : other)() });
   const rows = plan({ repo: f.repo, ...options });
-  const results = apply(rows, { repo: f.repo, ...options, remove: [named] });
+  const results = apply(rows, confirmed({ repo: f.repo, ...options, remove: [named] }));
   assert.equal(results[0].branch, "deleted");
   assert.ok(!existsSync(named));
   assert.ok(existsSync(other), "removable but not named, so untouched");
@@ -155,7 +156,7 @@ test("a commit made after the plan blocks removal and keeps the branch", () => {
   writeFileSync(join(path, "later.txt"), "new work");
   run(path, "add", "-A");
   run(path, "commit", "-q", "-m", "later");
-  const results = apply(rows, { repo: f.repo, ...options, remove: [path] });
+  const results = apply(rows, confirmed({ repo: f.repo, ...options, remove: [path] }));
   assert.match(results[0].skipped, /commits after|HEAD changed/);
   assert.ok(existsSync(path));
   assert.notEqual(run(f.repo, "branch", "--list", "stale"), "");
@@ -188,7 +189,7 @@ test("build output is removed only from named, clean worktrees, never through a 
   symlinkSync(outside, join(idle, "node_modules"));
   writeFileSync(join(dirty, "edit.txt"), "x");
   const options = quiet({ pr: () => null });
-  const results = apply(plan({ repo: f.repo, ...options }), { repo: f.repo, ...options, cleanBuild: [idle, dirty] });
+  const results = apply(plan({ repo: f.repo, ...options }), confirmed({ repo: f.repo, ...options, cleanBuild: [idle, dirty] }));
   assert.ok(!existsSync(join(idle, "target")));
   assert.ok(existsSync(join(idle, "node_modules")), "symlink left alone");
   assert.ok(existsSync(join(outside, "keep.txt")));
@@ -204,7 +205,7 @@ test("tracked source under a build-output name is never deleted", () => {
   run(path, "add", "-f", "node_modules/src.js");
   run(path, "commit", "-q", "-m", "track");
   const options = quiet({ pr: () => null });
-  const results = apply(plan({ repo: f.repo, ...options }), { repo: f.repo, ...options, cleanBuild: [path] });
+  const results = apply(plan({ repo: f.repo, ...options }), confirmed({ repo: f.repo, ...options, cleanBuild: [path] }));
   assert.deepEqual(results[0].build, []);
   assert.ok(existsSync(join(path, "node_modules", "src.js")));
 });
@@ -217,17 +218,78 @@ test("unreadable git status blocks everything, including build cleanup", () => {
   const options = quiet({ pr: () => null });
   const rows = plan({ repo: f.repo, ...options });
   assert.equal(rows[0].guard, "unreadable");
-  const results = apply(rows, { repo: f.repo, ...options, cleanBuild: [path] });
+  const results = apply(rows, confirmed({ repo: f.repo, ...options, cleanBuild: [path] }));
   assert.match(results[0].skipped, /cannot read git status/);
   assert.ok(existsSync(join(path, "target")));
 });
 
-test("a vanished worktree directory is pruned", () => {
+test("a vanished worktree directory is reported, never pruned by the helper", () => {
   const f = fixture();
   const gone = worktree(f, "gone2");
   rmSync(gone, { recursive: true });
   const rows = plan({ repo: f.repo, ...quiet() });
-  assert.equal(rows[0].decision, "prune");
-  apply(rows, { repo: f.repo, ...quiet() });
-  assert.ok(!run(f.repo, "worktree", "list", "--porcelain").includes("gone2"));
+  assert.equal(rows[0].decision, "stale");
+  assert.match(rows[0].reason, /git worktree prune/);
+});
+
+test("cleaning one worktree leaves another worktree's moved or offline registration intact", () => {
+  const f = fixture();
+  const a = worktree(f, "alpha");
+  const b = worktree(f, "beta");
+  rmSync(b, { recursive: true });
+  mkdirSync(join(a, "target"));
+  writeFileSync(join(a, "target", "o"), "x");
+  const options = quiet({ pr: () => null });
+  apply(plan({ repo: f.repo, ...options, only: [a] }), confirmed({ repo: f.repo, ...options, cleanBuild: [a] }));
+  assert.ok(!existsSync(join(a, "target")));
+  assert.ok(run(f.repo, "worktree", "list", "--porcelain").includes("beta"), "beta's registration survives");
+});
+
+test("apply requires the caller to state that writers are stopped", () => {
+  const f = fixture();
+  const path = worktree(f, "writers");
+  const options = quiet({ pr: prState("MERGED", path) });
+  assert.throws(() => apply(plan({ repo: f.repo, ...options }), { repo: f.repo, ...options, remove: [path] }), /writers-stopped/);
+  assert.ok(existsSync(path));
+});
+
+test("files changed in the last minutes, or an unverifiable check, keep the worktree", () => {
+  const f = fixture();
+  const path = worktree(f, "writing");
+  const merged = prState("MERGED", path);
+  assert.match(plan({ repo: f.repo, ...quiet({ pr: merged, recent: () => true }) })[0].reason, /changed in the last 5 minutes/);
+  assert.match(plan({ repo: f.repo, ...quiet({ pr: merged, recent: () => null }) })[0].reason, /cannot verify/);
+});
+
+test("an incomplete lsof listing is treated as unverifiable", () => {
+  const bin = mkdtempSync(join(tmpdir(), "fake-lsof-"));
+  roots.push(bin);
+  writeFileSync(join(bin, "lsof"), "#!/bin/sh\nprintf 'p1\\nn/somewhere\\n'\necho 'lsof: WARNING: partial' >&2\nexit 1\n", { mode: 0o755 });
+  const before = process.env.PATH;
+  process.env.PATH = `${bin}:${before}`;
+  try {
+    assert.equal(processDirectories(), null);
+  } finally {
+    process.env.PATH = before;
+  }
+});
+
+test("data that arrives while the target's PR is being looked up still blocks removal", () => {
+  const f = fixture();
+  const path = worktree(f, "late");
+  const options = quiet({ pr: () => { writeFileSync(join(path, ".env.local"), "SECRET=1"); return { number: 1, state: "MERGED", headRefOid: head(path) }; } });
+  const rows = plan({ repo: f.repo, ...quiet({ pr: () => ({ number: 1, state: "MERGED", headRefOid: head(path) }) }) });
+  const results = apply(rows, confirmed({ repo: f.repo, ...options, remove: [path] }));
+  assert.match(results[0].skipped, /ignored local files would be lost/);
+  assert.ok(existsSync(join(path, ".env.local")));
+});
+
+test("applying inspects only the named worktree, not the others", () => {
+  const f = fixture();
+  const a = worktree(f, "named2");
+  worktree(f, "bystander");
+  const looked = [];
+  const options = quiet({ pr: branch => { looked.push(branch); return { number: 1, state: "MERGED", headRefOid: head(a) }; } });
+  apply(plan({ repo: f.repo, ...options, only: [a] }), confirmed({ repo: f.repo, ...options, remove: [a] }));
+  assert.deepEqual([...new Set(looked)], ["named2"]);
 });

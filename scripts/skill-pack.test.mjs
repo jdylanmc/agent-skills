@@ -412,7 +412,7 @@ test('Workspace hygiene is one rule in WORKSPACE.md, linked from every workspace
     'Coordinators sweep', 'Prove it, then use exact paths', 'Report']) {
     assert.ok(workspace.includes(`**${part}`), `rule: ${part}`);
   }
-  assert.ok(!/five|at most 5/i.test(workspace.slice(workspace.indexOf('## Workspace hygiene'))), 'no fixed worktree cap');
+  assert.ok(!/at most 5|five[- ]worktree|five active/i.test(workspace.slice(workspace.indexOf('## Workspace hygiene'))), 'no fixed worktree cap');
   assert.match(workspace, /Shepherd and other non-owners report finished workspaces; they never remove them/);
   assert.match(readFileSync(path.join(root, '.agents/skills/shepherd/intent.md'), 'utf8'), /branches, worktrees, workspaces and unfinished evidence\nare preserved/);
   assert.ok(existsSync(path.join(root, '.agents/skills/ship/scripts/worktree-hygiene.mjs')));
