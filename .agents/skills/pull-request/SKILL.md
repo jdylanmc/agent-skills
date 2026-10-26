@@ -171,12 +171,11 @@ Resolve the provider from the remote URL, not from memory.
 
 ## Azure DevOps
 
-Delegate to the work `ado-pull-request` skill. It knows Azure DevOps and each repository's own PR standards. This skill owns the generic style. Do not call ADO APIs, `az repos`, or the ADO integration directly from this skill.
+Delegate publishing to the work `ado-pull-request` skill, which knows Azure DevOps and the repository's PR standards. This skill owns the generic style. Do not call ADO APIs, `az repos`, or the ADO integration directly.
 
-- **You write, it publishes.** Write and unslop the title and body first, then hand it the text, the source and target refs, the draft or ready request, and the linked work items.
-- **It may call you.** When `ado-pull-request` invokes this skill for a body, work in body-only mode: return the unslopped title and body and do not delegate back.
-- **Adapt to the repository.** It passes the standards it found: the PR template, title and branch rules, required sections or checklist items. Keep this skill's voice, visuals, and unslopping, and fit the structure to those standards. A template's headings win, required items are filled and not dropped, and a stated repository rule beats this skill's defaults.
-- It owns provider mechanics, branch policies, reviewers, and work-item links. Apply its readback to the Report list above.
+- **You write, it publishes.** Write and unslop the title and body, then hand it the text, the source and target refs, the draft or ready request, and linked work items.
+- **If it asks you for text,** return the unslopped title and body only. Do not publish or delegate back.
+- **Adapt to the repository.** Fit the structure to the template and guidance it passes: a template's headings win and required items are filled, not dropped. Keep this skill's voice and unslopping.
 - If that skill is not installed, report the missing capability and return the unslopped body. Do not improvise an ADO publication path.
 
 ## Check before finishing
