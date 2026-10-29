@@ -118,6 +118,14 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- `roast`: when a human invokes it with a PR, the findings now come as a table,
+  one row per issue (file link, issue, fix, severity, confidence, doctrine). It
+  then asks which issues to dig into, explains each in detail, and drafts a
+  caveman-level comment (`**[Severity]**`, finding, how to fix, with the fix
+  shown). Comments never name a doctrine or confidence. Roast posts one only
+  after the human approves its exact text, as a comment, never a review.
+  Agent and Ship invocations are unchanged.
+
 - Workspace hygiene: agents now own cleaning up the worktrees, branches, temp
   files, and build output they create. One rule in `ship/WORKSPACE.md` (cleanup
   at PR merge or close, no removal of dirty or unmerged work, build-output

@@ -383,6 +383,24 @@ test('Chart-a-course is a portable, human- and model-invocable local package', (
   assertPortable(directory);
 });
 
+test('Roast presents a PR review as a table, then drills into picked issues with concise comments', () => {
+  const dir = path.join(root, '.agents/skills/roast');
+  const flow = readFileSync(path.join(dir, 'PR-REVIEW.md'), 'utf8');
+  const flat = flow.replace(/\s+/g, ' ');
+  assert.match(flow, /\| # \| File \| Issue \| Fix \| Severity \| Confidence \| Doctrine \|/);
+  assert.match(flat, /one row per issue/);
+  assert.match(flat, /`ask_user`/);
+  assert.match(flow, /\*\*\[Severity\]\*\*\n\n<Finding text>\n\n<How to fix text>/);
+  assert.match(flat, /Never\*\* name a doctrine or standard, state a confidence level/);
+  assert.match(flat, /always \*\*shows\*\* the fix/);
+  assert.match(flat, /Post only text the human approved/);
+  assert.match(flat, /never a review, an approval, a request for changes, or a merge/);
+  const skill = readFileSync(path.join(dir, 'SKILL.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(skill, /\[Human PR review\]\(PR-REVIEW\.md\)/);
+  assert.match(skill, /Agent, Ship, and other delegated invocations keep the findings list/);
+  assert.match(skill, /Do not post comments, cast review votes/);
+});
+
 test('Stack preserves human intent and covers add, split, preserve, and both providers', () => {
   const directory = path.join(root, '.agents/skills/stack');
   const intent = readFileSync(path.join(directory, 'intent.md'), 'utf8');
