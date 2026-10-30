@@ -1,4 +1,4 @@
-# Human PR review
+# Human review of a pull request
 
 Applies when a **human** invokes Roast and supplies a pull request (URL, number, or the current branch's PR). Agent, Ship, and other delegated invocations keep the findings contract in [Roast](SKILL.md) and the [reviewer contract](reviewer.md). The review keeps its evidence, standards, and full finding fields while the presentation and follow-up change.
 
@@ -19,7 +19,7 @@ Lead with one table, one row per issue, most severe first. Write every cell as o
 
 Under the table, add at most two lines of coverage covering the PR and head SHA, the doctrines applied, anything run, and what was not reviewed. Step 2 uses each finding's full record, which the table only summarizes.
 
-## 2. Ask which issues to dig into
+## 2. Ask what to dig into
 
 Right after the table, prompt with `ask_user` as a multi-select of the rows, each labeled `#n` with a short issue name. Allow none. Do not explain every issue unprompted, and do not post anything yet.
 

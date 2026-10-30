@@ -139,8 +139,12 @@ have tagged releases. Current cleanup is tracked in
   `worktree-hygiene.mjs` helper lists linked worktrees, re-checks before every
   step, and removes only worktrees and build output you name with `--apply
   --writers-stopped`. It never prunes other worktrees' records.
-- Unslop's Vale layer no longer flags "blast radius" (an accepted term and the
-  Pull Request template heading).
+- Unslop's Vale layer no longer flags "blast radius" or "ship" (accepted terms),
+  and `worktree`, `worktrees` and `untracked` pass spelling through a new
+  vocabulary, `Vocab = jdylanmc` in `.vale.ini`. The `ShipOveruse` rule is gone.
+- `roast`: all five editable files (`SKILL.md`, `CODE.md`, `FIX-REVIEW.md`,
+  `reviewer.md`, `PR-REVIEW.md`) were unslopped to zero text-pattern alerts. The
+  human-authored `intent.md` and the skill's frontmatter are unchanged.
 - `pull-request`: the Azure DevOps section is now a one-way contract with the
   work `ado-pull-request` skill. This skill writes and unslops the body and the
   work skill publishes; if the work skill asks for text, it gets the title and

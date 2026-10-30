@@ -11,7 +11,7 @@ See [VALE.md](../VALE.md).
 | Style | Source | Release | Release zip sha256 | Rules |
 | --- | --- | --- | --- | --- |
 | `RedHat` | [redhat-documentation/vale-at-red-hat](https://github.com/redhat-documentation/vale-at-red-hat) | v680 | `c8bf6824e7f9f4fbbfc29ae017f0f1553922a5d24a3aafd5e3795bca57008992` | 37 |
-| `jdylanmc` | merged, see below | | | 179 |
+| `jdylanmc` | merged, see below | | | 178 |
 
 ## jdylanmc at a glance
 
@@ -22,7 +22,7 @@ whole folder with one line, so a folder is for finding and sorting, not toggling
 
 ```text
 jdylanmc/
-  metaphors/           56  Figurative verbs and nouns, anthropomorphism ("the check lives in", "really lands")
+  metaphors/           55  Figurative verbs and nouns, anthropomorphism ("the check lives in", "really lands")
   rhetoric/            24  Contrast and negation formulas, tricolons, staccato, self-answered questions
   framing/             20  Openers, closers, transitions, announcements, chatbot filler and sycophancy
   sentence-structure/  18  Padding, nominalization, copula dodges, passive voice, sentence openers
@@ -36,7 +36,7 @@ jdylanmc/
   spelling/             4  Non-words, diacritics, inconsistent spelling, malapropisms
 ```
 
-- **metaphors (56):** `AnthropomorphicAdjectives`, `AnthropomorphicCognition`, `AnthropomorphicJustification`, `BareHolds`, `BareNames`, `BareReaches`, `ColloquialAssessments`, `DepletionMetaphors`, `EnforcementMetaphors`, `EvasionMetaphors`, `FigurativeBreeds`, `FigurativeCarries`, `FigurativeCasts`, `FigurativeClears`, `FigurativeDemands`, `FigurativeDisguises`, `FigurativeDraws`, `FigurativeEarns`, `FigurativeFalls`, `FigurativeFires`, `FigurativeHolds`, `FigurativeIdioms`, `FigurativeKeeps`, `FigurativeLands`, `FigurativeLends`, `FigurativeLives`, `FigurativeLoud`, `FigurativeMints`, `FigurativeNouns`, `FigurativeOwns`, `FigurativePays`, `FigurativeQuantities`, `FigurativeQuiet`, `FigurativeReaches`, `FigurativeRides`, `FigurativeRuns`, `FigurativeSees`, `FigurativeSettles`, `FigurativeShape`, `FigurativeSits`, `FigurativeStays`, `FigurativeStrikes`, `FigurativeSurfaces`, `FigurativeSweeps`, `FigurativeTravels`, `FigurativeTrips`, `FigurativeWins`, `FigurativeWorth`, `FusionMetaphors`, `GrowthMetaphors`, `JourneyMetaphors`, `MortalityMetaphors`, `MotionMetaphors`, `NamedAdjective`, `ResonateOveruse`, `ShipOveruse`
+- **metaphors (55):** `AnthropomorphicAdjectives`, `AnthropomorphicCognition`, `AnthropomorphicJustification`, `BareHolds`, `BareNames`, `BareReaches`, `ColloquialAssessments`, `DepletionMetaphors`, `EnforcementMetaphors`, `EvasionMetaphors`, `FigurativeBreeds`, `FigurativeCarries`, `FigurativeCasts`, `FigurativeClears`, `FigurativeDemands`, `FigurativeDisguises`, `FigurativeDraws`, `FigurativeEarns`, `FigurativeFalls`, `FigurativeFires`, `FigurativeHolds`, `FigurativeIdioms`, `FigurativeKeeps`, `FigurativeLands`, `FigurativeLends`, `FigurativeLives`, `FigurativeLoud`, `FigurativeMints`, `FigurativeNouns`, `FigurativeOwns`, `FigurativePays`, `FigurativeQuantities`, `FigurativeQuiet`, `FigurativeReaches`, `FigurativeRides`, `FigurativeRuns`, `FigurativeSees`, `FigurativeSettles`, `FigurativeShape`, `FigurativeSits`, `FigurativeStays`, `FigurativeStrikes`, `FigurativeSurfaces`, `FigurativeSweeps`, `FigurativeTravels`, `FigurativeTrips`, `FigurativeWins`, `FigurativeWorth`, `FusionMetaphors`, `GrowthMetaphors`, `JourneyMetaphors`, `MortalityMetaphors`, `MotionMetaphors`, `NamedAdjective`, `ResonateOveruse`
 - **rhetoric (24):** `AbstractTriad`, `ContrastiveFormulas`, `ContrastiveNegation`, `CoordinatedReveal`, `DespiteChallenges`, `EpigramContrast`, `FalseBalance`, `FalseExclusivity`, `LabelAndExplain`, `MicDrop`, `NegParallel`, `NegatedObject`, `NegatedPair`, `NegatedSubject`, `NeverTag`, `ParallelStaccato`, `PseudoCleft`, `RhetoricalDevices`, `RhetoricalSelfAnswer`, `StackedAnaphora`, `StrawmanContrast`, `SummativeAppositive`, `VerbTricolon`, `VerbTricolonDensity`
 - **framing (20):** `AffirmativeFormulas`, `Apologizing`, `CataphoricForecasting`, `ClosingPleasantries`, `ConclusionMarkers`, `ExplainerLeads`, `FillerIntensifier`, `FillerPhrases`, `FormalTransitions`, `HollowAcknowledgment`, `ListIntroductions`, `Metacommentary`, `NarrativePivots`, `OpeningCliches`, `RestatementMarkers`, `SelfReference`, `SequencingMarkers`, `StructureAnnouncements`, `SycophancyMarkers`, `UnpackExplore`
 - **sentence-structure (18):** `AbstractionSubject`, `ConsequenceClause`, `ConsequenceParticiple`, `EmphaticCopula`, `EmptyPadding`, `EmptyPaddingStacked`, `HiddenVerb`, `IncompleteComparison`, `NominalizedScopeChange`, `NounString`, `ParticipialPadding`, `Passive`, `ScopePartition`, `ServesAsDodge`, `ShellNounCopula`, `So`, `ThereIs`, `UnderRegime`
@@ -231,3 +231,7 @@ exit routine", and RedHat's own rules conflict with each other in places
 - `blast radius` was removed from `FigurativeIdioms`. It is an accepted term and
   the Pull Request template heading, so it is no longer flagged. RedHat's
   sentence-case warning on the heading still applies.
+- `ShipOveruse` was removed. "Ship" is an accepted term (a skill name and the
+  release verb). `worktree`, `worktrees` and `untracked` are accepted through the
+  vocabulary `config/vocabularies/jdylanmc/accept.txt`, which `.vale.ini` loads
+  with `Vocab = jdylanmc`. That clears `RedHat.Spelling` without editing RedHat.
