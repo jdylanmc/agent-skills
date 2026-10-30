@@ -402,7 +402,8 @@ test('Roast presents a PR review as a table, then drills into picked issues with
   const scout = readFileSync(path.join(dir, 'PR-SCOUT.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(scout, /Load `scout` and `nimble` through \[Doctrine\]\(\.\.\/doctrine\/APPLY\.md\), and no others/);
   assert.match(scout, /\| Encounter this \| Start this reviewer \| Doctrines, and only these \|/);
-  assert.match(scout, /\| Testing \| `testing`, `test-seams`, `integration-testing` \|/);
+  assert.match(scout, /\| Code, and the repo has tests or a testing approach \(see below\) \| Testing \|/);
+  assert.match(scout, /With none of these, do not start Testing, and say in the return that Testing was skipped and why/);
   assert.match(scout, /\| Code quality \| `solid`, `code`, `cyclomatic-complexity` \|/);
   assert.match(scout, /\| Domain alignment \| `domain`, `boundaries`, `laziness` \|/);
   assert.match(scout, /\| Documentation \| `documentation`, `machine`, `pragmatic` \|/);

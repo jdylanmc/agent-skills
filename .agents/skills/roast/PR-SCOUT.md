@@ -22,15 +22,24 @@ one time. To add a reviewer, add a row.
 
 | Encounter this | Start this reviewer | Doctrines, and only these |
 |---|---|---|
-| Code: source files in any language, and build, test, or automation scripts | Testing | `testing`, `test-seams`, `integration-testing` |
-| Code (same match) | Code quality | `solid`, `code`, `cyclomatic-complexity` |
-| Code (same match) | Domain alignment | `domain`, `boundaries`, `laziness` |
+| Code, and the repo has tests or a testing approach (see below) | Testing | `testing`, `test-seams`, `integration-testing` |
+| Code | Code quality | `solid`, `code`, `cyclomatic-complexity` |
+| Code | Domain alignment | `domain`, `boundaries`, `laziness` |
 | Markdown: any `**/*.md`, including skills, `AGENTS.md`, READMEs, changelogs | Documentation | `documentation`, `machine`, `pragmatic` |
 | Data: `*.sql`, `migrations/**`, ORM schema files, seed or fixture data meant to load into a store, ETL, batch, stream, or job definitions, queue or data-store configuration | Data | `idempotency`, `data`, `data-processing` |
 | Anything else (lock files, generated files, binaries, plain data files, unknown types) | none | list it under `unmatched` |
 
-- Code always starts its three reviewers together, because the code quality
-  reviewer applies the `solid` that code review requires.
+- Code means source files in any language, and build, test, or automation
+  scripts. Code always starts the Code quality and Domain alignment reviewers,
+  and starts Testing too when the repo has tests. The code quality reviewer
+  applies the `solid` that code review requires.
+- **The repo has tests** when any of these exist at the head commit or in the
+  PR: test directories or files (`test/`, `tests/`, `__tests__/`, `*.test.*`,
+  `*.spec.*`, `*_test.*`), a test runner configuration, a test script or test
+  step in the package manifest or CI, or a stated testing approach in the repo
+  guidance. Check with a path listing, not by reading the files. With none of
+  these, do not start Testing, and say in the return that Testing was skipped and
+  why. A PR that adds the first tests counts as having them.
 - Markdown is not code. Instruction files are Markdown, so the Documentation
   reviewer covers them.
 - Never invent a reviewer or a doctrine that is not in this table.
@@ -74,6 +83,8 @@ One record per reviewer to start:
 Then:
 
 - `unmatched`: each path with its question, or `none`;
+- `skipped`: each roster reviewer not started and why (for example, Testing: no
+  tests in the repo), or `none`;
 - `no reviewable changes` when nothing matched and nothing is unmatched.
 
 ## Limits

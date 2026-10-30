@@ -127,17 +127,17 @@ have tagged releases. Current cleanup is tracked in
   follow-up. A PR scout (fixed instructions in `roast/PR-SCOUT.md`) reads the
   changed paths first and picks reviewers from a routing table, each loading only
   its own doctrines: code gets testing (`testing`, `test-seams`,
-  `integration-testing`), code quality (`solid`, `code`, `cyclomatic-complexity`),
+  `integration-testing`) when the repo has tests, code quality (`solid`, `code`, `cyclomatic-complexity`),
   and domain alignment (`domain`, `boundaries`, `laziness`); Markdown gets
   documentation (`documentation`, `machine`, `pragmatic`); data changes get data
   (`idempotency`, `data`, `data-processing`). Every scout, reviewer, and verifier
-  runs on a frontier model from the Claude 5.x and GPT 6.x series, never a
+  runs on a frontier model from the Claude 5.x and GPT 6.x series, with no
   lightweight tier, and each reviewer rubber-ducks its draft findings on the
   other series before reporting. Duplicate findings merge into one row that
   keeps every doctrine, the strongest severity, and each reviewer's evidence.
   The report to the human always shows confidence. Posted comments omit the
   doctrine and confidence. Roast posts one only
-  after the human approves its exact text, as a comment, never a review.
+  after the human approves its exact text, and only as a comment, not a review.
   Agent and Ship invocations are unchanged.
 
 - Workspace hygiene: agents now own cleaning up the worktrees, branches, temp
