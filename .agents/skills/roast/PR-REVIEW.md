@@ -2,6 +2,18 @@
 
 Applies when a **human** invokes Roast and supplies a pull request (URL, number, or the current branch's PR). Agent, Ship, and other delegated invocations keep the findings contract in [Roast](SKILL.md) and the [reviewer contract](reviewer.md). The review keeps its evidence, standards, and full finding fields while the presentation and follow-up change.
 
+## Review in a sub-agent
+
+Run the review in a sub-agent to keep diffs and file contents out of the primary context. The primary context resolves the PR, picks the doctrine, dispatches, then builds the table and handles the follow-up. It does not read the diff, the changed files, or logs to review them.
+
+- **Resolve first.** Get the repository, PR number, base, and head SHA, and the doctrine IDs to apply (require `solid` for code). That is all the primary context needs before dispatch.
+- **Dispatch one reviewer** with the [reviewer contract](reviewer.md): the PR and head SHA, scope, purpose (the PR description and linked issue, which the reviewer fetches), the doctrine packet, and read-only evidence access. Do not set a model or reasoning effort unless the human asked, and the reviewer does not start reviewers of its own.
+- **Split only a large PR.** When one reviewer cannot cover the PR, split it by independent slices such as directories or layers, and dispatch one reviewer per slice in parallel. Merge duplicates and rank across slices yourself.
+- **Compact return.** Ask for one record per finding and nothing else. Each record has the file and lines, a one-line issue and fix, severity, confidence, and doctrine IDs. It also has a short evidence note, the consequence, how to verify, and a replacement or diff for the fix. Ask for no raw diffs, file dumps, or narrative. Add at most two lines of coverage.
+- **Verify before you rely on it.** For each issue the human picks, view only the cited lines yourself before you draft a comment. A finding that fails that check gets corrected or dropped, and you tell the human.
+- **Dig deeper through the reviewer.** When a picked issue needs more detail than its record holds, ask the same reviewer. Do not re-review the PR in the primary context.
+- **No sub-agent available.** Say so and ask whether to review directly. Do not present a direct review as isolated.
+
 ## 1. The table
 
 Lead with one table, one row per issue, most severe first. Write every cell as one short line. With no supported findings, state the scope and limits and stop without a table or prompt.

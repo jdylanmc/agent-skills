@@ -388,6 +388,12 @@ test('Roast presents a PR review as a table, then drills into picked issues with
   const dir = path.join(root, '.agents/skills/roast');
   const flow = readFileSync(path.join(dir, 'PR-REVIEW.md'), 'utf8');
   const flat = flow.replace(/\s+/g, ' ');
+  assert.match(flat, /Run the review in a sub-agent to keep diffs and file contents out of the primary context/);
+  assert.match(flat, /It does not read the diff, the changed files, or logs to review them/);
+  assert.match(flat, /Ask for no raw diffs, file dumps, or narrative/);
+  assert.match(flat, /view only the cited lines yourself before you draft a comment/);
+  assert.match(flat, /Do not re-review the PR in the primary context/);
+  assert.match(flat, /Do not present a direct review as isolated/);
   assert.match(flow, /\| # \| File \| Issue \| Fix \| Severity \| Confidence \| Doctrine \|/);
   assert.match(flat, /one row per issue/);
   assert.match(flat, /`ask_user`/);
