@@ -124,13 +124,19 @@ have tagged releases. Current cleanup is tracked in
   caveman-level comment (`**[Severity]**`, finding, how to fix, with the fix
   shown). Sub-agents run the review so diffs and file contents stay out of the
   primary context; the primary context only builds the table and handles the
-  follow-up. Code always gets three reviewers, each loading only its own
-  doctrines: testing (`testing`, `test-seams`, `integration-testing`), code
-  quality (`solid`, `code`, `cyclomatic-complexity`), and domain alignment
-  (`domain`, `boundaries`, `laziness`). Every reviewer and verifier runs on a
-  frontier model from the Claude 5.x and GPT 6.x series, never a lightweight
-  tier, and each reviewer rubber-ducks its draft findings on the other series
-  before reporting. Comments never name a doctrine or confidence. Roast posts one only
+  follow-up. A PR scout (fixed instructions in `roast/PR-SCOUT.md`) reads the
+  changed paths first and picks reviewers from a routing table, each loading only
+  its own doctrines: code gets testing (`testing`, `test-seams`,
+  `integration-testing`), code quality (`solid`, `code`, `cyclomatic-complexity`),
+  and domain alignment (`domain`, `boundaries`, `laziness`); Markdown gets
+  documentation (`documentation`, `machine`, `pragmatic`); data changes get data
+  (`idempotency`, `data`, `data-processing`). Every scout, reviewer, and verifier
+  runs on a frontier model from the Claude 5.x and GPT 6.x series, never a
+  lightweight tier, and each reviewer rubber-ducks its draft findings on the
+  other series before reporting. Duplicate findings merge into one row that
+  keeps every doctrine, the strongest severity, and each reviewer's evidence.
+  The report to the human always shows confidence. Posted comments omit the
+  doctrine and confidence. Roast posts one only
   after the human approves its exact text, as a comment, never a review.
   Agent and Ship invocations are unchanged.
 

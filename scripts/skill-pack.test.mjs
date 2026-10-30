@@ -389,15 +389,25 @@ test('Roast presents a PR review as a table, then drills into picked issues with
   const flow = readFileSync(path.join(dir, 'PR-REVIEW.md'), 'utf8');
   const flat = flow.replace(/\s+/g, ' ');
   assert.match(flat, /Run the review in sub-agents to keep diffs and file contents out of the primary context/);
-  assert.match(flat, /Code gets three reviewers, always/);
-  assert.match(flat, /\| Testing \| `testing`, `test-seams`, `integration-testing` \|/);
-  assert.match(flat, /\| Code quality \| `solid`, `code`, `cyclomatic-complexity` \|/);
-  assert.match(flat, /\| Domain alignment \| `domain`, `boundaries`, `laziness` \|/);
+  assert.match(flat, /Run the PR scout from \[PR-SCOUT\]\(PR-SCOUT\.md\)/);
+  assert.match(flat, /Its routing table, not the primary context, selects the reviewers/);
   assert.match(flat, /None loads another reviewer's doctrines or any others/);
   assert.match(flat, /Never use a lightweight tier such as Haiku, Flash, Mini/);
   assert.match(flat, /`Claude 5\.x` and `GPT 6\.x` series/);
   assert.match(flat, /Rubber duck before reporting/);
   assert.match(flat, /from the other series than the reviewer's/);
+  assert.match(flat, /Merge without losing anything/);
+  assert.match(flat, /keep every reviewer's evidence note, consequence, and verification/);
+  assert.match(flat, /list every doctrine involved/);
+  const scout = readFileSync(path.join(dir, 'PR-SCOUT.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(scout, /Load `scout` and `nimble` through \[Doctrine\]\(\.\.\/doctrine\/APPLY\.md\), and no others/);
+  assert.match(scout, /\| Encounter this \| Start this reviewer \| Doctrines, and only these \|/);
+  assert.match(scout, /\| Testing \| `testing`, `test-seams`, `integration-testing` \|/);
+  assert.match(scout, /\| Code quality \| `solid`, `code`, `cyclomatic-complexity` \|/);
+  assert.match(scout, /\| Domain alignment \| `domain`, `boundaries`, `laziness` \|/);
+  assert.match(scout, /\| Documentation \| `documentation`, `machine`, `pragmatic` \|/);
+  assert.match(scout, /\| Data \| `idempotency`, `data`, `data-processing` \|/);
+  assert.match(scout, /Do not start reviewers\. The coordinator starts them/);
   assert.match(flat, /It does not read the diff, the changed files, or logs to review them/);
   assert.match(flat, /Ask for no raw diffs, file dumps, or narrative/);
   assert.match(flat, /view only the cited lines yourself before you draft a comment/);
@@ -414,6 +424,7 @@ test('Roast presents a PR review as a table, then drills into picked issues with
   const skill = readFileSync(path.join(dir, 'SKILL.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(skill, /\[Human review of a pull request\]\(PR-REVIEW\.md\)/);
   assert.match(skill, /Agent, Ship, and other delegated invocations keep the findings list/);
+  assert.match(skill, /A comment posted in the human PR flow follows \[PR-REVIEW\]\(PR-REVIEW\.md\) instead: it never states confidence or a standard, while the report to the human always shows both/);
   assert.match(skill, /Do not post comments, cast review votes/);
 });
 
