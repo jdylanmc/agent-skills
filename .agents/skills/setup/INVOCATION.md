@@ -59,7 +59,7 @@ machine-start session Joe-mode or inherit authority merely from their names.
 | [research](../research/SKILL.md) | Both; questions or link batches, evidence-grounded and read-only by default. |
 | [conflicts](../conflicts/SKILL.md) | Internal to Shepherd or an authorized delivery owner; human decisions stay human. |
 | [retro](../retro/SKILL.md) | Human only; inspect actual session evidence, propose, obtain approval, then deliver selected fixes. |
-| [roast](../roast/SKILL.md) | Both; independent review, no implicit repair or approval. |
+| [roast](../roast/SKILL.md) | Both; independent review, no implicit repair or approval. A human invoking it with a PR gets a findings table from read-only sub-agent reviewers that a scout picks, and may approve concise comments, posted as comments only. |
 | [scout](../scout/SKILL.md) | Internal; read-only code localization, distinct from Scout doctrine. |
 | [setup](SKILL.md) | Human-directed; Joe may bootstrap absent/incomplete repository setup under the existing controller, preserving human choices and exact-file approval. |
 | [shepherd](../shepherd/SKILL.md) | Both; one owner maintains the existing PR, reviewed, green, and rebased/current. |

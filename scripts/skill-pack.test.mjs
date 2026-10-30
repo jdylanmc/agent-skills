@@ -91,6 +91,7 @@ test('Unslop preserves human intent and enables exactly the vendored packages', 
   assert.deepEqual(config, [
     'StylesPath = styles',
     'MinAlertLevel = suggestion',
+    'Vocab = jdylanmc',
     '[*.{md,txt}]',
     'BasedOnStyles = RedHat, jdylanmc',
   ]);
@@ -187,8 +188,8 @@ const valeLicenses = new Map([
 // coverage-preservation evidence (see styles/README.md).
 const valeStyles = {
   RedHat: '73d3148528f05d6b30da3fd484692d76105cb065b6eee8856a00380313b4ac41',
-  jdylanmc: '989d35fdab620c5ae6272678188e401efb0edafc43c79e30de2ba570cef1aec0',
-  config: 'df80e71026f49e4272995b6d4b491098b788992102b754463eedba5e2e408cf3',
+  jdylanmc: '69a464873e9609a4ea3da87db09677dab86ba37aa14634ae7e78b5f2bf52791b',
+  config: '4d8a59ef9bac968b4c399bd15aa19972cff6dc0d1b0623051ba317da5754a56e',
 };
 
 test('Unslop vendors RedHat plus one merged jdylanmc style, one license and notice entry per source package', () => {
@@ -224,19 +225,19 @@ test('Unslop vendors RedHat plus one merged jdylanmc style, one license and noti
     readdirSync(path.join(base, folder)).filter(name => name.endsWith('.yml')).map(name => name.slice(0, -4)).sort()]));
   assert.deepEqual(Object.fromEntries(Object.entries(byFolder).map(([folder, rules]) => [folder, rules.length])), {
     claims: 14, concision: 4, framing: 20, headings: 5, 'inclusive-language': 4,
-    metaphors: 56, punctuation: 6, readability: 7, rhetoric: 24, 'sentence-structure': 18, spelling: 4, vocabulary: 17,
+    metaphors: 55, punctuation: 6, readability: 7, rhetoric: 24, 'sentence-structure': 18, spelling: 4, vocabulary: 17,
   });
   assert.ok(!readdirSync(base).some(name => name.endsWith('.yml')), 'every rule lives in a category folder');
   const merged = Object.values(byFolder).flat();
-  assert.equal(merged.length, 179);
-  assert.equal(new Set(merged).size, 179, 'rule names are unique across folders');
+  assert.equal(merged.length, 178);
+  assert.equal(new Set(merged).size, 178, 'rule names are unique across folders');
   for (const [folder, rules] of Object.entries(byFolder)) {
     assert.ok(readme.includes(`**${folder} (${rules.length}):**`), `${folder} listed in styles README`);
     for (const rule of rules) assert.ok(readme.includes(`\`${rule}\``), `${rule} listed in styles README`);
   }
   for (const folded of ['Dash', 'Cliche', 'CopulaInflation', 'Very', 'Illusions', 'But',
     'FleschKincaid', 'DateCase', 'DateSpacing', 'DateMidnight', 'DateRedundancy',
-    'E-Prime', 'AnimalLabels', 'DenizenLabels', 'GroupTerms',
+    'E-Prime', 'AnimalLabels', 'DenizenLabels', 'GroupTerms', 'ShipOveruse',
     'Annotations', 'P-Value', 'FilePath', 'CodeToken', 'LinkText', 'SectionCode', 'StatusBracket', 'WeakResume']) {
     assert.ok(!merged.includes(folded), `${folded} was merged away`);
   }
@@ -247,7 +248,7 @@ test('Unslop vendors RedHat plus one merged jdylanmc style, one license and noti
   for (const source of ['tbhb/vale-ai-tells', 'krishnasunkam/vale-ai-tells', 'vale-cli/proselint', 'vale-cli/write-good', 'vale-cli/readability']) {
     assert.ok(readme.includes(source), `${source} credited in styles README`);
   }
-  assert.match(readme, /\| `jdylanmc` \| merged, see below \| \| \| 179 \|/);
+  assert.match(readme, /\| `jdylanmc` \| merged, see below \| \| \| 178 \|/);
 });
 
 test('style skills own their rules and Synthesize delegates to them', () => {
@@ -381,6 +382,57 @@ test('Chart-a-course is a portable, human- and model-invocable local package', (
   assert.match(metadata, /^user-invocable: true$/m);
   assert.ok(readFileSync(path.join(directory, 'chart-a-course/intent.md')).length > 0);
   assertPortable(directory);
+});
+
+test('Roast presents a PR review as a table, then drills into picked issues with concise comments', () => {
+  const dir = path.join(root, '.agents/skills/roast');
+  const flow = readFileSync(path.join(dir, 'PR-REVIEW.md'), 'utf8');
+  const flat = flow.replace(/\s+/g, ' ');
+  assert.match(flat, /Run the review in sub-agents to keep diffs and file contents out of the primary context/);
+  assert.match(flat, /Run the PR scout from \[PR-SCOUT\]\(PR-SCOUT\.md\)/);
+  assert.match(flat, /Its routing table, not the primary context, selects the reviewers/);
+  assert.match(flat, /None loads another reviewer's doctrines or any others/);
+  assert.match(flat, /Never use a lightweight tier such as Haiku, Flash, Mini/);
+  assert.match(flat, /`Claude 5\.x` and `GPT 6\.x` series/);
+  assert.match(flat, /Rubber duck before reporting/);
+  assert.match(flat, /from the other series than the reviewer's/);
+  assert.match(flat, /Merge without losing anything/);
+  assert.match(flat, /keep every reviewer's evidence note, consequence, and verification/);
+  assert.match(flat, /list every doctrine involved/);
+  const scout = readFileSync(path.join(dir, 'PR-SCOUT.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(scout, /Load `scout` and `nimble` through \[Doctrine\]\(\.\.\/doctrine\/APPLY\.md\), and no other full texts/);
+  assert.match(scout, /add exactly one wildcard reviewer with exactly three doctrines/);
+  assert.match(scout, /Reuse a doctrine another reviewer carries when the combination needs it, but never repeat another reviewer's exact set/);
+  assert.match(scout, /Return a wildcard whenever the PR has reviewable changes/);
+  assert.match(scout, /\| Encounter this \| Start this reviewer \| Doctrines, and only these \|/);
+  assert.match(scout, /\| Code, and the repo has tests or a testing approach \(see below\) \| Testing \|/);
+  assert.match(scout, /With none of these, do not start Testing, and say in the return that Testing was skipped and why/);
+  assert.match(scout, /\| Code quality \| `solid`, `code`, `cyclomatic-complexity` \|/);
+  assert.match(scout, /\| Domain alignment \| `domain`, `boundaries`, `laziness` \|/);
+  assert.match(scout, /\| Documentation \| `documentation`, `machine`, `pragmatic` \|/);
+  assert.match(scout, /\| Data \| `idempotency`, `data`, `data-processing` \|/);
+  assert.match(scout, /Do not start reviewers\. The coordinator starts them/);
+  assert.match(scout, /read the first 100 lines of the file at the head commit and classify it by what it contains/);
+  assert.match(scout, /Never return a file to the human to classify/);
+  assert.doesNotMatch(flat + scout, /`unmatched`/);
+  assert.match(flat, /It does not read the diff, the changed files, or logs to review them/);
+  assert.match(flat, /Ask for no raw diffs, file dumps, or narrative/);
+  assert.match(flat, /view only the cited lines yourself before you draft a comment/);
+  assert.match(flat, /Do not re-review the PR in the primary context/);
+  assert.match(flat, /Do not present a direct review as isolated/);
+  assert.match(flow, /\| # \| File \| Issue \| Fix \| Severity \| Confidence \| Doctrine \|/);
+  assert.match(flat, /one row per issue/);
+  assert.match(flat, /`ask_user`/);
+  assert.match(flow, /\*\*\[Severity\]\*\*\n\n<Finding text>\n\n<How to fix text>/);
+  assert.match(flat, /Never\*\* name a doctrine or standard, state a confidence level/);
+  assert.match(flat, /always \*\*shows\*\* the fix/);
+  assert.match(flat, /Post only text the human approved/);
+  assert.match(flat, /never a review, an approval, a request for changes, or a merge/);
+  const skill = readFileSync(path.join(dir, 'SKILL.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(skill, /\[Human review of a pull request\]\(PR-REVIEW\.md\)/);
+  assert.match(skill, /Agent, Ship, and other delegated invocations keep the findings list/);
+  assert.match(skill, /A comment posted in the human PR flow follows \[PR-REVIEW\]\(PR-REVIEW\.md\) instead: it never states confidence or a standard, while the report to the human always shows both/);
+  assert.match(skill, /Do not post comments, cast review votes/);
 });
 
 test('Stack preserves human intent and covers add, split, preserve, and both providers', () => {

@@ -118,6 +118,30 @@ have tagged releases. Current cleanup is tracked in
 
 ### Changed
 
+- `roast`: when a human invokes it with a PR, the findings now come as a table,
+  one row per issue (file link, issue, fix, severity, confidence, doctrine). It
+  then asks which issues to dig into, explains each in detail, and drafts a
+  caveman-level comment (`**[Severity]**`, finding, how to fix, with the fix
+  shown). Sub-agents run the review so diffs and file contents stay out of the
+  primary context; the primary context only builds the table and handles the
+  follow-up. A PR scout (fixed instructions in `roast/PR-SCOUT.md`) reads the
+  changed paths first and picks reviewers from a routing table, each loading only
+  its own doctrines: code gets testing (`testing`, `test-seams`,
+  `integration-testing`) when the repo has tests, code quality (`solid`, `code`, `cyclomatic-complexity`),
+  and domain alignment (`domain`, `boundaries`, `laziness`); Markdown gets
+  documentation (`documentation`, `machine`, `pragmatic`); data changes get data
+  (`idempotency`, `data`, `data-processing`). The scout also adds one wildcard
+  reviewer with three doctrines for the PR's own risk, such as file
+  processing, and may reuse doctrines the others use. Every scout, reviewer, and verifier
+  runs on a frontier model from the Claude 5.x and GPT 6.x series, with no
+  lightweight tier, and each reviewer rubber-ducks its draft findings on the
+  other series before reporting. Duplicate findings merge into one row that
+  keeps every doctrine, the strongest severity, and each reviewer's evidence.
+  The report to the human always shows confidence. Posted comments omit the
+  doctrine and confidence. Roast posts one only
+  after the human approves its exact text, and it posts a comment only.
+  Agent and Ship invocations are unchanged.
+
 - Workspace hygiene: agents now own cleaning up the worktrees, branches, temp
   files, and build output they create. One rule in `ship/WORKSPACE.md` (cleanup
   at PR merge or close, no removal of dirty or unmerged work, build-output
@@ -131,8 +155,12 @@ have tagged releases. Current cleanup is tracked in
   `worktree-hygiene.mjs` helper lists linked worktrees, re-checks before every
   step, and removes only worktrees and build output you name with `--apply
   --writers-stopped`. It never prunes other worktrees' records.
-- Unslop's Vale layer no longer flags "blast radius" (an accepted term and the
-  Pull Request template heading).
+- Unslop's Vale layer no longer flags "blast radius" or "ship" (accepted terms),
+  and `worktree`, `worktrees` and `untracked` pass spelling through a new
+  vocabulary, `Vocab = jdylanmc` in `.vale.ini`. The `ShipOveruse` rule is gone.
+- `roast`: all five editable files (`SKILL.md`, `CODE.md`, `FIX-REVIEW.md`,
+  `reviewer.md`, `PR-REVIEW.md`) were unslopped to zero text-pattern alerts. The
+  human-authored `intent.md` and the skill's frontmatter are unchanged.
 - `pull-request`: the Azure DevOps section is now a one-way contract with the
   work `ado-pull-request` skill. This skill writes and unslops the body and the
   work skill publishes; if the work skill asks for text, it gets the title and
