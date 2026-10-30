@@ -27,7 +27,7 @@ one time. To add a reviewer, add a row.
 | Code | Domain alignment | `domain`, `boundaries`, `laziness` |
 | Markdown: any `**/*.md`, including skills, `AGENTS.md`, READMEs, changelogs | Documentation | `documentation`, `machine`, `pragmatic` |
 | Data: `*.sql`, `migrations/**`, ORM schema files, seed or fixture data meant to load into a store, ETL, batch, stream, or job definitions, queue or data-store configuration | Data | `idempotency`, `data`, `data-processing` |
-| Anything else (lock files, generated files, binaries, plain data files, unknown types) | none | list it under `unmatched` |
+| Anything else (lock files, generated files, binaries, unknown types) | Inspect it, then decide (see below) | the chosen reviewer's |
 
 - Code means source files in any language, and build, test, or automation
   scripts. Code always starts the Code quality and Domain alignment reviewers,
@@ -42,6 +42,12 @@ one time. To add a reviewer, add a row.
   why. A PR that adds the first tests counts as having them.
 - Markdown is not code. Instruction files are Markdown, so the Documentation
   reviewer covers them.
+- **Decide every file yourself.** When a path alone does not settle the row, read
+  the first 100 lines of the file at the head commit and classify it by what it
+  contains. Assign it to the reviewer whose row fits, or skip it with a one-line
+  reason when it has nothing to review (for example, a lock file, generated
+  output, or an append-only usage log). Never return a file to the human to
+  classify. The human asked for a review, and this choice is the scout's job.
 - The table's reviewers are the only fixed ones. The wildcard below is the only
   other reviewer, and it takes doctrines from the catalog.
 
@@ -71,17 +77,16 @@ reviewers each see half of it, and the wildcard reviews the combination.
 
 1. **List the change.** Get the changed files with status and line counts, the PR
    title and description, and the linked issue. Do not read the diff to review
-   it. Open a file only to classify an ambiguous path, and read only enough to
-   classify it.
+   it. Open a file only to classify it, reading at most its first 100 lines.
 2. **Match.** Apply the table above, then the human's additions and removals.
 3. **Add the wildcard.** Choose its three doctrines by the wildcard rules.
 4. **Slice only when needed.** When one reviewer's files are too many for one
    pass, split them by directory or layer into slices. Each slice keeps that
    reviewer's doctrines.
-5. **Move on.** Follow `nimble`: act on plain matches without asking. Follow
-   `scout`: send a path whose type changes who reviews it (for example a JSON
-   file that might be a data load or might be config) to `unmatched` with the
-   question that would settle it. Do not guess.
+5. **Move on.** Follow `nimble`: decide and keep going without asking. Follow
+   `scout`: when a file's type changes who reviews it (for example a JSON file
+   that might be a data load or might be config), read its first 100 lines and
+   decide from what you find. Record the deciding evidence in one line.
 6. **Return the plan.** Nothing else.
 
 ## Return
@@ -96,10 +101,11 @@ One record per reviewer to start, the wildcard included:
 
 Then:
 
-- `unmatched`: each path with its question, or `none`;
-- `skipped`: each roster reviewer not started and why (for example, Testing: no
-  tests in the repo), or `none`;
-- `no reviewable changes` when nothing matched and nothing is unmatched.
+- `decided`: each file the scout inspected, where it went, and the one-line
+  evidence, or `none`;
+- `skipped`: each roster reviewer not started and each file left out, with why
+  (for example, Testing: no tests in the repo), or `none`;
+- `no reviewable changes` when every file was skipped.
 
 ## Limits
 

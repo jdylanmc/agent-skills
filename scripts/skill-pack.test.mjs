@@ -412,6 +412,9 @@ test('Roast presents a PR review as a table, then drills into picked issues with
   assert.match(scout, /\| Documentation \| `documentation`, `machine`, `pragmatic` \|/);
   assert.match(scout, /\| Data \| `idempotency`, `data`, `data-processing` \|/);
   assert.match(scout, /Do not start reviewers\. The coordinator starts them/);
+  assert.match(scout, /read the first 100 lines of the file at the head commit and classify it by what it contains/);
+  assert.match(scout, /Never return a file to the human to classify/);
+  assert.doesNotMatch(flat + scout, /`unmatched`/);
   assert.match(flat, /It does not read the diff, the changed files, or logs to review them/);
   assert.match(flat, /Ask for no raw diffs, file dumps, or narrative/);
   assert.match(flat, /view only the cited lines yourself before you draft a comment/);
