@@ -388,7 +388,16 @@ test('Roast presents a PR review as a table, then drills into picked issues with
   const dir = path.join(root, '.agents/skills/roast');
   const flow = readFileSync(path.join(dir, 'PR-REVIEW.md'), 'utf8');
   const flat = flow.replace(/\s+/g, ' ');
-  assert.match(flat, /Run the review in a sub-agent to keep diffs and file contents out of the primary context/);
+  assert.match(flat, /Run the review in sub-agents to keep diffs and file contents out of the primary context/);
+  assert.match(flat, /Code gets three reviewers, always/);
+  assert.match(flat, /\| Testing \| `testing`, `test-seams`, `integration-testing` \|/);
+  assert.match(flat, /\| Code quality \| `solid`, `code`, `cyclomatic-complexity` \|/);
+  assert.match(flat, /\| Domain alignment \| `domain`, `boundaries`, `laziness` \|/);
+  assert.match(flat, /None loads another reviewer's doctrines or any others/);
+  assert.match(flat, /Never use a lightweight tier such as Haiku, Flash, Mini/);
+  assert.match(flat, /`Claude 5\.x` and `GPT 6\.x` series/);
+  assert.match(flat, /Rubber duck before reporting/);
+  assert.match(flat, /from the other series than the reviewer's/);
   assert.match(flat, /It does not read the diff, the changed files, or logs to review them/);
   assert.match(flat, /Ask for no raw diffs, file dumps, or narrative/);
   assert.match(flat, /view only the cited lines yourself before you draft a comment/);

@@ -122,9 +122,15 @@ have tagged releases. Current cleanup is tracked in
   one row per issue (file link, issue, fix, severity, confidence, doctrine). It
   then asks which issues to dig into, explains each in detail, and drafts a
   caveman-level comment (`**[Severity]**`, finding, how to fix, with the fix
-  shown). A sub-agent runs the review so diffs and file contents stay out of the
+  shown). Sub-agents run the review so diffs and file contents stay out of the
   primary context; the primary context only builds the table and handles the
-  follow-up. Comments never name a doctrine or confidence. Roast posts one only
+  follow-up. Code always gets three reviewers, each loading only its own
+  doctrines: testing (`testing`, `test-seams`, `integration-testing`), code
+  quality (`solid`, `code`, `cyclomatic-complexity`), and domain alignment
+  (`domain`, `boundaries`, `laziness`). Every reviewer and verifier runs on a
+  frontier model from the Claude 5.x and GPT 6.x series, never a lightweight
+  tier, and each reviewer rubber-ducks its draft findings on the other series
+  before reporting. Comments never name a doctrine or confidence. Roast posts one only
   after the human approves its exact text, as a comment, never a review.
   Agent and Ship invocations are unchanged.
 

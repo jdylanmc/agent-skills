@@ -2,16 +2,28 @@
 
 Applies when a **human** invokes Roast and supplies a pull request (URL, number, or the current branch's PR). Agent, Ship, and other delegated invocations keep the findings contract in [Roast](SKILL.md) and the [reviewer contract](reviewer.md). The review keeps its evidence, standards, and full finding fields while the presentation and follow-up change.
 
-## Review in a sub-agent
+## Review in sub-agents
 
-Run the review in a sub-agent to keep diffs and file contents out of the primary context. The primary context resolves the PR, picks the doctrine, dispatches, then builds the table and handles the follow-up. It does not read the diff, the changed files, or logs to review them.
+Run the review in sub-agents to keep diffs and file contents out of the primary context. The primary context resolves the PR, dispatches the lenses, then builds the table and handles the follow-up. It does not read the diff, the changed files, or logs to review them.
 
-- **Resolve first.** Get the repository, PR number, base, and head SHA, and the doctrine IDs to apply (require `solid` for code). That is all the primary context needs before dispatch.
-- **Dispatch one reviewer** with the [reviewer contract](reviewer.md): the PR and head SHA, scope, purpose (the PR description and linked issue, which the reviewer fetches), the doctrine packet, and read-only evidence access. Do not set a model or reasoning effort unless the human asked, and the reviewer does not start reviewers of its own.
-- **Split only a large PR.** When one reviewer cannot cover the PR, split it by independent slices such as directories or layers, and dispatch one reviewer per slice in parallel. Merge duplicates and rank across slices yourself.
+- **Resolve first.** Get the repository, PR number, base, and head SHA. That is all the primary context needs before dispatch.
+- **Code gets three reviewers, always.** Dispatch the testing, code quality, and domain alignment reviewers in parallel. Each gets a doctrine packet with only its own doctrines. None loads another reviewer's doctrines or any others, and more doctrines load only on the human's request.
+
+| Reviewer | Doctrines, and only these |
+|---|---|
+| Testing | `testing`, `test-seams`, `integration-testing` |
+| Code quality | `solid`, `code`, `cyclomatic-complexity` |
+| Domain alignment | `domain`, `boundaries`, `laziness` |
+
+- **Non-code material.** A PR with no code (documentation or configuration alone) skips the three reviewers. Dispatch one reviewer with the doctrines the material warrants.
+- **Dispatch** each reviewer with the [reviewer contract](reviewer.md): the PR and head SHA, scope, purpose (the PR description and linked issue, which the reviewer fetches), its doctrine packet, and read-only evidence access. The code quality reviewer applies the `solid` that code review requires.
+- **Frontier models only.** Set the model for every reviewer and every verifier, because this flow requires it. Use the newest frontier-tier models from the `Claude 5.x` and `GPT 6.x` series that the harness offers, and mix the two series across the reviewers. Never use a lightweight tier such as Haiku, Flash, Mini, or similar. If no frontier model is available for a reviewer, say so and ask. Do not fall back to a lighter one.
+- **Rubber duck before reporting.** Each reviewer checks its draft findings with a rubber-duck pass before it reports back, to catch hallucinated or unsupported claims against the real code. Run the duck on a frontier model from the other series than the reviewer's. The reviewer drops or corrects any finding the duck cannot support, then reports only what survives, with the count it removed. The duck only reads and starts nothing further.
+- **Split only a job that is too big.** When one reviewer cannot cover the whole PR, split its work by independent slices such as directories or layers. Each slice keeps that reviewer's doctrines and model rules.
+- **Merge.** Combine duplicates across reviewers into one row that lists every doctrine involved, and rank across reviewers yourself.
 - **Compact return.** Ask for one record per finding and nothing else. Each record has the file and lines, a one-line issue and fix, severity, confidence, and doctrine IDs. It also has a short evidence note, the consequence, how to verify, and a replacement or diff for the fix. Ask for no raw diffs, file dumps, or narrative. Add at most two lines of coverage.
 - **Verify before you rely on it.** For each issue the human picks, view only the cited lines yourself before you draft a comment. A finding that fails that check gets corrected or dropped, and you tell the human.
-- **Dig deeper through the reviewer.** When a picked issue needs more detail than its record holds, ask the same reviewer. Do not re-review the PR in the primary context.
+- **Dig deeper through the reviewer.** When a picked issue needs more detail than its record holds, ask the reviewer that found it. Do not re-review the PR in the primary context.
 - **No sub-agent available.** Say so and ask whether to review directly. Do not present a direct review as isolated.
 
 ## 1. The table
