@@ -7,7 +7,7 @@ It does not review.
 ## Setup
 
 - **Doctrines.** Load `scout` and `nimble` through [Doctrine](../doctrine/APPLY.md),
-  and no others.
+  and no other full texts. Read only catalog metadata to choose the wildcard.
 - **Model.** The coordinator sets a frontier-tier model, under the same rule as
   the reviewers in [PR-REVIEW](PR-REVIEW.md).
 - **Input.** The repository, PR number, base, head SHA, and any reviewers the
@@ -42,18 +42,30 @@ one time. To add a reviewer, add a row.
   why. A PR that adds the first tests counts as having them.
 - Markdown is not code. Instruction files are Markdown, so the Documentation
   reviewer covers them.
-- Never invent a reviewer or a doctrine that is not in this table.
+- The table's reviewers are the only fixed ones. The wildcard below is the only
+  other reviewer, and it takes doctrines from the catalog.
 
-### Candidate reviewers
+## Wildcard reviewer
 
-Add these on the human's request.
+After the table matches, follow `nimble` and add exactly one wildcard reviewer
+with exactly three doctrines. It covers the risk specific to the pull request, which no one table reviewer sees whole. For example, a PR that adds file processing needs
+`data-processing`, `idempotency`, and `code` applied together. The Data and Code
+reviewers each see half of it, and the wildcard reviews the combination.
 
-| Encounter this | Reviewer | Doctrines |
-|---|---|---|
-| Queues, retries, caches, replication, events, cross-service contracts | Distributed data | `distributed-data`, `idempotency` |
-| The PR or its linked issue is a fix | Bug fix | `debugging` |
-| `SKILL.md`, `AGENTS.md`, prompts, agent configuration | Agent instructions | `context`, `tactical-strategic` |
-| A large PR, or one mixing unrelated concerns | PR shape | `sequencing` |
+- **Three IDs from the catalog.** Mix freely across the doctrine groups. Reuse a
+  doctrine another reviewer carries when the combination needs it, but never
+  repeat another reviewer's exact set. Never pick `scout` or `nimble`.
+- **Choose from metadata.** Use the catalog's IDs and descriptions through
+  [Doctrine](../doctrine/APPLY.md). Do not load full texts to choose. The
+  wildcard reviewer loads its three verified texts and no others.
+- **Name and justify.** Name it for the risk (for example, "File processing"),
+  and give one line per doctrine that ties it to a changed path or feature.
+- **Always one.** Return a wildcard whenever the PR has reviewable changes. Skip
+  it only with `no reviewable changes`.
+- **Human control.** The human can replace its doctrines or remove it.
+- **Same rules as the others.** Frontier model, read-only, rubber duck before
+  reporting, and the merge in [PR-REVIEW](PR-REVIEW.md) folds its overlap with
+  other reviewers into one row.
 
 ## Steps
 
@@ -62,23 +74,25 @@ Add these on the human's request.
    it. Open a file only to classify an ambiguous path, and read only enough to
    classify it.
 2. **Match.** Apply the table above, then the human's additions and removals.
-3. **Slice only when needed.** When one reviewer's files are too many for one
+3. **Add the wildcard.** Choose its three doctrines by the wildcard rules.
+4. **Slice only when needed.** When one reviewer's files are too many for one
    pass, split them by directory or layer into slices. Each slice keeps that
    reviewer's doctrines.
-4. **Move on.** Follow `nimble`: act on plain matches without asking. Follow
+5. **Move on.** Follow `nimble`: act on plain matches without asking. Follow
    `scout`: send a path whose type changes who reviews it (for example a JSON
    file that might be a data load or might be config) to `unmatched` with the
    question that would settle it. Do not guess.
-5. **Return the plan.** Nothing else.
+6. **Return the plan.** Nothing else.
 
 ## Return
 
-One record per reviewer to start:
+One record per reviewer to start, the wildcard included:
 
-- reviewer name, as in the table;
-- its doctrine IDs, copied from the table;
+- reviewer name, as in the table, or the wildcard's risk name;
+- its doctrine IDs, copied from the table or chosen for the wildcard;
+- for the wildcard, one line per doctrine that says why it applies;
 - the paths or globs it covers, and the slice if split;
-- the row that matched, in one line.
+- the row that matched, in one line (`wildcard` for the wildcard).
 
 Then:
 

@@ -400,7 +400,10 @@ test('Roast presents a PR review as a table, then drills into picked issues with
   assert.match(flat, /keep every reviewer's evidence note, consequence, and verification/);
   assert.match(flat, /list every doctrine involved/);
   const scout = readFileSync(path.join(dir, 'PR-SCOUT.md'), 'utf8').replace(/\s+/g, ' ');
-  assert.match(scout, /Load `scout` and `nimble` through \[Doctrine\]\(\.\.\/doctrine\/APPLY\.md\), and no others/);
+  assert.match(scout, /Load `scout` and `nimble` through \[Doctrine\]\(\.\.\/doctrine\/APPLY\.md\), and no other full texts/);
+  assert.match(scout, /add exactly one wildcard reviewer with exactly three doctrines/);
+  assert.match(scout, /Reuse a doctrine another reviewer carries when the combination needs it, but never repeat another reviewer's exact set/);
+  assert.match(scout, /Return a wildcard whenever the PR has reviewable changes/);
   assert.match(scout, /\| Encounter this \| Start this reviewer \| Doctrines, and only these \|/);
   assert.match(scout, /\| Code, and the repo has tests or a testing approach \(see below\) \| Testing \|/);
   assert.match(scout, /With none of these, do not start Testing, and say in the return that Testing was skipped and why/);
