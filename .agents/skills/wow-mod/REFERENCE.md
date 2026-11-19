@@ -75,6 +75,26 @@ ForeverOnly.lua [AllowLoadGameType camelot][ExcludeLoadGameType standard, classi
   - Trigger on pushed annotated tags. Untagged builds are alpha. The workflow needs `contents: write` and `fetch-depth: 0`.
   - `release.sh` maps `16xxx` interfaces and `camelot` to the `forever` game type and recognizes `_Camelot.toc` files.
 
+## Licensing
+
+Verified 2026-11-19. Factual summary, not legal advice.
+
+- **License governs reuse.** Uploading to CurseForge grants rights to Overwolf only; authors keep ownership ([Mod Authors Terms](https://legal.overwolf.com/docs/curseforge/mod-authors-terms/) §2.3, §5.3). Without a license, treat code as all rights reserved.
+- **CurseForge forbids copy-paste between mods** on its platform and requires open source attributions (§4.1(vii), §4.1(xi)). This applies to anything published there, even where a license permits copying.
+- **Visible is not reusable.** Blizzard's [addon policy](https://us.forums.blizzard.com/en/wow/t/ui-add-on-development-policy/24534) requires unobfuscated, publicly viewable code, but says nothing about licensing.
+- **Blizzard UI code** ([wow-ui-source](https://github.com/Gethe/wow-ui-source)) has no license. Read it; hook and call it rather than copying it into an addon. Questions: WoWUI@blizzard.com.
+- **Take libraries from their upstream**, not from another addon's `Libs/`:
+
+| Library | Upstream | License |
+| --- | --- | --- |
+| Ace3 | [WoWUIDev/Ace3](https://github.com/WoWUIDev/Ace3) | BSD-style; no standalone redistribution without permission |
+| LibStub | bundled header | Public domain |
+| HereBeDragons | [Nevcairiel/HereBeDragons](https://github.com/Nevcairiel/HereBeDragons) | TOC says BSD; no license file |
+| LibSharedMedia-3.0 | header (via mirror) | LGPL-2.1 |
+| oUF | [oUF-wow/oUF](https://github.com/oUF-wow/oUF) | MIT |
+
+Per-addon licenses are in [ADDONS.md](ADDONS.md).
+
 ## Open questions
 
 - Exact CurseForge API-token page path (the author console is a JavaScript app; unverified).

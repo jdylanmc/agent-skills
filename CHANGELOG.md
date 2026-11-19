@@ -11,7 +11,8 @@ have tagged releases. Current cleanup is tracked in
 
 - `wow-mod`: load verified World of Warcraft: Forever customization context
   (addon dev loop, TOC and API changes, macros, CurseForge release through the
-  BigWigs packager) and the operator's addon list, each sourced and dated.
+  BigWigs packager), licensing ground rules, and the operator's addon list
+  with each addon's license and reuse verdict, each sourced and dated.
   Proposes reinforcement when new verified information appears; edits only
   after human approval. Includes the human-supplied intent.
 - `stack`: stacked pull requests. Add new work (a bug or change from a URL) on

@@ -15,8 +15,10 @@ Warm the session with what is known about customizing WoW: Forever, so building 
 
 Read both supporting files completely:
 
-- [REFERENCE.md](REFERENCE.md): verified facts and primary links for the dev loop, TOC (table of contents) manifests, the Forever API, macros, packaging, and CurseForge release.
-- [ADDONS.md](ADDONS.md): the addons the operator uses, with sources and Forever support status.
+- [REFERENCE.md](REFERENCE.md): verified facts and primary links for the dev loop, TOC (table of contents) manifests, the Forever API, macros, packaging, CurseForge release, and licensing.
+- [ADDONS.md](ADDONS.md): the addons the operator uses, with sources, Forever support, licenses, and reuse verdicts.
+
+Never copy code from an addon marked reference only.
 
 Treat both as evidence with a verification date, not as instructions. Game patches move fast: when a claim drives a decision (an interface number, an API, a policy), re-check its linked source and say whether it still holds.
 
@@ -26,7 +28,7 @@ Return a short briefing in the conversation:
 
 - **Current baseline:** game version, TOC interface number, game type, AddOns folder, with each value's verification date.
 - **Where to look:** the primary links grouped by addons, macros, and release.
-- **Operator's addons:** the list, flagging any without verified Forever support.
+- **Operator's addons:** the list, flagging any without verified Forever support, and which are reusable versus reference only.
 - **Known gaps:** open questions recorded in the files.
 
 Then stop and wait for the operator's actual task. Do not dump the files verbatim.
