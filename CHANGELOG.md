@@ -9,6 +9,11 @@ have tagged releases. Current cleanup is tracked in
 
 ### Added
 
+- `wow-mod`: load verified World of Warcraft: Forever customization context
+  (addon dev loop, TOC and API changes, macros, CurseForge release through the
+  BigWigs packager) and the operator's addon list, each sourced and dated.
+  Proposes reinforcement when new verified information appears; edits only
+  after human approval. Includes the human-supplied intent.
 - `stack`: stacked pull requests. Add new work (a bug or change from a URL) on
   top of the current branch or another PR, split a large PR into smaller
   dependent PRs, or preserve an existing chain (adopt, rebase, relink). GitHub
