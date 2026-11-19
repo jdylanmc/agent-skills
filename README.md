@@ -259,9 +259,9 @@ sources and the root intent remain unchanged.
 ## Provenance and licenses
 
 There are **27 imported/adapted packages**, three locally authored Joe adapters
-(`joe-mode-cmux`, `joe-mode-orca`, `joe-mode-paseo`), and ten local/restored packages:
+(`joe-mode-cmux`, `joe-mode-orca`, `joe-mode-paseo`), and eleven local/restored packages:
 `shepherd`, `synthesize`, `doctrine`, `eli5`, `changelog`, `status-report`,
-`chart-a-course`, `simplified-technical-caveman`, `wrap-up`, and `stack`.
+`chart-a-course`, `simplified-technical-caveman`, `wrap-up`, `stack`, and `wow-mod`.
 
 | Primary upstream source | Initially imported | Retained |
 | --- | ---: | ---: |

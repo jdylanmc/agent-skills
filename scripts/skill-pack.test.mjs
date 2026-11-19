@@ -13,11 +13,11 @@ const expected = [
   'discovery', 'doctrine', 'domain-modeling', 'eli5', 'evolve-architecture',
   'handoff', 'interrogate', 'joe-mode', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'migration', 'patch', 'poc', 'pull-request', 'refactor',
   'research', 'retro', 'roast', 'scout', 'setup', 'shepherd', 'ship', 'simplified-technical-caveman', 'simplified-technical-english', 'specify',
-  'squadron', 'stack', 'status-report', 'synthesize', 'tdd', 'triage', 'unslop', 'verify', 'wait-what', 'wrap-up',
+  'squadron', 'stack', 'status-report', 'synthesize', 'tdd', 'triage', 'unslop', 'verify', 'wait-what', 'wow-mod', 'wrap-up',
 ];
 const originalNames = expected.filter(name => ![
   'chart-a-course', 'joe-mode-cmux', 'joe-mode-orca', 'joe-mode-paseo', 'pull-request',
-  'simplified-technical-caveman', 'simplified-technical-english', 'stack', 'unslop', 'wrap-up',
+  'simplified-technical-caveman', 'simplified-technical-english', 'stack', 'unslop', 'wow-mod', 'wrap-up',
 ].includes(name));
 
 // Frozen from the approved pre-distribution base c01ac0b4b9d20a11ea10952714ccddd188b590b7.
@@ -52,7 +52,9 @@ test('protected human intents and complete doctrine sources remain byte-preserve
     // Stack intent supplied verbatim by the human; pinned separately below.
     .filter(filename => filename !== '.agents/skills/stack/intent.md')
     // New wrap-up intent explicitly supplied by the human; pinned below.
-    .filter(filename => filename !== '.agents/skills/wrap-up/intent.md');
+    .filter(filename => filename !== '.agents/skills/wrap-up/intent.md')
+    // New wow-mod intent supplied verbatim by the human; pinned below.
+    .filter(filename => filename !== '.agents/skills/wow-mod/intent.md');
   sources.push('intent.md');
   assert.equal(sources.length, 36);
   // Human authorized root/Ship changes and the status-report never-stop intent update.
@@ -75,6 +77,12 @@ test('human-supplied wrap-up intent remains pinned', () => {
   const intent = readFileSync(path.join(root, '.agents/skills/wrap-up/intent.md'));
   assert.equal(createHash('sha256').update(intent).digest('hex'),
     '78b54e387f4f88770533405ead518b0d5727c8763f54e4eb63719f63267c107c');
+});
+
+test('human-supplied wow-mod intent remains pinned', () => {
+  const intent = readFileSync(path.join(root, '.agents/skills/wow-mod/intent.md'));
+  assert.equal(createHash('sha256').update(intent).digest('hex'),
+    'a9d91231d80f7966002688a73ffcc11dc7d9ef2fc596e927186018399389d5a1');
 });
 
 test('Unslop preserves human intent and enables exactly the vendored packages', () => {
