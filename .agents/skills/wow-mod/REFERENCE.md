@@ -26,7 +26,7 @@ Re-check a source before relying on a value that may have moved with a patch.
 ### Dev loop
 
 - Writing needs only an editor. Testing needs the game client and an active subscription; there is no official offline client.
-- Edit in place, or symlink a repository into `_forever_/Interface/AddOns`.
+- Edit in place, or symlink a repository into `_forever_/Interface/AddOns`. Verified 2026-11-19 (macOS, 1.60.1.70959): a symlinked addon folder loads after `/reload`, without a client restart.
 - `/reload` reloads Lua and XML and detects new files and addons. Deleting or renaming an already loaded TOC needs a client restart ([TOC format](https://warcraft.wiki.gg/wiki/TOC_format)).
 - Debug: `/dump <expr>`, `/fstack`, `/etrace`, `/console scriptErrors 1`, or BugSack.
 - Editor: [Ketho/vscode-wow-api](https://github.com/Ketho/vscode-wow-api) adds API IntelliSense for LuaLS. It activates on a folder with a `.toc`. Forever-specific coverage is unverified.
