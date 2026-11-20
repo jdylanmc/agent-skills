@@ -15,6 +15,9 @@ have tagged releases. Current cleanup is tracked in
   with each addon's license and reuse verdict, each sourced and dated.
   Proposes reinforcement when new verified information appears; edits only
   after human approval. Includes the human-supplied intent.
+  Honors macro-only responses, prefers operator-tested Forever behavior over
+  other game versions, and records the operator-reported Cat Form entry pattern
+  using form index 3, with broader testing and Cower timing still unverified.
 - `stack`: stacked pull requests. Add new work (a bug or change from a URL) on
   top of the current branch or another PR, split a large PR into smaller
   dependent PRs, or preserve an existing chain (adopt, rebase, relink). GitHub

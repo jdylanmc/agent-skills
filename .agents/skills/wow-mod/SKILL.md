@@ -33,6 +33,12 @@ Return a short briefing in the conversation:
 
 Then stop and wait for the operator's actual task. Do not dump the files verbatim.
 
+### Macro guidance
+
+When the operator requests only a macro, return only the macro code block.
+Prefer operator-tested Forever behavior over examples from other game versions;
+do not assume retail form indices apply.
+
 ## 3. Reinforce
 
 During any later work in the session, watch for **novel, verified** information: a new or corrected fact, a broken or moved link, a new Forever patch or interface number, a newly adopted or dropped addon, a useful pattern that the files lack.

@@ -65,6 +65,20 @@ ForeverOnly.lua [AllowLoadGameType camelot][ExcludeLoadGameType standard, classi
 - `/run` and `/script` execute Lua.
 - Conditionals such as `[combat]`, `[mod:shift]`, and `[@mouseover,help]` give limited logic, not decision-making.
 
+Operator-reported Forever Cat Form entry pattern (2026-11-20):
+
+```text
+/dismount
+/cancelform [noform:3]
+/cast [noform:3] Cat Form
+```
+
+The operator reports this pattern enters Cat Form reliably, using form index 3.
+Confirmation across all forms and mounted states remains open.
+Source: operator report in Copilot session
+`ff5a994e-4e75-42eb-903a-422423f2d572`; no public source URL.
+This does not verify subsequent Cower execution or one-press timing.
+
 ## Release to CurseForge
 
 - **Project:** create one in the [CurseForge author console](https://authors.curseforge.com/#/projects/create/choose-game) ([guide](https://support.curseforge.com/support/solutions/articles/9000197241)). Upload a real `.zip` under 2 GB. Files start "Under Review" for moderators.
